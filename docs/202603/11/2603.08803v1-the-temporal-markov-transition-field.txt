@@ -1,0 +1,275 @@
+Title: The Temporal Markov Transition Field
+
+URL Source: https://arxiv.org/pdf/2603.08803v1
+
+Published Time: Wed, 11 Mar 2026 00:04:43 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# The Temporal Markov Transition Field 
+
+## A Representation for Time-Varying Transition Dynamics in Time Series Analysis Michael Leznik Aristocrat Leisure Limited, London 8 March, 2026 
+
+Abstract 
+
+The Markov Transition Field (MTF), introduced by Wang and Oates (2015), encodes a time series as a two-dimensional image by mapping each pair of time steps to the transition probability between their quantile states, estimated from a single global transition matrix. This construction is efficient when the transition dynamics are stationary, but produces a misleading representation when the process changes regime over time: the global matrix averages across regimes and the resulting image loses all information about when each dynamical regime was active. In this paper we introduce the Temporal Markov Transition Field (TMTF), an extension that partitions the series into K contiguous temporal chunks, estimates a separate local transition matrix for each chunk, and assembles the image so that each row reflects the dynamics local to its chunk rather than the global average. The resulting T ×T image has K horizontal bands of distinct texture, each encoding the transition dynamics of one temporal segment. We develop the formal definition, establish the key structural properties of the representation, work through a complete numerical example that makes the distinction from the global MTF concrete, analyse the bias–variance trade-off introduced by temporal chunking, and discuss the geometric interpretation of the local transition matrices in terms of process properties such as persistence, mean reversion, and trending behaviour. The TMTF is amplitude-agnostic and order-preserving, making it suitable as an input channel for convolutional neural networks applied to time series characterisation tasks. 
+
+> arXiv:2603.08803v1 [cs.LG] 9 Mar 2026
+
+# 1 Introduction 
+
+A central challenge in applying convolutional neural networks (CNNs) to time series data is the construction of a two-dimensional representation that preserves the dynamically relevant structure of the series. Several such representations have been proposed, including the Gramian Angular Field and the Recurrence Plot [ 2]. The Markov Transition Field [ 1] is among the most informative for tasks that depend on persistence or mean-reversion properties, because it encodes the transition structure of the series at the level of quantile states: rather than recording what values the series takes, it records how the series moves between levels. The global MTF construction, as introduced by Wang and Oates, estimates a single transition probability matrix from the entire series and uses it to fill a T × T image. This single-matrix approach is appropriate when the transition dynamics are constant over time, in which case pooling all available transitions produces a low-variance estimate of a single generating mechanism. However, it has a fundamental limitation: the global matrix cannot distinguish a series with constant dynamics from one that changes regime midway through. If a process switches from high persistence to strong mean reversion at time t∗,the global transition matrix averages across the two regimes, and the resulting image has a uniform texture that resembles neither. The information that the dynamics changed —and 
+
+when —is lost. The Temporal Markov Transition Field addresses this by replacing the single global matrix with a set of K local matrices, one per temporal segment. The entry at position (i, j ) of the image is filled using the local matrix estimated from the segment containing time step i, rather than the global matrix. The image acquires horizontal band structure: all rows within the same segment share the same row-texture (governed by the same local matrix), while rows from different segments carry the texture of their respective local dynamics. A CNN reading this image can detect the bands and learn to associate their patterns—diagonal-heavy for persistent segments, spread for mean-reverting ones, upper-triangular for trending ones—with the dynamical properties of the generating process. This paper is organised as follows. Section 2 establishes the building blocks: quantile binning and the empirical transition matrix. Section 3 recalls the global MTF and identifies its limitation precisely through a worked example. Section 4 introduces the TMTF formally, establishes its key properties, and analyses the bias–variance trade-off. Section 5 continues the worked example through the TMTF construction. Section 6 interprets the local transition matrices in terms of process properties. Section 7 discusses the multi-resolution extension. Section 8 concludes. 
+
+# 2 Building Blocks 
+
+Let x = ( x1, x 2, . . . , x T ) ∈ RT denote a time series of length T , observed at equal time intervals. The MTF family of representations operates on the relative ordering of the observations rather than their absolute values, achieved through quantile binning. 
+
+## 2.1 Quantile Binning and the State Sequence 
+
+Definition 2.1 (Quantile Bins and State Sequence) . Given a time series x ∈ RT and a bin count Q ∈ N, let q0 < q 1 < · · · < q Q be the empirical quantile boundaries of x such 2that each interval [ qk−1, q k) contains ⌊T /Q ⌋ observations (with boundary adjustments for divisibility). The quantile state of observation xt is 
+
+bt = k if xt ∈ [qk−1, q k), k = 1 , . . . , Q. 
+
+The sequence b = ( b1, b 2, . . . , b T ) is the state sequence of x.The state sequence discards the magnitudes of the observations and retains only their rank structure. Two time series related by any monotone transformation produce the same state sequence. The MTF and TMTF are therefore amplitude-agnostic : invariant to rescaling, shifting, and any other transformation that preserves relative ordering. The choice of Q controls the resolution of the representation. A large Q produces fine bins and can capture subtle distributional features of the transitions, but requires more data per bin to estimate transition probabilities reliably. A small Q is robust with fewer observations but coarser. In practice, Q ∈ { 6, 10 , 14 } balance resolution and reliability for series of length T ≥ 200. 
+
+## 2.2 The Empirical Transition Matrix 
+
+Definition 2.2 (Empirical Transition Probability Matrix) . Given a state sequence b =(b1, . . . , b T ), the Q × Q empirical transition probability matrix W has entries 
+
+Wkl = #{t ∈ { 1, . . . , T − 1} : bt = k and bt+1 = l}
+
+#{t ∈ { 1, . . . , T − 1} : bt = k} , k, l ∈ { 1, . . . , Q }.
+
+Each row sums to unity: PQl=1 Wkl = 1 for all k.The entry Wkl estimates the probability that a series in quantile state k at one time step will be in quantile state l at the next step. The diagonal entries Wkk are particularly informative: large Wkk indicates that the series tends to remain in state k (persistence); small Wkk indicates rapid departure (mean reversion). Only T − 1 transitions are available from a series of length T , because the final observation xT has no successor. The row total for state k therefore equals the count of times the series occupies state k among x1, . . . , x T −1, equivalently the total occurrence count minus one if the series occupies state k at the final time step. 
+
+# 3 The Global Markov Transition Field 
+
+## 3.1 Definition and Row Degeneracy 
+
+The global MTF [ 1] assembles the T × T image by assigning to each cell ( i, j ) the transition probability from the state at time i to the state at time j, as estimated by the single global matrix W .
+
+Definition 3.1 (Global Markov Transition Field) . Given a time series x with state sequence b and global transition matrix W , the global MTF is the T × T matrix M with entries 
+
+Mij = Wbi, b j , i, j ∈ { 1, . . . , T }.
+
+3The entry Mij answers: how probable is the transition from the level at time i to the level at time j, as estimated from the entire series? Because W is global, every time step contributes equally regardless of when it occurred. A fundamental structural consequence follows. 
+
+Proposition 3.1 (Row Degeneracy of the Global MTF) . Two rows i and i′ of the global MTF are identical if and only if bi = bi′ .Proof. Mij = Wbi,b j for all j. If bi = bi′ then Mij = Wbi,b j = Wbi′ ,b j = Mi′j for every j.Conversely, if bi̸ = bi′ then rows bi and bi′ of W differ in general. Proposition 3.1 exposes the fundamental limitation. The global MTF has at most Q
+
+distinct row patterns—one per quantile state. All time steps in the same state produce identical rows regardless of when they occur. The image contains no information about the temporal location of dynamical regimes: it cannot distinguish a series with constant dynamics from one whose mechanism changed at some interior time point. 
+
+## 3.2 Worked Example: Global MTF on a Regime-Switching Series 
+
+Example 3.1 (Global MTF) . Consider 
+
+x = (12 , 85 , 45 , 18 , 78 , 42 , 15 , 22 , 55 , 48 , 82 , 91) .
+
+The first six observations zigzag between low and high values (mean-reverting dynamics). The last six rise monotonically and stay high (persistent dynamics).               
+
+> 12345678910 11 12
+> 0
+> 50
+> 100
+> Low ( k= 1)
+> Mid ( k= 2)
+> High ( k= 3)
+> chunk boundary
+
+Time t
+
+> xt
+
+Example series with Q = 3 quantile bands and K = 2 chunk boundary 
+
+Figure 1: The 12-point example series. Quantile bands are shaded. The dashed vertical line marks the chunk boundary for K = 2. 
+
+Quantile binning (Q = 3, four observations per bin): State Range Values Times 
+
+k = 1 (Low) x ≤ 35 12 , 18 , 15 , 22 1, 4, 7, 8
+
+k = 2 (Mid) 35 < x ≤ 63 45 , 42 , 55 , 48 3, 6, 9, 10 
+
+k = 3 (High) x > 63 85 , 78 , 82 , 91 2, 5, 11 , 12 State sequence: b = (1 , 3, 2, 1, 3, 2, 1, 1, 2, 2, 3, 3). 
+
+Transition tally (11 consecutive pairs): 4From To 1 To 2 To 3 Total State 1 1 1 2 4State 2 2 1 1 4State 3 0 2 1 3Row totals sum to T − 1 = 11. State 3 yields only 3 transitions because the series occupies state 3 at t = 12 (the final step), which has no successor. 
+
+W =
+
+
+
+0.25 0.25 0.50 0.50 0.25 0.25 0.00 0.67 0.33 
+
+ .
+
+The diagonal entries are modest (0.25, 0.25, 0.33), reflecting neither pure mean-reversion nor pure persistence. The global matrix is a blend of both regimes. By Proposition 3.1, the 12 × 12 image has exactly three distinct row patterns. Rows at t ∈ { 1, 4, 7, 8} (all state 1) are identical; rows at t = 7 and t = 1—from opposite halves of the series—cannot be distinguished. The regime change is invisible. 
+
+Figure 2: The assembled 12 × 12 global MTF image for the worked example ( Q = 3). Row-index colours and left-side brackets group the three sets of identical rows: red for state 1 (i ∈ { 1, 4, 7, 8}), green for state 2 ( i ∈ { 3, 6, 9, 10 }), and blue for state 3 ( i ∈ { 2, 5, 11 , 12 }). Within each group the rows are pixel-for-pixel identical regardless of whether they fall in the mean-reverting first half or the persistent second half of the series. No band structure is visible; the regime transition at t = 6 leaves no trace. 54 The Temporal Markov Transition Field 
+
+## 4.1 Formal Definition 
+
+Definition 4.1 (Temporal Segmentation) . Given a time series of length T and a chunk count K ∈ N with K | T , the k-th temporal chunk is the contiguous index set 
+
+Ck = t ∈ N : ( k − 1) TK < t ≤ k TK , k = 1 , . . . , K. 
+
+The chunk function chunk : {1, . . . , T } → { 1, . . . , K } maps each time index to its chunk: chunk( t) = k iff t ∈ Ck.
+
+Definition 4.2 (Local Transition Matrix) . For chunk Ck, the local transition matrix W (k)
+
+is the Q × Q empirical transition probability matrix estimated from the transitions within 
+
+Ck only: 
+
+W (k) 
+
+> lm
+
+= #{t ∈ Ck : bt = l, b t+1 = m, t + 1 ∈ Ck}
+
+#{t ∈ Ck : bt = l, t + 1 ∈ Ck} , l, m ∈ { 1, . . . , Q }.
+
+Only within-chunk consecutive pairs are counted; transitions crossing a chunk boundary are excluded. 
+
+Definition 4.3 (Temporal Markov Transition Field) . Given state sequence b, chunk count 
+
+K, and local matrices W (1) , . . . , W (K), the Temporal Markov Transition Field is the T × T
+
+matrix M with entries 
+
+Mij = W (chunk( i))  
+
+> bi, b j
+
+, i, j ∈ { 1, . . . , T }. (1) The entry Mij answers: given the dynamics prevailing in the temporal segment containing time step i, how probable is the transition from the state at time i to the state at time j? The probability is drawn from the local matrix W (chunk( i)) estimated from 
+
+Cchunk( i) alone. 
+
+## 4.2 Structural Properties 
+
+Proposition 4.1 (Band Structure) . The TMTF image is partitioned into K horizontal bands corresponding to C1, . . . , C K . Rows i, i ′ in the same chunk produce the same row texture if and only if bi = bi′ . Rows i, i ′ in different chunks may produce distinct textures even when bi = bi′ , provided W (chunk( i)) ̸ = W (chunk( i′)) .Proof. Within a chunk, Mij = W (chunk( i))  
+
+> bi,b j
+
+. For chunk (i) = chunk (i′), the same local matrix governs both rows, so the rows agree iff bi = bi′ by an argument identical to Proposition 3.1. Across chunks, if W (c)̸ = W (c′) for c = chunk (i), c′ = chunk (i′), then even with bi = bi′
+
+there exists j with W (c)
+
+> bi,b j
+
+̸ = W (c′) 
+
+> bi,b j
+
+.The TMTF can therefore produce up to K · Q distinct row patterns, compared to at most Q for the global MTF. The additional K-fold discrimination is precisely the temporal information that the global MTF discards. 
+
+Proposition 4.2 (Graceful Degradation to Global MTF) . If W (1) = · · · = W (K) = W ,then Mij = Mij for all i, j : the TMTF reduces to the global MTF. Proof. Mij = W (chunk( i))  
+
+> bi,b j
+
+= Wbi,b j = Mij .6Proposition 4.2 ensures that the TMTF does not misrepresent genuinely stationary series: when the dynamics do not vary across chunks, the image is identical to the global MTF. The gain in representational flexibility comes at no cost when that flexibility is not needed. 
+
+Proposition 4.3 (Amplitude Agnosticism) . The TMTF is invariant to any strictly increasing transformation f : R → R applied to the observations. Proof. A strictly increasing f preserves the rank ordering of observations and hence the quantile boundaries and state sequence b. All local matrices W (k) are functions of b alone, so they are unchanged. By (1), Mij is unchanged. 
+
+## 4.3 The Column Asymmetry 
+
+Equation (1) applies the chunk function to the row index i but not to the column index j.The column state bj is drawn from the global state sequence, spanning the entire series. This asymmetry is deliberate. The entry Mij concerns the transition departing from time i. The dynamics relevant to this departure are those prevailing around time i, encoded in W (chunk( i)) . The destination at time j identifies only the target state; the dynamics at time j do not govern the departure from i.A concrete consequence: the columns are not partitioned into vertical bands. The column j appearing in a row from C1 and the same column j appearing in a row from C2
+
+both refer to the same destination state bj at the same time j. The two rows are therefore directly comparable: if they differ, it is because the local transition matrices differ, not because the destination states differ. This cross-chunk comparison information would be lost if the image were decomposed into K independent block matrices. 
+
+## 4.4 Bias–Variance Trade-off 
+
+The local matrix W (k) is estimated from T /K − 1 transitions, compared to T − 1 for the global matrix. With fewer observations, W (k) has higher variance. The expected squared error of each entry ˆW (k) 
+
+> lm
+
+is of order 1 /(nk · ˆP (bt = l)) where nk = T /K − 1, increasing as 
+
+K grows. Against this variance cost is a bias reduction when the dynamics are genuinely non-stationary. If the true local matrix in chunk k is W (k)
+
+> ∗
+
+̸ = W∗ (the global true matrix), the global estimator carries bias W − W (k) 
+
+> ∗
+
+for entries in chunk k, while the local estimator is unbiased within the chunk. A practical minimum-transitions rule requires each local matrix to have at least 5 Q
+
+transitions per row on average, implying nk ≥ 5Q2, i.e., T /K ≥ 5Q2 + 1. For Q = 6 and 
+
+T = 400 this permits K ≤ 2.2; for T = 1000 it permits K ≤ 5.5. For the typical range 
+
+T ∈ [200 , 1000] with Q ∈ { 6, 10 , 14 }, K = 4 is a robust default that provides temporal resolution while keeping each chunk above the estimation threshold at T ≥ 400. 
+
+# 5 Worked Example: TMTF with K = 2 
+
+Example 5.1 (TMTF with K = 2) . Continuing from Example 3.1, we apply the TMTF with K = 2 equal chunks of six observations each. 7Temporal segments. C1 = {1, . . . , 6} with b(1) = (1 , 3, 2, 1, 3, 2); C2 = {7, . . . , 12 }
+
+with b(2) = (1 , 1, 2, 2, 3, 3). Both chunks visit all three states. The regime difference is entirely in how the series moves between them. 
+
+Local matrix W (1) (mean-reverting regime). Within-chunk transitions (transition from t = 6 to t = 7 is excluded as the successor falls in C2): 1 → 3, 3 → 2, 2 →
+
+1, 1 → 3, 3 → 2. From To 1 To 2 To 3 Total State 1 0 0 2 2State 2 2 0 0 2State 3 0 2 0 2Row totals sum to |C1| − 1 = 5. ✓
+
+W (1) =
+
+
+
+0 0 11 0 00 1 0
+
+ .
+
+Every diagonal entry is zero: the series never stays in the same state. The unit off-diagonal entries encode the deterministic cycle 1 → 3 → 2 → 1 → · · · . This is an extreme mean-reverting signature. 
+
+Local matrix W (2) (persistent regime). Within-chunk transitions (transition from 
+
+t = 12 excluded): 1 → 1, 1 → 2, 2 → 2, 2 → 3, 3 → 3. From To 1 To 2 To 3 Total State 1 1 1 0 2State 2 0 1 1 2State 3 0 0 1 1
+
+Remark 5.1 . State 3 appears twice in C2 (at t = 11 and t = 12) but contributes only one outgoing transition, since t = 12 is the final observation. Row totals sum to |C2| − 1 = 5. ✓
+
+W (2) =
+
+
+
+0.50 0.50 0.00 0.00 0.50 0.50 0.00 0.00 1.00 
+
+ .
+
+The diagonal entries are large (0.50, 0.50, 1.00): the series strongly tends to stay in its current state. The matrix is upper-triangular with zero lower-triangular entries: the series can stay or move to a higher state, but never returns to a lower state. State 3 is absorbing (W (2) 33 = 1 .0): this is the signature of a persistent upward trend. 
+
+TMTF image. By (1) , rows i ∈ C1 are governed by W (1) and rows i ∈ C2 by W (2) .The state sequence b(1) = (1 , 3, 2, 1, 3, 2) produces a top band whose row textures cycle through the rows of W (1) : all-zero diagonal, strongly off-diagonal. The state sequence 
+
+b(2) = (1 , 1, 2, 2, 3, 3) produces a bottom band whose textures reflect W (2) : heavy diagonal, upper-triangular. A CNN filter detecting the texture contrast between the two bands identifies a process that transitioned from mean-reverting to persistent dynamics. 8Figure 3: The assembled 12 × 12 TMTF image for the worked example ( K = 2, Q = 3). Rows i = 1–6 (top band, above the dashed line) are governed by W (1) and contain only binary values {0, 1}, producing a stark alternating texture reflecting the deterministic mean-reverting cycle of chunk 1. Rows i = 7–12 (bottom band) are governed by W (2) and contain values in {0, 0.5, 1}, producing a softer texture reflecting the persistent upward dynamics of chunk 2. A CNN filter traversing the image detects the texture change at the band boundary and associates it with the regime transition at t = 6. 96 Geometric Interpretation of Local Transition Ma-trices 
+
+The structure of each local matrix W (k) encodes a direct geometric signature of the process dynamics within segment Ck. We describe the four canonical patterns corresponding to the main classes of time series behaviour. 
+
+Diagonal-heavy matrix. Large diagonal entries W (k) 
+
+> ll
+
+for all l indicate the series tends to remain in its current state. The trajectory lingers in each quantile band. This is the signature of persistence : characteristic of near-unit-root processes ( ϕ ≲ 1) and slowly drifting series. In the image, the band produced by chunk k has a dark stripe along the main diagonal. 
+
+Spread matrix. Small diagonal entries and substantial off-diagonal mass indicate the series departs rapidly from its current state, oscillating across quantile bands without settling. This is the signature of mean reversion : characteristic of stationary AR(1) processes with |ϕ| ≪ 1. In the image, the band has a diffuse, near-uniform texture. 
+
+Upper-triangular matrix. Probability mass concentrated above the main diagonal, with negligible lower-triangular entries, indicates the series predominantly moves to higher quantile states and rarely returns to lower ones. This is the signature of a persistent upward trend . The worked example’s W (2) is of this type. If additionally W (k) 
+
+> QQ
+
+≈ 1, the top state is absorbing and the series has approached or crossed an explosive regime in this segment. 
+
+Uniform matrix. All entries approximately equal to 1 /Q indicates transitions are nearly equiprobable from any state: the current state carries no information about the next. This is the signature of a random walk , in which each step is independent of the current level. These four patterns are the vocabulary with which the TMTF image describes the dynamics. A CNN trained on TMTF images learns to recognise these textures and their spatial arrangement within the band structure, associating configurations of bands—for instance, uniform followed by diagonal-heavy—with specific generative process histories. 
+
+# 7 Multi-Resolution TMTF 
+
+A natural extension is to compute multiple TMTF images for different values of the bin count Q, producing a multi-resolution representation. This is directly analogous to the multi-scale permutation entropy of [ 3], who compute permutation entropy over a grid of embedding dimensions n and delays τ to capture information content at multiple temporal scales. For a fixed K and a set of bin counts {Q1, Q 2, . . . , Q R}, the multi-resolution TMTF produces R separate T × T images, each encoding the transition dynamics at a different quantile resolution. A coarser Q yields a more robust estimate of gross persistence or mean-reversion patterns; a finer Q yields more discriminative estimates of the detailed transition structure at higher variance. When used as input to a CNN, the R images are stacked as separate input channels. The convolutional backbone processes all channels simultaneously, learning complementary features from each resolution. In the stationarity characterisation application accompanying this paper, Q ∈ { 6, 10 , 14 } are used with K = 4 chunks, producing three TMTF channels. Channel saliency analysis shows that the three channels carry complementary information: 10 the coarser Q = 6 channel receives the highest gradient attribution for the ϕ regression task, consistent with coarser bins producing more stable per-chunk transition estimates. The design of multi-resolution TMTF follows the same logic as multi-scale permutation entropy: both represent a sweep over representation resolutions, and both produce a family of representations that are individually noisier but collectively more discriminative than any single member. The TMTF framework accommodates this extension naturally since each bin count Q yields an independent T × T image with its own local transition matrices. 
+
+# 8 Discussion and Conclusion 
+
+We have introduced the Temporal Markov Transition Field, a representation that extends the global MTF of [ 1] to capture time-varying transition dynamics. The key modification— replacing the single global transition matrix with K locally estimated matrices—produces a T ×T image with K horizontal bands, each carrying the transition texture of its temporal segment. Three properties make the TMTF well-suited as a CNN input channel for time series analysis. First, amplitude agnosticism (Proposition 4.3): invariance to any monotone transformation removes the need for normalisation and ensures comparability across series at different scales. Second, graceful degradation (Proposition 4.2): when the dynamics are genuinely stationary, the TMTF reduces exactly to the global MTF, introducing no unnecessary complexity. Third, interpretability: the texture of each horizontal band corresponds to a geometrically meaningful property of the local transition matrix for that segment. The main design parameter is the chunk count K. We have characterised the bias– variance trade-off: larger K reduces bias under regime-switching but increases estimation variance per local matrix. The practical guideline K ≤ T / (5 Q2 + 1) ensures sufficient transitions per chunk for reliable estimation. For series lengths T ∈ [200 , 1000] and bin counts Q ∈ { 6, 10 , 14 }, K = 4 is a robust default. The column asymmetry of the TMTF—the chunk function applies to row indices but not column indices—is a deliberate design choice that preserves cross-time comparability in the columns while allowing local dynamics to vary by row band. This means the TMTF image is not decomposable into K independent block matrices: the off-diagonal blocks carry genuine cross-chunk comparison information. The relationship between the TMTF and other ordinal representations of time series— including the multi-scale permutation entropy of [ 3] and the multi-scale MTF of [ 5]— suggests a family of representations parametrised by the resolution swept (bins Q in the TMTF, embedding dimension and delay in permutation entropy) and the temporal segmentation ( K in the TMTF, window size in windowed permutation entropy). Exploring the theoretical relationships among these representations is a direction for future work. 
+
+Acknowledgements. This work was conducted as part of the stationarity characterisation project described in the companion paper. 
+
+# References 
+
+[1] Wang, Z. and Oates, T. (2015). Imaging time-series to improve classification and impu-tation. Proceedings of the 24th International Joint Conference on Artificial Intelligence (IJCAI) , pp. 3939–3945. 11 [2] Eckmann, J.-P., Kamphorst, S. O., and Ruelle, D. (1987). Recurrence plots of dynamical systems. Europhysics Letters , 4(9), 973–977. [3] Kay, B., Myers, A., Boydston, T., Ellwein, E., Mackenzie, C., Alvarez, I., and Lentz, E. (2024). Permutation entropy for signal analysis. Discrete Mathematics and Theoretical Computer Science , 26:1, Permutation Patterns 2023 #9. [4] Bandt, C. and Pompe, B. (2002). Permutation entropy: a natural complexity measure for time series. Physical Review Letters , 88(17), 174102. [5] Liu, Y., Li, Z., Zhang, M., Chen, X., Zhang, J., and Wang, L. (2024). Multi-scale Markov transition field for time series classification. IEEE Journal of Biomedical and Health Informatics , 28(2), 1078–1088. 12
