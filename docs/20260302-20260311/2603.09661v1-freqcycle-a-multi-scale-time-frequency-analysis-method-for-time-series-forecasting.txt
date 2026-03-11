@@ -1,0 +1,1196 @@
+Title: FreqCycle: A Multi-Scale Time-Frequency Analysis Method for Time Series Forecasting
+
+URL Source: https://arxiv.org/pdf/2603.09661v1
+
+Published Time: Wed, 11 Mar 2026 01:06:22 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# FreqCycle: A Multi-Scale Time-Frequency Analysis Method for Time Series Forecasting 
+
+Boya Zhang, Shuaijie Yin, Huiwen Zhu, Xing He *
+
+Shanghai Jiao Tong University, Shanghai, China 
+
+{zby112200, yinshuaijie, shu yuan, xhe }@sjtu.edu.cn 
+
+Abstract 
+
+Mining time-frequency features is critical for time series forecasting. Existing research has predominantly focused on modeling low-frequency patterns, where most time series en-ergy is concentrated. The overlooking of mid to high fre-quency continues to limit further performance gains in deep learning models. We propose FreqCycle , a novel frame-work integrating: (i) a Filter-Enhanced Cycle Forecasting (FECF) module to extract low-frequency features by explic-itly learning shared periodic patterns in the time domain, and (ii) a Segmented Frequency-domain Pattern Learning (SFPL) module to enhance mid to high frequency energy pro-portion via learnable filters and adaptive weighting. Further-more, time series data often exhibit coupled multi-periodicity, such as intertwined weekly and daily cycles. To address cou-pled multi-periodicity as well as long lookback window chal-lenges, we extend FreqCycle hierarchically into MFreqCy-cle , which decouples nested periodic features through cross-scale interactions. Extensive experiments on seven diverse domain benchmarks demonstrate that FreqCycle achieves state-of-the-art accuracy while maintaining faster inference speeds, striking an optimal balance between performance and efficiency. 
+
+Code — https://github.com/boya-zhang-ai/FreqCycle 
+
+1 Introduction 
+
+Time series forecasting (TSF) plays a pivotal role in nu-merous domains, including energy optimization(Wang et al. 2021), weather forecasting(Wu et al. 2023; Fan et al. 2023), and economic analysis(Ariyo, Adewumi, and Ayo 2014), where it serves as a priori guidance for proactive planning and decision-making. The ubiquity and significance of TSF tasks have spurred a proliferation of methodological ad-vances in this field. Traditional forecasting approaches, such as ARIMA (Ariyo, Adewumi, and Ayo 2014) and LSTM (Jerome, Ishii, and Chen 2018), were predominantly employed in early TSF research. The rapid development of deep learning has given rise to a diverse array of neural network based forecasting mod-els. Recurrent Neural Network, RNN-based methods (e.g., 
+
+> *
+
+Corresponding Author Copyright © 2026, Association for the Advancement of Artificial Intelligence (www.aaai.org). All rights reserved. Shared Daily Periodic Pattern 
+
+> Shared Weekly
+> Periodic Pattern
+
+ETTm2 for 3 Weeks Duration         
+
+> Value
+> Time Index
+> Original Data
+> Pooled Data
+> 0250 500 750 1000 1250 1500 1750 2000
+> 30  35  40  45  50  55
+
+Figure 1: Shared periodic patterns present in the ETTm2 dataset. SegRNN (Lin et al. 2023), WITRAN (Jia et al. 2023)) are frequently hampered by gradient vanishing or explo-sion issues, which limit their ability to model long-term de-pendencies. Convolutional Neural Network, CNN-based ap-proaches (e.g., TCN (Bai, Kolter, and Koltun 2018), SCINet (Liu et al. 2022)) leverage parallel computation but of-ten exhibit restricted receptive fields, potentially overlook-ing global temporal relationships. Transformer-based tech-niques (e.g., Autoformer(Wu et al. 2021), PatchTST(Nie et al. 2023), iTransformer(Liu et al. 2023)) excel at mod-eling global dependencies through self-attention mecha-nisms, albeit at the cost of high computational complexity. Meanwhile, Multilayer Perceptron MLP-based models (e.g., DLinear(Zeng et al. 2023), CycleNet(Lin et al. 2024a)) of-fer simplicity and training efficiency, demonstrating notable efficacy in low-frequency component prediction. MLP-based methods have garnered significant attention due to their low complexity and competitive performance. However, current MLP-based approaches exhibit several limitations: (i) Deep learning models aim to construct com-plex architectures to extract periodic patterns from long-range dependencies. However, we opt for a more direct and effective approach by explicitly learning shared daily and weekly periodic patterns through parametric modeling. Fig-ure 1 shows the daily periodic patterns in the ETT dataset and the observable weekly patterns after average pooling. (ii) From a frequency-domain perspective, although simple models (e.g., DLinear (Zeng et al. 2023)) excel at learning low-frequency periodic components, their fundamental ar-         
+
+> arXiv:2603.09661v1 [cs.LG] 10 Mar 2026 010 20 30 40 50
+> Frequency Index
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> Magnitude
+> Traffic Frequency Spectrum Comparison
+> 10 20 30 40 50
+> 0.0
+> 0.1
+> 0.2
+> Original Spectrum
+> Processed Spectrum
+
+Figure 2: Frequency spectrum of Traffic dataset before and after SFPL enhancement chitecture—built upon Linear Layers or MLPs—inherently limits their ability to effectively represent mid to high fre-quency components, which capture short-term fluctuations and aperiodic features. As shown in Figure 2, these mid to high frequency components contribute very little energy pro-portion, urgently requiring effective methods to enhance the energy contribution of these critical frequency components. (iii) Existing architectures are not specifically designed to address the multi-scale nested periodicity (such as coupled daily-weekly cycles) inherent in time series data. Naively employing MLP-based models could result in compromised performance or reduced efficiency, thereby demanding the construction of an improved framework that can adaptively model multi-level periodic structures in a coordinated man-ner. To address the challenges in time series forecasting, this paper makes the following key contributions: • We introduce Filter-Enhanced Cycle Forecasting (FECF), a method that explicitly learns shared peri-odic patterns, avoiding complex architectures to learn long-range dependencies. • We propose the Segmented Frequency Pattern Learning (SFPL) method, which enhances the energy contribution of mid to high frequency components. This approach ef-fectively resolves the long-standing limitation of insuffi-cient key frequency modeling in conventional methods, improving prediction accuracy for aperiodic elements. • To address the critical challenge of coupled multi-periodicity under long lookback windows, we developed MFreqCycle - an architecture that decouples and jointly models nested periodic features through a multi-scale ap-proach. • We conduct extensive experiments on seven time series forecasting benchmarks. The results demonstrate that our model achieves superior performance in both effective-ness and efficiency. 
+
+2 Related Work 
+
+MLP-based Time Series Model 
+
+Several studies have investigated the application of MLP-based deep learning networks for time series forecasting. N-BEATS (Oreshkin et al. 2019) employs stacked MLP lay-ers with dual residual learning to process input data and generate iterative future predictions. LightTS (Zhang et al. 2022) adopts a lightweight sampling-oriented MLP archi-tecture to reduce complexity and computational overhead while maintaining prediction accuracy. DLinear (Zeng et al. 2023) introduces a set of simple single-layer Linear models to capture temporal relationships between input and output sequences. SparseTSF (Lin et al. 2024b) utilizes cross-cycle sparse prediction techniques to decouple periodic and trend components. CycleNet (Lin et al. 2024a) demonstrates re-markable performance in day-ahead forecasting by explic-itly modeling periodic patterns through an integrated frame-work combining cyclical decomposition and MLP-based residual prediction. TimeMixer (Wang et al. 2024a) intro-duces a novel architecture featuring Past-Decomposable-Mixing for multiscale representation learning and Future-Multipredictor-Mixing to ensemble multi-scale forecasting skills. These studies collectively validate the effectiveness of MLP-based architectures in time series forecasting tasks, motivating our further development of MLP-based deep learning prediction algorithms in this work. 
+
+Time Series Modeling with Frequency Learning 
+
+Recent years have witnessed increasing integration of fre-quency techniques into deep learning models for time se-ries forecasting, capitalizing on their computational effi-ciency and energy compaction properties (Yi et al. 2023a). Specifically, Autoformer (Wu et al. 2021) replaces self-attention with an autocorrelation mechanism incorporating Fast Fourier Transform (FFT), while FEDformer (Zhou et al. 2022b) proposes a DFT-based frequency-enhanced attention that computes attention weights through query-key spec-tral analysis. FiLM (Zhou et al. 2022a) employs Fourier analysis to preserve historical patterns while filtering noise, and FreTS (Yi et al. 2023b) introduces frequency-domain MLPs to learn cross-channel and temporal dependencies. FITS (Xu, Zeng, and Xu 2024) applies low-pass filtering before performing complex-valued Linear transformations in the frequency domain. FilterNet (Yi et al. 2024) intro-duces plain shaping filters for baseline frequency processing and contextual shaping filters for adaptive spectrum modu-lation. Notably, most existing frequency-based methods pri-marily focus on low-frequency components through conven-tional or adaptive filtering. In contrast, our work proposes a novel frequency learning architecture that specifically en-hances mid to high frequency energy representation. 
+
+3 Methodology 
+
+In this section, we first formalize the TSF problem and introduce the time-frequency transformation theory along with its inherent time-frequency duality, thereby establish-ing the theoretical foundation for our methodology. We then present the two core components of FreqCycle: (i) the Filter-Enhanced Cycle Forecasting (FECF) technique, and (ii) the Segmented Frequency-domain Pattern Learning (SFPL) module. To address the critical challenge of coupled periodic patterns in real-world time series, we further develop MFre-qCycle by incorporating cross-scale feature fusion mecha-nisms into the FreqCycle architecture, enabling decoupling Normalization
+
+Inputs
+
+SFPL
+
+Inverse Norm
+
+Outputs
+
+FECF
+
+> Normalization
+
+Inputs
+
+SFPL
+
+Integration
+
+Outputs
+
+FECF SFPL FECF
+
+> Pooling
+
+Linear   
+
+> BaseModuleWeekly
+> Module
+> InverseNorm
+> tLt
+
+c :1
+
+> Htt
+
+c  :1'
+
+> tLt
+
+r :1
+
+> Htt
+
+r  :1
+
+X
+
+X
+
+X
+
+X 
+
+> (a) FreqCycle structure
+> (b) FECF structure
+> (c) SFPL structure (d) MFreqCycle structure
+> Divide
+
+Figure 3: The architecture of FreqCycle. (a) The overall architecture of FreqCycle. (b) FECF block is employed to explicitly learns shared periodic patterns in the time domain; (c) SFPL extracts critical frequency information in the spectral domain via learnable filters and adaptive weighting.(d) MFreqCycle explicitly decouples and models nested periodic features through cross-scale interactions. and joint modeling of nested periodic features. The overall structure is illustrated in Figure 3. 
+
+Preliminaries 
+
+1) Problem Definition: Given a time series X ∈ RL×D
+
+with L historical observations and D variables, the goal is to predict future values X ∈ RH×D where H is the forecast horizon. The mapping function can be formalized as: 
+
+f : xt−L+1: t ∈ RL×D → xt+1: t+H ∈ RH×D
+
+2) Discrete Fourier Transform: In TSF problems, time se-ries data are discrete samples that vary over time. The Dis-crete Fourier Transform (DFT) is a widely used method for converting discrete data from the time domain to the fre-quency domain. For a discrete sequence x[n] of length N, its DFT is defined as: 
+
+X[k] =  
+
+> N−1
+
+X
+
+> n=0
+
+x[n]e−j 2πN kn , k = 0 , 1, . . . , N − 1 (1) where j = √−1 represents the imaginary unit. The Inverse Discrete Fourier Transform (iDFT) is the re-verse operation of DFT, which reconstructs the time-domain signal from its frequency-domain representation: 
+
+x[n] = 1
+
+N 
+
+> N−1
+
+X
+
+> k=0
+
+X[k]ej 2πN kn , n = 0 , 1, . . . , N − 1 (2) In practical applications, Fast Fourier Transform (FFT) and inverse Fast Fourier Transform (iFFT) are commonly employed instead of DFT and iDFT to significantly re-duce computational complexity and improve operational efficiency. This efficient time-frequency transformation serves as the fundamental basis for implementing various frequency-domain operations on time series data. 3) Duality of Time and Frequency Domain: For two discrete-time sequences x[n] and h[n], the convolution op-eration in the time domain is computed as follows: 
+
+y[n] = ( x ∗ h)[ n] =  
+
+> N−1
+
+X
+
+> m=0
+
+x[m]h[n − m] (3) The convolution operation in the time domain is equiva-lent to point-wise multiplication in the frequency domain: 
+
+F{ x ∗ h} = X[k] · H[k] (4) Conversely, multiplication in the time domain corre-sponds to convolution in the frequency domain.Based on the time-frequency duality property between convolution and multiplication, numerous researchers (Zhao et al. 2024; Yi et al. 2024) have adopted frequency-domain pointwise mul-tiplication operations to replace time-domain circular con-volution for enhanced computational efficiency. Another industrially significant time-frequency duality manifests in the deterministic relationship between tempo-ral sampling interval ∆t and signal bandwidth fmax , as well as the inverse dependence of frequency resolution ∆f on total observation duration T .Filter-Enhanced Cycle Forecasting 
+
+The Filter-Enhanced Cyclical Forecasting (FECF) technique represents an improvement over the original Residual Cy-cle Forecasting framework(Lin et al. 2024a), specifically de-signed to enhance the learning of low-frequency periodic patterns in time series data. Given input sequences with D channels and a predefined base period length W , the method first generates a learnable cyclical basis Q ∈ RW ×D (initialized as a zero matrix) that is globally shared across the temporal dimension. Through periodic replication operations (Lin et al. 2024a), this ba-sis produces a cyclical component ct−L+1: t matching the original sequence length L, as well as a cyclical component 
+
+ct+1: t+H matching the predict length H. To prioritize low-frequency information capture, the generated cyclical com-ponent ct+1: t+H undergoes processing via adaptive filtering. Specifically, the adaptive filtering enhanced periodic learn-ing module focuses on amplifying low-frequency informa-tion while attenuating mid- and high-frequency components that may degrade periodic pattern learning performance. The workflow is implemented as follows: 
+
+c′ 
+
+> t+1: t+H
+
+= IFFT (Filter (FFT (ct+1: t+H ))) 
+
+Filter (ξ) = ξ ⊙ θc
+
+(5) where FFT (·) denotes the Fast Fourier Transform along the temporal dimension, IFFT (·) represents the Inverse Fast Fourier Transform, θc corresponds to the learnable filter pa-rameters for the concatenated periodic components, and ⊙
+
+indicates element-wise multiplication (Hadamard product). Both the periodic basis Q and the adaptive filters are jointly trained through gradient backpropagation to effec-tively extract the underlying low-frequency periodic pat-terns. Notably, the base period length W is determined by the inherent characteristics of the dataset. For time series with 1-hour intervals, W = 24 for daily cycles or W = 168 
+
+for weekly patterns. This architecture combines explicit pe-riodic modeling with frequency-aware filtering, demonstrat-ing superior performance in capturing dominant cyclical trends while maintaining computational efficiency through its parameter-sharing mechanism. In conclusion, FECF procedure is as follow: 1) Extract Residual Component: Remove the periodic component ct−L+1: t from the input xt−L+1: t obtaining the residual component: 
+
+rt−L+1: t = xt−L+1: t − ct−L+1: t (6) 2) Residual Prediction via SFPL Module: Feed the resid-ual component into the SFPL module to predict future resid-uals: 
+
+rt+1: t+H = SFPL (rt−L+1: t) (7) 3) Reconstruct Prediction: Combine the predicted residual with the filtered periodic component: 
+
+xt+1: t+H = rt+1: t+H + c′ 
+
+> t+1: t+H
+
+(8) 
+
+Segmented Frequency-domain Pattern Learning 
+
+The SFPL technique is specifically designed to enhance the energy contribution of mid to high frequency components, enabling the prediction of aperiodic components and short-term fluctuations. Within the FreqCycle framework, SFPL operates on residual components rt−L+1: t obtained after removing low-frequency periodic elements from the input. SFPL procedure is as follow: 1) The input rt−L+1: t is divided into s sub-segments via a sliding window, with zero-padding applied to both ends of each sub-segment. These processed sub-segments are then stacked to obtain segmented time feature R =
+
+{r1, r 2, . . . , r s} ∈ Rs×L×D .2) Then FFT is applied to R along the temporal dimension to obtain stacked frequency represention F ∈ Cs×⌊ L  
+
+> 2+1 ⌋× D
+
+,after which frequency-domain feature extraction is per-formed on F . To consolidate critical frequency-domain in-formation, an adaptive weighted summation is conducted across the sub-segments in F , ultimately yielding the refined frequency-domain data f ∈ C⌊ L  
+
+> 2+1 ⌋× D
+
+with enhanced fea-tures. ΘF = {θ1, . . . , θ s}
+
+θ′
+
+> 1
+
+, . . . , θ ′ 
+
+> s
+
+= softmax (θ1, . . . , θ s)Θ′ 
+
+> F
+
+= {θ′
+
+> 1
+
+, . . . , θ ′
+
+> s
+
+}
+
+F ′ = F ⊙ Θ′
+
+> F
+
+f =
+
+> s
+
+X
+
+> i=1
+
+F ′(i)
+
+(9) where ΘF corresponds to the learnable parameters for the segmented frequency components. F ′(i) referring to each sub-element of F along the segmented dimension. 3) The refined data f undergoes iFFT and is then passed through FFN layer to produce the residual prediction output 
+
+rt+1: t+H of SFPL. The segmentation operation is an important technique in SFPL. By dividing the signal into short sub-segments and performing FFT on each segment individually, it essen-tially constitutes a variant of the Short-Time Fourier Trans-form (STFT). Each sub-segment achieves higher frequency-domain locality by shortening the time-domain window (Nawab, Quatieri, and Lim 1983), thereby enabling more precise localization of transient frequency components. The resulting frequency-domain representation f , obtained through learnable filtering and adaptive weighting integra-tion, becomes more discriminative with enhanced mid to high frequency energy. We provide a more detailed introduc-tion to the theory of STFT and its strategies for enhancing mid to high frequency energy proportion in Appendix A. 
+
+MFreqCycle 
+
+MFreqCycle is a multi-scale parallel framework that achieves high-precision forecasting by collaboratively ex-tracting temporal features across different time scales. The features include periodic patterns (such as daily and weekly cycles) and non-periodic components. Current experiments have demonstrated the feasibility of incorporating weekly cycles on several datasets, while longer-period patterns like Models FreqCycle DLinear CycleNet Amplifier FreTS FilterNet FITS iTransformer PatchTST TimeMixer Metrics MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE ETTm1 0.372 0.389 0.403 0.407 0.386 0.395 0.381 0.394 0.408 0.416 0.384 0.398 0.415 0.408 0.407 0.410 0.387 0.400 0.381 0.395 ETTm2 0.263 0.311 0.350 0.401 0.272 0.315 0.276 0.323 0.321 0.368 0.276 0.322 0.286 0.328 0.288 0.332 0.281 0.326 0.275 0.323 ETTh1 0.428 0.427 0.456 0.452 0.432 0.427 0.430 0.428 0.475 0.463 0.440 0.432 0.451 0.440 0.454 0.448 0.469 0.455 0.447 0.440 ETTh2 0.371 0.399 0.559 0.515 0.383 0.404 0.359 0.391 0.472 0.465 0.378 0.404 0.383 0.408 0.383 0.407 0.387 0.407 0.364 0.395 Weather 0.243 0.270 0.265 0.317 0.254 0.279 0.243 0.271 0.250 0.270 0.245 0.272 0.249 0.276 0.258 0.278 0.259 0.281 0.240 0.271 ECL 0.168 0.259 0.212 0.300 0.170 0.260 0.171 0.265 0.189 0.278 0.201 0.285 0.217 0.295 0.178 0.270 0.205 0.290 0.182 0.272 Traffic 0.448 0.261 0.625 0.383 0.485 0.313 0.482 0.315 0.618 0.390 0.521 0.340 0.627 0.376 0.428 0.282 0.481 0.304 0.484 0.297 
+
+Table 1: Time series forecasting comparison. We set the lookback window size L as 96 and the prediction length as H ∈{96 , 192 , 336 , 720 }. The best results are highlighted in bold and the second best are underlined. Results are averaged from all prediction lengths. Full results for all datasets are listed in Table 2 of Appendix B. annual cycles remain unverified due to dataset limitations. The architecture comprises two key modules: a base cycle learning and frequency enhancement module, which focuses on capturing the smallest significant cycle (e.g., daily cy-cle) and its associated non-periodic features, and a weekly cycle learning and frequency enhancement module, which models macro-scale periodic patterns (e.g., weekly cycle). These multi-scale predictions are then adaptively integrated through a prediction fusion layer. To improve computational efficiency, the framework employs different input window lengths when extracting temporal features based on base-cycle and weekly-cycle durations. To capture macro-scale periodic patterns, the system re-quires longer input sequences spanning, which significantly increases computational demands. However, for short-term forecasting, the model only needs to extract key trend in-formation from data. To balance computational efficiency with model performance, the weekly cycle learning and fre-quency enhancement module incorporates three submod-ules: a pooling layer, a feature learning module, and a Linear layer. The distinctive feature extraction architecture based on pooling and Linear projection represents the key differ-ence between the weekly cycle module and the base cy-cle module, while the feature learning submodule follows the same processing pipeline as FreqCycle. This design en-ables efficient extraction of essential weekly patterns with-out compromising predictive accuracy. After processing through the base and weekly modules, the model generates multi-scale prediction outputs includ-ing the base period output x0 
+
+> t+1: t+H
+
+and weekly period out-put x1 
+
+> t+1: t+H
+
+. Then the prediction fusion module performs adaptive integration of these multi-scale predictions to pro-duce the final system output xt+1: t+H .
+
+θ′
+
+> 0
+
+, θ ′ 
+
+> 1
+
+=softmax (θ0, θ 1)
+
+xt+1: t+H = x0 
+
+> t+1: t+H
+
+⊙ θ′ 
+
+> 0
+
++ x1 
+
+> t+1: t+H
+
+⊙ θ′
+
+> 1
+
+(10) where θ′
+
+> 0
+
+, θ ′ 
+
+> 1
+
+corresponds to the learnable parameters for the prediction fusion module. This fusion strategy ensures an optimal balance between different periodic features while maintaining computational efficiency and prediction accuracy. 
+
+4 Experiments 
+
+Experimental Setup 
+
+Datasets To validate the model’s performance and gen-eralization capability, we conduct experiments on seven datasets, including publicly benchmarks like ETT dataset se-ries (Zhou et al. 2021), Electricity (ECL), Weather and Traf-fic datasets (Wu et al. 2021). These datasets span diverse do-mains with varying scales and sampling frequencies, provid-ing a comprehensive testbed to evaluate the model’s adapt-ability and scalability across different forecasting tasks. De-tailed dataset information is summarized in Appendix B. 
+
+Technical Implementation Details All experiments were implemented in PyTorch 2.6.0 and conducted on an NVIDIA RTX 4090 GPU with 24GB of memory. 
+
+Baselines In this work, we benchmark our model against the representative and state-of-the-art approaches. We are evaluating and comparing with Linear and MLP-based mod-els, including DLinear (Zeng et al. 2023), CycleNet (Lin et al. 2024a), and TimeMixer (Wang et al. 2024a). We fur-ther evaluate against frequency learning methods, including FreTS (Yi et al. 2023b), FilterNet (Yi et al. 2024), FITS (Xu, Zeng, and Xu 2024), and Amplifer (Fei et al. 2025). To demonstrate the effectiveness of our model, we conduct comprehensive comparisons with Transformer-based mod-els, including iTransformer (Liu et al. 2023) and PatchTST (Nie et al. 2023). 
+
+Evaluation Metrics Following established practices in prior work, we employ two primary metrics to assess fore-casting performance: Mean Squared Error (MSE) and Mean Absolute Error (MAE). 
+
+Main Results 
+
+Table 7 presents the training results of the FreqCycle model and nine baselines on seven open-source datasets. Overall, FreqCycle secured first place in 10 out of 14 metrics and second place in 2 metrics. Compared to other models, our model demonstrates significant performance improvements, which we attribute to the FECF’s learning of periodic pat-terns and the SFPL’s enhancement of key frequencies. Datasets L FreqCycle CycleNet FITS MSE MAE MSE MAE MSE MAE ETTh2 96 0.371 0.399 0.383 0.404 0.383 0.408 ETTm2 96 0.263 0.311 0.267 0.314 0.286 0.328 ETTh2 168 0.241 0.340 0.388 0.415 0.333 0.382 ETTm2 672 0.167 0.279 0.262 0.325 0.250 0.312 
+
+Table 2: Performance comparison with different look-back window lengths. The prediction length is H ∈{96 , 192 , 336 , 720 }. The best results are highlighted in bold. Results are averaged across all prediction lengths. Full re-sults are available in Table 7 of Appendix D. To evaluate the effectiveness of the MFreqCycle model, we design Table 10 with lookback windows of 96 and a whole week length data 672(168), comparing the model against CycleNet and FITS. As shown in Table 10, sim-ply increasing the lookback window may lead to minor performance improvements or even slight degradation in some cases. The reason could be that the inherent limita-tions of the models prevent them from handling the com-plex temporal dependencies or noise interference introduced by longer lookback windows. However, the MFreqCycle model, specifically designed for longer lookback windows, achieves remarkable performance improvements on the ETT datasets, demonstrating its pioneering capability in learning both long-period patterns and their aperiodic components. 
+
+Model Analysis 
+
+Ablation Study To validate the effectiveness of the FECF and SFPL modules in FreqCycle, we designed the ablation experiments shown in Table 11. We compared the perfor-mance of: 1) the complete FreqCycle framework, 2) the variant without the FECF module, and 3) the variant re-placing SFPL with MLP. The results show that both mod-ules significantly contribute to improving prediction perfor-mance. Specifically, the FECF module achieves the most substantial improvements on Traffic and Weather datasets with prominent cycles, showing a 21.30% MAE improve-ment on the Traffic dataset. The SFPL module exhibits no-table performance gains on ETTh datasets, which exhibit stronger non-stationary characteristics and richer transient frequency components, achieving a 6.91% MSE improve-ment. SFPL and FECF demonstrate complementary perfor-mance characteristics, and their synergistic integration en-ables the FreqCycle model to achieve superior predictive performance. 
+
+Effectiveness of SFPL In recent years, researchers have introduced signal processing techniques, like low-pass fil-ters (LPFs), into time series forecasting and developed learn-able filter schemes, aiming to extract more critical frequency components. Unlike conventional LPFs with rigid cutoff fre-quencies or purely gradient-based learnable filters, our ap-proach draws inspiration from STFT to enhance the extrac-tion of crucial mid to high frequency information. We conduct a systematic comparison between our SFPL                            
+
+> Datasets ETTh1 ETTh2 Traffic Weather Metrics MSE MAE MSE MAE MSE MAE MSE MAE FreqCycle 0.369 0.390 0.282 0.336 0.438 0.262 0.159 0.203 No FECF 0.375 0.397 0.292 0.344 0.501 0.318 0.179 0.218 Boost 1.65%1.82%3.26%2.56%14.54%21.30%12.59%7.29%
+> 2MLP 0.379 0.401 0.302 0.348 0.444 0.262 0.161 0.206 Boost 2.66%2.93%6.91%3.85% 1.44% 0.04% 1.51% 1.28%
+
+Table 3: Ablation study of FreqCycle module, using param-eters L=96 and H=96. 2MLP means the variant replacing SFPL with MLP.                              
+
+> Datasets ETTh2 ECL Traffic Metrics MSE MAE MSE MAE MSE MAE FreqCycle 0.282 0.336 0.139 0.233 0.438 0.262 SFPL2LPF 0.294 0.345 0.143 0.240 0.449 0.268 Boost 4.00% 2.68% 3.39% 3.09% 2.63% 2.29%
+> SFPL2PaiFilter 0.293 0.344 0.143 0.239 0.445 0.262 Boost 3.68% 2.59% 2.96% 2.58% 1.81% 0.08%
+
+Table 4: Comparison of frequency processing methods, us-ing parameters L=96 and H=96. module and existing frequency processing methods within the FreqCycle framework. We evaluate: 1) replacing SFPL’s frequency processing with PaiFilter (Yi et al. 2024), and 2) substituting SFPL with the LPF scheme from FITS (Xu, Zeng, and Xu 2024). As shown in Table 12, these results indicate that existing frequency-domain filtering approaches fail to adequately capture critical frequency components, whereas our SFPL module effectively extracts frequency features. 
+
+Effectiveness of FECF Our FECF technique fundamen-tally operates as a Seasonal-Trend Decomposition (STD) method. To validate its effectiveness, we conducted ex-periments comparing it against two established STD ap-proaches: the moving average decomposition (MOV) used in DLinear (Zeng et al. 2023) and the local decomposi-tion (LD) (Yu et al. 2024). As demonstrated in Table 5, when replacing FECF with either MOV+Linear (DFreq) or LD+Linear (LDFreq) variants in our FreqCycle framework, the forecasting performance consistently degraded across all seven benchmark datasets. These empirical results clearly establish that our FECF-based decomposition achieves su-perior temporal pattern extraction compared to conventional STD methods. 
+
+Efficiency Analysis The theoretical complexity of Freq-Cycle is O(L log L). We conducted a comprehensive com-parison with representative models across three dimen-sions, Forecasting performance, Peak memory consump-tion and Training speed. Figure 4 demonstrates that Fre-qCycle achieves the optimal balance between model per-formance and computational efficiency. This efficiency ad-vantage stems from our time and frequency processing paradigm, which avoids the quadratic complexity of atten-Datasets FreqCycle DFreq LDFreq Metrics MSE MAE MSE MAE MSE MAE ETTm2 0.263 0.311 0.312 0.365 0.329 0.368 Weather 0.243 0.270 0.259 0.309 0.248 0.291 ECL 0.168 0.259 0.204 0.293 0.201 0.288 Traffic 0.448 0.261 0.529 0.316 0.527 0.307 
+
+Table 5: Performance comparison of different STD methods. The configuration look-back window length of 96 and The reported results are averaged across all prediction horizons of H ∈ { 96 , 192 , 336 , 720 }, with full results available in Table 5 of Appendix D. 
+
+Figure 4: Model efficiency comparison in terms of MSE, Peak memory consumption and Training speed. Using an input length L = 96 and prediction horizon H = 96 on the Electricity dataset. tion mechanisms while preserving temporal pattern learning capabilities. 
+
+Visualization 
+
+Visualization of SFPL’s Key Frequency Enhancement 
+
+After training the model on benchmark datasets, we ana-lyzed the frequency amplitude spectra before and after SFPL processing. As demonstrated in Figure 5, SFPL effectively Amplifies the energy proportion of mid to high frequency bands as well as Preserves the structural integrity of domi-nant low-frequency components. 
+
+Visualization of Periodic Patterns Extracted by FECF 
+
+Figure 6 shows the learned periodic patterns across multi-ple datasets after hyperparameter W optimization. Our anal-ysis reveals that for the Electricity and Traffic datasets, Fre-qCycle successfully captures weekly periodicity patterns through hyperparameter tuning. For the remaining datasets, the optimized FreqCycle configuration learns daily cycle patterns. 
+
+Visualization of Forecasting Results The prediction re-sults on benchmark datasets are available in Appendix E. 0 10 20 30 40 50     
+
+> Frequency Index
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> 3.5
+> Magnitude (×10 5)
+> ECL Frequency Spectrum Comparison
+> 10 20 30 40 50
+> 0.0
+> 0.1
+> 0.2
+> Original Spectrum
+> Processed Spectrum
+
+Figure 5: Frequency spectrum of Electricity dataset before and after SFPL enhancement. The other datasets’ results are available in Appendix E. -0.6 
+
+Traffic (168) Electricity (168)  
+
+> 0160
+
+Weather (144) 
+
+> 0
+
+ETTm2 (96)       
+
+> 160
+> 070 140
+> 0.0
+> -1.0
+> 045 90
+> 1.0
+> 0.0
+> 8
+> 0.5
+> 0.0
+> 0.4
+> 0.0
+> -0.4 -0.5
+> 080
+
+ETT h1 (24 ETTm 1 (96) )  
+
+> -0.
+> 0. 2
+> -0. 2
+> 6
+> 45 90 012 24 0
+> -0.
+> 0. 2
+> 2
+> 0. 0
+
+Figure 6: Learned periodic patterns by conducting hyperpa-rameter W tuning on each dataset. 
+
+5 Conclusion 
+
+This paper presents FreqCycle, a frequency aware frame-work for TSF that addresses the under explored challenge of modeling mid to high frequency components. FreqCycle in-tegrates two key innovations, FECF for periodic pattern ex-traction, and SFPL to amplify mid to high frequency energy via learnable filters and adaptive weighting. For coupled multi-scale periodicity, we further propose MFreqCycle, which achieves remarkable performance improvements on several datasets while maintaining efficiency. Comprehen-sive experiments across seven real world datasets demon-strate both the superior accuracy and computational effi-ciency of our proposed approach. The FreqCycle frame-work establishes a new paradigm for time series forecasting that achieves state-of-the-art performance while maintaining lightweight architecture. Acknowledgments 
+
+We would like to express our sincere gratitude to our advisor, Associate Professor Xing He, for his continuous guidance and invaluable support throughout this research. We also thank all members of the Intelligent Information Processing and Control Laboratory (IIC) at Shanghai Jiao Tong Uni-versity for their insightful discussions and kind assistance during the development of this work. 
+
+References 
+
+Ariyo, A. A.; Adewumi, A. O.; and Ayo, C. K. 2014. Stock Price Prediction Using the ARIMA Model. In 2014 UKSim-AMSS 16th International Conference on Computer Mod-elling and Simulation , 106–112. Bai, S.; Kolter, J. Z.; and Koltun, V. 2018. An Empiri-cal Evaluation of Generic Convolutional and Recurrent Net-works for Sequence Modeling. arXiv:1803.01271. Fan, W.; Wang, P.; Wang, D.; Wang, D.; Zhou, Y.; and Fu, Y. 2023. Dish-TS: A General Paradigm for Alleviating Distri-bution Shift in Time Series Forecasting. arXiv:2302.14829. Fei, J.; Yi, K.; Fan, W.; Zhang, Q.; and Niu, Z. 2025. Am-plifier: Bringing Attention to Neglected Low-Energy Com-ponents in Time Series Forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, 11645–11653. Jerome, A.; Ishii, T.; and Chen, H. 2018. Forecasting and Anomaly Detection on Application Metrics using LSTM. In Abe, N.; Liu, H.; Pu, C.; Hu, X.; Ahmed, N.; Qiao, M.; Song, Y.; Kossmann, D.; Liu, B.; Lee, K.; Tang, J.; He, J.; and Saltz, J., eds., 2018 IEEE INTERNATIONAL CON-FERENCE ON BIG DATA (BIG DATA) , IEEE International Conference on Big Data, 2221–2227. IEEE; IEEE Comp Soc; Expedia Grp; Baidu; Squirrel AI Learning; Ankura; Springer. ISBN 978-1-5386-5035-6. IEEE International Conference on Big Data (Big Data), Seattle, WA, DEC 10-13, 2018. Jia, Y.; Lin, Y.; Hao, X.; Lin, Y.; Guo, S.; and Wan, H. 2023. WITRAN: Water-wave Information Transmission and Re-current Acceleration Network for Long-range Time Series Forecasting. In Thirty-seventh Conference on Neural Infor-mation Processing Systems .Lin, S.; Lin, W.; Hu, X.; Wu, W.; Mo, R.; and Zhong, H. 2024a. CycleNet: enhancing time series forecasting through modeling periodic patterns. In Proceedings of the 38th In-ternational Conference on Neural Information Processing Systems , 106315–106345. Lin, S.; Lin, W.; Wu, W.; Chen, H.; and Yang, J. 2024b. SparseTSF: modeling long-term time series forecasting with 1k parameters. In Proceedings of the 41st International Con-ference on Machine Learning , 30211–30226. Lin, S.; Lin, W.; Wu, W.; Zhao, F.; Mo, R.; and Zhang, H. 2023. SegRNN: Segment Recurrent Neural Network for Long-Term Time Series Forecasting. arXiv:2308.11200. Liu, M.; Zeng, A.; Chen, M.; Xu, Z.; Lai, Q.; Ma, L.; and Xu, Q. 2022. SCINet: Time Series Modeling and Forecast-ing with Sample Convolution and Interaction. In Koyejo, S.; Mohamed, S.; Agarwal, A.; Belgrave, D.; Cho, K.; and Oh, A., eds., ADVANCES IN NEURAL INFORMATION PROCESSING SYSTEMS 35 (NEURIPS 2022) , Advances in Neural Information Processing Systems. ISBN 978-1-7138-7108-8. 36th Conference on Neural Information Processing Systems (NeurIPS), ELECTR NETWORK, NOV 28-DEC 09, 2022. Liu, Y.; Hu, T.; Zhang, H.; Wu, H.; Wang, S.; Ma, L.; and Long, M. 2023. iTransformer: Inverted Transformers Are Effective for Time Series Forecasting. CoRR .Nawab, S.; Quatieri, T.; and Lim, J. 1983. Signal reconstruc-tion from short-time Fourier transform magnitude. IEEE Transactions on Acoustics, Speech, and Signal Processing ,31(4): 986–998. Nie, Y.; Nguyen, N. H.; Sinthong, P.; and Kalagnanam, J. 2023. A Time Series is Worth 64 Words: Long-term Fore-casting with Transformers. In The Eleventh International Conference on Learning Representations .Oreshkin, B. N.; Carpov, D.; Chapados, N.; and Ben-gio, Y. 2019. N-BEATS: Neural basis expansion analy-sis for interpretable time series forecasting. arXiv preprint arXiv:1905.10437 .Wang, S.; Wu, H.; Shi, X.; Hu, T.; Luo, H.; Ma, L.; Zhang, J. Y.; and ZHOU, J. 2024a. TimeMixer: Decomposable Mul-tiscale Mixing for Time Series Forecasting. In The Twelfth International Conference on Learning Representations .Wang, Y.; Zou, R.; Liu, F.; Zhang, L.; and Liu, Q. 2021. A review of wind speed and wind power forecasting with deep neural networks. APPLIED ENERGY , 304. Wu, H.; Xu, J.; Wang, J.; and Long, M. 2021. Autoformer: Decomposition transformers with auto-correlation for long-term series forecasting. Advances in neural information pro-cessing systems , 34: 22419–22430. Wu, H.; Zhou, H.; Long, M.; and Wang, J. 2023. Inter-pretable weather forecasting for worldwide stations with a unified deep model. NATURE MACHINE INTELLIGENCE ,5(6): 602+. Xu, Z.; Zeng, A.; and Xu, Q. 2024. FITS: Modeling Time Series with 10 k Parameters. In The Twelfth International Conference on Learning Representations .Yi, K.; Fei, J.; Zhang, Q.; He, H.; Hao, S.; Lian, D.; and Fan, W. 2024. Filternet: Harnessing frequency filters for time se-ries forecasting. Advances in Neural Information Processing Systems , 37: 55115–55140. Yi, K.; Zhang, Q.; Cao, L.; Wang, S.; Long, G.; Hu, L.; He, H.; Niu, Z.; Fan, W.; and Xiong, H. 2023a. A survey on deep learning based time series analysis with frequency transfor-mation. arXiv preprint arXiv:2302.02173 .Yi, K.; Zhang, Q.; Fan, W.; Wang, S.; Wang, P.; He, H.; An, N.; Lian, D.; Cao, L.; and Niu, Z. 2023b. Frequency-domain MLPs are more effective learners in time series forecast-ing. Advances in Neural Information Processing Systems ,36: 76656–76679. Yu, G.; Zou, J.; Hu, X.; Aviles-Rivero, A. I.; Qin, J.; and Wang, S. 2024. Revitalizing Multivariate Time Series Fore-casting: Learnable Decomposition with Inter-Series Depen-dencies and Intra-Series Variations Modeling. In Forty-first International Conference on Machine Learning .Zeng, A.; Chen, M.; Zhang, L.; and Xu, Q. 2023. Are Trans-formers Effective for Time Series Forecasting? In Proceed-ings of the AAAI Conference on Artificial Intelligence , vol-ume 37, 11121–11128. Association for the Advancement of Artificial Intelligence (AAAI). Zhang, T.; Zhang, Y.; Cao, W.; Bian, J.; Yi, X.; Zheng, S.; and Li, J. 2022. Less is more: Fast multivariate time se-ries forecasting with light sampling-oriented mlp structures. 
+
+arXiv preprint arXiv:2207.01186 .Zhao, Y.; Li, T.; Chen, J.; Ye, S.; Jiang, F.; Zhang, T.; and Gao, X. 2024. Disentangled Interpretable Representation for Efficient Long-term Time Series Forecasting. arXiv preprint arXiv:2411.17257 .Zhou, H.; Zhang, S.; Peng, J.; Zhang, S.; Li, J.; Xiong, H.; and Zhang, W. 2021. Informer: Beyond efficient transformer for long sequence time-series forecasting. In Proceedings of the AAAI conference on artificial intelligence , volume 35, 11106–11115. Zhou, T.; Ma, Z.; Wen, Q.; Sun, L.; Yao, T.; Yin, W.; Jin, R.; et al. 2022a. Film: Frequency improved legendre memory model for long-term time series forecasting. Advances in neural information processing systems , 35: 12677–12690. Zhou, T.; Ma, Z.; Wen, Q.; Wang, X.; Sun, L.; and Jin, R. 2022b. FEDformer: Frequency Enhanced Decomposed Transformer for Long-term Series Forecasting. In Chaud-huri, K.; Jegelka, S.; Song, L.; Szepesvari, C.; Niu, G.; and Sabato, S., eds., Proceedings of the 39th International Con-ference on Machine Learning , volume 162 of Proceedings of Machine Learning Research , 27268–27286. PMLR. Appendix A. Introduction of Short-Time Fourier Transform 
+
+The short-time Fourier transform (STFT) is a widely used time-frequency representation for signals such as speech and images. For a discrete-time signal x(n), the STFT is defined as 
+
+Xw(nL, ω ) = X
+
+> m
+
+x(m)w(nL − m)e−jωm (11) where the subscript w in Xw(nL, ω ) denotes the analysis window w(n). The parameter L is an integer which denotes the separation in time between adjacent short-time sections. This parameter is independent of time and is selected so as to ensure a degree of time overlap between adjacent short-time sections. For a fixed value of n, Xw(nL, ω ) represents the Fourier transform with respect to m of the short-time section 
+
+fn(m) = x(m)w(nL − m). The sliding window interpre-tation views Xw(nL, ω ) as being generated by shifting the time-reversed analysis window across the signal. After each shift of L samples, the window is multiplied with the signal and the Fourier transform is applied to the product. There are other interpretations of the STFT, including a well-known filter bank interpretation. For the purposes of our paper, we find the sliding window interpretation to be the most appropriate. 
+
+Window Function Characteristics The choice of win-dow function critically affects the STFT’s spectral resolu-tion and temporal localization. Common window functions include: • Rectangular Window :
+
+wrect (n) = 1 for 0 ≤ n ≤ N − 1 (12) • Hann Window :
+
+whann (n) = 0 .5
+
+
+
+1 − cos 
+
+ 2πn N − 1
+
+ 
+
+(13) • Hamming Window :
+
+whamming (n) = 0 .54 − 0.46 cos 
+
+ 2πn N − 1
+
+
+
+(14) The sliding window perspective proves particularly ad-vantageous for our analysis of time-varying spectral char-acteristics in time series. Window selection involves trade-offs between main lobe width and side lobe attenuation, with Hann windows offering good frequency resolution and Hamming windows providing superior side lobe suppres-sion. 
+
+STFT-Based Mid to High Frequency Enhancement via Window Adjustment 
+
+Time-Frequency Resolution Trade-off The fundamental limitation of STFT is governed by the Heisenberg uncer-tainty principle, which restricts the joint time-frequency res-olution. This trade-off can be expressed as: 
+
+∆t · ∆ω ≥ 14π (15) where ∆t and ∆ω represent time and frequency resolution respectively. 
+
+Window Length Selection Strategy For mid to high fre-quency component analysis, shorter windows are preferred as they: • Naturally amplify mid to high frequency energy through spectral redistribution. • Provide better temporal localization for transients. 
+
+Implementation Considerations The practical imple-mentation involves: 1. Window Function Choice 2. Length Adjustment: Longer windows improve frequency resolution while shorter windows enhance temporal lo-calization. 
+
+B. Supplementary Details of the Experiments 
+
+Experiment Settings We utilized widely used benchmark datasets for LTSF tasks, including the ETT series, Electric-ity, Traffic, and Weather. We split the ETTs dataset and traf-fic dataset into training, validation, and test sets with a ra-tio of 6:2:2, while the other datasets were split in a ratio of 7:1:2. We implementing all experiments in PyTorch 2.6.0 on an NVIDIA RTX 4090 GPU with 24GB of memory. The models are trained for 30 epochs using Adam optimizer with learning rates in {0.005 , 0.01 , 0.025 , 0.03 }, batch sizes in {64 , 128 , 256 }, random seeds in {1, 2, 2024 , 2025 , 2026 }
+
+and hidden dimensions in {128 , 512 }, employing ReLU ac-tivation. The code is included as supplementary material and will be made publicly available. 
+
+Datasets 
+
+• ETT dataset contains two sub-datasets: 
+
+– ETTh: Collected at 1-hour intervals 
+
+– ETTm: Collected at 15-minute intervals Both were recorded from electricity transformers be-tween July 2016 and July 2018. • Electricity records hourly consumption of 321 clients from 2012 to 2014. • Traffic provides hourly measurements from 862 sensors on San Francisco Bay Area freeways since January 2015. • Weather includes 21 meteorological indicators recorded every 10 minutes during 2020 at the Max Planck Biogeo-chemistry Institute weather station. The detailed dataset statistics are summarized in Table 6. 
+
+Full Results The full multivariate time series forecasting results of FreqCycle are presented in Table 7, along with extensive evaluations of competitive counterparts. 
+
+C. Window Strategy 
+
+As mentioned in Appendix A regarding the windowing strat-egy, this chapter conducts comparative experiments on Fre-qCycle in benchmarks from two perspectives: window type and window size. Datasets Frequency Duration Features Samples ETTh 1 hour 2016-2018 7 17420 ETTm 15 min 2016-2018 7 69680 Electricity 1 hour 2012-2014 321 26,304 Traffic 1 hour 2015-2018 862 17,544 Weather 10 min 2020 21 52,696 Table 6: Dataset Specifications 
+
+Window Type We choose Rectangular Window, Hann Window, and Hamming Window for SFPL’s data segment, and the result can be seen in Table 8. We uniformly set the window length to 6 and the stride to 6. Based on the exper-imental results, the rectangular window (rect) achieved op-timal performance in over 85% of test cases, primarily due to its ability to fully preserve the time-domain signal energy. The Hamming window (hamming) ranked second in perfor-mance due to its trade-off between time and frequency char-acteristics, exhibiting an average error 0.3%-0.5% higher than the rectangular window, while the Hann window (hann) performed the worst. This suggests that in time-series forecasting tasks, the rectangular window’s zero phase distortion and 100% en-ergy retention make it the best choice for most scenarios. 
+
+Window Length Based on preliminary comparative ex-periments, we found that setting the window stride wS equal to the window length wL yields the best performance for a given window length. Therefore, in this comparative study, we consistently maintain wS = wL. The window length is selected from {4, 6, 8, 10 }, and the window type is set as Rectangular Window. Experimental results are presented in Table 9. The experimental results demonstrate that the optimal window length varies across datasets: 4 achieves the best performance on ETTh2, while 6 or 8 yields optimal results on Weather. Therefore, window length should be tuned inde-pendently for different datasets through parameter optimiza-tion. 
+
+D. Model Analysis 
+
+Effectiveness of FECF Our FECF technique fundamen-tally operates as a Seasonal-Trend Decomposition (STD) method. To validate its effectiveness, we conducted ex-periments comparing it against two established STD ap-proaches: the moving average decomposition (MOV) used in DLinear and the local decomposition (LD) . As demon-strated in Table 10, when replacing FECF with either MOV+Linear (DFreq) or LD+Linear (LDFreq) variants in our FreqCycle framework, the forecasting performance con-sistently degraded across all seven benchmark datasets. These empirical results clearly establish that our FECF-based decomposition achieves superior temporal pattern ex-traction compared to conventional STD methods. 
+
+The feed-forward layer in SFPL We compared the per-formance of using Linear layers versus MLP as the feed-forward layers in the SFPL module, with experimental re-sults shown in Table 11. The analysis demonstrates that employing MLP as the feed-forward layer achieves supe-rior performance across almost all test datasets. This phe-nomenon may be attributed to MLP’s stronger nonlinear rep-resentation capability, enabling it to better capture complex dependencies in time series data. 
+
+Full results of MFreqCycle To evaluate the effectiveness of the MFreqCycle model, we design Table 12 with look-back windows of 96 and 672(168), comparing the model against CycleNet and FITS. As shown in Table 12, sim-ply increasing the lookback window may lead to minor performance improvements or even slight degradation in some cases. The reason could be that the inherent limita-tions of the models prevent them from handling the com-plex temporal dependencies or noise interference introduced by longer lookback windows. However, the MFreqCycle model, specifically designed for longer lookback windows, achieves remarkable performance improvements on the ETT datasets, demonstrating its pioneering capability in learning both long-period patterns and their aperiodic components. 
+
+E. Visualization 
+
+Visualization of SFPL’s Key Frequency Enhancement 
+
+After training the model on benchmark datasets, we ana-lyzed the frequency amplitude spectra before and after SFPL processing. As demonstrated in Figure 7, 8, 9, 10 SFPL ef-fectively Amplifies the energy proportion of mid to high fre-quency bands as well as Preserves the structural integrity of dominant low-frequency components. 
+
+Visualization of Forecasting Results The prediction results on benchmark datasets are shown in Figure 11,12,13,14,15,16,17. Dataset 
+
+H FreqCycle DLinear CycleNet Amplifier FreTS FilterNet FITS iTransformer PatchTST TimeMixer MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE ETTh1 96 0.369 0.390 0.386 0.400 0.378 0.391 0.371 0.392 0.395 0.407 0.375 0.394 0.386 0.396 0.386 0.405 0.414 0.419 0.375 0.400 192 0.417 0.418 0.437 0.432 0.426 0.419 0.426 0.422 0.448 0.440 0.436 0.422 0.436 0.423 0.441 0.436 0.460 0.445 0.429 0.421 336 0.459 0.439 0.481 0.459 0.464 0.439 0.448 0.434 0.499 0.472 0.476 0.443 0.478 0.444 0.487 0.458 0.501 0.466 0.484 0.458 720 0.456 0.454 0.519 0.516 0.461 0.460 0.476 0.464 0.558 0.532 0.474 0.469 0.502 0.495 0.503 0.491 0.500 0.488 0.498 0.482 AVG 0.425 0.425 0.456 0.452 0.432 0.427 0.430 0.428 0.475 0.463 0.440 0.432 0.451 0.440 0.454 0.448 0.469 0.455 0.447 0.440 ETTh2 96 0.282 0.336 0.333 0.387 0.285 0.335 0.279 0.337 0.309 0.364 0.292 0.343 0.295 0.350 0.297 0.349 0.302 0.348 0.289 0.341 192 0.361 0.388 0.477 0.476 0.373 0.391 0.359 0.389 0.395 0.425 0.369 0.395 0.381 0.396 0.380 0.400 0.388 0.400 0.372 0.392 336 0.415 0.428 0.594 0.541 0.421 0.433 0.377 0.406 0.462 0.467 0.420 0.432 0.426 0.438 0.428 0.432 0.426 0.433 0.386 0.414 720 0.425 0.443 0.831 0.657 0.453 0.458 0.420 0.432 0.721 0.604 0.430 0.446 0.431 0.446 0.427 0.445 0.431 0.446 0.412 0.434 AVG 0.371 0.399 0.559 0.515 0.383 0.404 0.359 0.391 0.472 0.465 0.378 0.404 0.383 0.408 0.383 0.407 0.387 0.407 0.365 0.395 ETTm1 96 0.310 0.353 0.345 0.372 0.325 0.363 0.316 0.355 0.335 0.372 0.318 0.358 0.355 0.375 0.334 0.368 0.329 0.367 0.320 0.357 192 0.351 0.374 0.380 0.389 0.366 0.382 0.361 0.381 0.388 0.401 0.364 0.383 0.392 0.393 0.377 0.391 0.367 0.385 0.361 0.381 336 0.383 0.396 0.413 0.413 0.396 0.401 0.393 0.402 0.421 0.426 0.396 0.406 0.424 0.414 0.426 0.420 0.399 0.410 0.390 0.404 720 0.446 0.434 0.474 0.453 0.457 0.433 0.455 0.440 0.486 0.465 0.456 0.444 0.487 0.449 0.491 0.459 0.454 0.439 0.454 0.441 AVG 0.372 0.389 0.403 0.407 0.386 0.395 0.381 0.395 0.408 0.416 0.384 0.398 0.415 0.408 0.407 0.410 0.387 0.400 0.381 0.396 ETTm2 96 0.162 0.244 0.193 0.292 0.166 0.248 0.176 0.258 0.189 0.277 0.174 0.257 0.183 0.266 0.180 0.264 0.175 0.259 0.175 0.258 192 0.226 0.286 0.284 0.362 0.233 0.291 0.239 0.300 0.258 0.326 0.240 0.300 0.247 0.305 0.250 0.309 0.241 0.302 0.237 0.299 336 0.283 0.326 0.369 0.427 0.293 0.330 0.297 0.338 0.343 0.390 0.297 0.339 0.307 0.342 0.311 0.348 0.305 0.343 0.298 0.340 720 0.383 0.387 0.554 0.522 0.395 0.389 0.393 0.396 0.495 0.480 0.392 0.393 0.407 0.399 0.412 0.407 0.402 0.400 0.391 0.396 AVG 0.263 0.311 0.350 0.401 0.272 0.315 0.276 0.323 0.321 0.368 0.276 0.322 0.286 0.328 0.288 0.332 0.281 0.326 0.275 0.323 Weather 96 0.159 0.203 0.196 0.255 0.170 0.216 0.156 0.204 0.174 0.208 0.164 0.207 0.166 0.213 0.174 0.214 0.177 0.218 0.163 0.209 192 0.208 0.248 0.237 0.296 0.222 0.259 0.209 0.249 0.219 0.250 0.210 0.250 0.213 0.254 0.221 0.254 0.225 0.259 0.208 0.250 336 0.264 0.289 0.283 0.335 0.275 0.296 0.264 0.290 0.273 0.290 0.265 0.290 0.269 0.294 0.278 0.296 0.278 0.297 0.251 0.287 
+
+720 0.343 0.342 0.345 0.381 0.349 0.345 0.343 0.342 0.334 0.332 0.342 0.340 0.346 0.343 0.358 0.347 0.354 0.348 0.339 0.341 AVG 0.243 0.270 0.265 0.317 0.254 0.279 0.243 0.271 0.250 0.270 0.245 0.272 0.249 0.276 0.258 0.278 0.259 0.281 0.240 0.272 ECL 96 0.140 0.234 0.197 0.282 0.141 0.234 0.147 0.243 0.176 0.258 0.176 0.264 0.200 0.278 0.148 0.248 0.181 0.270 0.153 0.247 192 0.154 0.246 0.196 0.285 0.155 0.247 0.157 0.251 0.175 0.262 0.185 0.270 0.200 0.280 0.162 0.253 0.188 0.274 0.166 0.256 336 0.170 0.264 0.209 0.301 0.172 0.264 0.174 0.269 0.185 0.278 0.202 0.286 0.214 0.295 0.178 0.269 0.204 0.293 0.185 0.277 720 0.210 0.297 0.245 0.333 0.210 0.296 0.206 0.296 0.220 0.315 0.242 0.319 0.255 0.327 0.225 0.317 0.246 0.324 0.225 0.310 AVG 0.168 0.260 0.212 0.300 0.170 0.260 0.171 0.265 0.189 0.278 0.201 0.285 0.217 0.295 0.178 0.272 0.205 0.290 0.182 0.273 Traffic 96 0.438 0.262 0.650 0.396 0.480 0.314 0.455 0.298 0.593 0.378 0.506 0.336 0.651 0.391 0.395 0.268 0.462 0.295 0.462 0.285 192 0.434 0.258 0.598 0.370 0.482 0.313 0.470 0.316 0.595 0.377 0.508 0.333 0.602 0.363 0.417 0.276 0.466 0.296 0.473 0.296 336 0.446 0.258 0.605 0.373 0.476 0.303 0.479 0.316 0.609 0.385 0.518 0.335 0.609 0.366 0.433 0.283 0.482 0.304 0.498 0.296 720 0.476 0.265 0.645 0.394 0.503 0.320 0.523 0.328 0.673 0.418 0.553 0.354 0.647 0.385 0.467 0.302 0.514 0.322 0.506 0.313 AVG 0.448 0.261 0.625 0.383 0.485 0.313 0.482 0.315 0.618 0.390 0.521 0.340 0.627 0.376 0.428 0.282 0.481 0.304 0.485 0.298 
+
+Table 7: Time series forecasting comparison. We set the lookback window size L as 96 and the prediction length as H ∈{96 , 192 , 336 , 720 }. The best results are in red and the second best are blue. 0 20 40 60 80 100 
+
+Frequency Index 
+
+> 0
+> 500
+> 1000
+> 1500
+> 2000
+> Magnitude
+
+ETTh1 Frequency Spectrum Comparison 
+
+10 20 30 40 50 60 70 80 90 
+
+0
+
+50 
+
+100 
+
+150 
+
+200 
+
+Original Spectrum 
+
+Processed Spectrum 0 20 40 60 80 100 
+
+Frequency Index 
+
+> 0
+> 500
+> 1000
+> 1500
+> 2000
+> Magnitude
+
+ETTh2 Frequency Spectrum Comparison 
+
+10 20 30 40 50 60 70 80 90 
+
+0
+
+50 
+
+100 
+
+150 
+
+Original Spectrum 
+
+Processed Spectrum Figure 7: Frequency spectrum of ETTh datasets before and after SFPL enhancement 0 20 40 60 80 100 
+
+Frequency Index 
+
+> 0
+> 500
+> 1000
+> 1500
+> 2000
+> 2500
+> 3000
+> 3500
+> Magnitude
+
+ETTm1 Frequency Spectrum Comparison 
+
+10 20 30 40 50 60 70 80 90 
+
+0
+
+100 
+
+200 
+
+300 
+
+400 
+
+Original Spectrum 
+
+Processed Spectrum 0 20 40 60 80 100 
+
+Frequency Index 
+
+> 0
+> 1000
+> 2000
+> 3000
+> 4000
+> Magnitude
+
+ETTm2 Frequency Spectrum Comparison 
+
+10 20 30 40 50 60 70 80 90 
+
+0
+
+100 
+
+200 
+
+300 
+
+400 
+
+500 
+
+Original Spectrum 
+
+Processed Spectrum 
+
+Figure 8: Frequency spectrum of ETTm datasets before and after SFPL enhancement 0 20 40 60 80 100 
+
+Frequency Index 
+
+> 0
+> 50000
+> 100000
+> 150000
+> 200000
+> 250000
+> 300000
+> 350000
+> Magnitude
+
+ECL Frequency Spectrum Comparison 
+
+10 20 30 40 50 60 70 80 90 
+
+0
+
+5000 
+
+10000 
+
+15000 
+
+20000 
+
+Original Spectrum 
+
+Processed Spectrum 0 20 40 60 80 100 
+
+Frequency Index 
+
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> Magnitude
+
+Traffic Frequency Spectrum Comparison 
+
+10 20 30 40 50 60 70 80 90 
+
+0.0 
+
+0.1 
+
+0.2 
+
+0.3 
+
+Original Spectrum 
+
+Processed Spectrum 
+
+Figure 9: Frequency spectrum of Electricity and Traffic datasets before and after SFPL enhancement 0 20 40 60 80 100 
+
+Frequency Index 
+
+> 0
+> 5000
+> 10000
+> 15000
+> 20000
+> 25000
+> 30000
+> 35000
+> 40000
+> Magnitude
+
+Weather Frequency Spectrum Comparison 
+
+10 20 30 40 50 60 70 80 90 
+
+0
+
+2000 
+
+4000 
+
+6000 
+
+Original Spectrum 
+
+Processed Spectrum 
+
+Figure 10: Frequency spectrum of Weather dataset before and after SFPL enhancement Prediction 
+
+GroundTruth 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 
+
+0.3 
+
+0.4 
+
+0.5 
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+200 175 150 125 100 75 50 25 0
+
+(a) FreqCycle (b) Amplifier (c) FITS Figure 11: The prediction results of ETTh1. With L=96 and H=96. Prediction 
+
+GroundTruth 0.75 
+
+0.50 
+
+0.25 
+
+0.00 
+
+0.25 
+
+0.50 
+
+0.75 
+
+1.00 
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 0.75 
+
+0.50 
+
+0.25 
+
+0.00 
+
+0.25 
+
+0.50 
+
+0.75 
+
+1.00 
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 0.75 
+
+0.50 
+
+0.25 
+
+0.00 
+
+0.25 
+
+0.50 
+
+0.75 
+
+1.00 
+
+200 175 150 125 100 75 50 25 0
+
+(a) FreqCycle (b) Amplifier (c) FITS 
+
+Figure 12: The prediction results of ETTh2. With L=96 and H=96. Prediction 
+
+GroundTruth 
+
+1.2 
+
+1.3 
+
+1.4 
+
+1.5 
+
+1.6 
+
+1.7 
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 
+
+1.2 
+
+1.3 
+
+1.4 
+
+1.5 
+
+1.6 
+
+1.7 
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 
+
+1.2 
+
+1.3 
+
+1.4 
+
+1.5 
+
+1.6 
+
+1.7 
+
+200 175 150 125 100 75 50 25 0
+
+(a) FreqCycle (b) Amplifier (c) FITS 
+
+Figure 13: The prediction results of ETTm1. With L=96 and H=96. Prediction 
+
+GroundTruth 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+1.6 
+
+1.8 
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+1.6 
+
+1.8 
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+1.6 
+
+1.8 
+
+200 175 150 125 100 75 50 25 0
+
+(a) FreqCycle (b) Amplifier (c) FITS 
+
+Figure 14: The prediction results of ETTm2. With L=96 and H=96. Prediction 
+
+GroundTruth 
+
+0.14 
+
+0.12 
+
+0.10 
+
+0.08 
+
+0.06 
+
+0.04 
+
+0.02 
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 
+
+0.14 
+
+0.12 
+
+0.10 
+
+0.08 
+
+0.06 
+
+0.04 
+
+0.02 
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 
+
+0.14 
+
+0.12 
+
+0.10 
+
+0.08 
+
+0.06 
+
+0.04 
+
+0.02 
+
+200 175 150 125 100 75 50 25 0
+
+(a) FreqCycle (b) Amplifier (c) FITS Figure 15: The prediction results of Weather. With L=96 and H=96. Prediction 
+
+GroundTruth 
+
+2.5 
+
+2.0 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 
+
+2.5 
+
+2.0 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 
+
+2.5 
+
+2.0 
+
+1.5 
+
+1.0 
+
+0.5 
+
+0.0 
+
+0.5 
+
+1.0 
+
+200 175 150 125 100 75 50 25 0
+
+(a) FreqCycle (b) Amplifier (c) FITS 
+
+Figure 16: The prediction results of Electricity. With L=96 and H=96. Prediction 
+
+GroundTruth 
+
+2
+
+1
+
+0
+
+1
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 
+
+2
+
+1
+
+0
+
+1
+
+200 175 150 125 100 75 50 25 0
+
+Prediction 
+
+GroundTruth 
+
+2
+
+1
+
+0
+
+1
+
+200 175 150 125 100 75 50 25 0
+
+(a) FreqCycle (b) Amplifier (c) FITS 
+
+Figure 17: The prediction results of Traffic. With L=96 and H=96. Dataset 
+
+H rect hann hamming MSE MAE MSE MAE MSE MAE ETTh1  96 0.370 0.392 0.373 0.394 0.370 0.392 192 0.420 0.419 0.417 0.420 0.420 0.419 336 0.460 0.440 0.459 0.440 0.460 0.440 720 0.462 0.458 0.461 0.457 0.462 0.458 AVG 0.428 0.427 0.427 0.428 0.428 0.427 ETTh2  96 0.285 0.338 0.286 0.338 0.285 0.337 
+
+192 0.366 0.392 0.368 0.392 0.368 0.391 
+
+336 0.416 0.431 0.420 0.433 0.419 0.433 720 0.435 0.448 0.439 0.451 0.438 0.451 AVG 0.375 0.402 0.378 0.403 0.377 0.403 ETTm1  96 0.310 0.353 0.316 0.358 0.311 0.355 192 0.352 0.377 0.355 0.376 0.352 0.375 
+
+336 0.385 0.400 0.386 0.400 0.385 0.399 
+
+720 0.448 0.438 0.449 0.437 0.447 0.436 
+
+AVG 0.374 0.392 0.376 0.393 0.374 0.391 
+
+> ETTm2
+
+96 0.162 0.244 0.164 0.247 0.163 0.245 192 0.227 0.288 0.229 0.289 0.227 0.288 336 0.283 0.326 0.285 0.327 0.284 0.327 720 0.391 0.393 0.385 0.389 0.383 0.387 
+
+AVG 0.266 0.313 0.266 0.313 0.264 0.312 
+
+> Weather
+
+96 0.160 0.205 0.164 0.208 0.162 0.206 192 0.208 0.248 0.215 0.254 0.212 0.250 336 0.264 0.290 0.268 0.292 0.265 0.291 720 0.345 0.344 0.347 0.345 0.343 0.343 
+
+AVG 0.244 0.272 0.248 0.275 0.245 0.272 ECL 96 0.139 0.233 0.147 0.243 0.141 0.235 192 0.155 0.247 0.162 0.255 0.156 0.249 336 0.171 0.265 0.178 0.272 0.173 0.266 720 0.210 0.297 0.216 0.303 0.211 0.299 AVG 0.169 0.261 0.176 0.268 0.170 0.262 Traffic  96 0.438 0.262 0.450 0.268 0.440 0.263 192 0.432 0.260 0.445 0.266 0.436 0.262 336 0.443 0.265 0.454 0.269 0.446 0.266 720 0.476 0.275 0.484 0.278 0.478 0.275 AVG 0.448 0.265 0.458 0.270 0.450 0.266 Table 8: Performance comparison of different window func-tions (rect, hann, hamming) across datasets. The best results are highlighted in red. Dataset H L=4 L=6 L=8 L=10 MSE MAE MSE MAE MSE MAE MSE MAE ETTh1  96 0.369 0.390 0.370 0.392 0.371 0.393 0.375 0.398 192 0.417 0.418 0.420 0.419 0.418 0.418 0.421 0.423 336 0.459 0.439 0.460 0.440 0.465 0.442 0.487 0.451 720 0.456 0.454 0.462 0.458 0.462 0.458 0.475 0.467 AVG 0.425 0.425 0.428 0.427 0.429 0.428 0.440 0.435 ETTh2  96 0.282 0.336 0.284 0.338 0.284 0.336 0.294 0.345 192 0.361 0.388 0.362 0.390 0.370 0.397 0.368 0.393 336 0.415 0.430 0.418 0.432 0.420 0.432 0.424 0.432 720 0.435 0.450 0.431 0.445 0.431 0.444 0.440 0.449 AVG 0.373 0.401 0.374 0.401 0.376 0.402 0.381 0.405 ETTm1  96 0.312 0.354 0.313 0.355 0.312 0.355 0.318 0.359 192 0.352 0.374 0.351 0.375 0.351 0.375 0.359 0.381 336 0.383 0.396 0.386 0.400 0.386 0.400 0.393 0.406 720 0.447 0.434 0.446 0.435 0.446 0.435 0.453 0.440 AVG 0.373 0.390 0.374 0.391 0.374 0.391 0.381 0.396 ETTm2  96 0.162 0.244 0.162 0.244 0.162 0.244 0.164 0.247 192 0.226 0.287 0.227 0.288 0.226 0.286 0.228 0.290 336 0.283 0.326 0.283 0.326 0.284 0.326 0.289 0.329 720 0.385 0.389 0.391 0.393 0.392 0.393 0.397 0.397 AVG 0.264 0.311 0.266 0.313 0.266 0.313 0.269 0.316 Weather  96 0.161 0.204 0.160 0.205 0.159 0.204 0.170 0.217 192 0.209 0.249 0.208 0.248 0.208 0.248 0.217 0.256 336 0.264 0.290 0.264 0.290 0.264 0.290 0.274 0.298 720 0.344 0.344 0.345 0.344 0.345 0.344 0.350 0.348 AVG 0.245 0.272 0.244 0.272 0.244 0.272 0.253 0.280 Electricity  96 0.139 0.234 0.139 0.233 0.139 0.233 0.144 0.238 192 0.155 0.248 0.155 0.247 0.155 0.247 0.158 0.251 336 0.172 0.265 0.171 0.265 0.172 0.265 0.174 0.267 720 0.210 0.298 0.210 0.297 0.210 0.297 0.212 0.299 AVG 0.169 0.261 0.169 0.261 0.169 0.261 0.172 0.264 Traffic  96 0.438 0.262 0.438 0.262 0.438 0.262 0.447 0.264 192 0.432 0.262 0.432 0.260 0.433 0.261 0.441 0.263 336 0.443 0.265 0.443 0.265 0.444 0.264 0.449 0.266 720 0.475 0.275 0.476 0.275 0.475 0.274 0.481 0.275 AVG 0.447 0.266 0.448 0.265 0.447 0.265 0.454 0.267 Table 9: Performance comparison of different window lengths (L=4,6,8,10) across datasets. Dataset 
+
+H FreqCycle DFreq LDFreq MSE MAE MSE MAE MSE MAE ETTh1  96 0.369 0.390 0.385 0.402 0.385 0.402 192 0.417 0.418 0.436 0.435 0.438 0.433 336 0.459 0.439 0.486 0.467 0.496 0.469 720 0.456 0.454 0.559 0.537 0.555 0.526 AVG. 0.425 0.425 0.467 0.460 0.468 0.457 ETTh2  96 0.282 0.336 0.323 0.378 0.304 0.362 192 0.361 0.388 0.432 0.447 0.419 0.431 336 0.415 0.428 0.528 0.505 0.478 0.471 720 0.425 0.443 0.737 0.616 0.680 0.591 AVG. 0.371 0.399 0.505 0.487 0.470 0.464 ETTm1  96 0.310 0.353 0.334 0.372 0.346 0.378 192 0.351 0.374 0.376 0.398 0.377 0.399 336 0.383 0.396 0.406 0.422 0.416 0.434 720 0.446 0.434 0.464 0.458 0.468 0.456 AVG. 0.372 0.389 0.395 0.413 0.402 0.417 ETTm2  96 0.162 0.244 0.188 0.277 0.186 0.274 192 0.226 0.286 0.265 0.335 0.253 0.320 336 0.283 0.326 0.341 0.388 0.330 0.375 720 0.383 0.387 0.457 0.461 0.548 0.503 AVG. 0.263 0.311 0.312 0.365 0.329 0.368 Weather  96 0.159 0.203 0.188 0.245 0.176 0.230 192 0.208 0.248 0.235 0.297 0.216 0.266 336 0.264 0.289 0.274 0.321 0.266 0.311 720 0.343 0.342 0.341 0.375 0.335 0.358 AVG. 0.243 0.270 0.259 0.309 0.248 0.291 ECL 96 0.140 0.234 0.190 0.276 0.184 0.270 192 0.154 0.246 0.190 0.278 0.187 0.275 336 0.170 0.264 0.203 0.294 0.198 0.288 720 0.210 0.297 0.235 0.323 0.234 0.319 AVG. 0.168 0.260 0.204 0.293 0.201 0.288 Traffic  96 0.438 0.262 0.523 0.334 0.528 0.323 192 0.434 0.258 0.497 0.310 0.501 0.301 336 0.446 0.258 0.517 0.307 0.515 0.298 720 0.476 0.265 0.577 0.315 0.565 0.307 AVG. 0.448 0.261 0.529 0.316 0.527 0.307 Table 10: The full result of comparison between STD meth-ods. We set the lookback window size L as 96 and the pre-diction length as H ∈ { 96 , 192 , 336 , 720 }. The best results are in red. Dataset H FreqCycle(MLP) FreqCycle(Linear) MSE MAE MSE MAE ETTh1  96 0.369 0.390 0.370 0.392 192 0.417 0.418 0.420 0.419 336 0.459 0.439 0.460 0.440 720 0.456 0.454 0.462 0.458 AVG 0.425 0.425 0.428 0.427 ETTh2  96 0.282 0.336 0.285 0.337 192 0.361 0.388 0.368 0.391 336 0.415 0.428 0.419 0.433 720 0.425 0.443 0.438 0.451 AVG 0.371 0.399 0.377 0.403 ETTm1  96 0.310 0.353 0.311 0.355 192 0.351 0.374 0.352 0.375 336 0.383 0.396 0.385 0.399 720 0.446 0.434 0.447 0.436 AVG 0.372 0.389 0.374 0.391 ETTm2  96 0.162 0.244 0.163 0.245 192 0.226 0.286 0.227 0.288 336 0.283 0.326 0.284 0.327 720 0.383 0.387 0.383 0.387 AVG 0.263 0.311 0.264 0.312 Weather  96 0.159 0.203 0.162 0.206 192 0.208 0.248 0.212 0.250 336 0.264 0.289 0.265 0.291 720 0.343 0.342 0.343 0.343 AVG 0.243 0.270 0.245 0.272 ECL 96 0.140 0.234 0.141 0.235 192 0.154 0.246 0.156 0.249 336 0.170 0.264 0.173 0.266 720 0.210 0.297 0.211 0.299 AVG 0.168 0.260 0.170 0.262 Traffic  96 0.438 0.262 0.440 0.263 192 0.434 0.258 0.436 0.262 336 0.446 0.258 0.446 0.266 720 0.476 0.265 0.478 0.275 AVG 0.448 0.261 0.450 0.266 Table 11: Comparison between FreqCycle(MLP) and Freq-Cycle(Linear) models across different datasets and predic-tion horizons. The best results are highlighted in red. Dataset 
+
+H FreqCycle L=96 MFreqCycle L=672/168 CycleNet L=96 CycleNet L=672/168 FITS L=96 FITS L=672/168 MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE ETTh2 96 0.282 0.336 0.183 0.296 0.285 0.335 0.307 0.360 0.295 0.350 0.271 0.336 192 0.361 0.388 0.215 0.322 0.373 0.391 0.385 0.406 0.381 0.396 0.331 0.374 336 0.415 0.428 0.251 0.349 0.421 0.433 0.423 0.440 0.426 0.438 0.354 0.395 720 0.425 0.443 0.313 0.395 0.453 0.458 0.436 0.454 0.431 0.446 0.377 0.422 AVG 0.371 0.399 0.241 0.340 0.383 0.404 0.388 0.415 0.383 0.408 0.333 0.382 ETTm2 96 0.162 0.244 0.123 0.239 0.166 0.248 0.176 0.269 0.183 0.266 0.163 0.254 192 0.226 0.286 0.146 0.262 0.233 0.291 0.231 0.305 0.247 0.305 0.217 0.291 336 0.283 0.326 0.178 0.287 0.293 0.330 0.282 0.339 0.307 0.342 0.269 0.326 720 0.383 0.387 0.222 0.326 0.395 0.389 0.357 0.388 0.407 0.399 0.351 0.379 AVG 0.263 0.311 0.167 0.279 0.272 0.315 0.262 0.325 0.286 0.328 0.250 0.312 Table 12: Performance comparison of different models with varying lookback window lengths (L=96 vs L=672/168). The best results are highlighted in red. Results are averaged across all prediction horizons.
