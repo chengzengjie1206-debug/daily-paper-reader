@@ -6,31 +6,32 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-11
-- 运行时间：2026-03-11 20:26:04 UTC
+- 最新运行日期：2026-03-12
+- 运行时间：2026-03-12 20:08:04 UTC
 - 运行状态：成功
 - 本次总论文数：3
-- 精读区：2
-- 速读区：1
+- 精读区：3
+- 速读区：0
 
 ### 今日简报（AI）
-1. 聚焦时间序列前沿，深入探讨工业故障诊断的零样本解释与反事实预测的合理性。
-2. 重点推荐 S2S-FDD 框架，它通过自然语言桥接实现了工业传感器数据的可解释零样本诊断。
-3. 建议关注跨模态技术如何提升时序模型在复杂工业场景下的透明度与可信度。
-- 详情：[/202603/11/README](/202603/11/README)
+今日深度解码时间序列大模型的内在逻辑，重点探讨了 Chronos 模型的因果特征层级与高维死亡率预测。
+研究揭示了稀疏自编码器（SAE）在解析时序基础模型中的巨大潜力，并展示了符合预测在复杂动态数据中的可靠性。
+建议优先研读 Chronos 的可解释性分析，掌握从“黑盒预测”转向“因果理解”的前沿方法。
+- 详情：[/202603/12/README](/202603/12/README)
 
 ### 精读区论文标签
-1. [S2S-FDD: Bridging Industrial Time Series and Natural Language for Explainable Zero-shot Fault Diagnosis](/202603/11/2603.08048v1-s2s-fdd-bridging-industrial-time-series-and-natural-language-for-explainable-zero-shot-fault-diagnosis)  
+1. [Dissecting Chronos: Sparse Autoencoders Reveal Causal Feature Hierarchies in Time Series Foundation Models](/202603/12/2603.10071v1-dissecting-chronos-sparse-autoencoders-reveal-causal-feature-hierarchies-in-time-series-foundation-models)  
+   标签：评分：10.0/10、query:ts
+   evidence：使用稀疏自编码器解释时间序列基础模型的内部表示
+2. [Conformal prediction for high-dimensional functional time series: Applications to subnational mortality](/202603/12/2603.10674v1-conformal-prediction-for-high-dimensional-functional-time-series-applications-to-subnational-mortality)  
    标签：评分：8.0/10、query:ts
-   evidence：工业信号的可解释零样本故障诊断
-2. [Towards plausibility in time series counterfactual explanations](/202603/11/2603.08349v1-towards-plausibility-in-time-series-counterfactual-explanations)  
+   evidence：高维函数型时间序列的符合预测
+3. [Double Machine Learning for Time Series](/202603/12/2603.10999v1-double-machine-learning-for-time-series)  
    标签：评分：8.0/10、query:ts
-   evidence：时间序列分类的可解释反事实解释
+   evidence：用于时间序列双重机器学习的反向交叉拟合
 
 ### 速读区论文标签
-1. [The Temporal Markov Transition Field](/202603/11/2603.08803v1-the-temporal-markov-transition-field)  
-   标签：评分：7.0/10、query:ts
-   evidence：时间序列的时间分区以捕捉状态变化
+- 本次无速读推荐。
 
 
 <div class="dpr-home-promo-card">
