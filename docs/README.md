@@ -6,32 +6,46 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-12
-- 运行时间：2026-03-12 20:08:04 UTC
+- 最新运行日期：2026-03-14
+- 运行时间：2026-03-14 19:43:54 UTC
 - 运行状态：成功
-- 本次总论文数：3
-- 精读区：3
-- 速读区：0
+- 本次总论文数：8
+- 精读区：4
+- 速读区：4
 
 ### 今日简报（AI）
-今日深度解码时间序列大模型的内在逻辑，重点探讨了 Chronos 模型的因果特征层级与高维死亡率预测。
-研究揭示了稀疏自编码器（SAE）在解析时序基础模型中的巨大潜力，并展示了符合预测在复杂动态数据中的可靠性。
-建议优先研读 Chronos 的可解释性分析，掌握从“黑盒预测”转向“因果理解”的前沿方法。
-- 详情：[/202603/12/README](/202603/12/README)
+今日深度复盘 8 篇时序前沿论文，聚焦动态分块效率优化与生成式概率预测。
+满分力作 TimeSqueeze 与 EnTransformer 分别在动态 Patch 机制和多变量建模上取得突破。
+建议开发者关注 DatedGPT 如何通过时间感知预训练消除大模型的“未卜先知”偏差。
+- 详情：[/202603/14/README](/202603/14/README)
 
 ### 精读区论文标签
-1. [Dissecting Chronos: Sparse Autoencoders Reveal Causal Feature Hierarchies in Time Series Foundation Models](/202603/12/2603.10071v1-dissecting-chronos-sparse-autoencoders-reveal-causal-feature-hierarchies-in-time-series-foundation-models)  
+1. [TimeSqueeze: Dynamic Patching for Efficient Time Series Forecasting](/202603/14/2603.11352v1-timesqueeze-dynamic-patching-for-efficient-time-series-forecasting)  
    标签：评分：10.0/10、query:ts
-   evidence：使用稀疏自编码器解释时间序列基础模型的内部表示
-2. [Conformal prediction for high-dimensional functional time series: Applications to subnational mortality](/202603/12/2603.10674v1-conformal-prediction-for-high-dimensional-functional-time-series-applications-to-subnational-mortality)  
-   标签：评分：8.0/10、query:ts
-   evidence：高维函数型时间序列的符合预测
-3. [Double Machine Learning for Time Series](/202603/12/2603.10999v1-double-machine-learning-for-time-series)  
-   标签：评分：8.0/10、query:ts
-   evidence：用于时间序列双重机器学习的反向交叉拟合
+   evidence：用于高效时序预测的动态分块机制
+2. [EnTransformer: A Deep Generative Transformer for Multivariate Probabilistic Forecasting](/202603/14/2603.11909v1-entransformer-a-deep-generative-transformer-for-multivariate-probabilistic-forecasting)  
+   标签：评分：10.0/10、query:ts
+   evidence：多变量概率预测框架
+3. [Deep Learning Network-Temporal Models For Traffic Prediction](/202603/14/2603.11475v1-deep-learning-network-temporal-models-for-traffic-prediction)  
+   标签：评分：9.0/10、query:ts
+   evidence：用于多变量时间序列流量预测的深度学习模型
+4. [Grammar of the Wave: Towards Explainable Multivariate Time Series Event Detection via Neuro-Symbolic VLM Agents](/202603/14/2603.11479v1-grammar-of-the-wave-towards-explainable-multivariate-time-series-event-detection-via-neuro-symbolic-vlm-agents)  
+   标签：评分：9.0/10、query:ts
+   evidence：多变量时间序列事件检测
 
 ### 速读区论文标签
-- 本次无速读推荐。
+1. [Interventional Time Series Priors for Causal Foundation Models](/202603/14/2603.11090v1-interventional-time-series-priors-for-causal-foundation-models)  
+   标签：评分：7.0/10、query:ts
+   evidence：时间序列因果基础模型
+2. [DatedGPT: Preventing Lookahead Bias in Large Language Models with Time-Aware Pretraining](/202603/14/2603.11838v1-datedgpt-preventing-lookahead-bias-in-large-language-models-with-time-aware-pretraining)  
+   标签：评分：7.0/10、query:ts
+   evidence：通过时间感知预训练防止预测中的前瞻偏差
+3. [Instantaneous Frequency Estimation in Noisy Multicomponent Signals with Interfering Modes Based on Prony Method and Spline Approximation](/202603/14/2603.08198v1-instantaneous-frequency-estimation-in-noisy-multicomponent-signals-with-interfering-modes-based-on-prony-method-and-spline-approximation)  
+   标签：评分：6.0/10、query:ts
+   evidence：噪声多分量信号中的频率估计
+4. [On Utility Maximization under Multivariate Fake Stationary Affine Volterra Models](/202603/14/2603.11046v1-on-utility-maximization-under-multivariate-fake-stationary-affine-volterra-models)  
+   标签：评分：6.0/10、query:ts
+   evidence：用于随机环境建模的多变量 Volterra 模型
 
 
 <div class="dpr-home-promo-card">
