@@ -1,0 +1,632 @@
+Title: In-Context Symbolic Regression for Robustness-Improved Kolmogorov-Arnold Networks
+
+URL Source: https://arxiv.org/pdf/2603.15250v1
+
+Published Time: Tue, 17 Mar 2026 04:29:56 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# In-Context Symbolic Regression for Robustness-Improved Kolmogorov-Arnold Networks 
+
+Francesco Sovrano 1[0000 −0002 −6285 −1041] , Lidia Losavio 1[0000 −0002 −8834 −7388] ,Giulia Vilone 2[0000 −0002 −4401 −5664] , and Marc Langheinrich 1[0009 −0009 −0800 −7251]  
+
+> 1
+
+University of Italian-Speaking Switzerland (USI) 
+
+{francesco.sovrano,lidia.anna.maria.losavio,marc.langheinrich}@usi.ch  
+
+> 2
+
+Analog Devices International 
+
+giulia.vilone@analog.com 
+
+Abstract. Symbolic regression aims to replace black-box predictors with concise analytical expressions that can be inspected and validated in sci-entific machine learning. Kolmogorov–Arnold Networks (KANs) are well suited to this goal because each connection between adjacent units (an “edge”) is parametrised by a learnable univariate function that can, in principle, be replaced by a symbolic operator. In practice, however, sym-bolic extraction is a bottleneck: the standard KAN-to-symbol approach fits operators to each learned edge function in isolation, making the dis-crete choice sensitive to initialisation and non-convex parameter fitting, and ignoring how local substitutions interact through the full network. We study in-context symbolic regression for operator extraction in KANs, and present two complementary instantiations. Greedy in-context Sym-bolic Regression (GSR) performs greedy, in-context selection by choosing edge replacements according to end-to-end loss improvement after brief fine-tuning. Gated Matching Pursuit (GMP) amortises this in-context selection by training a differentiable gated operator layer that places an operator library behind sparse gates on each edge; after convergence, gates are discretised (optionally followed by a short in-context greedy re-finement pass). We quantify robustness via one-factor-at-a-time (OFAT) hyper-parameter sweeps and assess both predictive error and qualitative consistency of recovered formulas. Across several experiments, greedy in-context symbolic regression achieves up to 99.8% reduction in median OFAT test MSE. 
+
+Code & Data : https://github.com/Francesco-Sovrano/In-Context-Symbolic-Regression-KAN 
+
+Keywords: Symbolic Regression · Explainable AI · Kolmogorov–Arnold Networks · Matching Pursuit · Hyper-Parameter Robustness · Scientific Machine Learning  
+
+> arXiv:2603.15250v1 [cs.LG] 16 Mar 2026 2F. Sovrano et al.
+
+## 1 Introduction 
+
+Explainable AI (XAI) is increasingly expected to support scientific workflows: uncovering functional relationships, proposing compact mechanisms, and pro-ducing artefacts that can be inspected and validated [8,24]. In this setting, ro-bustness is essential. If a method produces different analytical expressions for the same dataset under small changes to random seed, hyper-parameters, archi-tecture width, or representation resolution, then its “explanation” becomes hard to reproduce and difficult to trust [3,1,9]. Symbolic regression is attractive as an intrinsically interpretable modelling paradigm: it returns an explicit symbolic formula that fits the data, rather than a black-box predictor accompanied by post-hoc explanations [23,19,24]. This has driven renewed interest in symbolic regression systems, including modern approaches that combine combinatorial search over expressions with continuous optimisation, simplification, and constant-fitting heuristics [13,25,30,7,14]. Kolmogorov–Arnold Networks (KANs) [17] offer a promising bridge between neural learning and symbolic formulas, grounded in the Kolmogorov–Arnold superposition view [12,4]. Unlike Multilayer Perceptrons (MLPs), KANs place learnable univariate functions on edges and compute node outputs by summa-tion. This design (and extensions for scientific discovery [16]) makes it natural to visualise the learned edge functions, replace them with symbolic operators, and compose them into a final expression. In practice, however, symbolic extraction remains a computational and method-ological bottleneck: many learned numeric edge functions must be converted into discrete choices from an operator library. A common strategy for KANs, which we call AutoSym , processes each edge independently. It samples the learned uni-variate function from its numerical parametrisation (often a spline) and selects the library operator that best fits the sampled curve, optionally with a simplicity penalty [16]. This pipeline is fragile for two reasons: 1. Instability from isolated curve fitting: When candidate operators include free parameters, e.g., “ a · sin( bx + c) + d”, per-edge fitting is non-convex and sensitive to initialisation and local minima. Moreover, expressive operator families can fit many shapes, so multiple candidates often achieve similar curve-fitting scores, making the choice ambiguous [1,9]. As a result, small changes in KAN initialisation, spline grid, or training can produce different “best” operators for the same edge. 2. Error propagation from ignoring context: Even when two operators fit the local spline equally well, their global effect inside the full KAN can differ. Because AutoSym commits to edge-wise decisions in isolation, it cannot account for interactions between edges. Errors in early symbolic choices may distort downstream computations, forcing later edges to compensate and potentially preventing recovery of the ground-truth composition. Fig. 1 summarises why isolated per-edge extraction is unstable and can propagate errors through the network. In-Context Symbolic Regression for Robustness-Improved KANs 3 
+
+> Fig. 1. Problem overview: isolated per-edge KAN-to-symbol fitting (AutoSym) is un-stable and ignores end-to-end context.
+
+A more stable alternative is to evaluate candidates in context . For a given edge, we temporarily replace its numeric function with a candidate operator, briefly fine-tune the full network, and score the candidate by the resulting end-to-end loss. We then revert to the pre-trial state and repeat this process for the remaining candidates, finally committing to the operator that yields the largest reduction in global loss after short fine-tuning. Repeating this procedure while prioritising the edge that most improves the objective resembles Matching Pursuit (MP), a classic greedy method for sparse approximation that selects atoms from a dictionary to reduce the residual as quickly as possible [21,22,29]. Applied to KAN symbolic regression, this yields a Greedy in-context Symbolic Regression (GSR) procedure that is substantially more stable than isolated per-edge fitting because it selects operators by their end-to-end loss improvement .The drawback of greedy in-context selection is computational cost, and it still treats symbolic structure as a post-training decision. To address this, we propose Gated Matching Pursuit (GMP). The key idea is to replace the numeric edge parametrisation (e.g., a spline basis) with a gated operator mechanism that places the entire operator library behind a differentiable gate. During training, the model learns gate weights per edge, effectively performing operator selection 
+
+as part of optimisation . After convergence, we discretise the gates to obtain a sin-gle operator per edge and optionally apply a short greedy refinement pass. Our approach is inspired by function-combination mechanisms in KAN-like architec-tures [28] and by mixture-of-experts gating [10,26]. Continuous relaxations for discrete selection (e.g., Gumbel–Softmax) provide practical tools to encourage near-discrete gates during training [11,20,18]. We evaluate GSR and GMP through the lens of hyper-parameter robustness :we sweep random seeds and architectural choices (notably network width, regu-4 F. Sovrano et al. 
+
+larisation strength, and pruning schedule) and study how predictive performance and recovered symbolic structure vary across runs. Experiments are conducted on 
+
+SRBench [14], a standard benchmark suite for symbolic regression, using tasks from its Feynman collection. We find that AutoSym is highly sensitive under these sweeps, often producing different operators and final expressions for minor perturbations. In contrast, in-context symbolic regression methods (GSR and GMP) generally exhibit higher hyper-parameter robustness in our experiments, leading to more consistent operator recovery and more stable final formulas; GSR is typically the strongest performer, while GMP remains competitive. Overall, this paper makes the following contributions: 
+
+– We identify failure modes of isolated, per-edge spline-to-symbol fitting for KAN symbolic regression and connect them to XAI robustness concerns [8,24,3]. 
+
+– We formalise a Matching-Pursuit-inspired greedy in-context symbolic regres-sion procedure for KANs that improves robustness by selecting operators via end-to-end loss after short fine-tuning, thereby reducing error propagation [21,29]. 
+
+– We introduce a gated operator layer that performs amortised in-context op-erator selection during training, reducing candidate-evaluation cycles; this improves efficiency while retaining much of the robustness benefit of in-context selection [28,26]. 
+
+– We empirically demonstrate that in-context symbolic regression (GSR, GMP) improves hyper-parameter robustness over isolated per-edge fitting, and of-ten yields lower error with qualitatively more consistent recovered formulas. 
+
+– We release a working replication package with the code, sweep definitions, and plotting utilities needed to reproduce the experiments, tables, and figures in this paper: https://github.com/Francesco-Sovrano/In-Context-Symbolic-Regression-KAN. 
+
+## 2 Related Work 
+
+This work connects four lines of research: robustness in XAI, symbolic regression, KANs and KAN-to-symbol extraction, and greedy/gated selection mechanisms. 
+
+Robustness in explainable modelling. A central distinction in XAI is between 
+
+post-hoc explanations and intrinsically interpretable models [8,24]. Post-hoc meth-ods such as LIME and SHAP provide feature-attribution explanations for arbi-trary predictors [23,19], but their outputs can be sensitive to sampling, perturba-tion schemes, and other implementation choices [3,1,9]. Prior work therefore em-phasises robustness as a practical requirement: explanations should not change substantially under small perturbations of training conditions, random seeds, or model specification when predictive behaviour is similar [27,3]. Symbolic regres-sion produces a model that is itself an explanation. This shifts robustness from a diagnostic property to a core requirement: instability corresponds to recovering different candidate “laws” from the same data, which undermines reproducibility in scientific use [14]. In-Context Symbolic Regression for Robustness-Improved KANs 5
+
+Symbolic regression. Classical symbolic regression traces back to genetic pro-gramming and evolutionary search [13], with early systems demonstrating re-covery of compact physical relations from data [25]. More recent methods com-bine discrete search with continuous optimisation and incorporate simplification and constant-fitting heuristics [30,7]. Related directions include sparse model discovery with predefined feature libraries (e.g., SINDy) [6]. Across these ap-proaches, performance depends on the operator set, noise level, and evaluation protocol, motivating standardised benchmarks such as SRBench [14]. In this pa-per we follow this practice and evaluate on SRBench tasks, with a focus on the hyper-parameter robustness of structure recovery. 
+
+KANs and symbolic extraction. KANs were introduced as an alternative to MLPs in which each edge carries a learnable univariate function (commonly parame-terised by splines) and nodes aggregate inputs by summation [17]. Follow-up work extended KANs toward scientific discovery, including multiplicative vari-ants and tooling for symbolic conversion [16]. Related architectures explore al-ternative edge parametrisations and basis functions [2,28]. FastKAN replaces the B-spline basis with Gaussian radial basis functions and shows that spline-based KAN layers can be approximated by radial basis function networks [15]; we in-clude FastKAN as a baseline. A common use case is to train a numeric KAN and then convert it to a closed-form expression by fitting each learned edge function to an operator library and composing the resulting operators [16]. As discussed in our introduction, this per-edge extraction is local and can be sensitive to non-convex parameter fitting and to interactions between edges, motivating methods that evaluate operators in context and/or integrate selection into training. 
+
+Greedy pursuit for in-context selection. MP is a greedy procedure for sparse approximation that iteratively selects dictionary atoms to reduce the residual [21]. Variants such as Orthogonal Matching Pursuit provide improved recovery in certain regimes [22,29]. We adapt the same “select-and-refine” principle to KAN symbolic extraction: candidates are scored by end-to-end loss after brief fine-tuning, and selections are committed iteratively. This in-context selection directly targets the global objective, rather than relying on isolated curve fitting. 
+
+Gating mechanisms and continuous relaxations. Mixture-of-experts models use gating networks to select or weight expert components [10], with sparsely gated variants enabling efficient scaling by activating only a subset of experts per input [26]. Discrete selection can be approximated with continuous relaxations such as Gumbel–Softmax [11,20], and sparsity can be encouraged via regularisation (e.g., ℓ0-style penalties) [18]. We use gating at the level of KAN edges: each edge maintains a gated mixture over a symbolic operator library during training, which is later discretised to obtain a single operator per edge. 6 F. Sovrano et al. 
+
+## 3 Background 
+
+This section introduces the notation and components used in the proposed meth-ods: the KAN layer, the MultKAN extension, the standard per-edge symbolic extraction baseline, and MP, which serves as the greedy template underlying GSR and the refinement stage of GMP. 
+
+KAN layers. The Kolmogorov–Arnold representation theorem states that con-tinuous multivariate functions on compact domains can be expressed using com-positions of univariate functions and addition [12,4]. KANs instantiate this idea by parameterising each edge with a learnable univariate function [17]. Consider a layer mapping x ∈ Rdin to y ∈ Rdout . A KAN layer computes 
+
+yj =
+
+> din
+
+X
+
+> i=1
+
+ϕj,i (xi), (1) where ϕj,i : R → R is the learnable 1D function associated with edge (i → j). In the original formulation, each ϕj,i is represented by a spline basis [17,5]. Stacking layers yields compositions of these edge functions across depth. 
+
+MultKAN. Many scientific expressions involve explicit products. MultKAN ex-tends KANs by adding multiplication modules (or multiplication nodes) so that multiplicative interactions are represented directly [16]. Our methods apply to both KAN and MultKAN; unless otherwise stated, we use the additive KAN notation in Eq.1. 
+
+Per-edge symbolic extraction baseline. Let ϕj,i denote a trained edge function represented numerically (e.g., by spline coefficients). The standard KAN-to-symbol baseline approximates ϕj,i by selecting an operator family from a library: 
+
+ϕj,i (x) ≈ gk(x; θ),
+
+where gk is the k-th candidate operator and θ are its continuous parameters (e.g., scale/shift/frequency). 
+
+Examples of operator families. A typical library contains a set of univariate primitives with affine reparametrisations. For example: 
+
+gsin (x; θ) = a sin( bx + c) + d, gexp (x; θ) = a exp( bx + c) + d, glog (x; θ) = a log( bx + c) + d (with bx + c > 0) ,
+
+where θ collects the corresponding coefficients (i.e., θ = ( a, b, c, d )). Here, gk
+
+denotes the symbolic form (e.g., “sine”), while θ captures the fitted continuous parameters for that form. In-Context Symbolic Regression for Robustness-Improved KANs 7
+
+Baseline fitting procedure. Given samples {(xt, ϕ j,i (xt)) }Tt=1 from the numeric edge function, the baseline fits θ for each candidate family by minimising a local regression loss, e.g. 
+
+min 
+
+> θ
+
+1
+
+T
+
+> T
+
+X
+
+> t=1
+
+(ϕj,i (xt) − gk(xt; θ)) 2 ,
+
+and then selects the candidate k with the best local score, i.e., lowest Mean Square Error (MSE) or highest R2, optionally with a simplicity penalty [16]. In the experiments reported here we set that simplicity weight to zero. The rea-son is technical: on the bounded domains induced by the training data, several operator families can fit the same sampled edge almost equally well after affine reparametrisation, so a hand-assigned complexity score can dominate near-ties for reasons unrelated to end-to-end fidelity. Because such scores depend on the chosen library and are not invariant to algebraically equivalent representations, they can systematically steer AutoSym toward a cheaper-but-wrong family. We therefore disable this heuristic to isolate the effect of local-versus-in-context eval-uation. 
+
+Baseline Limitations. Per-edge fitting is often non-convex in θ, and several op-erator families can fit the same sampled curve comparably well under affine reparametrisations, e.g., a · sin( bx + c) + d. As a result, the selected operator can depend on initialisation and optimisation details. Moreover, a good local fit does not guarantee that replacing ϕj,i by gk(·; θ) preserves end-to-end performance once the edge is inserted back into the full network. 
+
+Matching Pursuit. MP is a greedy method for building a sparse approxima-tion from a fixed library (dictionary) of candidate components [21]. Starting from an initial approximation, it repeatedly (i) selects the single candidate that yields the largest improvement according to a criterion, and (ii) updates the ap-proximation before proceeding to the next selection. Orthogonal variants such as OMP modify the update step to re-estimate coefficients after each selection [22,29]. In this paper, MP is used as an algorithmic template rather than a signal-processing tool. The “dictionary” is the symbolic operator library, and candidates are instantiated by assigning an operator family to a specific edge (with its parameters fitted). The improvement criterion is not residual norm, but end-to-end loss improvement of the whole KAN. This is why GSR evaluates a candidate by inserting it into the network, fitting its continuous parameters (and, if needed, allowing a short end-to-end re-fit of affected parameters), and measuring the resulting loss. The same select–update structure also motivates the optional greedy refinement pass applied after gate discretisation in GMP. 
+
+## 4 Proposed Methods 
+
+We aim to turn a trained numeric KAN whose edges are spline functions into an interpretable symbolic KAN whose edges come from a small operator library 8 F. Sovrano et al.  
+
+> Fig. 2. Method overview: GSR selects operators by end-to-end loss improvement; GMP amortises in-context selection via sparse operator gates during training, then discretises (optionally refined by a short greedy pass) to reduce candidate-trial cost.
+
+(e.g., sin , polynomials, exp ). We propose two complementary conversion strate-gies. GSR is a post-hoc procedure that converts one edge at a time by trying candidate operators, briefly fine-tuning the whole network, and committing the operator that yields the best end-to-end loss . GMP accelerates this search by learning soft operator gates during training, pruning each edge to a small top-
+
+k candidate set, discretising, and optionally running a short greedy refinement restricted to those candidates. Fig. 2 summarises the workflow. 
+
+4.1 Problem formulation 
+
+We start from a trained numeric KAN (or MultKAN) model fnum whose edge functions ϕnum  
+
+> j,i
+
+: R → R are represented numerically (in practice, splines; cf. Eq. 1). We seek a functionally similar but more interpretable model fsym ob-tained by replacing a subset of these spline edges with closed-form operators. Let L = {gk}Kk=1 be a library of univariate operator forms (e.g., sin , exp , log ,polynomials; see Section 3). When an edge e = ( i → j) is converted, we represent it as 
+
+ϕsym  
+
+> j,i
+
+(x) = αe gke (βex + γe) + δe, (2) where ke ∈ { 1, . . . , K } selects the operator form and (αe, β e, γ e, δ e) are learnable affine parameters that absorb scale/shift. We call an edge numeric if it is still spline-based, and symbolic once it takes the form in Eq. 2. Our objective is to obtain fsym that preserves predictive performance on held-out data (e.g., J (fsym ; Dval ) ≤ J (fnum ; Dval ) + ε), while favouring stable operator choices across seeds/hyper-parameters and an efficient conversion budget. When a domain-specific complexity prior is well defined it In-Context Symbolic Regression for Robustness-Improved KANs 9
+
+can be added on top of this objective, but we do not enforce such a prior in the experiments of this paper. 
+
+Running example. If the ground-truth is y = sin( x1)+ x22, a trained numeric KAN typically learns spline edges that approximate sin( ·) and (·)2 on the data range. Our methods replace those spline edges with the corresponding operator forms from L, while briefly re-optimising the full network to account for interactions between edges. 
+
+4.2 Greedy in-context Symbolic Regression 
+
+Edge ranking (existing KAN heuristic). At each iteration, we prioritise which 
+
+numeric edge to convert using an importance score se (as commonly used for pruning in KANs). Greedily , we select the single remaining numeric edge with the highest score, e⋆ = arg max e numeric se, so early conversions target the most influential edges. In our implementation, se is recomputed from the current net-work state before each selection (optionally amortised by updating only after committing a batch of edges). In each iteration, GSR selects the most important remaining numeric edge 
+
+e⋆ (according to the importance score se), then evaluates candidate operators in-context. Concretely, for each g ∈ L (or a pruned subset) we temporarily replace 
+
+e⋆ with g (including affine parameters), fine-tune the full network for τ steps, measure the resulting end-to-end loss on a small validation split, and restore the original parameters. We finally commit the operator that yields the lowest loss and proceed to the next edge. This procedure, formally represented as Algorithm 1, mitigates error propa-gation because each symbolic choice is evaluated in the context of all previously committed symbolic choices and the remaining numeric edges. It also mitigates initialisation sensitivity: rather than selecting the operator that best fits a spline in isolation (where local minima dominate), we select the operator that yields the best global objective after brief adaptation. 
+
+Complexity of naive GSR. Let K = |L| be the library size and τ be the fine-tuning budget per trial. Naively, each symbolic selection costs K trial runs, each with τ optimisation steps, yielding O(Kτ ) steps per converted edge. For M
+
+edges, this is O(M Kτ ) optimisation steps, often unacceptable in practice. 
+
+4.3 Gated operator layers for amortised in-context selection 
+
+To reduce the number of costly in-context trial runs required by GSR, we in-tegrate operator selection directly into training by introducing gated operator layers . This yields GMP, an amortised variant of in-context selection: rather than explicitly trying every operator for every edge, each edge maintains a dif-ferentiable mixture over the operator library, and training learns both (i) which operator(s) to prefer and (ii) the corresponding continuous parameters. After training, we discretise the gates to obtain a single symbolic operator per edge 10 F. Sovrano et al. 
+
+Algorithm 1 Greedy in-context Symbolic Regression for KANs           
+
+> Require: Trained numeric KAN f, dataset D, operator library L, fine-tuning steps τ, max symbolic edges M
+> Ensure: Symbolic KAN model fsym
+
+1: Compute initial edge importance scores {se} for all edges e
+
+2: Initialize set of converted edges S ← ∅ 
+
+3: for m = 1 to M do 
+
+4: Recompute/update edge importance scores {se} (optional) 
+
+5: Select next edge e⋆ ← arg max e / ∈S se
+
+6: Initialize best loss J⋆ ← +∞ and best operator g⋆ ← None 
+
+7: for each candidate operator g ∈ L (or a pruned subset) do 
+
+8: Snapshot model parameters (including all edges) 
+
+9: Replace edge e⋆ with operator g (initialise/retain affine params) 
+
+10: Fine-tune full model for τ steps on D
+
+11: Evaluate end-to-end loss J ← J (f ; Dval )
+
+12: Restore snapshot 
+
+13: if J < J ⋆ then 
+
+14: J⋆ ← J, g⋆ ← g
+
+15: end if 
+
+16: end for 
+
+17: Commit: replace edge e⋆ with g⋆ permanently 
+
+18: Optional: brief fine-tuning after committing 
+
+19: Update S ← S ∪ { e⋆}
+
+20: end for 
+
+21: return f as fsym 
+
+and optionally apply a short greedy refinement pass restricted to the retained candidates. 
+
+Gated edge parametrisation. For each edge (i → j), instead of a spline ϕj,i we use a soft selection over the operator library L = {gk}Kk=1 :
+
+ϕj,i (x) = 
+
+> K
+
+X
+
+> k=1
+
+π(j,i )
+
+> k
+
+
+
+α(j,i ) 
+
+> k
+
+gk(β(j,i ) 
+
+> k
+
+x + γ(j,i ) 
+
+> k
+
+) + δ(j,i )
+
+> k
+
+
+
+, (3) where π(j,i ) ∈ ∆K−1 is a probability vector over operators and (α, β, γ, δ ) are per-operator affine parameters that absorb scale/shift, matching the symbolic edge form in Eq. 2. We parameterise the gate via logits ℓ(j,i ) ∈ RK and a softmax: 
+
+π(j,i ) 
+
+> k
+
+= exp( ℓ(j,i ) 
+
+> k
+
+)
+
+PKr=1 exp( ℓ(j,i ) 
+
+> r
+
+) . (4) Intuitively, each edge carries a mixture of candidate symbolic operators, and optimisation increases the weight of operators that reduce end-to-end loss in context (because the mixture is trained as part of the full network). 
+
+Stabilising the gate with variance compression. Different operators can produce outputs with very different scales and heavy-tailed responses, which can desta-bilise optimisation and make the logits ℓ(j,i ) overly sensitive to outliers. To mit-igate this, we compress each operator output z with a scaled asinh transform before mixing: 
+
+˜z = s asinh 
+
+ zs
+
+
+
+, (5) In-Context Symbolic Regression for Robustness-Improved KANs 11 
+
+Algorithm 2 Gated Matching Pursuit           
+
+> Require: Dataset D, operator library L, gated KAN architecture, training steps T, pruning sched-ule, top-kvalue k, refinement steps τ
+> Ensure: Symbolic KAN fsym
+
+1: Initialize gated KAN: each edge is a mixture over L (Eq. 3) 
+
+2: for t = 1 to T do 
+
+3: Update network parameters by minimizing J (·; D) + λent Rent + λℓ1 Rℓ1
+
+4: if pruning step then 
+
+5: For each edge, keep top-k operators by gate probability; mask out the rest 
+
+6: end if 
+
+7: end for 
+
+8: Discretize: for each edge, choose g⋆ = arg max g∈L π(g); replace mixture with g⋆
+
+9: Optional refinement: run GSR (Alg. 1) but restrict each edge’s candidate set to its retained top-k
+
+10: return symbolic model fsym 
+
+where the scale parameter log s is learned jointly with (ℓ, α, β, γ, δ ) (optionally per edge/operator). This transform is approximately linear for |z| ≪ s and grows only logarithmically for |z| ≫ s, damping extreme values while preserving small variations. 
+
+Encouraging sparsity and enabling discretisation. To obtain a final symbolic model, each edge should select (approximately) a single operator. We encourage near-discrete gates with two complementary heuristics: (i) entropy regularisa-tion, Rent = P 
+
+> (j,i )
+
+H(π(j,i )), to favour peaky distributions; and (ii) periodic top-k pruning, which keeps only the k highest-probability operators per edge and masks out the rest. 
+
+Training, pruning, and discretisation. GMP trains the gated KAN end-to-end by minimising 
+
+J(·; D) + λent Rent + λℓ1 Rℓ1 ,
+
+where Rℓ1 is an ℓ1 penalty on the gate parameters. During training, we period-ically prune each edge to its top-k operators according to π(j,i ). A hand-crafted simplicity term could be added here in principle, but we keep it disabled in all reported experiments for the same identifiability reasons discussed for AutoSym above. After training, we discretise each edge by taking arg max k π(j,i ) 
+
+> k
+
+, replacing the mixture in Eq. 3 with that single operator and retaining its learned affine parameters. 
+
+Optional greedy refinement (restricted GSR). Although gating already performs in-context selection during training, discretisation is a hard decision and may occasionally pick between near-ties. To validate and potentially correct these discrete choices, we optionally run a short greedy refinement pass using GSR (Algorithm 1) but restricting each edge’s candidate set to its retained top-k
+
+operators (as determined by pruning). This preserves the computational benefits of GMP while adding a targeted in-context check at the end. 12 F. Sovrano et al. 
+
+Why GMP should improve robustness over isolated per-edge fitting. GMP avoids isolated spline-to-operator curve fitting and instead learns operator preferences 
+
+jointly with the full network objective, reducing sensitivity to local minima and per-edge initialisation. Sparsity objectives and top-k pruning further reduce am-biguity among similarly fitting operators and help prevent oscillation. Finally, the optional restricted GSR refinement evaluates discrete operator choices ex-plicitly in context, correcting occasional discretisation errors at low additional cost. 
+
+## 5 Experiments 
+
+We evaluate our methods with a focus on robustness : whether small, routine changes in training and conversion settings lead to large changes in predictive performance and in the recovered symbolic model. 
+
+5.1 Tasks and data protocol 
+
+We use regression datasets from the SRBench Feynman benchmark [14], a stan-dard benchmark suite for symbolic regression. We specifically chose the Feynman 
+
+with-units suite because it provides controlled scientific symbolic-regression tasks with known closed-form targets, making it suitable for studying symbolic recov-ery in KANs. Within that suite, we evaluate 10 targets (I.10.7, I.12.1, I.13.4, II.34.29a, I.9.18, I.12.4, I.34.1, II.6.15a, II.6.15b, and II.21.32), selected with-out further per-problem tuning so as to keep the OFAT study computationally tractable while reducing cherry-picking. Each dataset contains multiple input variables and a single scalar target. For each dataset, we construct a training and test split by sampling up to 2000 training points and 1000 test points from the available rows (when a dataset contains fewer rows, we use the maximum available under these caps). Unless otherwise stated, the split is obtained by a seeded random permutation of rows. Predictive performance is measured by test MSE. 
+
+5.2 Compared pipelines 
+
+All methods use the same univariate operator library L with K = 25 operator forms: constants and identity; polynomial powers x2–x5; inverse powers 1/x –
+
+1/x 3; √· and 1/√·; log and exp ; sin , cos , tan , tanh ; | · | and sgn ; arctan ; arcsin ;
+
+arccos ; arctanh ; and a Gaussian primitive exp( −x2). Each symbolic edge addi-tionally includes a learnable affine reparametrisation as in Eq. 2. Using a relatively large library makes operator selection substantially more challenging; in particular, it increases the combinatorial ambiguity faced by post-hoc selection and makes GMP harder to optimise, since learning sparse and confident gates becomes more complex as K grows. We compare five pipelines: In-Context Symbolic Regression for Robustness-Improved KANs 13 
+
+1. AutoSym (baseline). Train a numeric MultKAN [16] whose edges are spline functions, then replace each remaining active edge independently by fitting candidate operators to its learned one-dimensional curve and selecting the best local fit. In our experiments we disable any explicit complexity bias in this local selection to isolate the effect of in-context evaluation (simplicity weight = 0 ). 2. FastKAN + AutoSym. Same post-hoc per-edge extraction as AutoSym, but the numeric edge parametrisation uses radial basis functions instead of splines [15]. 3. GSR (cf. Section 4.2). Train the same numeric model as AutoSym, then perform greedy in-context symbolic regression: iteratively choose one still-numeric edge using the model’s edge-importance scores, try candidate op-erators on that edge, briefly refit the full model, and commit the operator that yields the lowest loss after this short refit. 4. FastKAN + GSR (cf. Section 4.2). Same greedy in-context conversion as GSR, starting from a radial-basis numeric parametrisation [15]. 5. GMP (cf. Section 4.3). Train a model whose edges are differentiable gated mixtures over the operator library, with gate sparsity encouraged by entropy regularisation and periodic top-k pruning. During pruning rounds, each edge is restricted to a small shortlist of operators according to its gate weights. After training, we discretise each edge by selecting the operator with the largest gate probability and retaining its learned affine parameters. We then optionally apply a short restricted greedy refinement pass, using GSR only over each edge’s retained top-k candidates. This yields an efficiency-oriented in-context baseline that reduces candidate-trial cost while preserving much of the robustness benefit of in-context selection. 
+
+5.3 Training schedule, sensitivity sweep, and reported metrics 
+
+Model family and training schedule. All methods share the same base architec-ture: a single hidden MultKAN layer followed by a scalar output. The hidden layer contains m additive units and two multiplication units, i.e. width [m, 2] ,where m is varied in the sweep. For spline-based models, inputs are mapped onto a fixed grid resolution of 20 knots/centres (depending on the numeric parametri-sation) and we use cubic B-splines (degree 3). The grid range is set per dataset to the minimum and maximum observed in the training inputs (global min/max across all input dimensions). Each run follows the same multi-stage schedule: an initial fit without regu-larisation, followed by several prune-and-refit cycles with regularisation enabled, then a final non-regularised fit. Symbolic extraction (AutoSym or greedy con-version) is applied after this final fit, and we perform a short final polishing fit afterwards. Training uses the Adam optimizer with learning rate 10 −2. Each fit stage uses a fixed budget of 200 optimisation steps. Greedy candidate evalua-tions use a budget of 100 steps per candidate. During prune-and-refit cycles, pruning uses a node threshold of 0.1; edge-threshold pruning is disabled (edge threshold = 0 .0). The regularised refit uses the same optimiser and step budget 14 F. Sovrano et al. 
+
+as the non-regularised stages, differing only by the regularisation coefficient λ
+
+(below). For GMP, gate sparsity is encouraged with an entropy penalty weight of 
+
+10 −3 and an ℓ1 gate penalty weight of 10 −2. Gate pruning uses an initial cap of 10 operators per edge and decreases to the final shortlist size (top-k) of 5 across pruning cycles. In all reported GMP experiments, we enabled the op-tional restricted-GSR refinement after gate discretisation; this refinement used the same short candidate-evaluation budget as GSR and was restricted to each edge’s retained top-k shortlist. 
+
+One-factor-at-a-time sensitivity sweep. We operationalise robustness as low sen-sitivity of predictive performance and recovered formulas to routine experimental perturbations. To measure this sensitivity, we use a one-factor-at-a-time sweep around a reference configuration. For each dataset we vary exactly one factor at a time while holding the others fixed: 
+
+– Hidden width: number of additive units m ∈ { 5, 10 , 20 , 50 , 100 } (multipli-cation units fixed to 2). 
+
+– Regularisation strength λ: {10 −4, 10 −3, 10 −2, 10 −1} during prune-and-refit cycles. 
+
+– Number of pruning cycles: {1, 3, 5}.
+
+– Random seed: {1, 2, 3}, controlling initialisation and the random train-test split. The reference configuration is (m, λ, #cycles , seed ) = (5 , 10 −2, 3, 1) . This is the default anchor setting used in three places: it is the unperturbed point around which each OFAT sweep is constructed, it is the configuration repeated across the factor-specific sweeps, and it is the fixed setting used for the seed-only repeats reported in Table 1. Counting repeated appearances of that anchor yields 15 runs per dataset (12 unique configurations), and we run all five pipelines for each run. 
+
+Metrics. For each method and dataset we report: 
+
+– Predictive accuracy: test MSE. 
+
+– Sensitivity-based robustness proxy: the distribution of test MSE over the sweep, summarised by the median (and dispersion via quartiles). Lower, tighter distributions indicate greater robustness to the perturbed factor. 
+
+Statistical comparison. For each dataset, we select the method with the lowest median test MSE as the reference. We then compare the reference to each other method using a one-sided Mann–Whitney U test with alternative hypothesis MSE(ref) < MSE(other). We correct for multiple comparisons (reference vs. each competitor) using Holm correction. To complement significance testing, we report effect size using Cliff’s ∆ with 95% bootstrap confidence intervals. In-Context Symbolic Regression for Robustness-Improved KANs 15 
+
+## 6 Results 
+
+We report two complementary views of sensitivity, which together support our robustness claims. First, Table 1 gives a seed-sensitivity snapshot at the fixed reference configuration, summarised as mean ±std over repeated seeds. Second, Figure 3 visualises the OFAT hyper-parameter sensitivity distributions obtained by varying width, λ, and the number of pruning cycles around that same ref-erence configuration; Table 2 summarises their median performance relative to the AutoSym baseline, and Table 3 reports the corresponding distribution-level statistical comparisons. Figure 3 is therefore not an average over the seed repeats in Table 1, and Table 1 is not an average of the points shown in Figure 3. The rankings can differ because the two summaries answer different questions. 
+
+6.1 Seed sensitivity at the reference configuration 
+
+Table 1 reports test MSE as mean ±std over available seeds for the reference configuration only; this is a seed-sensitivity snapshot rather than an OFAT sum-mary. Entries marked with † use fewer than three successful seeds, and some GMP runs are unavailable under the default settings. Across the 10 datasets, the lowest mean test MSE at this fixed setting is achieved by FastKAN+GSR on I.10.7, I.12.1, I.12.4, and I.34.1; by GSR on I.13.4, I.9.18, and II.6.15b; by FastKAN+AutoSym on II.34.29a and II.21.32; and by GMP on II.6.15a, al-though that last result is based on fewer successful seeds and should be inter-preted cautiously. These fixed-setting means are not directly comparable to the OFAT medians in Figure 3: the latter aggregate all valid configurations in the sweep, whereas Table 1 averages only repeated seeds of one selected setting. The missing or limited GMP entries are consistent with a schedule-mismatch failure mode under the shared training protocol: gated operator layers can sep-arate more slowly than the greedy post-hoc variants, so pruning may remove viable operator paths before the gates have stabilised. We therefore treat these cases as procedural failures under the current schedule rather than as defini-tive evidence that GMP cannot fit the task; a longer pre-pruning phase or a milder pruning schedule may recover some of them. Overall, the in-context greedy pipelines (GSR and FastKAN+GSR) are the strongest and most con-sistently competitive at the reference setting, while several post-hoc pipelines exhibit substantial stochastic variability on selected targets. Importantly, the standard deviations reveal substantial stochastic variability for some pipelines and datasets (e.g., AutoSym on I.13.4), motivating the broader OFAT robustness analysis below. 
+
+6.2 Hyper-parameter sensitivity under OFAT sweeps 
+
+We analyse sensitivity to hyper-parameters by aggregating each method’s test MSE values across the OFAT sweep dimensions of hidden width, λ, and the number of pruning cycles (we exclude the explicit “seed” factor here, since seed 16 F. Sovrano et al. 
+
+Table 1. Seed sensitivity at the reference configuration (width [5 , 2] , λ = 10 −2, and three pruning cycles). We report test MSE as mean ±std over available seeds for this fixed setting only. This table quantifies sensitivity to stochasticity at one chosen con-figuration; lower means and smaller standard deviations indicate greater robustness, but it is not an average of the OFAT sweep in Figure 3. Entries marked with † use fewer than three successful seeds; for single-seed cases, only the observed value is re-ported. Entries marked N/A indicate that no successful run was obtained under the shared training/pruning schedule. Lower is better. The lowest mean is in bold ; the second-lowest mean is underlined. Feynman Dataset AutoSym FastKAN+AutoSym GSR FastKAN+GSR GMP I.13.4 1.31e3 ± 2.21e3 1.29e1 ± 1.77e1 7.35e-1 ± 3.94e-1 1.42e0 ± 6.61e-1 N/A I.10.7 6.14e-2 ± 1.38e-2 8.49e-1 ± 8.64e-1 2.60e-3 ± 2.50e-3 1.90e-3 ± 3.00e-3 1.14e-2 ± 4.20e-3 I.12.1 1.07e2 ± 1.43e2 4.86e-1 ± 4.79e-1 7.18e-2 ± 2.25e-2 1.30e-2 ± 1.31e-2 1.25e0 ± 9.99e-1 II.34.29a 7.18e-4 ± 1.23e-4 8.60e-5 ± 1.07e-4 6.43e-4 ± 3.50e-4 5.99e-4 ± 3.77e-4 1.18e-2 ± 1.38e-2 I.9.18 1.40e-1 ± 2.15e-1 6.05e-3 ± 9.40e-3 2.89e-4 ± 1.53e-4 1.57e-3 ± 2.01e-3 N/A I.12.4 4.64e-4 ± 3.70e-4 1.12e-4 ± 1.86e-4 1.24e-4 ± 2.50e-5 8.20e-5 ± 6.60e-5 1.73e-4 ± 3.60e-5 I.34.1 1.27e-1 ± 1.03e-1 3.39e-1 ± 4.75e-1 2.02e-2 ± 3.16e-2 8.77e-3 ± 1.20e-2 3.53e-2 ± 2.39e-2 II.6.15a 1.28e-1 ± 1.12e-1 4.51e0 ± 7.81e0 3.13e-3 ± 2.33e-3 2.96e-3 ± 1.19e-3 2.22e-3 †                            
+
+> II.6.15b 7.67e-4 ±2.12e-4 3.86e-4 ±4.29e-4 3.25e-4 ±2.28e-4 5.00e-4 ±3.53e-4 8.33e-4 ±9.80e-5 II.21.32 1.15e-3 ±1.50e-3 †1.00e-5 ±4.00e-6 †7.80e-5 ±5.20e-5 8.80e-5 ±4.00e-5 1.02e-3 †
+
+sensitivity is already reported in Table 1). Figure 3 shows the resulting hyper-parameter sensitivity distributions as violin plots on a log-scale y-axis (necessary due to the wide dynamic range of MSE). Lower medians and tighter distributions indicate that a method is less sensitive to routine hyper-parameter choices and therefore more robust under this operationalisation. Some methods, especially GMP on selected datasets, produced no valid OFAT observations under the shared pruning schedule; these cases are shown as explicit missing-value markers rather than being silently dropped. We report distribution-level comparisons of OFAT robustness using one-sided Mann–Whitney U tests with Holm correction (details in Section 5). In Table 3, pHolm indicates significance after correction, Cliff’s δ quantifies the effect size (more negative favours the reference), and the 95% bootstrap CI for “ median(other) − median(ref) ” reports the median gap (positive favours the reference). Table 3 summarises these results and highlights which comparisons remain significant after Holm correction. Across datasets, the statistical conclu-sions are consistent with the distributions in Fig. 3. For interpretability, note that among the 10 datasets the largest median improvement over the AutoSym baseline occurs on Feynman I.12.1: FastKAN+GSR reduces the median OFAT test MSE from 9.49 to 0.0212, i.e., a 100 · (1 − 0.0212 /9.49) ≈ 99 .8% reduction (Table 2). Across the 10 datasets, an in-context variant attains the lowest median OFAT test MSE on seven targets: FastKAN+GSR on I.10.7, I.12.1, and I.34.1, and GSR on I.13.4, II.21.32, I.12.4, and I.9.18. FastKAN+AutoSym attains the lowest OFAT median on the remaining three targets: II.34.29a, II.6.15a, and II.6.15b. These OFAT median rankings do not always match the fixed-setting mean rank-ings in Table 1, because the OFAT analysis aggregates all valid settings in the In-Context Symbolic Regression for Robustness-Improved KANs 17 10 4 
+
+> 10 2
+> 10 0
+> 10 2
+> 10 4
+> Test MSE (log)
+
+feynman I.10.7  
+
+> 10 2
+> 10 0
+> 10 2
+> 10 4
+> 10 6
+
+feynman I.12.1       
+
+> 10 6
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> 10 1
+> Test MSE (log)
+
+feynman I.12.4 
+
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+
+X
+
+feynman I.13.4    
+
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> 10 1
+> Test MSE (log)
+
+feynman I.34.1     
+
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> 10 1
+> 10 2
+
+X
+
+feynman I.9.18    
+
+> 10 4
+> 10 3
+> 10 2
+> Test MSE (log)
+
+X
+
+feynman II.21.32      
+
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+
+feynman II.34.29a     
+
+> AutoSym
+> FastKAN+AutoSym
+> GSR
+> FastKAN+GSR
+> GMP
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+> 10 1
+> Test MSE (log)
+
+X
+
+feynman II.6.15a      
+
+> AutoSym
+> FastKAN+AutoSym
+> GSR
+> FastKAN+GSR
+> GMP
+> 10 5
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+> 10 0
+
+feynman II.6.15b 
+
+Fig. 3. OFAT hyper-parameter sensitivity distributions. Violins summarise test MSE across all valid one-factor-at-a-time runs obtained by varying hidden width, λ, and the number of pruning cycles around the reference configuration; dots denote individual observations. This figure aggregates hyper-parameter perturbations only and does not average over the seed-only repeats from Table 1. Red × markers indicate that a method produced no valid OFAT runs for that dataset and is therefore absent from the violin aggregation. Lower, tighter distributions indicate lower sensitivity and hence greater robustness. 18 F. Sovrano et al. 
+
+Table 2. Median OFAT test MSE of the best pipeline vs. AutoSym baseline, and percent reduction 100 · (1 − med(best) /med(AutoSym)) .Feynman Dataset med (best) med (AutoSym) Reduction (%) I.10.7 1.34e-3 7.36e-2 98.2 I.12.1 2.12e-2 9.49e0 99.8 I.13.4 6.43e-1 6.94e1 99.1 II.34.29a 3.05e-5 2.17e-4 85.9 II.21.32 3.25e-5 1.13e-3 97.1 II.6.15a 2.23e-3 2.58e-3 13.6 II.6.15b 6.70e-5 2.22e-4 69.8 I.12.4 1.41e-4 3.81e-4 63.0 I.34.1 2.09e-3 1.88e-2 88.9 I.9.18 2.48e-4 9.92e-2 99.8 
+
+sweep whereas Table 1 summarises only repeated seeds of one selected configu-ration. The contrast is clearest on II.21.32: FastKAN+AutoSym has the lowest mean at the reference configuration in Table 1, but GSR has the lowest me-dian across the full OFAT sweep in Figure 3 and Table 2; Table 3 further shows that the GSR vs FastKAN+AutoSym comparison is not Holm-significant on this dataset. In the clearest cases favouring in-context selection (namely I.10.7, I.12.1, I.13.4, I.9.18, and I.34.1), the best greedy variant significantly outper-forms AutoSym after Holm correction, often with large effect sizes. At the same time, the wins of FastKAN+AutoSym on II.34.29a, II.6.15a, and II.6.15b indi-cate that the underlying numeric parametrisation can in some cases make local post-hoc extraction sufficiently robust. Other datasets are less clear-cut. For ex-ample, on I.12.4, GSR achieves the best OFAT median, but after correction only the comparison with GMP remains significant. On II.6.15a, none of the pairwise differences remains significant after correction despite a small median advantage for FastKAN+AutoSym. 
+
+## 7 Discussion 
+
+This section interprets the robustness patterns observed in the seed-sensitivity snapshot (Table 1) and in the OFAT sensitivity distributions (Fig. 3), as well as the distribution-level comparisons (Table 3). We focus on how these results relate to robustness under routine experimental choices. 
+
+Interpreting OFAT violins as sensitivity signals. The OFAT violin plots in Fig. 3 provide a compact summary of hyper-parameter sensitivity. Since each violin represents the distribution of test MSE obtained by varying one factor at a time (width, λ, and the number of pruning cycles) around the reference configuration, the vertical extent of a violin (i.e., the spread of MSE values on the log scale) can be read as an empirical proxy for robustness to routine hyper-parameter choices: taller violins indicate larger performance variability, while flatter violins indicate greater robustness. This interpretation is consistent with our robustness In-Context Symbolic Regression for Robustness-Improved KANs 19 
+
+Table 3. One-sided Mann–Whitney U tests comparing the best pipeline (lowest median OFAT test MSE) to the others. p-values are Holm-corrected per dataset; effect size is Cliff’s δ (negative favours the best pipeline). Bootstrap 95% CIs are reported for the median difference (other −best). Only methods with valid OFAT distributions are included; omitted rows correspond to unavailable distributions (notably selected GMP cases). Significance markers: * for pHolm < 0.05 , ** for pHolm < 0.01 , and *** for 
+
+pHolm < 0.001 .Comparison (best → other) med (best) med (other) pHolm Cliff’s δ CI 
+
+Feynman I.10.7 (best: FastKAN+GSR) FastKAN+GSR → AutoSym (baseline) 1.34e-3 7.36e-2 1.89e-4 *** -0.944 [4.51e-2, 1.55e0] FastKAN+GSR → FastKAN+AutoSym 1.34e-3 4.52e-2 3.59e-3 ** -0.736 [1.35e-3, 1.84e0] FastKAN+GSR → GMP 1.34e-3 1.06e-2 6.01e-3 ** -0.667 [-2.83e-4, 1.43e-2] FastKAN+GSR → GSR 1.34e-3 2.38e-3 6.27e-2 -0.375 [-3.39e-3, 5.05e-3] 
+
+Feynman I.12.1 (best: FastKAN+GSR) FastKAN+GSR → AutoSym (baseline) 2.12e-2 9.49e0 2.06e-4 *** -0.983 [4.14e0, 2.72e2] FastKAN+GSR → FastKAN+AutoSym 2.12e-2 1.03e0 4.42e-4 *** -0.917 [9.89e-2, 5.20e0] FastKAN+GSR → GMP 2.12e-2 1.23e-1 6.21e-4 *** -0.868 [9.25e-2, 1.98e0] FastKAN+GSR → GSR 2.12e-2 3.31e-2 1.18e-1 -0.306 [-4.62e-3, 6.06e-2] 
+
+Feynman I.13.4 (best: GSR) GSR → AutoSym (baseline) 6.43e-1 6.94e1 5.32e-5 *** -1.000 [4.57e1, 1.06e2] GSR → FastKAN+AutoSym 6.43e-1 9.59e0 2.27e-3 ** -0.758 [1.10e0, 3.28e1] GSR → FastKAN+GSR 6.43e-1 1.02e0 2.60e-2 * -0.485 [-1.22e-1, 6.52e-1] 
+
+Feynman II.34.29a (best: FastKAN+AutoSym) FastKAN+AutoSym → AutoSym (baseline) 3.05e-5 2.17e-4 1.07e-2 * -0.569 [2.94e-5, 5.48e-4] FastKAN+AutoSym → FastKAN+GSR 3.05e-5 4.87e-4 1.07e-2 * -0.653 [2.28e-4, 8.29e-4] FastKAN+AutoSym → GMP 3.05e-5 5.72e-3 4.23e-3 ** -0.783 [1.07e-3, 2.50e-2] FastKAN+AutoSym → GSR 3.05e-5 6.72e-4 1.07e-2 * -0.653 [3.03e-4, 7.67e-4] 
+
+Feynman II.21.32 (best: GSR) GSR → AutoSym (baseline) 3.25e-5 1.13e-3 4.06e-2 * -0.604 [-4.10e-5, 2.06e-3] GSR → FastKAN+AutoSym 3.25e-5 4.80e-5 5.51e-1 0.0238 [-8.70e-5, 6.50e-5] GSR → FastKAN+GSR 3.25e-5 6.60e-5 2.84e-1 -0.264 [-7.30e-5, 3.48e-4] 
+
+Feynman II.6.15a (best: FastKAN+AutoSym) FastKAN+AutoSym → AutoSym (baseline) 2.23e-3 2.58e-3 1.00e0 0.0833 [-6.77e0, 1.28e-1] FastKAN+AutoSym → FastKAN+GSR 2.23e-3 2.39e-3 1.00e0 0.0139 [-6.77e0, 2.88e-3] FastKAN+AutoSym → GSR 2.23e-3 2.37e-3 1.00e0 0.167 [-6.77e0, 1.32e-3] 
+
+Feynman II.6.15b (best: FastKAN+AutoSym) FastKAN+AutoSym → AutoSym (baseline) 6.70e-5 2.22e-4 5.24e-3 ** -0.708 [1.30e-5, 8.67e-4] FastKAN+AutoSym → FastKAN+GSR 6.70e-5 1.68e-4 4.60e-2 * -0.431 [-5.00e-6, 2.46e-4] FastKAN+AutoSym → GMP 6.70e-5 7.76e-4 2.73e-4 *** -0.917 [2.13e-4, 8.67e-4] FastKAN+AutoSym → GSR 6.70e-5 2.16e-4 4.60e-2 * -0.486 [1.45e-5, 2.25e-4] 
+
+Feynman I.12.4 (best: GSR) GSR → AutoSym (baseline) 1.41e-4 3.81e-4 6.23e-1 -0.125 [-1.05e-4, 5.59e-4] GSR → FastKAN+AutoSym 1.41e-4 3.27e-4 5.07e-1 -0.250 [-1.35e-4, 5.59e-4] GSR → FastKAN+GSR 1.41e-4 1.47e-4 6.23e-1 0.000 [-1.36e-4, 5.62e-5] GSR → GMP 1.41e-4 2.54e-4 2.96e-3 ** -0.788 [1.59e-5, 5.59e-4] 
+
+Feynman I.34.1 (best: FastKAN+GSR) FastKAN+GSR → AutoSym (baseline) 2.09e-3 1.88e-2 2.12e-3 ** -0.783 [9.68e-3, 1.61e0] FastKAN+GSR → FastKAN+AutoSym 2.09e-3 8.57e-2 1.89e-4 *** -0.944 [6.28e-2, 9.99e-1] FastKAN+GSR → GMP 2.09e-3 5.96e-2 9.31e-4 *** -0.848 [2.49e-2, 6.28e-2] FastKAN+GSR → GSR 2.09e-3 2.72e-3 6.42e-1 0.0833 [-3.26e-3, 1.91e-3] 
+
+Feynman I.9.18 (best: GSR) GSR → AutoSym (baseline) 2.48e-4 9.92e-2 5.24e-5 *** -1.000 [1.49e-2, 3.89e-1] GSR → FastKAN+AutoSym 2.48e-4 1.05e-3 2.90e-3 ** -0.722 [3.90e-4, 1.48e-2] GSR → FastKAN+GSR 2.48e-4 3.37e-4 1.85e-1 -0.222 [-1.30e-4, 2.89e-4] 20 F. Sovrano et al. 
+
+objective, because it reflects how strongly the pipeline’s predictive behaviour changes under small, standard tuning decisions. 
+
+Implications of in-context selection and numeric parametrisation. Taken to-gether, the multi-seed snapshot at the reference setting (Table 1) and the OFAT sensitivity distributions (Fig. 3), supported by distribution-level tests (Table 3), motivate three empirical observations: (i) In the datasets where an in-context variant achieves the lowest median OFAT MSE (GSR or FastKAN+GSR), the corresponding OFAT violins are con-centrated at lower error levels and typically exhibit reduced dispersion relative to post-hoc edge-wise extraction. (ii) Switching the numeric edge parametrisa-tion from splines to radial basis functions can improve robustness for certain targets (e.g., II.34.29a), but it does not uniformly eliminate the variability in-duced by local per-edge fitting across all datasets. (iii) When in-context variants outperform post-hoc baselines with Holm-significant differences, the accompa-nying effect sizes are typically large (Cliff’s δ close to −1), indicating that the performance advantage is not limited to a small median shift but reflects a broad separation between the OFAT distributions; the bootstrap intervals for “median(other) − median(best) ” are predominantly positive in these cases, sup-porting that the median gaps are practically meaningful across the sweep. 
+
+Why in-context evaluation improves robustness. A central failure mode of iso-lated per-edge extraction is that a locally good one-dimensional fit can be glob-ally wrong once composed through additions and multiplication units. By se-lecting operators based on the end-to-end loss after brief refitting, GSR (and the discretisation stage of GMP) directly tests whether a symbolic substitu-tion remains compatible with the rest of the network. This “in-context” check tends to reject operators that match an edge curve in isolation but introduce brittle interactions downstream, which is consistent with the tighter OFAT sen-sitivity distributions observed for the greedy pipelines on most targets, with an in-context variant achieving the best median OFAT MSE on seven of the ten datasets. 
+
+Why the best pipeline can be target-dependent. FastKAN+AutoSym is best by median on three datasets: II.34.29a, II.6.15a, and II.6.15b. This suggests that for some targets the radial-basis parametrisation yields edge functions that are easier to discretize reliably with local post-hoc matching. By contrast, GSR or FastKAN+GSR is best on the remaining seven datasets. End-to-end in-context evaluation is therefore generally more robust, but not universally dominant. More broadly, these results suggest that robustness is shaped jointly by the nu-meric inductive bias (how edges are parametrized and trained) and the symbolic 
+
+selection rule used for discretization. 
+
+Efficiency–robustness trade-off. While GSR can be the most accurate and robust, it incurs a higher conversion cost because it evaluates many candidate opera-tors in context. GMP reduces this cost by learning sparse gates and restricting In-Context Symbolic Regression for Robustness-Improved KANs 21 
+
+in-context evaluation to a per-edge top-k shortlist, which directly reduces the number of candidate fine-tuning loops. The mixed results across targets indi-cate that gate learning can be an effective accelerator, but that part of GMP’s mixed robustness may be procedural rather than intrinsic: the gated operator layer can converge more slowly than the greedy baselines, so applying the same prune-and-refit cadence can prune viable operator paths before gate separation stabilises. This offers a plausible explanation for the missing or invalid GMP runs in Table 1 and Fig. 3, and suggests that longer pre-pruning training or gentler pruning schedules could improve the efficiency–robustness trade-off. 
+
+## 8 Limitations 
+
+Our study is a first step toward robustness-aware symbolic extraction for KANs. Below we outline key limitations and, for each, the concrete steps we took to mitigate its impact in the present work, together with what remains open. 
+
+Benchmark scope and ecological validity. We evaluate on ten targets from SR-Bench’s Feynman suite under a fixed training protocol. This controlled setting does not span the full range of regimes relevant to scientific discovery (e.g., heavy label noise, covariate shift, sparse observations, or high-dimensional inputs), so the results should be interpreted as evidence about robustness within this enve-lope rather than as a general guarantee. Mitigation. We fixed the evaluation pool to the SRBench Feynman with-units suite, which offers controlled scientific tar-gets with known formulas, and then used a limited subset without per-problem retuning to reduce cherry-picking under our compute budget. 
+
+Limited robustness factors and interaction effects. Our robustness analysis per-forms one-factor-at-a-time sweeps over width, regularisation strength, and prun-ing rounds, plus a limited set of random seeds. This isolates individual sensi-tivities but does not fully characterise higher-order interactions (e.g., particular width–pruning combinations that jointly trigger collapse). A larger factorial de-sign or targeted interaction probes (e.g., conditional sweeps around failure re-gions) would provide stronger guarantees at higher computational cost. Mitiga-tion. We (i) sweep the most consequential knobs for KANs extraction (capacity, sparsification, and pruning), (ii) replicate runs across multiple seeds to reduce the risk of anecdotal conclusions, and (iii) report variability across configurations rather than only best-case points. 
+
+Operator-library design and identifiability. Operator recovery is constrained by the library and by representational equivalences: distinct operators (or affine reparametrisations) can be indistinguishable on a bounded domain, and math-ematically equivalent expressions can appear in different syntactic forms after discretisation and simplification. Consequently, “correct recovery” is not always uniquely defined without an explicit equivalence protocol. Mitigation. We keep the operator set fixed across pipelines, evaluate candidates on the same input 22 F. Sovrano et al. 
+
+domain, and treat expression recovery primarily as a robustness/interpretability signal rather than as a strict exact-match objective. We also apply consistent post-hoc simplification so that superficial syntactic differences are reduced when reporting recovered formulas. 
+
+What is optimised vs. what is explained. Our primary quantitative metric is test MSE. Predictive accuracy is necessary but not sufficient for high-quality explanations: users often care about structural correctness, robustness of the extracted form under perturbations, and faithfulness in a causal/functional sense beyond numeric fit. Mitigation. We complement MSE with qualitative inspection of recovered expressions and, crucially, with a robustness-oriented evaluation: we stress the pipelines under controlled hyper-parameter and pruning perturbations to assess whether the extracted forms persist or degrade. This directly targets one dimension of explanation reliability (robustness to plausible training variations), even when a formal structural metric is unavailable. The study is therefore best read as comparing pipeline robustness under a shared practical protocol, not as isolating the effect of in-context selection under a strictly matched compute budget. 
+
+## 9 Conclusion and Future Work 
+
+We studied symbolic extraction for KANs from a XAI perspective, emphasising 
+
+robustness under routine experimental choices and operationalising it through sensitivity to controlled perturbations. We introduced two in-context pipelines that select symbolic operators based on their end-to-end effect on the network after brief fine-tuning: Greedy in-context Symbolic Regression, which evaluates candidates explicitly during conversion, and Gated Matching Pursuit, which amortises much of this selection by learning sparse operator gates and then discretising from a small top-k shortlist. Across ten Feynman targets, the results indicate that in-context selection can substantially increase hyper-parameter robustness relative to isolated per-edge curve matching. On seven of the ten targets, an in-context variant attains the best OFAT median test MSE, often with tighter sensitivity distributions, suggesting improved robustness to width, regularisation, and pruning schedules. We also find that changing the numeric parametrisation (splines vs. radial basis functions) can shift which pipeline is most robust, with FastKAN+AutoSym performing best on II.34.29a, II.6.15a, and II.6.15b under the OFAT median criterion. This highlights that robustness is a property of the full pipeline rather than of symbolic extraction alone. A few directions for future work could improve robustness and practical use-fulness. One is broader evaluation, both on additional SRBench suites and on real scientific datasets, especially in noisy, low-sample, and out-of-distribution regimes where robustness matters most. Another is to go beyond test error by incorporating measures of structural agreement, such as operator-set overlap, edit distance over expression trees, or equivalence-class scoring, and by examin-ing interaction effects through more systematic sweep designs. It would also be In-Context Symbolic Regression for Robustness-Improved KANs 23 
+
+worth studying tighter relaxations for operator selection, including L0/Concrete gates, hierarchical operator libraries, and adaptive operator generation, to reduce ambiguity without substantially increasing compute. 
+
+Acknowledgments. This work was funded by the Swiss Innovation Agency (Innosu-isse) under grant agreement 119.321 INT-ICT. 
+
+## References 
+
+1. Adebayo, J., Gilmer, J., Muelly, M., Goodfellow, I., Hardt, M., Kim, B.: Sanity checks for saliency maps. In: Advances in Neural Information Processing Systems. vol. 31, pp. 9505–9515 (2018) 2. Aghaei, A.A.: rKAN: Rational kolmogorov–arnold networks. arXiv preprint arXiv:2406.14495 (2024), https://arxiv.org/abs/2406.14495 
+
+3. Alvarez-Melis, D., Jaakkola, T.S.: On the robustness of interpretability methods. arXiv preprint arXiv:1806.08049 (2018), https://arxiv.org/abs/1806.08049 
+
+4. Arnold, V.I.: On the functions of three variables. Doklady Akademii Nauk SSSR 
+
+114 (4), 679–681 (1957) 5. de Boor, C.: A Practical Guide to Splines, Applied Mathematical Sciences, vol. 27. Springer-Verlag, New York, NY (1978). https://doi.org/10.1007/978-1-461 2-6333-3 
+
+6. Brunton, S.L., Proctor, J.L., Kutz, J.N.: Discovering governing equations from data by sparse identification of nonlinear dynamical systems. Proceedings of the National Academy of Sciences 113 (15), 3932–3937 (2016). https://doi.org/10 .1073/pnas.1517384113 , arXiv:1509.03580 7. Cranmer, M.: Interpretable machine learning for science with PySR and Symboli-cRegression.jl. arXiv preprint arXiv:2305.01582 (2023). https://doi.org/10.485 50/arXiv.2305.01582 , https://arxiv.org/abs/2305.01582 
+
+8. Doshi-Velez, F., Kim, B.: Towards a rigorous science of interpretable machine learn-ing. arXiv preprint arXiv:1702.08608 (2017), https://arxiv.org/abs/1702.08608 
+
+9. Ghorbani, A., Abid, A., Zou, J.: Interpretation of neural networks is fragile. In: Proceedings of the AAAI Conference on Artificial Intelligence. vol. 33, pp. 3681– 3688 (2019). https://doi.org/10.1609/aaai.v33i01.33013681 
+
+10. Jacobs, R.A., Jordan, M.I., Nowlan, S.J., Hinton, G.E.: Adaptive mixtures of local experts. Neural Computation 3(1), 79–87 (1991). https://doi.org/10.1162/ne co.1991.3.1.79 
+
+11. Jang, E., Gu, S., Poole, B.: Categorical reparameterization with Gumbel-Softmax. arXiv preprint arXiv:1611.01144 (2017), https://arxiv.org/abs/1611.01144 
+
+12. Kolmogorov, A.N.: On the representation of continuous functions of many variables by superposition of continuous functions of one variable and addition. Doklady Akademii Nauk SSSR 114 (5), 953–956 (1957) 13. Koza, J.R.: Genetic Programming: On the Programming of Computers by Means of Natural Selection. MIT Press (1992) 14. La Cava, W., Orzechowski, P., Burlacu, B., de França, F.O., Virgolin, M., Jin, Y., Kommenda, M., Moore, J.H.: Contemporary symbolic regression methods and their relative performance. In: Proceedings of the Neural Information Processing Systems Track on Datasets and Benchmarks (2021), arXiv:2107.14351 15. Li, Z.: Kolmogorov-arnold networks are radial basis function networks (2024). ht tps://doi.org/10.48550/arXiv.2405.06721 , https://arxiv.org/abs/2405.0 6721 24 F. Sovrano et al. 16. Liu, Z., Ma, P., Wang, Y., Matusik, W., Tegmark, M.: KAN 2.0: Kolmogorov– arnold networks meet science. arXiv preprint arXiv:2408.10205 (2024), https: //arxiv.org/abs/2408.10205 
+
+17. Liu, Z., Wang, Y., Vaidya, S., Ruehle, F., Halverson, J., Soljačić, M., Hou, T.Y., Tegmark, M.: KAN: Kolmogorov–arnold networks. In: arXiv preprint arXiv:2404.19756 (2024), https://arxiv.org/abs/2404.19756 
+
+18. Louizos, C., Welling, M., Kingma, D.P.: Learning sparse neural networks through 
+
+l0 regularization. In: International Conference on Learning Representations (2018), arXiv:1712.01312 19. Lundberg, S.M., Lee, S.I.: A unified approach to interpreting model predictions. In: Advances in Neural Information Processing Systems. vol. 30, pp. 4765–4774 (2017) 20. Maddison, C.J., Mnih, A., Teh, Y.W.: The concrete distribution: A continuous relaxation of discrete random variables. arXiv preprint arXiv:1611.00712 (2017), 
+
+https://arxiv.org/abs/1611.00712 
+
+21. Mallat, S.G., Zhang, Z.: Matching pursuits with time-frequency dictionaries. IEEE Transactions on Signal Processing 41 (12), 3397–3415 (1993). https://doi.org/ 10.1109/78.258082 
+
+22. Pati, Y.C., Rezaiifar, R., Krishnaprasad, P.S.: Orthogonal matching pursuit: Re-cursive function approximation with applications to wavelet decomposition. In: Proceedings of the 27th Asilomar Conference on Signals, Systems and Computers. pp. 40–44 (1993). https://doi.org/10.1109/ACSSC.1993.342465 
+
+23. Ribeiro, M.T., Singh, S., Guestrin, C.: “why should i trust you?”: Explaining the predictions of any classifier. In: Proceedings of the 22nd ACM SIGKDD Interna-tional Conference on Knowledge Discovery and Data Mining. pp. 1135–1144 (2016). 
+
+https://doi.org/10.1145/2939672.2939778 
+
+24. Rudin, C.: Stop explaining black box machine learning models for high stakes decisions and use interpretable models instead. Nature Machine Intelligence 1(5), 206–215 (2019). https://doi.org/10.1038/s42256-019-0048-x 
+
+25. Schmidt, M., Lipson, H.: Distilling free-form natural laws from experimental data. Science 324 (5923), 81–85 (2009). https://doi.org/10.1126/science.1165893 
+
+26. Shazeer, N., Mirhoseini, A., Maziarz, K., Davis, A., Le, Q., Hinton, G., Dean, J.: Outrageously large neural networks: The sparsely-gated mixture-of-experts layer. arXiv preprint arXiv:1701.06538 (2017). https://doi.org/10.48550/arXiv.170 1.06538 , https://arxiv.org/abs/1701.06538 
+
+27. Sovrano, F., Vilone, G., Lognoul, M., Longo, L.: Legal xai: a systematic review and interdisciplinary mapping of xai and eu law, towards a research agenda for legally responsible ai. Towards a Research Agenda for Legally Responsible AI (July 22, 2025) (2025) 28. Ta, H.T., Thai, D.Q., Rahman, A.B.S., Sidorov, G., Gelbukh, A.: FC-KAN: Function combinations in kolmogorov–arnold networks. Information Sciences 736 ,123103 (2026). https://doi.org/10.1016/j.ins.2026.123103 , https: //doi.org/10.1016/j.ins.2026.123103 
+
+29. Tropp, J.A., Gilbert, A.C.: Signal recovery from random measurements via or-thogonal matching pursuit. IEEE Transactions on Information Theory 53 (12), 4655–4666 (2007). https://doi.org/10.1109/TIT.2007.909108 
+
+30. Udrescu, S.M., Tegmark, M.: AI Feynman 2.0: Pareto-optimal symbolic regression exploiting graph modularity. Science Advances 6(16), eaay2631 (2020). https: //doi.org/10.1126/sciadv.aay2631

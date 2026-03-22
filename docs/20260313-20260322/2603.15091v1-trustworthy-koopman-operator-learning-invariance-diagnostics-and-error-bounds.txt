@@ -1,0 +1,1603 @@
+Title: Trustworthy Koopman Operator Learning: Invariance Diagnostics and Error Bounds
+
+URL Source: https://arxiv.org/pdf/2603.15091v1
+
+Published Time: Tue, 17 Mar 2026 06:07:13 GMT
+
+Number of Pages: 30
+
+Markdown Content:
+TRUSTWORTHY KOOPMAN OPERATOR LEARNING: INVARIANCE DIAGNOSTICS AND ERROR BOUNDS 
+
+GUSTAV CONRADIE ∗, NICOLAS BOULL ´E† , JEAN-CHRISTOPHE LOISEAU ‡ ,STEVEN L. BRUNTON § , AND MATTHEW J. COLBROOK ∗
+
+Abstract. Koopman operator theory provides a global linear representation of nonlinear dy-namics and underpins many data-driven methods. In practice, however, finite-dimensional feature spaces induced by a user-chosen dictionary are rarely invariant, so closure failures and projection errors lead to spurious eigenvalues, misleading Koopman modes, and overconfident forecasts. This paper addresses a central validation problem in data-driven Koopman methods: how to quantify invariance and projection errors for an arbitrary feature space using only snapshot data, and how to use these diagnostics to produce actionable guarantees and guide dictionary refinement? A unified a posteriori methodology is developed for certifying when a Koopman approximation is trustworthy and improving it when it is not. Koopman invariance is quantified using principal angles between a subspace and its Koopman image, yielding principal observables and a principal angle decomposition (PAD), a dynamics-informed alternative to SVD truncation with significantly improved performance. Multi-step error bounds are derived for Koopman and Perron–Frobenius mode decompositions, in-cluding RKHS-based pointwise guarantees, and are complemented by Gaussian process expected error surrogates. The resulting toolbox enables validated spectral analysis, certified forecasting, and principled dictionary and kernel learning, demonstrated on chaotic and high-dimensional benchmarks and real-world datasets, including cavity flow and the Pluto–Charon system. 
+
+Key words. Koopman operator, dynamic mode decomposition, data-driven discovery, physics-informed machine learning, spectral theory, forecasts 
+
+MSC codes. 37M10, 37N10, 47A10, 47B32, 47B33, 60G15, 65L70, 65P99 
+
+1. Introduction. Over the past decade, data-driven modeling of dynamical sys-tems has become increasingly important, particularly when governing equations are unknown, incomplete, or prohibitively expensive to resolve at application-relevant fidelity [16,44,67]. A common objective is to extract structure : low-complexity repre-sentations that are interpretable, transferable across regimes, and amenable to analy-sis and control. Recent advances in sparse and symbolic regression [10, 17, 28, 84] exemplify this emphasis on parsimony and interpretability. Another foundational ob-jective is coordinate discovery : identifying transformations under which the dynamics become simpler, or ideally admit an accurate linear representation. Koopman operator theory provides a principled route to such linearization [15, 18, 66]. Rather than evolving the state forward by a nonlinear map, Koopman theory studies the evolution of observables (functions of the state). The resulting Koopman operator is always linear (and typically infinite-dimensional), and its spectral struc-ture underpins the Koopman mode decomposition (KMD) used for model reduction, forecasting, and control. Standard approximation methods, such as Dynamic Mode Decomposition (DMD) [23, 57, 79, 82] and Extended Dynamic Mode Decomposition (EDMD) [95, 96], can be viewed as Galerkin projections of the infinite-dimensional Koopman operator onto a finite-dimensional subspace of observables. These data-driven algorithms have proved highly successful, largely due to their simple formu-
+
+> ∗
+
+Centre for Mathematical Sciences, University of Cambridge, UK (gjc51@cam.ac.uk, mjc249@cam.ac.uk) 
+
+> †
+
+Department of Mathematics, Imperial College London, UK (n.boulle@imperial.ac.uk) 
+
+> ‡
+
+Laboratoire DynFluid, Arts et M´ etiers Institute of Technology, France (jean-christophe.loiseau@ensam.eu) 
+
+> §
+
+Department of Mechanical Engineering, University of Washington, USA (sbrunton@uw.edu) 1
+
+> arXiv:2603.15091v1 [math.NA] 16 Mar 2026
+
+2 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK,  
+
+> Fig. 1 .Workflow for computing error bounds on Koopman operators and learning a dictionary.
+
+lation in terms of numerical linear algebra [92] and their flexibility and extensibil-ity [57, 83]. Notable successes span a wide range of applications, including robot control [37], climate dynamics [35], training neural networks [70], epidemiological modeling [76], and neuroscience [13]. However, these algorithms often suffer from spurious dynamics and artifacts. Many analyses of DMD implicitly assume that the chosen dictionary spans a finite-dimensional, non-trivial (i.e., not merely constant) invariant subspace. In practice, such invariance is exceedingly rare. One must therefore work with approximately in-variant subspaces, which causes closure errors [4, 14, 15, 27, 29, 40]. In turn, this leads to spurious eigenvalues (spectral pollution), misleading modes, and overly optimistic long-horizon predictions. More generally, the errors in DMD and the associated KMD can be grouped into three categories: 
+
+• Estimation error , due to approximating the projected Koopman operator from a finite set of potentially noisy trajectory data. 
+
+• Numerical error (e.g., roundoff, stability, or further compression), incurred when computing properties of the (finite-dimensional) projected Koopman operator. 
+
+• Projection error (or approximation error), arising from truncating the infinite-dimensional Koopman operator to a finite-dimensional space of observables. While substantial progress has been made in controlling estimation and numerical er-rors in the presence of noisy and finite data (see subsection 2.3), bounds on projection errors remain scarce. Thus, a central practical question remains: 
+
+Given snapshot data and a chosen dictionary, how can one certify whether the associated Koopman approximation is trustworthy, and how should the dictionary be refined when it is not? 
+
+This paper develops a methodology for answering this question using a pos-teriori certificates that quantify projection error and subspace invariance directly from the same snapshot data used by DMD/EDMD. The starting point is recent convergent, pollution-free approaches for approximating spectral properties of an infinite-dimensional Koopman operator and its adjoint (the Perron–Frobenius op-erator) [12, 27]. We repurpose and extend those ideas into a broader methodology comprising: (i) computable bounds that control the projection error and propagate to certified statements about Koopman and Perron–Frobenius mode decompositions (PFMD) and forecasts across different function spaces, including pointwise bounds; TRUSTWORTHY KOOPMAN OPERATOR LEARNING 3     
+
+> Fig. 2 .A summary of the numerical examples of this paper and some of the results of the experiments applied to them. Principal observables are discussed in section 3, and error bounds and expected errors are discussed in sections 4and 5, respectively.
+> Table 1
+> The key algorithms of this paper.
+
+Computed quantity Pseudocode Theoretical results Principal angles and observables Algorithm 3.1 subsection 3.2 Principal angle decomposition Algorithm 3.2 subsection 3.3 Error bounds on KMD/PFMD Algorithms 4.1 and 4.2 subsection 4.2 Expected errors of KMD/PFMD Algorithms 5.1 and 5.2 subsection 5.2 (ii) a geometry-based diagnostic of invariance via principal angles, leading to a prin-cipal angle decomposition (PAD) that plays a dynamics-informed role analogous to the SVD (e.g., for dimensionality reduction); and (iii) complementary expected error 
+
+surrogates, based on Gaussian process modeling, that are useful when fully rigorous bounds are conservative. Numerical experiments demonstrate the efficacy of the pro-posed methods and illustrate key theoretical features. Applications include several high-dimensional and chaotic systems, as well as real-world examples. The result is a practical and theoretically grounded toolbox that enables validated Koopman spec-tral analysis, certified forecasting, and principled dictionary selection (illustrated in Figure 1) for data-driven modeling of complex dynamical systems. The paper is organized as follows. Section 2 introduces prerequisites and de-scribes related work, while section 3 discusses subspace invariance and principal angle decompositions. Section 4 develops rigorous upper bounds for the Koopman and Perron–Frobenius mode decompositions, and section 5 complements this with ex-pected error computations. Section 6 presents pointwise error bounds and dictionary refinement applied to data from the Pluto–Charon system. Table 1 summarizes the proposed algorithms, and Figure 2 illustrates the experiments considered throughout the paper. Code and datasets for reproducing the numerical results are available at 
+
+https://github.com/GustavConradie1/TrustKoopman .4 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, 
+
+2. Data-driven dynamical systems. We consider discrete-time dynamical systems with state space X (e.g., the combined position-momentum space of a particle system) and evolution (2.1) xn+1 = F (xn), n = 0 , 1, 2, . . . . 
+
+Here, F : X → X is an unknown function that generates highly nonlinear or chaotic dynamics and xn ∈ X denotes the state of the system at step n. We assume that snapshot data of the form {x(m), y (m) = F (x(m))}Mm=1 are available from experiments or numerical simulations. A central challenge is to reconstruct quantitative informa-tion about (2.1) from such data. Traditional geometric approaches, which generally rely on local linearization [89], often struggle in high-dimensional or data-driven set-tings [18, 27, 57]. 
+
+2.1. The Koopman operator. Koopman operator theory provides global lin-earizations of dynamical systems [15, 18, 66]. The key idea is to lift the dynamics to an infinite-dimensional space by studying the evolution of observables of the states, i.e., functions g : X → C, rather than the states themselves. The Koopman operator associated with (2.1) is the linear operator K satisfying [Kg]( x) = g(F (x)) , x ∈ X .
+
+The linearity of K enables the use of tools from spectral theory to study the dynamical system. Koopman operators are typically defined on a Hilbert space H of observables. Two common choices are: 
+
+Square-integrable functions. The choice of space L2(X , ω ) for a (possibly non-invariant) measure ω is classical in ergodic theory. The inner product is 
+
+⟨f, g ⟩L2 =
+
+Z
+
+> X
+
+f (x)g(x) d ω(x), f, g ∈ L2(X , ω ).
+
+This is the setting in which Koopman and von Neumann first introduced K [51, 52]. 
+
+Reproducing kernel Hilbert spaces (RKHS). These spaces are often used for high-dimensional systems [96]. An RKHS on X is a Hilbert space H of functions g : X → C
+
+such that, for every x ∈ X , the point-evaluation functional Ex : g 7 → g(x) is bounded. By the Riesz representation theorem, there exists a kernel function Kx ∈ H at x
+
+satisfying g(x) = ⟨g, Kx⟩K for all g ∈ H . This induces a conjugate symmetric, positive-definite kernel function K : X × X → C such that 
+
+K(x, y ) = ⟨Kx, Ky ⟩K = Kx(y), x, y ∈ X ,
+
+which uniquely determines the RKHS [3]. A major advantage of RKHSs is that, unlike the L2 norm, convergence in the RKHS norm implies pointwise convergence. As we shall see shortly, working on RKHSs allows us to avoid the large-data limit and the sampling assumptions re-quired by L2-based methods. Moreover, they handle high-dimensional systems more efficiently and provide flexibility in the choice of kernel [12]. However, the Koopman operator on L2 spaces has closer connections to ergodic theory and statistical prop-erties of the dynamics, such as autocorrelations [66]. L2 spaces are also the natural setting for the case of measure-preserving dynamics [21]. Whenever it is clear from context, we drop the notational subscript L2 or K. Unless otherwise specified, we use the 2-norm for vectors and matrices. 
+
+2.2. Controlling projection errors. Approximations of K seldom provide cer-tified error bounds compared to the true operator. We therefore focus on rigorous TRUSTWORTHY KOOPMAN OPERATOR LEARNING 5error bounds for Galerkin approximations of the Koopman operator, and show how these bounds yield quantitative measures of subspace invariance in section 3 and forecast guarantees in section 4. 
+
+2.2.1. Galerkin methods. The most prevalent method for approximating the Koopman operator in the L2 setting is EDMD [95]. Given a finite dictionary of ob-servables {ψ1, . . . , ψ N } ⊆ L2(X , ω ), EDMD constructs a matrix K ∈ CN ×N from snapshot data {x(m), y (m)}Mm=1 that approximates the projection of K onto the finite-dimensional subspace VN = span {ψ1, . . . , ψ N }. We define the vector-valued observ-able Ψ( x) = ψ1(x) · · · ψN (x) ∈ C1×N so that any observable g ∈ V N can be expressed as g(x) = PNj=1 ψj (x)gj = Ψ( x) g for some g ∈ CN . We seek K ∈ CN ×N
+
+such that K[Ψ g] ≈ Ψ[ Kg ] for g ∈ CN . To find this matrix, we define 
+
+ΨX := 
+
+
+
+Ψ( x(1) )...Ψ( x(M ))
+
+ ∈ CM ×N , ΨY := 
+
+
+
+Ψ( y(1) )...Ψ( y(M ))
+
+ ∈ CM ×N .(2.2) We assign a weight wm > 0 to each x(m), so that {(x(m), w m)}Mm=1 can be viewed as a quadrature rule for integration with respect to ω. Let W = diag( w1, . . . , w M ) and 
+
+G=Ψ∗ 
+
+> X
+
+WΨ X =
+
+> M
+
+X
+
+> m=1
+
+wmΨ( x(m))∗Ψ( x(m)), A=Ψ∗ 
+
+> X
+
+WΨ Y =
+
+> M
+
+X
+
+> m=1
+
+wmΨ( x(m))∗Ψ( y(m)).
+
+If this quadrature approximation converges, then (2.3) lim   
+
+> M→∞
+
+Gjk = ⟨ψk, ψ j ⟩L2 and lim   
+
+> M→∞
+
+Ajk = ⟨K ψk, ψ j ⟩L2 .
+
+There are typically three scenarios where (2.3) holds: 1) random sampling where the {x(m)}Mm=1 are drawn independently [47, 53], 2) ergodic sampling where x(m) =
+
+F m−1(x(1) ) [1], and 3) high-order quadrature [27]. G and A respectively fulfill similar roles to the mass and stiffness matrices from finite element methods [32]. Assuming lim M →∞ G is invertible (i.e., the dictionary is linearly independent), the convergence in (2.3) means that the matrix (2.4) K = G−1A = ( Ψ∗ 
+
+> X
+
+WΨ X )−1(Ψ∗ 
+
+> X
+
+WΨ Y ) = ( √WΨ X )†√WΨ Y
+
+approaches a representation of the truncated operator PVN KP ∗VN as M → ∞ . Here, 
+
+PVN denotes the orthogonal projection onto the subspace VN and M† ∈ Cm×n denotes the pseudoinverse of M ∈ Cn×m.
+
+Koopman mode decomposition. Given an observable g ∈ V N , we may expand it as g = Ψ g = Ψ V  V−1g, where V is the matrix of eigenvectors of K with eigen-values {λj }Nj=1 (we assume that K is diagonalizable). This expansion is known as the Koopman mode decomposition. If g ∈ L2(X , ω ) \ V N , we typically take the least squares approximation to g in VN . Since KV = VΛ , where Λ = diag( λ1, . . . , λ N ), this provides a simple expression for the evolution of the observable under the action of the Koopman operator. Provided that K is bounded, the KMD converges as the size of the dictionary N → ∞ [53]. In particular, the large-data limit of K converges to K in the strong operator topology, i.e., for all g ∈ L2(X , ω ) and g ∈ CN such that lim N →∞ lim M →∞ Ψg = g,(2.5) lim   
+
+> N→∞
+
+lim   
+
+> M→∞
+
+ΨKg = Kg. 
+
+In this paper, we bound the projection errors corresponding to finite N .6 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, 
+
+Kernelized EDMD. When the state space is high-dimensional, EDMD suffers from the curse of dimensionality [8]. The kernelized EDMD (kEDMD) algorithm [96] aims to mitigate this by exploiting the kernel trick [85], allowing efficient low-rank representations. As noted in [12], kEDMD can be expressed as a Galerkin method by considering the action of K∗ on the kernel functions Kx. For all x ∈ X and f ∈ H ,
+
+⟨f, K∗Kx⟩K = ⟨K f, Kx⟩K = ( Kf )( x) = f (F (x)) = ⟨f, KF (x)⟩K.
+
+Hence, K∗Kx = KF (x). Setting N = M , one can construct a Galerkin approximation of 
+
+K∗ from pairs of snapshot data {(x(n), y (n))}Nn=1 using the dictionary of data-centred kernel function observables {Kx(n) }Nn=1 . We define the matrices GK and AK by (2.6) GK 
+
+> jk
+
+= K(x(k), x (j)) = ⟨Kx(k) , Kx(j) ⟩K, AK 
+
+> jk
+
+= K(y(k), x (j)) = ⟨K ∗Kx(k) , Kx(j) ⟩K.
+
+The superscript K distinguishes these from the matrices in (2.3), but will be dropped when the context is clear. Then, (2.7) KK = ( GK)−1AK
+
+is a Galerkin approximation to K∗ on the subspace VN = span {Kx(1) , . . . , Kx(N ) }.Unlike the L2-Galerkin approximation used in EDMD, the RKHS formulation does not require taking the large-data limit M → ∞ to form the Galerkin matrices, and does not require that the data is sampled according to a convergent quadrature [12]. It yields convergence to K∗ in the strong operator topology as N → ∞ . The kEDMD matrix [96] corresponds to ( KK)⊤, and it is common to project onto a dominant eigenspace of GK. As in the L2 case, in this paper we study the projection errors corresponding to finite N .Approximations of K∗ can be used to study the forward dynamics of the system. For example, suppose that X ⊂ Rd and set gi(x) = [ x]i, the ith component of x ∈ X ,for 1 ≤ i ≤ d. Then (2.8) [xn]i = ( Kngi)( x0) = ⟨K ngi, Kx0 ⟩K = ⟨gi, (K∗)nKx0 ⟩K.
+
+Thus, by applying K∗ to the single observable Kx0 , which can be approximated using the basis Kx(j) for j = 1 , . . . , N , we can predict all d observables gi. Decomposing 
+
+KK in terms of its eigenvalues yields the analogue of the KMD, the Perron–Frobenius mode decomposition (PFMD). 
+
+2.2.2. Computing spectra. The convergence in (2.3) implies that the EDMD eigenvalues approach the spectrum of PVN KP ∗VN as M → ∞ . However, as N → ∞ ,despite the strong operator topology convergence (2.5), the spectrum of PVN KP ∗VN
+
+need not converge to that of K [11], leading to spectral pollution (persistent spurious eigenvalues) or spectral invisibility (missing spectral regions) [24]. The same is true in the RKHS setting. It is therefore essential to verify candidate eigenpairs, which can be done using residual dynamic mode decomposition (ResDMD) [27] in the L2
+
+setting or SpecRKHS [12] in the RKHS setting. Given g ∈ V N and λ ∈ C, the goal of ResDMD is to compute the infinite-dimensional residual ∥K g − λg ∥L2 . To achieve this, define L = Ψ∗ 
+
+> Y
+
+WΨ Y , which, assuming the quadrature rule converges, approximates K∗K in the sense that (2.9) lim   
+
+> M→∞
+
+Ljk = ⟨K ψk, Kψj ⟩L2 .
+
+Hence, ∥K g−λg ∥2 
+
+> L2
+
+= lim M →∞ g∗(L−λA∗ −λA+|λ|2G)g = lim M →∞ res( λ, g )2. The residual res( λ, g ) measures the quality of ( λ, g ). If ∥g∥L2 = 1 and ∥(K − λI )g∥L2 ≤ ϵ,TRUSTWORTHY KOOPMAN OPERATOR LEARNING 7then g is an ϵ-pseudoeigenfunction. Such observables are dynamically relevant since 
+
+∥K ng − λng∥L2 = O(nϵ ), for all n ∈ N,
+
+so λ represents an approximate coherent oscillation with corresponding growth or de-cay of g over time. With this residual in hand, we can build convergent algorithms for computing various spectral properties of K [27]. Analogous to ResDMD, conver-gent spectral approximations of K∗ on an RKHS require introducing an additional matrix [12, 22]: (2.10) RK 
+
+> jk
+
+= K(y(k), y (j)) = ⟨Ky(k) , Ky(j) ⟩K = ⟨K ∗Kx(k) , K∗Kx(j) ⟩K, 1 ≤ j, k ≤ N. 
+
+Just as ResDMD uses the matrix L, SpecRKHS [12] uses RK to compute spectral properties of K∗ on an RKHS. Pseudoeigenfunctions of K∗ can be used to approximate 
+
+Kx0 in (2.8) to provide an analogous interpretation to the L2 case. 
+
+2.3. Related methods. Existing work has illuminated several aspects of data-driven Koopman analysis, but the corresponding validation theory remains distributed across a few complementary directions. Broadly, the literature focuses on three issues: projection error from the choice of approximation space, estimation and numerical error from finite and noisy data, and diagnostics for how nearly invariant a learned feature space is under the true dynamics. These developments are valuable, but they are often tied to specific dictionaries, kernels, or sampling settings. In this work, we develop general, computable, a posteriori tools for assessing the reliability of a user-chosen Koopman approximation directly from snapshot data. We organize the discussion below around these three themes. 
+
+Koopman projection error bounds. Several works derive error bounds and con-vergence rates for specific choices of dictionary or kernel. For example, [56, 98, 101] estimate projection errors for classical finite element spaces, Bernstein polynomials, and wavelets, respectively, while [50] treats the kernelized setting and proves error bounds for kEDMD with Wendland kernels. By contrast, our framework allows the user to choose an arbitrary dictionary and then verify accuracy a posteriori using com-putable error bounds. Moreover, by computing principal observables of the Koopman operator, we identify which observables are predicted more or less reliably and obtain tailored, sharper bounds, rather than estimates that depend only on class member-ship. All our error bounds are fully explicit and computable. 
+
+Estimation and numerical error. In EDMD, estimation error arises from the use of a quadrature rule, which converges in the large-data limit [27], so classical convergence-rate results apply. By contrast, [12] shows that kEDMD does not require a large-data limit, and analyses the case of noisy data. [29, 40] both propose adjust-ments to DMD to reduce bias in the presence of noise. Kernel-based methods and convergence rates for Hilbert–Schmidt Koopman operators are analyzed in [48, 75], while [69] derives probabilistic bounds for truncated Koopman generators of SDEs and nonlinear control systems under i.i.d. and ergodic sampling; in these works, projection error is not considered. Related bounds for parabolic PDEs (again after truncation) are given in [61]. In [26], ResDMD is extended to stochastic systems, with a joint analysis of projection error, estimation error, and their variances. [30, 31] provide a numerical linear algebra perspective on numerical errors in Koopman approximations. 
+
+Subspace invariance. To measure subspace invariance, we compute principal an-gles between the chosen dictionary and its image under the Koopman operator. In statistics, principal angles between subspaces are closely related to canonical correla-tion analysis (CCA) [38]. CCA has been used for stochastic Koopman operators in [97] 8 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, 
+
+to develop a variational framework for Markov processes (VAMP), and in [64] this ap-proach was applied to protein folding with neural-network parametrized observables. Principal angles are also connected to coherent sets over finite time horizons [34]; see [5] for diffusion-map techniques and [46] for links with kernel CCA. The largest principal angle was theoretically related to the invariance proximity measure in [39]. 
+
+Other data-driven techniques. Error bounds are a central component of reduced-order modeling. Reduced basis methods [41], widely used for parametrized PDEs, are typically equipped with a posteriori estimators and rigorous error bounds [42, 77, 80]; see [6] for a survey of projection-based model reduction. Another major approach is proper orthogonal decomposition (POD) [7], for which error bounds have been developed [20, 54, 55], as well as for variants such as balanced POD [68, 78, 94] and Petrov–Galerkin POD [19, 71, 72]. Bagging and ensemble strategies have also been applied to data-driven identification methods such as DMD and SINDy; while these can yield empirical error estimates, they rely on subsampling to improve robustness rather than providing intrinsic, certified bounds [33, 81]. 
+
+3. Principal angles and Koopman invariance. To control projection errors, we seek to quantify how invariant a subspace V of observables is under the Koop-man operator K. Applications include: 1) measuring the distance between span {g}
+
+and span {K g} for an approximate eigenfunction g, 2) mitigating closure errors in (k)EDMD by selecting a dictionary that is nearly invariant under K, and 3) model reduction. In this section, invariance is quantified using principal angles between subspaces of observables. We compute these quantities for the infinite-dimensional Koopman and Perron–Frobenius operators. 
+
+Principal angles and vectors. Let S1 and S2 be finite-dimensional subspaces of a Hilbert space H with q = dim( S2) ≤ dim( S1) = p. The principal angles {θj }qj=1 ⊂
+
+[0 , π/ 2] and principal vectors {(uj , v j )}qj=1 ⊂ S1 × S2 are defined by 
+
+θ1 = min {arccos( |⟨ u, v ⟩| ) : ( u, v ) ∈ S1 × S2, ∥u∥ = ∥v∥ = 1 } ,
+
+with |⟨ u1, v 1⟩| = cos( θ1), and for 2 ≤ j ≤ q,
+
+θj = min {arccos( |⟨ u, v ⟩| ) : ( u, v ) ∈ S1 × S2, u ⊥ uk, v ⊥ vk, 1 ≤ k ≤ j − 1,
+
+∥u∥ = ∥v∥ = 1 } , |⟨ uj , v j ⟩| = cos( θj ), ∥uj ∥ = ∥vj ∥ = 1 .
+
+The principal vectors need not be uniquely defined (even up to phase), but the prin-cipal angles always are; without loss of generality, we select ⟨uj , v j ⟩ ∈ R+. Principal angles and vectors can be obtained through the singular value decomposition of a covariance matrix, implemented in the subspacea [49] MATLAB package. 
+
+3.1. Computing the principal angles and vectors. To measure Koopman subspace invariance, we seek to compute the subspace angles between S1 = V ⊂ 
+
+L2(X , ω ) and S2 = KV . The subspace V ⊂ V N is finite-dimensional and spanned by the columns of Ψ B, where B ∈ CN ×n is a subspace selection matrix with n ≤ N
+
+columns. For instance, V may coincide with the full space VN introduced in sub-section 2.2.1 or with the span of a candidate eigenvector. To compute the principal angles and vectors using subspacea , we require representations of V and KV in L2-orthonormal bases. Note that KV is defined using the infinite-dimensional Koopman operator K, not a finite-dimensional approximation. Since we are only interested in the subspace spanned by the columns of Ψ B, we compress the matrices defined in (2.3) and (2.9), and define 
+
+GV = B∗GB , AV = B∗AB , LV = B∗LB .TRUSTWORTHY KOOPMAN OPERATOR LEARNING 9This is equivalent to re-running EDMD with the dictionary g1(x) = Ψ( x)B(: , 1), . . . ,
+
+gn(x) = Ψ( x)B(: , n ); we do not assume that the gi’s are linearly independent. We next define the self-adjoint positive semi-definite matrix 
+
+JV =
+
+GV AV
+
+A∗V LV
+
+
+
+∈ C2n×2n,
+
+which is the mass matrix of the observables {f1, . . . , f 2n} := {g1, . . . , g n, Kg1, . . . , Kgn}
+
+with respect to the L2-inner product. We compute the eigendecomposition JV =
+
+UDU ∗, where U is a unitary matrix whose columns, ξk = P2nj=1 Ujk fj , are the eigenvectors of JV and D is a diagonal matrix. Then, 
+
+⟨ξi, ξ j ⟩ =
+
+> 2n
+
+X
+
+> k,l =1
+
+Uki Ulj (JV )lk = [ U∗JV U]ji = Dji .
+
+Hence, the set of vectors {D−1/2 
+
+> jj
+
+ξj : Dj,j > 0} is orthonormal in L2(X , ω ). In practice, there are errors arising from the finite amount of snapshot data and numerical round-off. For a cut-off tolerance ϵc ≥ 0, we define 
+
+S = {D−1/2 
+
+> jj
+
+ξj : Djj > ϵ c}, I = {j : Djj > ϵ c, j = 1 , . . . , 2n},
+
+and set 
+
+C1 = pD(I, I) ( U(1 : n, I)) ∗ , C2 = pD(I, I) ( U(n + 1 : 2 n, I)) ∗ .
+
+The choice of cut-off parameter can be guided by the condition in Theorem 3.1 below and the numerical precision in use. The spans of the columns of C1 and C2 represent 
+
+V and KV , respectively, with respect to the orthonormal basis S.With C1 and C2 in hand, we may compute the principal angles and vectors using 
+
+subspacea . After obtaining principal angles {θj }qj=1 and vectors U1, U2, we convert back to the original dictionary via (3.1) bU = U(: , I)( D(I, I)) −1/2U1, bV = U(: , I)( D(I, I)) −1/2U2.
+
+Then, the principal observables for j = 1 , . . . , q are given by (3.2) uj (x) = [Ψ( x)B, [KΨ]( x)B] bU(: , j ), vj (x) = [Ψ( x)B, [KΨ]( x)B] bV(: , j ).
+
+Algorithm 3.1 summarizes our procedure. In the RKHS setting, we want to compute the subspace angles between S1 =
+
+V ⊂ H and S2 = K∗V. To do so, we simply run Algorithm 3.1 using the matrices from (2.6) and (2.10) and the dictionary of observables {Kx(n) }Nn=1 . For example, if 
+
+{x(n)}Nn=1 represents a single trajectory, then Kx(n+1) = K∗Kx(n) for all n so 
+
+V = span {Kx(1) , . . . , (K∗)N −1Kx(1) }, and K∗V = span {K ∗Kx(1) , . . . , (K∗)N Kx(1) }.
+
+Hence, in this case, all principal angles except the last are zero. The same is true for 
+
+L2 if we use a Krylov subspace {g, Kg, . . . , KN −1} as the dictionary. 
+
+3.2. Convergence and connection to residuals. The following theorem es-tablishes the convergence of Algorithm 3.1 in the large-data limit M → ∞ in the L2
+
+setting. This result also extends to the convergence of subspaces spanned by principal vectors associated with equal principal angles; we omit the details for brevity. 
+
+Theorem 3.1 (Large data convergence). Let θj (M, ϵ c; V, KV ) denote the output of Algorithm 3.1 for subspaces V and KV using M snapshots and cut-off parameter 10 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, 
+
+Algorithm 3.1 Principal angles and observables between V and KV .
+
+Input: Matrices G, A and L in (2.3) and (2.9) for dictionary {ψj }Nj=1 , subspace selection matrix B ∈ CN ×n, cut-off tolerance ϵc ≥ 0. For RKHS, use instead the matrices G, A and R (instead of L) from (2.6) and (2.10).  
+
+> 1:
+
+Compress the matrices to form GV = B∗GB , AV = B∗AB , and LV = B∗LB . 
+
+> 2:
+
+Compute the matrix 
+
+JV =
+
+GV AV
+
+A∗V LV
+
+
+
+∈ C2n×2n,
+
+and its eigendecomposition JV = UDU ∗. 
+
+> 3:
+
+Set I = {j : Djj > ϵ c, j = 1 , . . . , 2n}, and compute 
+
+C1 = pD(I, I) ( U(1 : n, I)) ∗ , C2 = pD(I, I) ( U(n + 1 : 2 n, I)) ∗ . 
+
+> 4:
+
+Compute the principal angles and observables [{θj }qj=1 , U1, U2] = subspacea (C1, C2), q ≤ n, 
+
+and convert back to the original dictionary via (3.1) and (3.2). 
+
+Output: Principal angles {θj }qj=1 and principal observables {(uj , v j )}qj=1 .
+
+ϵc, and let λ1 be the smallest positive eigenvalue of lim M →∞ JV . If ϵc < λ 1, then 
+
+lim   
+
+> M→∞
+
+θj (M, ϵ c; V, KV ) = θj (V, KV ).
+
+Proof. Without loss of generality, we may assume that the eigenvalues of JV are listed in decreasing order. If ϵc < λ 1, then I is eventually constant as M → ∞ . It follows that the matrices Cj in Algorithm 3.1 have limits as M → ∞ . In particular, the quantities used in subspacea converge as M → ∞ to the corresponding quantities as if Algorithm 3.1 were executed with no quadrature error and ϵc = 0. In the RKHS case, no analogue of Theorem 3.1 is required since no large-data limit is needed. It remains advisable, however, to include the cut-off parameter ϵc to mitigate data noise and numerical round-off. The principal angles connect with the residuals considered in subsection 2.2.2 and to error bounds in the KMD. If V = span {g} is one-dimensional, then sin( θ(V, KV )) is related to relative residuals: sin( θ(V, KV )) = inf  
+
+> v∈KV
+
+v − g
+
+∥g∥ = inf 
+
+> λ∈C\{ 0}
+
+1
+
+λ∥g∥ Kg − g
+
+∥g∥ = inf 
+
+> λ∈C\{ 0}
+
+∥K g − λg ∥|λ|∥ g∥ .
+
+We may also use principal angles along with Lemma 3.2 below to bound one-step errors in the KMD. 
+
+Lemma 3.2. For j = 1 , . . . , q , P∗V PV vj = (cos θj )uj and P∗KV PKV uj = (cos θj )vj .In addition, ∥P ∗V PV vj − vj ∥ = sin θj and ∥P ∗KV PKV uj − uj ∥ = sin θj .Proof. By symmetry, it suffices to prove the results involving P∗V PV vj . Fix j, and let λ = ∥P ∗V PV vj ∥; note that ⟨P ∗V PV vj , v j ⟩ ≥ 0. By the definition of principal angles, for all u ∈ V with ∥u∥ = 1, cos θj ≥ |⟨ u, v j ⟩| , and so 
+
+∥P ∗V PV vj − vj ∥2 = λ2 − 2⟨P ∗V PV vj , v j ⟩ + 1 ≥ λ2 − 2λ cos θj + 1 .
+
+But ⟨uj , v j ⟩ = cos θj so if P∗V PV vj = λu j we obtain exactly the right hand side, and so by uniqueness PV vj = λu j . It is clear that the right hand side is minimized when TRUSTWORTHY KOOPMAN OPERATOR LEARNING 11 
+
+Algorithm 3.2 Principal Angle Decomposition (PAD). 
+
+Input: Matrices G, A, K and L in (2.3), (2.4), and (2.9) for dictionary {ψj }Nj=1 ,cut-off tolerance ϵc ≥ 0, number of post-compression modes r > 0. For RKHS, use instead the matrices G, A, K and R (instead of L) from (2.6), (2.7), and (2.10).  
+
+> 1:
+
+Compute principal angles {θj }qj=1 and observables U1 via Algorithm 3.1 ( B = IN ).  
+
+> 2:
+
+Define U′ 
+
+> 1
+
+= U1(1 : q, :) + KU 1(q + 1 : 2 q, :), and truncate to U = U′
+
+> 1
+
+(: , 1 : r). 
+
+> 3:
+
+Construct the matrices Apad = U∗AU = Kpad and Lpad = U∗LU .
+
+Output: The compressed matrices Apad , Kpad and Lpad .
+
+λ = cos θj with minimum value 1 − (cos θj )2 = (sin θj )2, establishing the result. Then, given g ∈ V , Kg = Pqi=1 givi for gi = ⟨K g, v i⟩ = g∗Lv i (recall that the coefficients of vi are with respect to KV and not V). Hence, 
+
+∥P ∗V PV Kg − K g∥ ≤ 
+
+> q
+
+X
+
+> i=1
+
+|gi|∥P ∗V PV vi − vi∥ =
+
+> q
+
+X
+
+> i=1
+
+|g∗Lv i| sin θi
+
+upper bounds the one-step error when applying the Koopman operator. We extend these ideas to provide tighter bounds on multi-step errors later in section 4. 
+
+3.3. Principal Angle Decomposition. To reduce computational costs and enforce model simplicity, approximations of the Koopman operator K ∈ CN ×N are often truncated. This is frequently done using a truncated singular value decomposi-tion [82, 95, 96]. This corresponds to projecting the Koopman operator onto the span of the r < N eigenvectors of G with the largest eigenvalues. It produces an r×r rather than N ×N Koopman matrix. Our algorithms lead to an alternative decomposition of the Koopman matrix that connects directly to properties of the infinite-dimensional Koopman operator, rather than just its finite-dimensional approximations. In sub-section 3.4 we shall see that this significantly improves performance. Suppose we run EDMD with a dictionary of N functions spanning a subspace 
+
+VN . Then, applying Algorithm 3.1 with B = IN we obtain principal angles {θj }qj=1 
+
+and corresponding matrix of principal observables U1 (we will not use the coefficients associated with vj here). The columns of U1 are ordered in increasing order of angle 
+
+θj . We define U′ 
+
+> 1
+
+= U1(1 : q, :) + KU 1(q + 1 : 2 q, :) so that our representation of the principal observables is purely in terms of VN . Motivated by subsection 3.2, we expect that the modes corresponding to smaller angles are more accurately predicted by the approximate Koopman operator. Hence, given r < N we define U = U′
+
+> 1
+
+(: , 1 : r), the matrix of the r principal observables with the smallest angles. By restricting the action of the Koopman operator to these observables, we reduce the risk of spurious dynamics. In particular, we define the principal angle decomposition reduced matrices 
+
+Gpad = U∗GU = Ir , Apad = U∗AU = Kpad , and Lpad = U∗LU .
+
+Then we can decompose an observable of interest in terms of the r chosen princi-pal observables and forecast its evolution using Kpad . This provides an analogue of the KMD using principal observables instead of eigenfunctions. This algorithm is summarized in Algorithm 3.2. 
+
+3.4. Numerical examples. We consider several illustrative examples of the algorithms developed in this section and their applications. 12 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, x                   
+
+> -2 -1 012
+> y
+> -2
+> -1
+> 0
+> 1
+> 2
+> Du/ngattractorMode
+> 050100
+> 3
+> 0
+> :=4
+> :=2Principalangles10 -4 10 -2 10 0
+> 3
+> 10 -2
+> 10 -1
+> 10 0
+> L2 Error
+> Principalobservableprediction
+> Fig. 3 .Left: The Duffing attractor. Middle: Principal angles on the Duffing oscillator for a finite subspace of Chebyshev polynomials. Right: One-step prediction errors for the corresponding principal observables. The solid line denotes a piecewise-linear best fit with a single breakpoint. 510 15 20
+
+Time steps
+
+> 10 -4
+> 10 -3
+> 10 -2
+> 10 -1
+> 10 0
+> L2 Error
+
+Forecast predictions    
+
+> Full
+> SVD
+> PAD20 40 60 80 100
+
+Number of modes
+
+> 10 -4
+> 10 -3
+> 10 -2
+> 10 -1
+> 10 0
+> L2 Error
+
+One-step predictions 
+
+> SVD
+> PAD
+> Fig. 4 .Left: Forecast errors for the full Koopman matrix on the Duffing oscillator versus the Koopman operator truncated using a SVD or PAD. Right: One-step prediction errors for Koopman operators truncated via PAD and SVD, shown as a function of the number of modes.
+
+3.4.1. Duffing oscillator. Consider the unforced Duffing oscillator (3.3) ¨u + 0 .05 ˙ u − u + u3 = 0 , and u(0) , ˙u(0) ∈ R,
+
+with state x(t) = ( u(t), ˙u(t)) ⊤ for t ≥ 0 and state space X = R2. This system models damped oscillations featuring in a wide variety of physical processes. We define the evolution map F by y = F (x), where y is the solution of (3.3) at time ∆ t = 1 /4 with initial condition x. We generate snapshot data using MATLAB’s ode45 , consisting of 50 trajectories of 5 seconds each from uniformly random initial conditions in [ −2, 2] 2,yielding M = 1000 samples. To run EDMD, we must choose a dictionary; we take 
+
+N = 100 tensor-product Chebyshev polynomials on [ −2.5, 2.5] of degree at most 9. To analyze the choice of dictionary, we apply Algorithm 3.1. The resulting principal angles are shown in Figure 3. The first 60 modes have small principal angles, with the angles increasing there-after. To assess the impact of these angles on forecasting accuracy, for each principal observable uj we compute ∥K uj − ΨKu j ∥, which quantifies how well the projected operator approximates the true Koopman action. The results (right panel of Figure 3) show a strong correlation between smaller principal angles and improved predictions. A piecewise-linear fit with a single breakpoint (using the method of [9]) indicates that beyond θ ≈ 0.01 the error plateaus, motivating a distinction between “good” and “bad” observables. Using this “good”/“bad” distinction, we set r = max {s : θs < 0.01 } and apply Algorithm 3.2 to construct a reduced-order model Kpad . We compare its performance with that of an SVD-truncated Koopman operator using the same number of modes. Figure 4 (left) reports the prediction errors for the state observable g(x) = x1 = u over 20 time steps for the PAD truncation, the SVD truncation, and the full untruncated matrix. PAD outperforms SVD, particularly at short times, while their long-time TRUSTWORTHY KOOPMAN OPERATOR LEARNING 13 20                    
+
+> x
+> Lorenzattractor
+> z
+> y
+> -20
+> 0
+> 20
+> 40
+> 00-20 20 510 15 20
+> Timesteps
+> 10 -2
+> 10 0
+> L2 Error
+> Forecastpredictions
+> Full
+> SVD
+> PAD20 40 60 80 100
+> Numberofmodes
+> 10 -2
+> 10 -1
+> L2 Error
+> One-steppredictions
+> SVD
+> PAD
+> Fig. 5 .Left: Two trajectories on the Lorenz attractor. Middle: Exact prediction errors for the full Lorenz system and for truncated Koopman operators using PAD and SVD. Right: The dependence of one-step prediction error on the number of modes for both PAD and SVD.
+
+performance is comparable. This is expected: the principal-angle construction aligns only the subspaces V and KV . To demonstrate that this behavior is not specific to a single choice of r, Figure 4 (right) shows the one-step prediction error as a function of the number of modes. PAD consistently achieves lower errors, and once the angle threshold θ = 0 .01 is reached, additional modes yield little improvement, consistent with Figure 3. By contrast, SVD truncation requires nearly the full-order model to reach comparable performance. 
+
+3.4.2. Lorenz system. As further illustration, we consider the Lorenz–63 sys-tem [60], a standard chaotic benchmark in data-driven dynamical systems: (3.4) ˙u1 = 10( u2 − u1), ˙u2 = u1(28 − u3) − u2, ˙u3 = u1u2 − (8 /3) u3.
+
+For these parameters, almost all trajectories converge to the Lorenz attractor shown on the left of Figure 5. We define the state as x = ( u1, u 2, u 3) ∈ R3 and the evolution map as the solution with timestep ∆ t = 0 .1. We restrict the dynamics to the Lorenz attractor; this yields a unitary Koopman operator with respect to the corresponding physical, or Sinai-Ruelle-Bowen, measure [25, 100]. For data, we generate a single long trajectory starting from a randomly selected initial condition using MATLAB’s 
+
+ode45 function; we discard the initial transient before the trajectory enters the Lorenz attractor. We run EDMD using a dictionary of 100 exponential radial basis functions (RBFs) ψi(x) = e−s∥x−ci∥ for randomly selected centres {ci}Ni=1 and scale factor s,and compare PAD and SVD truncations for predicting the observable g(x) = x1 = u1;see Figure 5 for the results. As in the Duffing example, PAD outperforms SVD for short prediction horizons, achieving near-full accuracy with roughly half as many modes, whereas SVD requires nearly all modes to reach comparable performance. 
+
+4. Error bounds for Koopman mode decompositions. The KMD in sub-section 2.2 expands an observable using approximate eigenfunctions. This expansion is inexact due to the finite basis and because VN need not be invariant. In section 3, we introduced a measure of Koopman invariance for a subspace. Using similar ideas, we now bound the KMD error under repeated application of the Koopman operator. The analysis differs in two respects: first, the spaces are one-dimensional, correspond-ing to the observable being predicted, and second, the relevant subspace evolves with each application of the Koopman operator. The theoretical results in subsection 4.1 apply to a general Hilbert space. Subsection 4.2 provides computable error bounds for K on L2 spaces, and subsection 4.3 extends the analysis to K∗ on an RKHS, where pointwise error bounds are also obtained. 
+
+4.1. Decomposing the Koopman mode decomposition. Let H be a Hilbert space with norm ∥ · ∥ and VN ⊂ H be a subspace spanned by a chosen dictionary. If 14 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, 
+
+g ∈ V N , there exists g ∈ CN such that g = Ψ g, and the projection error in the KMD is given by ∥K ng − ΨKng∥. When g / ∈ V N , with a slight abuse of notation we let Ψ g
+
+be the least squares approximation to g in VN , and control the error by 
+
+∥K ng − ΨKng∥ ≤ ∥K n∥ ∥ g − Ψg∥
+
+| {z }
+
+> initialization error
+
++ ∥K n(Ψ g) − ΨKng∥
+
+| {z }
+
+> projection error
+
+.
+
+The initialization error term is straightforward to approximate numerically, so for the remainder of this section we assume that g ∈ V N and so g = Ψ g. Moreover, in the 
+
+L2 case we can eliminate the initialization error by adding g to the dictionary. The following theorem provides upper bounds on the projection error. 
+
+Theorem 4.1 (KMD projection error). For every g ∈ V N and n ∈ N, we have 
+
+KnP∗VN g−P ∗VN (PVN KP ∗VN )ng ≤
+
+vuutn−1X
+
+> j=0
+
+∥P VN K∥ 2j QVN Kn−j P∗VN g 2,(4.1) 
+
+KnP∗VN g−P ∗VN (PVN KP ∗VN )ng ≤
+
+> n−1
+
+X
+
+> j=0
+
+(P∗VN PVN K)j QVN Kn−j P∗VN g .(4.2) To prove Theorem 4.1 we use the following lemma, which provides a helpful decom-position of PVN KnP∗VN .
+
+Lemma 4.2. Let QVN be the orthogonal projection onto V⊥ 
+
+> N
+
+. Then for all n ∈ N,
+
+(4.3) PVN KnP∗VN − (PVN KP ∗VN )n =
+
+> n−1
+
+X
+
+> j=1
+
+PVN (P∗VN PVN K)j Q∗VN QVN Kn−j P∗VN .
+
+Proof. The expression holds for n = 1. By orthogonality, 
+
+PVN Kn+1 P∗VN = PVN KQ ∗VN QVN KnP∗VN + PVN KP ∗VN PVN KnP∗VN .
+
+Hence if (4.3) holds for n, then 
+
+PVN Kn+1 P∗VN = PVN KQ ∗VN QVN KnP∗VN + PVN KP ∗VN (PVN KP ∗VN )n
+
++ PVN KP ∗VN
+
+> n−1
+
+X
+
+> j=1
+
+PVN (P∗VN PVN K)j Q∗VN QVN Kn−j P∗VN
+
+= ( PVN KP ∗VN )n+1 +
+
+> n
+
+X
+
+> j=1
+
+PVN (P∗VN PVN K)j Q∗VN QVN Kn+1 −j P∗VN ,
+
+so that (4.3) holds for n + 1 and hence for all n by induction. We may now prove Theorem 4.1. 
+
+Proof of Theorem 4.1 . By Lemma 4.2 (after premultiplying by P∗VN ), 
+
+KnP∗VN g − P ∗VN (PVN KP ∗VN )ng = P∗VN (PVN KnP∗VN )g − P ∗VN (PVN KP ∗VN )ng
+
++ Q∗VN QVN KnP∗VN g
+
+=
+
+> n−1
+
+X
+
+> j=0
+
+(P∗VN PVN K)j Q∗VN QVN Kn−j P∗VN g, 
+
+and (4.2) follows from the triangle inequality and operator norm submultiplicativity. TRUSTWORTHY KOOPMAN OPERATOR LEARNING 15 For (4.1), by orthogonality we have that ˜En(g, VN ) := 
+
+> n−1
+
+X
+
+> j=0
+
+(P∗VN PVN K)j Q∗VN QVN Kn−j P∗VN g 2
+
+= Q∗VN QVN KnP∗VN g 2 +
+
+> n−1
+
+X
+
+> j=1
+
+(P∗VN PVN K)j Q∗VN QVN Kn−j P∗VN g 2
+
+≤ QVN KnP∗VN g 2 +∥P VN K∥ 2
+
+> n−2
+
+X
+
+> j=0
+
+(P∗VN PVN K)j Q∗VN QVN Kn−1−j P∗VN g 2
+
+.
+
+We can continue this process recursively to arrive at ˜En(g, VN ) ≤
+
+> n−1
+
+X
+
+> j=0
+
+∥P VN K∥ 2j QVN Kn−j P∗VN g 2 ,
+
+which completes the proof. Theorem 4.1 yields two different error bounds. The bound in (4.2) can be advan-tageous as often ∥K j ∥ is much smaller than ∥K∥ j ; indeed, many dynamical systems have ∥K∥ > 1 but spectral radius ρ(K) = 1, and so by the Gelfand spectral radius theorem [36], lim k→∞ ∥K k∥1/k = 1 < ∥K∥ and ∥K j ∥ must grow slower than ∥K∥ j .However, the sum of terms is larger than the square root of the sum of the squared terms. Hence, it is recommended to use (4.1) when ∥K∥ = 1 (e.g., when the dynamical system is measure-preserving in the L2 case) or ∥K∥ is close to 1, and (4.2) otherwise; for RKHSs typically ∥K∥ > 1 [50, Cor. B.3] and the second formula is preferred. 
+
+4.2. Computing error bounds on L2. To compute the upper bounds in The-orem 4.1, we use the ResDMD or SpecRKHS matrices from subsection 2.2.2. We must compute the terms ∥Q VN KkP∗VN g∥ and ∥P VN Kk∥. For any k ∈ N, we have 
+
+QVN KkP∗VN =QVN KP ∗VN (PVN KP ∗VN )k−1+QVN K[Kk−1P∗VN −P ∗VN (PVN KP ∗VN )k−1].
+
+It is possible to use this relation and (4.1) recursively to obtain an explicit formula bounding ∥Q VN Kn−j P∗VN g∥ by terms of the form ∥Q VN KP ∗VN v∥ for v ∈ V N . As a first-order approximation, we keep only the first-order terms in powers of Q∗VN :
+
+QVN Kn−j P∗VN g 2 ≈ QVN KP ∗VN (PVN KP ∗VN )n−j−1g 2
+
+= KP ∗VN (PVN KP ∗VN )n−j−1g 2 − (PVN KP ∗VN )( PVN KP ∗VN )n−j−1g 2
+
+= lim  
+
+> M→∞
+
+(Kn−j−1g)∗(L − K∗GK )Kn−j−1g,
+
+(4.4) where the first equality follows from orthogonality and the second equality holds assuming a convergent quadrature rule. Next, we make the approximation ∥P VN Kj ∥ ≈ ∥ (PVN KP ∗VN )j PVN ∥, which con-verges in the large subspace limit as N → ∞ . Then, 
+
+∥(PVN KP ∗VN )j PVN ∥2 = sup 
+
+> g∈V N
+
+(Kj g)∗G(Kj g)
+
+g∗Gg 
+
+= sup 
+
+> h∈V N
+
+(G1/2Kj G−1/2h)∗(G1/2Kj G−1/2h)
+
+h∗h = ∥G1/2Kj G−1/2∥2.
+
+(4.5) 16 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, 
+
+Algorithm 4.1 Computation of error bounds for the KMD on L2.
+
+Input: Matrices G, A, K and L in (2.3), (2.4), and (2.9) for dictionary {ψj }Nj=1 ,observable g = Ψ g, number of timesteps n ∈ N. 
+
+> 1:
+
+For j = 0 , . . . , n − 1, compute ∥G1/2Kj G−1/2∥ and ( Kj g)∗(L − K∗GK )Kj g. 
+
+> 2:
+
+Compute E(1)  
+
+> n
+
+and E(2)  
+
+> n
+
+following (4.6) and (4.7), and take En = min {E(1)  
+
+> n
+
+, E (2)  
+
+> n
+
+}.
+
+Output: En, a first-order error bound for the KMD of g after n time-steps. 
+
+Algorithm 4.2 Computation of error bounds for the PFMD on an RKHS. 
+
+Input: Matrices G, A, K and R from (2.6), (2.7), and (2.10) for kernel function 
+
+K : X × X → C, starting point x0, observable g ∈ H , number of timesteps n ∈ N. 
+
+> 1:
+
+Let b = K(x0, x (1) ) . . . K(x0, x (N ))⊤, c = G−1b and δ = pK(x0, x 0) − c∗b. 
+
+> 2:
+
+For j = 0 , . . . , n − 1, compute ∥G1/2Kj G−1/2∥ and ( Kj c)∗(R − K∗GK )( Kj c). 
+
+> 3:
+
+Estimate ∥g∥ and compute En according to (4.10). 
+
+Output: First-order error bounds for the PFMD of g at x0 after n time-steps. Combining (4.4) and (4.5) with Theorem 4.1 yields the first-order upper bounds: 
+
+E(1)  
+
+> n
+
+(g, VN ) := 
+
+vuutn−1X
+
+> j=0
+
+∥G1/2KG −1/2∥2j (Kn−j−1g)∗(L − K∗GK )Kn−j−1g,(4.6) 
+
+E(2)  
+
+> n
+
+(g, VN ) := 
+
+> n−1
+
+X
+
+> j=0
+
+∥G1/2Kj G−1/2∥p(Kn−j−1g)∗(L − K∗GK )Kn−j−1g.(4.7) Algorithm 4.1 summarizes the method. As N → ∞ , QVN g → 0, so both the exact error bounds (4.1) and (4.2) and the corresponding first-order bounds (4.6) and (4.7) tend to 0 (after taking the large-data limit in the latter case). Note that the one-step prediction error is always exact (up to quadrature error). This follows from Pythagoras’ theorem for observables g ∈ V N :
+
+∥K g − P ∗VN PVN Kg∥2 = ∥K g∥2 − ∥P ∗VN PVN Kg∥2 = g∗Lg − (Kg )∗G(Kg ).
+
+The right-hand side coincides exactly with the output of Algorithm 4.1 for n = 1. 
+
+4.3. Pointwise error bounds in RKHS. The RKHS setting avoids large-data limits and allows direct pointwise error bounds. Let K be the used kernel and 
+
+{x(n), y (n)}Nn=1 be the snapshot data. We then define the matrices G, A, K and R
+
+as in (2.6), (2.7), and (2.10). We want to bound the error in estimating g(xn) = 
+
+Kng(x0). Recalling from (2.8) that Kng(x0) = ⟨g, (K∗)nKx0 ⟩, we need to bound the error in the PFMD for Kx0 . First, we approximate Kx0 in the subspace VN =span {Kx(1) , . . . , Kx(N ) }, i.e., we find a vector of coefficients c ∈ CN that minimizes (4.8) Kx0 −
+
+> N
+
+X
+
+> n=1
+
+cnKx(n)
+
+> 2
+
+.
+
+Letting b = K(x0, x (1) ) · · · K(x0, x (N ))⊤, this is equivalent to minimizing c∗Gc −
+
+b∗c−c∗b, which has solution c = G−1b. We let the residual error be δ := min c′ ∥Kx0 −
+
+PNn=1 c′
+
+> n
+
+Kx(n) ∥ = pK(x0, x 0) − c∗b, and let c = PNn=1 cnKx(n) ∈ V N . Our approxi-TRUSTWORTHY KOOPMAN OPERATOR LEARNING 17 mation to g(xn) is Γ( g, x 0, n ) = ⟨g, P∗VN (PVN K∗P∗VN )nc⟩, with error bounded by 
+
+|g(xn) − Γ( g, x 0, n )| = ⟨g, (K∗)nKx0 ⟩K − g, P∗VN (PVN K∗P∗VN )nc
+
+≤ ∥ g∥ (K∗)nKx0 − P ∗VN (PVN K∗P∗VN )nc
+
+≤ ∥ g∥   (K∗)nKx0 − (K∗)nP∗VN c + (K∗)nP∗VN c − P ∗VN (PVN K∗P∗VN )nc 
+
+≤ ∥ g∥∥ (K∗)n∥δ + ∥g∥ (K∗)nP∗VN c − P ∗VN (PVN K∗P∗VN )nc .
+
+(4.9) We can approximate ∥(K∗)n∥ ≈ ∥ G1/2KnG−1/2∥, and ∥g∥ can be computed ana-lytically, approximated by finding a least squares approximation to g in VN or dealt with using the techniques of subsection 5.2. To bound the projection error, note that Theorem 4.1 generalizes immediately to the Perron–Frobenius operator, i.e., 
+
+(K∗)nP∗VN c − P ∗VN (PVN K∗P∗VN )nc ≤
+
+> n−1
+
+X
+
+> j=0
+
+(P∗VN PVN K∗)j QVN (K∗)n−j P∗VN c ,
+
+for all n ∈ N. As before, a first-order approximation is 
+
+∥Q VN (K∗)n−j P∗VN c∥2 ≈ (Kn−j−1c)∗(R − K∗GK )( Kn−j−1c).
+
+These arguments yield the first-order RKHS-norm error bound 
+
+∥(K∗)nKx0 − P ∗VN (PVN K∗P∗VN )nc∥ ≤ En := ∥(K∗)n∥δ
+
+| {z }
+
+> initialization error
+
++
+
+> n−1
+
+X
+
+> j=0
+
+∥G1/2Kj G−1/2∥p(Kn−j−1c)∗(R − K∗GK )( Kn−j−1c)
+
+| {z }
+
+> projection error
+
+,
+
+(4.10) and the corresponding pointwise error bound (4.11) |g(xn) − Γ( g, x 0, n )| ≲ ∥g∥En.
+
+The algorithm is summarized in Algorithm 4.2. As before, the projection error is exact at n = 1, but the initialization error is only exact for n = 0. 
+
+4.4. Numerical examples. This section presents numerical examples illustrat-ing our error bounds. 
+
+4.4.1. Optimality of the bounds in general. We first provide an example of a system for which our error bounds, and their first-order numerical approximation, are sharp; hence, without further assumptions one cannot improve upon our results. Let X , F and ω be such that K has (countably infinite) Lebesgue spectrum, i.e., there exists an orthonormal basis of L2(X , ω ) {1, g i,j : i ∈ N, j ∈ Z} with Kgi,j = gi,j −1 for 
+
+i ∈ N, j ∈ Z. Examples of such systems are a two-sided Bernoulli shift or Arnold’s famous catmap [2]. Let VN ⊂ L2(X , ω ) be a sequence of increasing subspaces such that for all N , {1, g 1,−N , . . . , g 1,N } ⊂ V N but {g1,−(N +1) , g 1,(N +1) } /∈ V N . For all 
+
+N, k ∈ N, there exists g ∈ V N such that (4.1), (4.2), (4.6), and (4.7) are sharp at 
+
+n = k; in particular, we take g = g1,−(N +1)+ k. In fact, the full-order bound is exact for all n ≤ k and the first-order bound is exact at all times. The relevant errors and bounds are shown in Figure 6 for k = 4 and N = 100. The system is such that once an observable leaves VN it never returns; this explains why the exact and first-order errors remain constant beyond k = 4. By contrast, the full-order term keeps accumulating errors as more and more terms leave the subspace. 
+
+4.4.2. Duffing and Lorenz systems. We now return to the Duffing and Lorenz systems defined in (3.3) and (3.4). We first consider the L2 setting, using a dictionary 18 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, Time steps      
+
+> 0246810
+> L2 Error
+> 0
+> 0.5
+> 1
+> 1.5
+> 2
+> 2.5
+> 3
+
+System with Lebesgue spectrum
+
+Exact
+
+First-Order Bound
+
+Full-Order Bound          
+
+> Fig. 6 .Sharpness of bounds. The exact errors and error bound formula to first-order (minimum of (4.6) and (4.7) ) and full-order (minimum of (4.1) and (4.2) ) for a system with Lebesgue spectrum. 510 15 20
+
+Time steps
+
+> 10 -2
+> 10 -1
+> 10 0
+> L2 Error
+
+Du/ng oscillator
+
+Exact SVD
+
+Bound SVD
+
+Exact PAD
+
+Bound PAD5 10 15 20 
+
+Time steps
+
+> 10 -2
+> 10 -1
+> 10 0
+> L2 Error
+
+Lorenz system   
+
+> Fig. 7 .Exact L2errors and error bounds for the Duffing oscillator (left) and Lorenz system (right) using a truncated SVD and PAD with the same number of modes. The PAD method outper-forms the SVD for small numbers of time steps, in terms of both exact errors and error bounds.
+
+of N = 100 Chebyshev polynomials and N = 500 exponential RBFs respectively, and apply Algorithm 4.1. In subsection 3.3, we showed that using a PAD instead of an SVD improves prediction accuracy; here we demonstrate that the error bounds also improve correspondingly. For each system, we take r = N/ 2 and consider the state observable g(x) = x1. The exact errors and error bounds are shown in Figure 7 for both the SVD- and PAD-truncated systems. The substantial reduction in exact errors achieved by the PAD at short times is mirrored by the error bounds. The bounds are not always strictly above the exact error, reflecting the use of first-order approximations and of quadrature error. For the Lorenz oscillator the bounds are essentially tight in both cases; errors in unitary Koopman operators are easier to predict. In the RKHS setting, we first apply Algorithm 4.2 to the Duffing oscillator with 
+
+g = Kx0 , where x0 ∈ [−2, 2] 2 is sampled uniformly at random, using the Mat´ ern kernel 
+
+K(x, y ) = 
+
+(
+
+2, if x = y, 
+
+(σ∥x − y∥)2K2(σ∥x − y∥), otherwise ,
+
+where K2 denotes the modified Bessel function of the second kind of order 2, and 
+
+σ is chosen to ensure that the Gram matrix G is well conditioned; in particular, we take σ to be inversely proportional to the averaged standard deviation of each component of the data. This kernel induces an RKHS equivalent to the Sobolev space H3(R2) [50, 93]. We use the same snapshot data as the L2 case, and for order reduction, we use an SVD with r = N/ 5; since we are using a delay embedding TRUSTWORTHY KOOPMAN OPERATOR LEARNING 19 0 5 10 15 20                     
+
+> Timesteps
+> 10 -2
+> 10 0
+> RKHS Error
+> Du/ngoscillator
+> Exact
+> Bound0510 15 20
+> Timesteps
+> 10 -2
+> 10 -1
+> 10 0
+> RKHS Error
+> Lorenzsystem
+> Fig. 8 .Exact RKHS errors and error bounds (4.10) for the Duffing oscillator (left) and Lorenz system (right) using a Mat´ ern kernel. 0.2 0.4 0.6 0.8 1
+> Time(s)
+> 10 -3
+> 10 -2
+> 10 -1
+> L2 Error
+> Cavity.ow
+> Pessimisticbound
+> Exact
+> Bound
+> Fig. 9 .Left: A snapshot of the cavity flow system. Right: Exact L2-errors and error bounds for the cavity flow system. The error bounds overestimate the true error by a factor of over 10 .
+
+method, most principal angles are 0, so PAD is not as informative here. In Figure 8, we display the exact RKHS error and upper bound (4.10) for the Duffing oscillator and Lorenz system. Here, the initialization error dominates at short times but is eventually overtaken by the projection error. Both errors vanish as N → ∞ . Similar behavior is observed for the Lorenz system, again using a Mat´ ern kernel. Compared to the L2 case, the error bounds are less tight; this shall be addressed in the following sections. 
+
+4.4.3. Cavity flow—an example where the bounds are pessimistic. As a final example, we consider applying error bounds to a more complicated, high-dimensional system involving cavity flow data at Reynolds number 7500 with 144000 degrees of freedom. The snapshot data are drawn from a single trajectory. We use the first 200 pairs of snapshot data to construct a DMD-based basis, and the next 1000 pairs to compute the ResDMD matrices. We apply Algorithm 4.1 to compute error bounds on the L2-norm errors of the prediction of a component of the full-state observable, and compare to the true L2-errors. The results are shown in Figure 9. For roughly t ≤ 0.25, the bound given by (4.6) is smaller than that given by (4.7), while the opposite is true for t ≥ 0.25. We see that while the error bounds do accurately bound the true errors, they are pessimistic. In the next section, we will explore how to overcome this challenge and provide a more accurate estimate of the error. 
+
+5. Expected errors. The inequalities used to derive the error bounds above can introduce a substantial gap between the bound and the true error. Motivated by the cavity flow example in Figure 9, we introduce randomized, Gaussian–based methods that yield expected error estimates, and provide a closer approximation to 20 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, 
+
+the true error. 
+
+5.1. Gaussian averaging. We consider Gaussian random elements, the Hilbert-space analogue of multivariate Gaussian distributions. Let {ϕj }∞ 
+
+> j=1
+
+be an orthonormal basis of H and let {λj }∞ 
+
+> j=1
+
+⊂ (0 , ∞) satisfy P∞ 
+
+> j=1
+
+λj < ∞. If {aj }∞ 
+
+> j=1
+
+are indepen-dent standard normal variables, then ζ = P∞
+
+> j=1
+
+pλj aj ϕj converges almost surely in H and defines a centered Gaussian random element. This representation is the Karhunen–Lo` eve expansion [90, Thm. 6.19]. The associated covariance operator C
+
+has eigenvectors ϕj with corresponding eigenvalues λj , and we write ζ ∼ GP (0 , C ). Using Gaussian random elements, we aim to replace the strict inequalities used in the construction of (4.1) and (4.2) with expected quantities. In the derivations, we used submultiplicativity of the operator norm ∥Ax ∥ ≤ ∥ A∥∥ x∥. This represents a worst-case scenario. To obtain tighter expected errors, we instead look for “average-case” scenarios. Given a bounded operator A : H → H we define an expected operator norm 
+
+EC [A] := E [∥Aζ ∥/∥ζ∥] , ζ ∼ GP (0 , C )and take ∥Ax ∥ ≈ EC [A]∥x∥ in our error bounds. Similar expectations over a proba-bility measure on a function space are used in the machine learning literature [58]. 
+
+5.2. Computation of expected errors. We first consider approximations of 
+
+EC [Kj ] for a Koopman operator K acting on H. In the RKHS setting, K is replaced by K∗. Let ζ ∼ GP (0 , C ). Since ∥(PVN KP ∗VN )j ∥ ≤ ∥K∥ j < ∞, by the dominated convergence theorem and convergence of (k)EDMD in the strong operator topology, (5.1) lim   
+
+> N→∞
+
+E ∥(PVN KP ∗VN )j PVN ζ∥∥P VN ζ∥ = EC [Kj ].
+
+We can compute the term inside the expectation using only the (k)EDMD matrices G
+
+and K and pointwise samples of ζ, which follow a multivariate Gaussian distribution. Writing PVN ζ = PNi=1 wiψi, w = ( w1 · · · wN )⊤ is the solution to: 
+
+w = argmin 
+
+> w′∈CN
+
+ζ −
+
+> N
+
+X
+
+> i=1
+
+w′
+
+> i
+
+ψi = G−1d, d = ( ⟨ζ, ψ 1⟩ · · · ⟨ ζ, ψ N ⟩)⊤.
+
+In the L2 case, these inner products can be computed via a quadrature approximation at the snapshot data points, while in the RKHS case d = ( ζ(x(1) ) · · · ζ(x(N ))) ⊤.Hence in both cases, d and w can be constructed using only pointwise samples of ζ.The norm in (5.1) is then given by (5.2) (PVN KP ∗VN )j PVN ζ ∥P VN ζ∥ = lim   
+
+> M→∞
+
+∥G1/2Kj w∥∥G1/2w∥,
+
+where no large-data limit is necessary in the RKHS case. To compute the expectation, we use a Monte Carlo approach. Letting {ζk}Pk=1 be samples of the chosen Gaussian process and wk representations of PVN ζk in the chosen basis, we have that (5.3) EC [Kj ] ≈ 1
+
+P
+
+> P
+
+X
+
+> k=1
+
+∥G1/2Kj wk∥∥G1/2wk∥.
+
+In particular, almost surely by the strong law of large numbers, 
+
+EC [Kj ] = lim   
+
+> N→∞
+
+lim   
+
+> P→∞
+
+lim  
+
+> M→∞
+
+1
+
+P
+
+> P
+
+X
+
+> k=1
+
+∥G1/2Kj wk∥∥G1/2wk∥.
+
+In practice, we construct a data-driven covariance operator from the (k)EDMD TRUSTWORTHY KOOPMAN OPERATOR LEARNING 21 
+
+Algorithm 5.1 Computation of expected L2 errors for the KMD. 
+
+Input: Galerkin matrices G, A and L for dictionary {ψn}Nn=1 , a sequence 
+
+λ1 ≥ λ2 ≥ · · · ≥ 0 with P∞ 
+
+> j=1
+
+λj < ∞, sample size P ∈ N, observable g ∈ V N ,number of timesteps n ∈ N. 
+
+> 1:
+
+Using a truncated SVD or PAD (see Algorithm 3.2), construct an orthonormal basis and compress G, A, L and K to act on that basis (so G = I, A = K).  
+
+> 2:
+
+For each j, k , let wj,k = ( √λ1wj,k, 1 · · · √λN wj,k,N )⊤ for i.i.d. wj,k,i ∼ N (0 , 1).  
+
+> 3:
+
+Compute the approximations to EC [Kj ] given by (5.3) for j = 0 , . . . , n − 1.  
+
+> 4:
+
+Define αj = EC [Kj ]p(Kn−j−1g)∗(L − K∗K)( Kn−j−1g) for j = 0 , . . . , n − 1.  
+
+> 5:
+
+Compute En ≈ 1
+
+> P
+
+PPk=1 
+
+ Pn−1 
+
+> j=0
+
+αj wj,k /∥wj,k ∥ .
+
+Output: En, the expected L2 error of ∥K ng − ΨKng∥.basis. We obtain an orthonormal dictionary from a truncated SVD or PAD of the Gram matrix G. This extracts the dominant dynamical modes (those contributing most to the expected operator norm) while also improving computational efficiency. Next, we choose eigenvalues λ1 ≥ λ2 ≥ · · · ≥ 0 with P∞ 
+
+> j=1
+
+λj < ∞. Together with the SVD/PAD basis, these define a covariance operator C and a Gaussian process 
+
+ζ ∼ GP (0 , C ) as in subsection 5.1. Then with respect to the chosen orthonormal basis, 
+
+PVN ζ is w = ( √λ1w1 · · · √λN wN )⊤, where the coefficients wi are i.i.d. N (0 , 1). The expectation EC [Kj ] is then computed exactly as before. 
+
+5.3. Further expectations. So far, we have addressed the gap between true errors and their bounds arising from inequalities involving the operator norm, such as ∥Ax ∥ ≤ ∥ A∥∥ x∥. In (4.1) this was the only source of overestimation, allowing a straightforward alteration of (4.1) replacing ∥G1/2KG −1/2∥ by EC [K]. However, the other error bound formulae suffer from other sources of overestimation. In deriving (4.2) we also invoked the triangle inequality, while (4.9) relies on the Cauchy–Schwarz inequality. Although essential for obtaining general upper bounds (as we saw in sub-section 4.1), these inequalities often lead to conservative estimates (see Figure 9). We therefore extend the expectation-based arguments of the previous section to ad-dress these additional sources of overestimation, continuing to use the data-driven covariance operator constructed above. In (4.2), we applied the triangle inequality to terms of the form 
+
+hj := ( P∗VN PVN K)j Q∗VN QVN Kn−j P∗VN g, j = 0 , . . . , n − 1.
+
+By using a first-order approximation as in subsection 4.2 and the expected operator norm, we have that 
+
+∥hj ∥ ≈ EC [Kj ]p(Kn−j−1g)∗(L − K∗GK )( Kn−j−1g) := αj .
+
+To obtain an approximation of the error after applying the triangle inequality, we assume that the terms are given by Gaussian processes normalized by the αj , and compute the expectation. In particular, we take the resulting error to be 
+
+En ≈ E
+
+h n−1X
+
+> j=0
+
+αj PVN ζj /∥P VN ζj ∥
+
+i
+
+, ζj ∼ GP (0 , C ).22 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, 
+
+Algorithm 5.2 Computation of expected RKHS-norm and pointwise errors for the PFMD. 
+
+Input: Galerkin matrices G, A and R for dictionary {Kx(n) }Nn=1 , a sequence 
+
+λ1 ≥ λ2 ≥ · · · ≥ 0 with P∞ 
+
+> j=1
+
+λj < ∞, sample size P ∈ N, starting point x0,observable g ∈ H , number of timesteps n ∈ N.
+
+1: Let b = ( K(x0, x (1) ) · · · K(x0, x (N ))) ⊤, c = G−1b and δ = pK(x0, x 0) − c∗b.
+
+2: Using a truncated SVD or PAD (see Algorithm 3.2), construct an orthonormal basis and compress G, A, R and K to act on that basis (so G = I, A = K). 
+
+3: For each j, k , let wj,k = ( √λ1wj,k, 1 · · · √λN wj,k,N )⊤ for i.i.d. wj,k,i ∼ N (0 , 1). 
+
+4: Compute the approximations to EC [( K∗)j ] and EC [g] given by (5.3) and (5.5). 
+
+5: Define αj = EC [( K∗)j ]p(Kn−j−1c)∗(R − K∗K)( Kn−j−1c) for j = 0 , . . . , n − 1and αn = EC [( K∗)n]δ.
+
+6: Compute En ≈ 1
+
+> P
+
+PPk=1 
+
+ Pnj=0 αj wj,k /∥wj,k ∥ .
+
+Output: En, the expected RKHS-norm error of ∥(K∗)nKx0 − P ∗VN (PVN K∗P∗VN )nc∥
+
+and EC [g]En, the expected pointwise error of |g(xn) − Γ( g, x 0, n )|.5 10 15 20 
+
+Time steps
+
+> 10 -1
+> 10 0
+> L2 Error
+
+Du/ng oscillator
+
+Exact
+
+Bound
+
+Expected5 10 15 20 
+
+Time steps
+
+> 10 -2
+> 10 -1
+> 10 0
+> L2 Error
+
+Lorenz system
+
+Exact
+
+Bound
+
+Expected0 5 10 15 20 
+
+Time steps
+
+> 10 -2
+> 10 0
+> RKHS Error
+
+Du/ng oscillator
+
+Exact
+
+Bound
+
+Expected0 5 10 15 20 
+
+Time steps
+
+> 10 -2
+> 10 -1
+> 10 0
+> RKHS Error
+
+Lorenz system
+
+Fig. 10 . L2 (top) and RKHS (bottom) norm forecast errors, error bounds and expected bounds for the Duffing oscillator (left) and Lorenz system (right), along with variance error bars including three standard deviations. 
+
+As in subsection 5.2, we approximate this as (5.4) En ≈ 1
+
+P
+
+> P
+
+X
+
+> k=1
+> n−1
+
+X
+
+> j=0
+
+αj G1/2wj,k /∥G1/2wj,k ∥ .
+
+Combining (4.7), (5.3), and (5.4) leads to Algorithm 5.1. Similarly, in the derivation of (4.9) for RKHS we needed to bound the expression 
+
+|⟨ g, r ⟩| where r = ( K∗)nKx0 − P ∗VN (PVN K∗P∗VN )nc. We applied the Cauchy–Schwarz TRUSTWORTHY KOOPMAN OPERATOR LEARNING 23 inequality to obtain |⟨ g, r ⟩| ≤ ∥ g∥∥ r∥ and then bounded ∥r∥ in terms of the initial-ization and projection errors. This represents the worst-case scenario for the error. Instead, we utilize an expectation-based approach. Given g ∈ H , we define 
+
+EC [g] = E |⟨ g, ζ ⟩| ∥ζ∥ , ζ ∼ GP (0 , C ).
+
+Using the data-driven covariance operator, ζ is approximated by a linear combina-tion of kernel functions P∗VN PVN ζ, and so ⟨g, P∗VN PVN ζ⟩ is a linear combination of pointwise evaluations of g. We approximate (5.5) EC [g] ≈ 1
+
+P
+
+> P
+
+X
+
+> k=1
+
+|⟨ g, P∗VN PVN ζk⟩| ∥G1/2wk∥.
+
+We then take |⟨ g, r ⟩| ≈ EC [g]∥r∥ in (4.9). Algorithm 5.2 combines all of (5.3)–(5.5) with (4.11). 
+
+5.4. Numerical examples. We return to the Duffing and Lorenz systems to illustrate how Algorithms 5.1 and 5.2 improve upon the error bounds computed in subsection 4.4. The expected L2-errors for the predicted evolution of the observable 
+
+g(x) = x1 are shown in the top panels of Figure 10, alongside the strict error bounds from subsection 4.4 and the exact L2-errors; we use the SVD rather than PAD trun-cated systems, as the PAD bounds were essentially tight. We take λ2 
+
+> j
+
+= e−j/ 10 3
+
+and use an orthonormal basis obtained from the SVD of the Gram matrix. Since the Koopman operator for the Lorenz system is unitary, EC [K] = ∥K∥ = 1 and so the error bounds and expected errors are the same. For the Duffing oscillator, although the expected error is no longer a strict upper bound, it provides an improvement in tracking the true error compared to the original bounds. The same behavior is observed in the RKHS setting, as shown in the bottom panels of Figure 10. We plot the exact RKHS-norm errors, the corresponding error bounds, and the expected errors using Algorithm 5.2. As in the L2 case, the expected errors yield a substantial improvement. Finally, we return to the cavity flow example that motivated this section. In ad-dition to the strict error bounds shown in Figure 9, we compute expected errors using Algorithm 5.1. As seen in Figure 11, the L2 expected error remains close to the true error over the entire time horizon, representing a substantial improvement over the strict bounds. This is particularly notable given the high dimensionality and complex chaotic dynamics of the flow. The expected error formulation extends straightfor-wardly to computing variances of the relevant terms; as such, we plot variance error bars for the expected errors encompassing three standard deviations. We see that the exact trajectory lies inside these expected error bars for the majority of the time. 
+
+6. Example: The Pluto–Charon system. As a more challenging example, we consider the Pluto–Charon system, which consists of Pluto and its moons Charon, Styx, Nix, Hydra, and Kerberos. Charon has mass an eighth of Pluto’s, so they form a binary system, giving rise to complex dynamics [86]. The New Horizons spacecraft flew past the system in July 2015, collecting extensive observational data [87]. To model these dynamics, we use data from [43], which fits numerically integrated trajectories of planets, satellites, and small bodies in the Solar System to observational measurements. The dataset comprises positions and velocities of the six bodies in the 
+
+x, y and z directions relative to the Solar System barycentre, yielding a 36-dimensional system. Our goal is to model simultaneously the dynamics of Pluto and its five moons. 24 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, 0.2 0.4 0.6 0.8 1
+
+> Time(s)
+> 10 -3
+> 10 -2
+> 10 -1
+> L2 Error
+
+Cavity .ow
+
+Exact
+
+Bound
+
+Expected       
+
+> Fig. 11 .Exact error, error bounds, expected error and three standard deviation error bars for the cavity flow system. The expected error tracks the error much more closely than the strict bound. 0120 240 360 480 600 720
+
+Time (days)
+
+> 10 -4
+> 10 -3
+> RKHS Error
+
+Pluto-Charon system
+
+Exact
+
+Bound
+
+Expected   
+
+> Fig. 12 .Left: Orbits of moons in the Pluto–Charon system with Pluto at the origin. Right: RKHS-norm errors, strict error bounds, expected errors and three standard deviation error bars for the Pluto–Charon system. While the strict bounds overestimate the true error, the expected errors track it closely.
+
+6.1. Computation of error bounds. We collect 80 years of daily trajectory snapshots of the Pluto–Charon system to train the model. Each component of the data is normalized using its mean and standard deviation. Using kernelized EDMD, we construct an approximation of the Koopman operator with a kernel given by a product of scaled Mat´ ern kernels for each of the six bodies. The resulting operator advances the system in 10-day steps. We test the model by extrapolating over a further 72 unseen 10-day intervals. For the predicted trajectories, we compute RKHS-norm and pointwise error bounds using Algorithm 4.2, and expected errors using Algorithm 5.2. The results are shown in Figures 12 and 13. The right panel shows the RKHS errors for the evolution of Kx0 , where x0 is the starting point of the extrapolated trajectory, together with the associated error bounds and expected errors. While the strict bound is an order of magnitude larger, the expected error closely tracks the true error. In Figure 13, we examine pointwise errors for selected components of the dynamics, along with the corresponding pointwise error bounds and expected errors. The gap between exact (in dashed black) and expected pointwise errors (in dashed red) is larger than for the RKHS-norm errors, since the expected pointwise errors are obtained by scaling the expected norm errors by the constant EC [g], whereas the exact pointwise errors exhibit greater variability. 
+
+6.2. Dictionary learning via error bounds. A key challenge in Koopman– based methods is the choice of dictionary or kernel [23]. Many recent approaches ad-dress this using machine-learning techniques to learn dictionaries for dynamic mode decomposition [59, 62, 63, 73, 91, 99]. Given a set of hyperparameters (here, the dictio-TRUSTWORTHY KOOPMAN OPERATOR LEARNING 25          
+
+> Position
+> Predictions Rel. Ptwise Err. Time(days)
+> 0120 240 360 480 600 720
+> -4
+> -2
+> 0
+> 2
+> 4#10 4
+
+Styx, x-coordinate         
+
+> Exact
+> ForecastTime(days)
+> 0120 240 360 480 600 720
+> -4
+> -2
+> 0
+> 2
+> 4#10 4
+
+Styx, y-coordinateTime (days)        
+
+> 0120 240 360 480 600 720
+> -5
+> 0
+> 5#10 4
+
+Styx, z-coordinate0 120 240 360 480 600 720 
+
+Time (days)
+
+> 10 -5
+> 10 -4
+> 10 -3
+> 10 -2
+> 10 -1
+> 10 0
+
+Styx, x-coordinate      
+
+> Exact
+> Bound
+> Expected0120 240 360 480 600 720
+
+Time (days) 
+
+> 10 -5
+> 10 -4
+> 10 -3
+> 10 -2
+> 10 -1
+> 10 0
+
+Styx, y-coordinate0 120 240 360 480 600 720 
+
+Time (days) 
+
+> 10 -5
+> 10 -4
+> 10 -3
+> 10 -2
+> 10 -1
+> 10 0
+
+Styx, z-coordinate       
+
+> Velocity
+> Predictions Rel. Ptwise Err. Time(days)
+> 0120 240 360 480 600 720
+> -0.1
+> -0.05
+> 0
+> 0.05
+> 0.1
+
+Styx, _x-coordinate       
+
+> Exact
+> ForecastTime(days)
+> 0120 240 360 480 600 720
+> -0.1
+> -0.05
+> 0
+> 0.05
+> 0.1
+
+Styx, _y-coordinateTime (days)       
+
+> 0120 240 360 480 600 720
+> -0.2
+> -0.1
+> 0
+> 0.1
+> 0.2
+
+Styx, _z-coordinate0 120 240 360 480 600 720 
+
+Time (days)
+
+> 10 -5
+> 10 -4
+> 10 -3
+> 10 -2
+> 10 -1
+> 10 0
+
+Styx, _x-coordinate      
+
+> Exact
+> Bound
+> Expected0120 240 360 480 600 720
+
+Time (days)
+
+> 10 -5
+> 10 -4
+> 10 -3
+> 10 -2
+> 10 -1
+> 10 0
+
+Styx, _y-coordinate0 120 240 360 480 600 720 
+
+Time (days)
+
+> 10 -5
+> 10 -4
+> 10 -3
+> 10 -2
+> 10 -1
+> 10 0
+
+Styx, _z-coordinate
+
+Fig. 13 . First row: Exact and predicted trajectories with kEDMD for the position of Styx (smallest body in the Pluto–Charon system) relative to Pluto. Second row: Exact relative pointwise errors together with the corresponding error bounds and expected errors. Third and fourth rows: As in the first and second rows, but for the velocities of Styx relative to Pluto. 
+
+nary functions or kernel), a Koopman model is constructed from training data, and its performance on a validation set is used to refine those hyperparameters. After multi-ple tuning iterations, the unbiased performance and generalizability of the resulting model are assessed on a held-out test dataset. The error bounds developed in this paper enable an improved workflow. Rather than requiring a separate validation dataset to assess model performance, hyperpa-rameters can be optimized directly by minimizing the error bounds computed from the training data. The test dataset then retains its usual role for unbiased evalua-tion. This leads to more efficient use of data, particularly when data are limited, and provides a principled approach to dictionary selection. We apply this methodology to optimize hyperparameters for EDMD applied to the Pluto–Charon dataset. The training dataset consists of 10 years of data, with the subsequent 10 years reserved for testing; no separate validation dataset is required. We apply EDMD using a dictionary of 200 RBFs of the form 
+
+ψ(s,ν )
+
+i (x) = f (s,ν )(∥x − ci∥), for f (s,ν )(r) = ( sr )ν Kν (sr ),
+
+where Kν is the modified Bessel function of the second kind of order ν, and {ci}200 
+
+i=1 are fixed centers sampled uniformly at random from the bounding box of the trajectory. We aim to learn optimal values of s, ν ∈ R+. To improve quadrature convergence, before normalizing the data we shift it so that the barycentre of the Pluto–Charon 26 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, 0 100 200 300 400 500 
+
+Epoch
+
+> 10 -2
+> 10 -1
+> Error
+
+Pluto-Charon system                      
+
+> Initialepoch
+> s=0:2;8=1
+> Bestepoch
+> s=0:0522;8=4:73
+> ExactL2error
+> L2errorbound
+> Exactpointwiseerror0510 15 20
+
+Time (days)
+
+> 10 -3
+> 10 -2
+> 10 -1
+> L2 Error
+
+Pluto-Charon system              
+
+> Exact,initial
+> Bound,initial
+> Exact,best
+> Bound,best
+> Fig. 14 .Left: Averaged error bounds, exact L2errors, and pointwise errors for the Pluto– Charon system over 500 iterations of the Adam stochastic optimization algorithm. Right: Compari-son of exact L2forecast errors and error bounds over 20 time steps for the initial parameter choice (marked by a cross) and the best parameters found by Adam (marked by a star).
+
+system lies at the origin. This requires only the masses of the bodies and ensures that trajectories remain close to the centers of the chosen radial basis functions. We approximate the one-step Koopman operator and, for numerical stability, construct a reduced basis via a truncated SVD retaining r = 50 modes. The hyperpa-rameters s, ν ∈ R+ are chosen to minimize the average error bounds produced by Al-gorithm 4.1 for the components of the full-state observable gi(x) = [ x]i, i = 1 , . . . , 36, averaged over 21 time steps. Since the full-state observable is not contained in the dictionary, initialization errors are included as described in section 4. Specifically, we minimize the loss 
+
+L(s, ν ) = 121 
+
+> 20
+
+X
+
+> n=0
+> 36
+
+X
+
+> i=1
+
+En(gi, s, ν )
+
+!
+
+,
+
+where 
+
+En(gi, s, ν ) = ∥Kn∥∥ gi − Ψg i∥ +
+
+> n−1
+
+X
+
+> j=0
+
+∥Kj ∥p(Kn−j−1gi)∗(L − K∗K)( Kn−j−1gi).
+
+Here, K, L are the EDMD and ResDMD matrices, depending on s and ν, written with respect to the SVD basis (so that G = I and A = K). We solve the resulting optimization problem using the Adam stochastic optimiza-tion algorithm [45], implemented in PyTorch. The learning rate is set to 10 −2, and we run 500 Adam epochs starting from s = 1 /5 and ν = 1. The results are shown in Figure 14. We plot the training-set error bounds (which constitute the loss being minimized) together with the exact L2 and pointwise errors of the predicted trajecto-ries. To assess generalizability, the exact errors are computed on the test dataset. The trained dictionary has much smaller error bounds, showing clear improvement. More-over, as the optimization reduces the error bounds, the exact L2 errors (which remain bounded above by the error bounds) and the pointwise errors decrease in tandem, in-dicating that the bounds accurately capture the true system error. Hence, by training on just the a posteriori error bounds we have significantly improved performance of the model in terms of its exact prediction errors. 
+
+7. Conclusion. This work developed a suite of theoretically grounded algo-rithms that produce computable error bounds for Koopman–based approximations of dynamical systems and measure Koopman subspace invariance. These certificates lead naturally to the Principal Angle Decomposition (PAD), a dimensionality-reduction TRUSTWORTHY KOOPMAN OPERATOR LEARNING 27 procedure that complements the SVD by preferentially retaining directions that are (approximately) invariant under the Koopman operator. Across high-dimensional and chaotic examples, the resulting upper bounds and expected error surrogates track the observed prediction errors for Koopman and Perron–Frobenius mode decompositions. Moreover, because the bounds are explicit functions of the chosen feature space, they can be used to guide dictionary design and refinement directly from the available data, providing a principled route to feature selection when data are limited. More broadly, the proposed methodology strengthens the reliability of data-driven modeling by attaching quantitative uncertainty information to Koopman outputs without requiring additional measurements beyond standard snapshot data. Rig-orous bounds support decision-making when guarantees are needed, while expected error estimates offer a practical complement when conservative certification is un-avoidable. A limitation of the expected error methodology described in this paper is the assumption that the relevant functions are distributed according to a Gaussian process. In general, this is not the case. Future work may involve methods to measure the distributional distance, or to use Gaussian process regression to optimise the ker-nel used for the expected errors. Gaussian process regression may also be integrated into dictionary refinement using the error bounds. Finally, as Koopman–based methods continue to gain traction in control due to their global linearization viewpoint [15, 65, 74, 88], these tools provide a foundation for verified Koopman control, including integration with established workflows such as model predictive control. The expectation-based surrogates may also be of inde-pendent interest in machine learning settings where calibrated error prediction and model selection are central. 
+
+REFERENCES [1] H. Arbabi and I. Mezic , Ergodic theory, dynamic mode decomposition, and computation of spectral properties of the Koopman operator , SIAM J. Appl. Dyn. Syst., 16 (2017), pp. 2096–2126. [2] V. I. Arnold and A. Avez , Ergodic Problems of Classical Mechanics , New York, Benjamin, 1968. [3] N. Aronszajn , Theory of reproducing kernels , Trans. Amer. Math. Soc., 68 (1950), pp. 337– 404. [4] S. Bagheri , Effects of weak noise on oscillating flows: Linking quality factor, Floquet modes, and Koopman spectrum , Phys. Fluids, 26 (2014), p. 094104. [5] R. Banisch and P. Koltai , Understanding the geometry of transport: Diffusion maps for Lagrangian trajectory data unravel coherent sets , Chaos, 27 (2017), p. 035804. [6] P. Benner, S. Gugercin, and K. Willcox , A survey of projection-based model reduction methods for parametric dynamical systems , SIAM Rev., 57 (2015), pp. 483–531. [7] G. Berkooz, P. Holmes, and J. L. Lumley , The proper orthogonal decomposition in the analysis of turbulent flows , Annu. Rev. Fluid Mech., 25 (1993), pp. 539–575. [8] C. M. Bishop , Pattern recognition and machine learning , Springer, 2006. [9] R. S. Bogartz , A least squares method for fitting intercepting line segments to a set of data points , Psychol. Bull., 70 (1968), p. 749. [10] J. Bongard and H. Lipson , Automated reverse engineering of nonlinear dynamical systems ,Proc. National Acad. Sci. USA, 104 (2007), pp. 9943–9948. [11] A. B¨ ottcher and B. Silbermann , The finite section method for Toeplitz operators on the quarter-plane with piecewise continuous symbols , Math. Nachr., 110 (1983), pp. 279–291. [12] N. Boull´ e, M. J. Colbrook, and G. Conradie , Convergent methods for Koopman operators on reproducing kernel Hilbert spaces , arXiv preprint arXiv:2506.15782, (2025). [13] B. W. Brunton, L. A. Johnson, J. G. Ojemann, and J. N. Kutz , Extracting spatial– temporal coherent patterns in large-scale neural recordings using dynamic mode decom-position , J. Neuro. Meth., 258 (2016), pp. 1–15. [14] S. L. Brunton, B. W. Brunton, J. L. Proctor, and J. N. Kutz , Koopman invariant subspaces and finite linear representations of nonlinear dynamical systems for control ,28 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, PLOS One, 11 (2016), p. e0150171. [15] S. L. Brunton, M. Budiˇ si´ c, E. Kaiser, and J. N. Kutz , Modern Koopman theory for dynamical systems , SIAM Rev., 64 (2022), pp. 229–340. [16] S. L. Brunton and J. N. Kutz , Data-Driven Science and Engineering: Machine Learning, Dynamical Systems, and Control , Cambridge University Press, 2nd ed., 2022. [17] S. L. Brunton, J. L. Proctor, and J. N. Kutz , Discovering governing equations from data by sparse identification of nonlinear dynamical systems , Proc. Nat. Acad. Sci. USA, 113 (2016), pp. 3932–3937. [18] M. Budiˇ si´ c, R. Mohr, and I. Mezi´ c, Applied Koopmanism , Chaos, 22 (2012), p. 047510. [19] K. Carlberg, M. Barone, and H. Antil , Galerkin v. least-squares Petrov–Galerkin projec-tion in nonlinear model reduction , J. Comput. Phys., 330 (2017), pp. 693–734. [20] S. Chaturantabut and D. C. Sorensen , Nonlinear model reduction via discrete empirical interpolation , SIAM J. Sci. Comput., 32 (2010), pp. 2737–2764. [21] M. J. Colbrook , The mpEDMD algorithm for data-driven computations of measure-preserving dynamical systems , SIAM J. Numer. Anal., 61 (2023), pp. 1585–1608. [22] , Another look at residual dynamic mode decomposition in the regime of fewer snapshots than dictionary size , Phys. D: Nonlinear Phenom., 469 (2024), p. 134341. [23] , The Multiverse of Dynamic Mode Decomposition Algorithms , vol. 25 of Handbook of Numerical Analysis, Elsevier, 2024, pp. 127–230. [24] M. J. Colbrook, Z. Drmaˇ c, and A. Horning , An introductory guide to Koopman learning ,arXiv preprint arXiv:2510.22002, (2025). [25] M. J. Colbrook, C. Drysdale, and A. Horning , Rigged dynamic mode decomposition: Data-driven generalized eigenfunction decompositions for Koopman operators , SIAM J. Appl. Dyn. Syst., 24 (2025), pp. 1150–1190. [26] M. J. Colbrook, Q. Li, R. V. Raut, and A. Townsend , Beyond expectations: residual dynamic mode decomposition and variance for stochastic dynamical systems , Nonlinear Dyn., 112 (2024), pp. 2037–2061. [27] M. J. Colbrook and A. Townsend , Rigorous data-driven computation of spectral properties of Koopman operators for dynamical systems , Commun. Pure Appl. Math., 77 (2024), pp. 221–283. [28] M. Cranmer , Interpretable machine learning for science with PySR and SymbolicRegres-sion.jl , arXiv preprint arXiv:2305.01582, (2023). [29] S. Dawson, M. S. Hemati, M. O. Williams, and C. W. Rowley , Characterizing and cor-recting for the effect of sensor noise in the dynamic mode decomposition , Exp. Fluids, 57 (2016), pp. 1–19. [30] Z. Drmaˇ c, Dynamic mode decomposition–a numerical linear algebra perspective , in The Koopman Operator in Systems and Control, Springer, 2020, pp. 161–194. [31] Z. Drmaˇ c and I. Mezi´ c, A data driven Koopman–Schur decomposition for computational analysis of nonlinear dynamics , arXiv preprint arXiv:2312.15837, (2023). [32] A. Ern and J.-L. Guermond , Theory and Practice of Finite Elements , Springer, 2004. [33] U. Fasel, J. N. Kutz, B. W. Brunton, and S. L. Brunton , Ensemble-SINDy: Robust sparse model discovery in the low-data, high-noise limit, with active learning and control , Proc. Royal Soc. A, 478 (2022), p. 20210904. [34] G. Froyland , An analytic framework for identifying finite-time coherent sets in time-dependent dynamical systems , Phys. D: Nonlinear Phenom., 250 (2013), pp. 1–19. [35] G. Froyland, D. Giannakis, B. R. Lintner, M. Pike, and J. Slawinska , Spectral analysis of climate dynamics with operator-theoretic approaches , Nat. Commun., 12 (2021). [36] I. Gelfand , Normierte ringe , Mat. Sbornik, 9 (1941), pp. 3–24. [37] D. A. Haggerty, M. J. Banks, E. Kamenar, A. B. Cao, P. C. Curtis, I. Mezi´ c, and E. W. Hawkes , Control of soft robots with inertial dynamics , Sci. Robot., 8 (2023). [38] D. R. Hardoon, S. Szedmak, and J. Shawe-Taylor , Canonical correlation analysis: An overview with application to learning methods , Neural Comput., 16 (2004), pp. 2639–2664. [39] M. Haseli and J. Cort´ es , Invariance proximity: Closed-form error bounds for finite-dimensional Koopman-based models , arXiv preprint arXiv:2311.13033, (2023). [40] M. S. Hemati, C. W. Rowley, E. A. Deem, and L. N. Cattafesta , De-biasing the dynamic mode decomposition for applied Koopman spectral analysis of noisy datasets , Theor. Com-put. Fluid Dyn., 31 (2017), pp. 349–368. [41] J. S. Hesthaven, C. Pagliantini, and G. Rozza , Reduced basis methods for time-dependent problems , Acta Numer., 31 (2022), pp. 265–345. [42] J. S. Hesthaven, G. Rozza, and B. Stamm , Certified reduced basis methods for parametrized partial differential equations , Springer, 2016. [43] JPL Solar System Dynamics Group , NASA/JPL Horizons On-Line Ephemeris System .https://ssd.jpl.nasa.gov/horizons/, 2025. Accessed: 2025-11-25. [44] G. E. Karniadakis, I. G. Kevrekidis, L. Lu, P. Perdikaris, S. Wang, and L. Yang ,TRUSTWORTHY KOOPMAN OPERATOR LEARNING 29 
+
+Physics-informed machine learning , Nat. Rev. Phys., 3 (2021), pp. 422–440. [45] D. P. Kingma and J. Ba , Adam: A method for stochastic optimization , arXiv preprint arXiv:1412.6980, (2014). [46] S. Klus, B. E. Husic, M. Mollenhauer, and F. No´ e, Kernel methods for detecting coherent structures in dynamical data , Chaos, 29 (2019), p. 123112. [47] S. Klus, P. Koltai, and C. Sch¨ utte , On the numerical approximation of the Perron– Frobenius and Koopman operator , arXiv preprint arXiv:1512.05997, (2015). [48] S. Klus, F. N¨ uske, and B. Hamzi , Kernel-based approximation of the Koopman generator and Schr¨ odinger operator , Entropy, 22 (2020), p. 722. [49] A. V. Knyazev , subspacea (Angles Between Subspaces) . https://www.mathworks.com/ matlabcentral/fileexchange/55-subspacea-angles-between-subspaces. Version 4.6. [50] F. K¨ ohne, F. M. Philipp, M. Schaller, A. Schiela, and K. Worthmann , L∞-error bounds for approximations of the Koopman operator by kernel extended dynamic mode decom-position , SIAM J. Appl. Dyn. Syst., 24 (2025), pp. 501–529. [51] B. O. Koopman , Hamiltonian systems and transformation in Hilbert space , Proc. Natl. Acad. Sci. USA, 17 (1931), pp. 315–318. [52] B. O. Koopman and J. von Neumann , Dynamical systems of continuous spectra , Proc. Natl. Acad. Sci. USA, 18 (1932), pp. 255–263. [53] M. Korda and I. Mezi´ c, On convergence of extended dynamic mode decomposition to the Koopman operator , J. Nonlin. Sci., 28 (2018), pp. 687–710. [54] K. Kunisch and S. Volkwein , Galerkin proper orthogonal decomposition methods for para-bolic problems , Numer. Math., 90 (2001), pp. 117–148. [55] , Galerkin proper orthogonal decomposition methods for a general equation in fluid dynamics , SIAM J. Numer. Anal., 40 (2002), pp. 492–515. [56] A. J. Kurdila and P. Bobade , Koopman theory and linear approximation spaces , arXiv preprint arXiv:1811.10809, (2018). [57] J. N. Kutz, S. L. Brunton, B. W. Brunton, and J. L. Proctor , Dynamic Mode Decom-position: Data-driven Modeling of Complex Systems , SIAM, 2016. [58] S. Lanthaler, S. Mishra, and G. E. Karniadakis , Error estimates for deeponets: A deep learning framework in infinite dimensions , Trans. Math. Appl., 6 (2022), p. tnac001. [59] Q. Li, F. Dietrich, E. M. Bollt, and I. G. Kevrekidis , Extended dynamic mode decom-position with dictionary learning: A data-driven adaptive spectral decomposition of the Koopman operator , Chaos, 27 (2017), p. 103111. [60] E. N. Lorenz , Deterministic nonperiodic flow , J. Atmo. Sci., 20 (1963), pp. 130–141. [61] H. Lu and D. M. Tartakovsky , Prediction accuracy of dynamic mode decomposition , SIAM J. Sci. Comput., 42 (2020), pp. A1639–A1662. [62] B. Lusch, J. N. Kutz, and S. L. Brunton , Deep learning for universal linear embeddings of nonlinear dynamics , Nat. Commun., 9 (2018), pp. 1–10. [63] A. Mardt, L. Pasquali, H. Wu, and F. No´ e, VAMPnets: Deep learning of molecular kinetics , Nat. Commun., 9 (2018). [64] , VAMPnets for deep learning of molecular kinetics , Nat. Commun., 9 (2018), pp. 1–11. [65] A. Mauroy, Y. Susuki, and I. Mezic , The Koopman Operator in Systems and Control ,Springer, 2020. [66] I. Mezi´ c, Spectral properties of dynamical systems, model reduction and decompositions , Non-lin. Dyn., 41 (2005), pp. 309–325. [67] , Analysis of fluid flows via spectral properties of the Koopman operator , Ann. Rev. Fluid Mech., 45 (2013), pp. 357–378. [68] B. Moore , Principal component analysis in linear systems: Controllability, observability, and model reduction , IEEE Trans. Autom. Control., 26 (1981), pp. 17–32. [69] F. N¨ uske, S. Peitz, F. Philipp, M. Schaller, and K. Worthmann , Finite-data error bounds for Koopman-based prediction and control , J. Nonlinear Sci., 33 (2023), p. 14. [70] A. Orvieto et al. , Resurrecting recurrent neural networks for long sequences , in Interna-tional Conference on Machine Learning, PMLR, 2023, pp. 26670–26698. [71] S. E. Otto, A. Padovan, and C. W. Rowley , Optimizing oblique projections for nonlinear systems using trajectories , SIAM J. Sci. Comput., 44 (2022), pp. A1681–A1702. [72] , Model reduction for nonlinear systems by balanced truncation of state and gradient covariance , SIAM J. Sci. Comput., 45 (2023), pp. A2325–A2355. [73] S. E. Otto and C. W. Rowley , Linearly recurrent autoencoder networks for learning dy-namics , SIAM J. Appl. Dyn. Syst., 18 (2019), pp. 558–593. [74] , Koopman operators for estimation and control of dynamical systems , Annu. Rev. Control. Robotics, Auton. Syst., 4 (2021), pp. 59–87. [75] F. M. Philipp, M. Schaller, K. Worthmann, S. Peitz, and F. N¨ uske , Error bounds for kernel-based approximations of the Koopman operator , Appl. Comput. Harmon. Anal., 71 (2024), p. 101657. 30 G. CONRADIE, N. BOULL ´E, J-C. LOISEAU, S. L. BRUNTON, M. J. COLBROOK, [76] J. L. Proctor and P. A. Eckhoff , Discovering dynamic patterns from infectious disease data using dynamic mode decomposition , Int. Health, 7 (2015), pp. 139–145. [77] A. Quarteroni, A. Manzoni, and F. Negri , Reduced Basis Methods for Partial Differential Equations: An Introduction , Springer, 2015. [78] C. W. Rowley , Model reduction for fluids, using balanced proper orthogonal decomposition ,Int. J. Bifurc. Chaos, 15 (2005), pp. 997–1013. [79] C. W. Rowley, I. Mezi´ c, S. Bagheri, P. Schlatter, and D. S. Henningson , Spectral analysis of nonlinear flows , J. Fluid Mech., 641 (2009), pp. 115–127. [80] G. Rozza, D. B. P. Huynh, and A. T. Patera , Reduced basis approximation and a posteriori error estimation for affinely parametrized elliptic coercive partial differential equations: Application to transport and continuum mechanics , Arch. Comput. Methods Eng., 15 (2008), p. 229. [81] D. Sashidhar and J. N. Kutz , Bagging, optimized dynamic mode decomposition for ro-bust, stable forecasting with spatial and temporal uncertainty quantification , Philos. Trans. Royal Soc. A, 380 (2022), p. 20210199. [82] P. J. Schmid , Dynamic mode decomposition of numerical and experimental data , J. Fluid Mech., 656 (2010), pp. 5–28. [83] , Dynamic mode decomposition and its variants , Annu. Rev. Fluid Mech., 54 (2022), pp. 225–254. [84] M. Schmidt and H. Lipson , Distilling free-form natural laws from experimental data , Science, 324 (2009), pp. 81–85. [85] B. Sch¨ olkopf , The kernel trick for distances , in Advances in Neural Information Processing Systems, vol. 13, 2000, pp. 283–289. [86] M. Showalter and D. Hamilton , Resonant interactions and chaotic rotation of Pluto’s small moons , Nature, 522 (2015), pp. 45–49. [87] S. A. Stern, W. M. Grundy, W. B. McKinnon, H. A. Weaver, and L. A. Young , The Pluto system after New Horizons , Annu. Rev. Astron. Astrophys., 56 (2018), pp. 357–392. [88] R. Str¨ asser, K. Worthmann, I. Mezi´ c, J. Berberich, M. Schaller, and F. Allg¨ ower ,
+
+An overview of Koopman-based control: From error bounds to closed-loop guarantees ,arXiv preprint arXiv:2509.02839, (2025). [89] S. H. Strogatz , Nonlinear Dynamics and Chaos: With Applications to Physics, Biology, Chemistry, and Engineering , CRC Press, 2018. [90] A. M. Stuart , Inverse problems: A Bayesian perspective , Acta Numer., 19 (2010), pp. 451– 559. [91] N. Takeishi, Y. Kawahara, and T. Yairi , Learning koopman invariant subspaces for dy-namic mode decomposition , in Advances in Neural Information Processing Systems, 2017, pp. 1130–1140. [92] J. H. Tu, C. W. Rowley, D. M. Luchtenburg, S. L. Brunton, and J. N. Kutz , On dy-namic mode decomposition: Theory and applications , J. Comput. Dyn., 1 (2014), pp. 391– 421. [93] H. Wendland , Scattered Data Approximation , Cambridge University Press, 2004. [94] K. Willcox and J. Peraire , Balanced model reduction via the proper orthogonal decompo-sition , AIAA J., 40 (2002), pp. 2323–2330. [95] M. O. Williams, I. G. Kevrekidis, and C. W. Rowley , A data–driven approximation of the Koopman operator: Extending dynamic mode decomposition , J. Nonlin. Sci., 25 (2015), pp. 1307–1346. [96] M. O. Williams, C. W. Rowley, and I. G. Kevrekidis , A kernel-based method for data-driven Koopman spectral analysis , J. Comput. Dyn., 2 (2015), p. 247. [97] H. Wu and F. No´ e, Variational approach for learning Markov processes from time series data , J. Nonlinear Sci., 30 (2020), pp. 23–66. [98] R. Yadav and A. Mauroy , Approximation of the Koopman operator via Bernstein polyno-mials , Commun. Nonlinear Sci. Numer. Simul., 147 (2025), p. 108819. [99] E. Yeung, S. Kundu, and N. Hodas , Learning deep neural network representations for Koopman operators of nonlinear dynamical systems , in 2019 Amer. Contr. Conf., IEEE, 2019, pp. 4832–4839. [100] L.-S. Young , What are SRB measures, and which dynamical systems have them? , J. statis-tical physics, 108 (2002), pp. 733–754. [101] C. Zhang and E. Zuazua , A quantitative analysis of Koopman operator methods for system identification and predictions , C. R. - Mec., 351 (2023), pp. 1–31.

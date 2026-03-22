@@ -6,73 +6,121 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-15
-- 运行时间：2026-03-15 19:18:22 UTC
+- 最新运行日期：2026-03-13 ~ 2026-03-22
+- 运行时间：2026-03-22 01:38:44 UTC
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：9
-- 速读区：8
+- 本次总论文数：33
+- 精读区：22
+- 速读区：11
 
 ### 今日简报（AI）
-今日精选 17 篇前沿论文，深度解析时间序列异常检测与长程交通预测的满分突破。
-重点关注利用条件归一化流潜空间偏置提升检测精度，以及通过时间折叠图优化长周期交通预测。
-建议同步留意金融波动率预测中量子计算与上下文学习（ICL）的跨界融合新趋势。
-- 详情：[/202603/15/README](/202603/15/README)
+本期深度研读 33 篇时序领域论文，重点攻克异常检测与跨模态预测难题。
+满分论文揭示了注意力机制中 Query 动态对异常检测的关键作用，同时展示了文本语义与时序演化融合的新路径。
+建议优先探索非监督多变量相似性检索技术，以提升复杂数据环境下的分析效率。
+- 详情：[/20260313-20260322/README](/20260313-20260322/README)
 
 ### 精读区论文标签
-1. [Anomaly detection in time-series via inductive biases in the latent space of conditional normalizing flows](/202603/15/2603.11756v1-anomaly-detection-in-time-series-via-inductive-biases-in-the-latent-space-of-conditional-normalizing-flows)  
+1. [Surprised by Attention: Predictable Query Dynamics for Time Series Anomaly Detection](/20260313-20260322/2603.12916v1-surprised-by-attention-predictable-query-dynamics-for-time-series-anomaly-detection)  
    标签：评分：10.0/10、query:ts
-   evidence：通过潜空间归纳偏置进行多变量时序异常检测
-2. [VisiFold: Long-Term Traffic Forecasting via Temporal Folding Graph and Node Visibility](/202603/15/2603.11816v1-visifold-long-term-traffic-forecasting-via-temporal-folding-graph-and-node-visibility)  
+   evidence：多变量时间序列异常检测的无监督检测器
+2. [Surprised by Attention: Predictable Query Dynamics for Time Series Anomaly Detection](/20260313-20260322/2603.12916v2-surprised-by-attention-predictable-query-dynamics-for-time-series-anomaly-detection)  
    标签：评分：10.0/10、query:ts
-   evidence：通过时间折叠图进行长期交通预测
-3. [Online Continual Learning for Anomaly Detection in IoT under Data Distribution Shifts](/202603/15/2603.07507v1-online-continual-learning-for-anomaly-detection-in-iot-under-data-distribution-shifts)  
+   evidence：多元时间序列异常检测技术
+3. [Routing Channel-Patch Dependencies in Time Series Forecasting with Graph Spectral Decomposition](/20260313-20260322/2603.13702v1-routing-channel-patch-dependencies-in-time-series-forecasting-with-graph-spectral-decomposition)  
+   标签：评分：10.0/10、query:ts
+   evidence：预测中通道-补丁依赖的高级处理方法
+4. [Cross-RAG: Zero-Shot Retrieval-Augmented Time Series Forecasting via Cross-Attention](/20260313-20260322/2603.14709v1-cross-rag-zero-shot-retrieval-augmented-time-series-forecasting-via-cross-attention)  
+   标签：评分：10.0/10、query:ts
+   evidence：最先进的检索增强预测框架
+5. [Time-Aware Prior Fitted Networks for Zero-Shot Forecasting with Exogenous Variables](/20260313-20260322/2603.15802v1-time-aware-prior-fitted-networks-for-zero-shot-forecasting-with-exogenous-variables)  
+   标签：评分：10.0/10、query:ts
+   evidence：带外生变量的高级零样本预测
+6. [Long-Horizon Traffic Forecasting via Incident-Aware Conformal Spatio-Temporal Transformers](/20260313-20260322/2603.16857v1-long-horizon-traffic-forecasting-via-incident-aware-conformal-spatio-temporal-transformers)  
+   标签：评分：10.0/10、query:ts
+   evidence：通过时空Transformer进行长周期交通预测
+7. [TimeAPN: Adaptive Amplitude-Phase Non-Stationarity Normalization for Time Series Forecasting](/20260313-20260322/2603.17436v1-timeapn-adaptive-amplitude-phase-non-stationarity-normalization-for-time-series-forecasting)  
+   标签：评分：10.0/10、query:ts
+   evidence：具有非平稳归一化的多变量长期时间序列预测
+8. [BoundAD: Boundary-Aware Negative Generation for Time Series Anomaly Detection](/20260313-20260322/2603.18111v1-boundad-boundary-aware-negative-generation-for-time-series-anomaly-detection)  
+   标签：评分：10.0/10、query:ts
+   evidence：用于时序异常检测的边界感知负样本生成
+9. [MLOW: Interpretable Low-Rank Frequency Magnitude Decomposition of Multiple Effects for Time Series Forecasting](/20260313-20260322/2603.18432v1-mlow-interpretable-low-rank-frequency-magnitude-decomposition-of-multiple-effects-for-time-series-forecasting)  
+   标签：评分：10.0/10、query:ts
+   evidence：基于频率的可解释趋势与季节性分解
+10. [Accurate and Efficient Multi-Channel Time Series Forecasting via Sparse Attention Mechanism](/20260313-20260322/2603.18712v1-accurate-and-efficient-multi-channel-time-series-forecasting-via-sparse-attention-mechanism)  
+   标签：评分：10.0/10、query:ts
+   evidence：捕获通道间依赖的多通道时序预测
+11. [Unified Taxonomy for Multivariate Time Series Anomaly Detection using Deep Learning](/20260313-20260322/2603.18941v1-unified-taxonomy-for-multivariate-time-series-anomaly-detection-using-deep-learning)  
+   标签：评分：10.0/10、query:ts
+   evidence：多变量时间序列异常检测分类法
+12. [L2GTX: From Local to Global Time Series Explanations](/20260313-20260322/2603.13065v1-l2gtx-from-local-to-global-time-series-explanations)  
    标签：评分：9.0/10、query:ts
-   evidence：物联网异常检测的在线持续学习
-4. [Hybrid Quantum Neural Network for Multivariate Clinical Time Series Forecasting](/202603/15/2603.08072v1-hybrid-quantum-neural-network-for-multivariate-clinical-time-series-forecasting)  
+   evidence：时间序列分类的可解释机器学习
+13. [MR-GNF: Multi-Resolution Graph Neural Forecasting on Ellipsoidal Meshes for Efficient Regional Weather Prediction](/20260313-20260322/2603.13563v1-mr-gnf-multi-resolution-graph-neural-forecasting-on-ellipsoidal-meshes-for-efficient-regional-weather-prediction)  
    标签：评分：9.0/10、query:ts
-   evidence：生理信号的多变量多步预测
-5. [Explainable Condition Monitoring via Probabilistic Anomaly Detection Applied to Helicopter Transmissions](/202603/15/2603.08130v1-explainable-condition-monitoring-via-probabilistic-anomaly-detection-applied-to-helicopter-transmissions)  
+   evidence：用于天气预报的图神经预测模型
+14. [Locally Linear Continual Learning for Time Series based on VC-Theoretical Generalization Bounds](/20260313-20260322/2603.13674v1-locally-linear-continual-learning-for-time-series-based-on-vc-theoretical-generalization-bounds)  
    标签：评分：9.0/10、query:ts
-   evidence：可解释的概率异常检测
-6. [Anomaly detection using surprisals](/202603/15/2603.09318v1-anomaly-detection-using-surprisals)  
+   evidence：时间序列预测的可解释模型
+15. [GARCH-FIS: A Hybrid Forecasting Model with Dynamic Volatility-Driven Parameter Adaptation](/20260313-20260322/2603.14793v1-garch-fis-a-hybrid-forecasting-model-with-dynamic-volatility-driven-parameter-adaptation)  
    标签：评分：9.0/10、query:ts
-   evidence：使用惊奇得分进行多变量数据异常检测
-7. [Rethinking Adam for Time Series Forecasting: A Simple Heuristic to Improve Optimization under Distribution Shifts](/202603/15/2603.10095v1-rethinking-adam-for-time-series-forecasting-a-simple-heuristic-to-improve-optimization-under-distribution-shifts)  
+   evidence：金融时间序列的混合预测模型
+16. [Unlocking the Value of Text: Event-Driven Reasoning and Multi-Level Alignment for Time Series Forecasting](/20260313-20260322/2603.15452v1-unlocking-the-value-of-text-event-driven-reasoning-and-multi-level-alignment-for-time-series-forecasting)  
    标签：评分：9.0/10、query:ts
-   evidence：改进分布偏移下的时序预测优化方法
-8. [Spatio-Temporal Forecasting of Retaining Wall Deformation: Mitigating Error Accumulation via Multi-Resolution ConvLSTM Stacking Ensemble](/202603/15/2603.10453v1-spatio-temporal-forecasting-of-retaining-wall-deformation-mitigating-error-accumulation-via-multi-resolution-convlstm-stacking-ensemble)  
+   evidence：高级多模态时间序列预测方法
+17. [Seeking SOTA: Time-Series Forecasting Must Adopt Taxonomy-Specific Evaluation to Dispel Illusory Gains](/20260313-20260322/2603.15506v1-seeking-sota-time-series-forecasting-must-adopt-taxonomy-specific-evaluation-to-dispel-illusory-gains)  
    标签：评分：9.0/10、query:ts
-   evidence：支护结构行为的长期预测
-9. [On the Role of Reversible Instance Normalization](/202603/15/2603.11869v1-on-the-role-of-reversible-instance-normalization)  
+   evidence：对时序预测SOTA评估基准的批判性分析
+18. [Integrating Inductive Biases in Transformers via Distillation for Financial Time Series Forecasting](/20260313-20260322/2603.16985v1-integrating-inductive-biases-in-transformers-via-distillation-for-financial-time-series-forecasting)  
    标签：评分：9.0/10、query:ts
-   evidence：改进最先进预测模型的归一化方法
+   evidence：用于金融预测的前沿时间序列Transformer
+19. [The Phasor Transformer: Resolving Attention Bottlenecks on the Unit Circle](/20260313-20260322/2603.17433v1-the-phasor-transformer-resolving-attention-bottlenecks-on-the-unit-circle)  
+   标签：评分：9.0/10、query:ts
+   evidence：用于长上下文时间序列预测的高级 Transformer
+20. [Baguan-TS: A Sequence-Native In-Context Learning Model for Time Series Forecasting with Covariates](/20260313-20260322/2603.17439v1-baguan-ts-a-sequence-native-in-context-learning-model-for-time-series-forecasting-with-covariates)  
+   标签：评分：9.0/10、query:ts
+   evidence：时间序列预测的上下文学习模型
+21. [Unsupervised Symbolic Anomaly Detection](/20260313-20260322/2603.17575v1-unsupervised-symbolic-anomaly-detection)  
+   标签：评分：9.0/10、query:ts
+   evidence：通过符号回归实现可解释的异常检测
+22. [Fast and Interpretable Autoregressive Estimation with Neural Network Backpropagation](/20260313-20260322/2603.19041v1-fast-and-interpretable-autoregressive-estimation-with-neural-network-backpropagation)  
+   标签：评分：9.0/10、query:ts
+   evidence：利用神经网络进行可解释的自回归估计
 
 ### 速读区论文标签
-1. [Interpretable Maximum Margin Deep Anomaly Detection](/202603/15/2603.07073v1-interpretable-maximum-margin-deep-anomaly-detection)  
+1. [Deep Distance Measurement Method for Unsupervised Multivariate Time Series Similarity Retrieval](/20260313-20260322/2603.12544v1-deep-distance-measurement-method-for-unsupervised-multivariate-time-series-similarity-retrieval)  
    标签：评分：8.0/10、query:ts
-   evidence：具有最大边距目标的可解释深度异常检测
-2. [A Hybrid Quantum-Classical Framework for Financial Volatility Forecasting Based on Quantum Circuit Born Machines](/202603/15/2603.09789v1-a-hybrid-quantum-classical-framework-for-financial-volatility-forecasting-based-on-quantum-circuit-born-machines)  
+   evidence：无监督多变量时间序列相似性检索
+2. [From Text to Forecasts: Bridging Modality Gap with Temporal Evolution Semantic Space](/20260313-20260322/2603.12664v1-from-text-to-forecasts-bridging-modality-gap-with-temporal-evolution-semantic-space)  
    标签：评分：8.0/10、query:ts
-   evidence：用于波动率预测的量子-经典混合框架
-3. [Regime-aware financial volatility forecasting via in-context learning](/202603/15/2603.10299v1-regime-aware-financial-volatility-forecasting-via-in-context-learning)  
+   evidence：用于衔接文本与时序预测的可解释时间原语
+3. [From Text to Forecasts: Bridging Modality Gap with Temporal Evolution Semantic Space](/20260313-20260322/2603.12664v2-from-text-to-forecasts-bridging-modality-gap-with-temporal-evolution-semantic-space)  
    标签：评分：8.0/10、query:ts
-   evidence：用于金融波动率预测的高级上下文学习方法
-4. [A Bipartite Graph Approach to U.S.-China Cross-Market Return Forecasting](/202603/15/2603.10559v1-a-bipartite-graph-approach-to-us-china-cross-market-return-forecasting)  
+   evidence：多模态预测的可解释时间原语
+4. [E-TRENDS: Enhanced LSTM Trend Forecasting for Equities](/20260313-20260322/2603.14453v1-e-trends-enhanced-lstm-trend-forecasting-for-equities)  
    标签：评分：8.0/10、query:ts
-   evidence：用于收益预测的可解释特征选择层
-5. [Dynamic Bayesian regression quantile synthesis for forecasting outlook-at-risk](/202603/15/2603.11474v1-dynamic-bayesian-regression-quantile-synthesis-for-forecasting-outlook-at-risk)  
-   标签：评分：8.0/10、query:ts
-   evidence：用于预测的贝叶斯分位数综合
-6. [MAcPNN: Mutual Assisted Learning on Data Streams with Temporal Dependence](/202603/15/2603.08972v1-macpnn-mutual-assisted-learning-on-data-streams-with-temporal-dependence)  
+   evidence：股票的LSTM趋势预测
+5. [Mixed difference integer-valued GARCH model for $ \mathbb{Z}$-valued time series](/20260313-20260322/2603.13784v1-mixed-difference-integer-valued-garch-model-for--mathbbz-valued-time-series)  
    标签：评分：7.0/10、query:ts
-   evidence：具有时间依赖性和概念漂移的数据流学习
-7. [Hybrid Hidden Markov Model for Modeling Equity Excess Growth Rate Dynamics: A Discrete-State Approach with Jump-Diffusion](/202603/15/2603.10202v1-hybrid-hidden-markov-model-for-modeling-equity-excess-growth-rate-dynamics-a-discrete-state-approach-with-jump-diffusion)  
+   evidence：针对整数值时间序列的GARCH模型
+6. [Mixed difference integer-valued GARCH model for $ \mathbb{Z}$-valued time series](/20260313-20260322/2603.13784v2-mixed-difference-integer-valued-garch-model-for--mathbbz-valued-time-series)  
    标签：评分：7.0/10、query:ts
-   evidence：使用离散状态方法建模金融时序动态
-8. [Effective Dataset Distillation for Spatio-Temporal Forecasting with Bi-dimensional Compression](/202603/15/2603.10410v1-effective-dataset-distillation-for-spatio-temporal-forecasting-with-bi-dimensional-compression)  
+   evidence：整数值时间序列的观测驱动模型
+7. [Interpretable Classification of Time Series Using Euler Characteristic Surfaces](/20260313-20260322/2603.15079v1-interpretable-classification-of-time-series-using-euler-characteristic-surfaces)  
    标签：评分：7.0/10、query:ts
-   evidence：用于时空预测效率的数据集蒸馏
+   evidence：时间序列的可解释特征表示
+8. [Trustworthy Koopman Operator Learning: Invariance Diagnostics and Error Bounds](/20260313-20260322/2603.15091v1-trustworthy-koopman-operator-learning-invariance-diagnostics-and-error-bounds)  
+   标签：评分：7.0/10、query:ts
+   evidence：预测模型验证的诊断与误差界限
+9. [On the evaluation of time-to-event, survival time and first passage time forecasts](/20260313-20260322/2603.14835v1-on-the-evaluation-of-time-to-event-survival-time-and-first-passage-time-forecasts)  
+   标签：评分：6.0/10、query:ts
+   evidence：事件时间及生存时间预测的评估
+10. [In-Context Symbolic Regression for Robustness-Improved Kolmogorov-Arnold Networks](/20260313-20260322/2603.15250v1-in-context-symbolic-regression-for-robustness-improved-kolmogorov-arnold-networks)  
+   标签：评分：6.0/10、query:ts
+   evidence：用于可解释科学机器学习的符号回归
+11. [Fast and scalable inference in hidden Markov models with Gaussian fields](/20260313-20260322/2603.17469v1-fast-and-scalable-inference-in-hidden-markov-models-with-gaussian-fields)  
+   标签：评分：6.0/10、query:ts
+   evidence：具有潜在结构的时序隐马尔可夫模型推理
 
 
 <div class="dpr-home-promo-card">

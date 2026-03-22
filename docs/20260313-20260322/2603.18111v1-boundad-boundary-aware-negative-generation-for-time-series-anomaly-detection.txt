@@ -1,0 +1,492 @@
+Title: BoundAD: Boundary-Aware Negative Generation for Time Series Anomaly Detection
+
+URL Source: https://arxiv.org/pdf/2603.18111v1
+
+Published Time: Fri, 20 Mar 2026 00:11:22 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# BoundAD: Boundary-Aware Negative Generation for Time Series Anomaly Detection 
+
+# Xiancheng Wang 1, Lin Wang 1* , Rui Wang 1, Zhibo Zhang 2,Minghang Zhao 1
+
+> 1*
+
+School of Ocean Engineering, Harbin Institute of Technology, West Wenhua Road, Weihai, 264209, Shandong, China. 
+
+> 2
+
+Technical Center, Bogie Development Department, CRRC Qingdao Sifang Locomotive and Rolling Stock Co., Ltd., Jinhong East Road, Qingdao, 266111, Shandong, China. *Corresponding author(s). E-mail(s): wanglin 007@hitwh.edu.cn; Contributing authors: 24S130294@hit.std.edu.cn; wangrui@hitwh.edu.cn; zhangzhibo@cqsf.com; zhaomh@hit.edu.cn; 
+
+Abstract 
+
+Contrastive learning methods for time series anomaly detection (TSAD) heavily depend on the quality of negative sample construction. However, existing strate-gies based on random perturbations or pseudo-anomaly injection often struggle to simultaneously preserve temporal semantic consistency and provide effective decision-boundary supervision. Most existing methods rely on prior anomaly injection, while overlooking the potential of generating hard negatives near the data manifold boundary directly from normal samples themselves. To address this issue, we propose a reconstruction-driven boundary negative generation frame-work that automatically constructs hard negatives through the reconstruction process of normal samples. Specifically, the method first employs a reconstruction network to capture normal temporal patterns, and then introduces a reinforce-ment learning strategy to adaptively adjust the optimization update magnitude according to the current reconstruction state. In this way, boundary-shifted sam-ples close to the normal data manifold can be induced along the reconstruction trajectory and further used for subsequent contrastive representation learning. Unlike existing methods that depend on explicit anomaly injection, the proposed framework does not require predefined anomaly patterns, but instead mines more challenging boundary negatives from the model’s own learning dynamics. Exper-imental results show that the proposed method effectively improves anomaly 
+
+1 
+
+> arXiv:2603.18111v1 [cs.LG] 18 Mar 2026 representation learning and achieves competitive detection performance on the current dataset.
+> Keywords: time series anomaly detection , contrastive learning, reconstruction learning , reinforcement learning ,hard negative generation
+
+# 1 Introduction 
+
+Time series anomaly detection (TSAD) plays an important role in a wide range of real-world applications, including industrial monitoring, cloud system operations, Internet of Things (IoT) sensing, healthcare, and cybersecurity, where anomalies often cor-respond to equipment faults, system instability, external attacks, or other potential risk events [1]. In recent years, with the rapid growth of high-dimensional, multivari-ate, and strongly nonlinear time series data, deep learning-based TSAD methods have attracted increasing attention and gradually become one of the dominant technical paradigms in this field [1–3]. Existing TSAD methods can be roughly categorized into three groups: reconstruction-based, forecasting-based, and representation learning-based approaches. Reconstruction-based methods characterize normal patterns and detect anomalies through reconstruction errors, with representative examples including models based on stochastic recurrent networks or variational autoencoders [2]. Forecasting-based or temporal modeling methods instead identify anomalies by mea-suring deviations from predicted future patterns. In addition, a growing number of recent studies have enhanced temporal modeling capability through Transform-ers, hierarchical one-class classification, and attention mechanisms, such as THOC, Anomaly Transformer, and TranAD [3–5]. Although these methods have achieved promising progress on multiple benchmarks, under the unsupervised setting they still mainly rely on one-class modeling of normal patterns. As a result, they may learn overly compact normal boundaries, which often leads to high false positive rates when normal fluctuations overlap with anomalous perturbations in the feature space [6]. To alleviate the difficulty caused by the lack of labeled supervision, self-supervised representation learning, especially contrastive learning, has recently been introduced into TSAD and shown promising potential [7, 8]. The core idea of contrastive learn-ing is to pull semantically similar samples closer while pushing semantically dissimilar samples farther apart in the representation space, a principle that has been widely validated in computer vision and sequential representation learning [9, 10]. In the time series domain, TS2Vec learns universal temporal representations through hierarchi-cal contrastive objectives, while DCdetector further improves anomaly discrimination with dual attention and purely contrastive objectives [7, 8]. However, most existing contrastive TSAD methods largely inherit the construction paradigm from computer vision, where augmented views are treated as positive samples and temporally distant windows are treated as negative samples. For time series, such assumptions do not always hold. On the one hand, certain augmentation operations may destroy anomaly-sensitive local semantics, causing the so-called positive samples to deviate from the 2original normal pattern. On the other hand, temporally distant segments may still belong to the same normal operating state, which introduces semantic conflicts into negative sample construction [7, 8]. Recent studies have further shown that merely modeling normality is often insuf-ficient for learning robust anomaly boundaries, and that appropriately incorporating anomaly-aware information can effectively improve the discriminability of the repre-sentation space. For example, COUTA alleviates data contamination and the lack of anomaly priors through calibrated one-class learning, while Outlier Exposure demon-strates that explicitly introducing auxiliary out-of-distribution or abnormal samples can help shape more reliable decision boundaries [6, 11]. These studies suggest that, for unsupervised TSAD, the key is not only to learn what is normal, but also to con-struct anomaly-oriented signals that are genuinely useful for boundary learning in the absence of true anomaly labels. Meanwhile, reinforcement learning (RL) provides a new perspective on this prob-lem. RL is well suited for sequential decision-making and adaptive policy optimization, and has recently been applied to anomaly detection, active querying, and adaptive temporal analysis [12–14]. Unlike fixed perturbation rules or static heuristic injec-tion, RL can dynamically adjust actions according to the current state and historical feedback, thereby gradually learning more suitable strategies for sampling, control, or generation [12, 13]. For contrastive TSAD, the quality and difficulty of negative sam-ples directly affect the separability of the learned representation space, and existing studies have also shown that properly designed hard negatives are often more effective than random negatives for improving discriminative representations [15]. This natu-rally raises an important question: can reinforcement learning be used to adaptively control the generation process of negative samples, so that they no longer rely on fixed augmentation rules but instead progressively move toward more informative boundary regions? Motivated by the above observations, we propose BoundTSAD , a reinforcement learning-guided self-supervised contrastive framework for time series anomaly detec-tion. The core idea of the proposed method is to introduce an adaptive reinforcement learning policy to control the negative sample generation process in the absence of anomaly labels, enabling the model to construct contrastive negatives located near the boundary of normality and with stronger discriminative value. In contrast to exist-ing methods that either rely solely on one-class normality modeling or are limited to fixed anomaly injection heuristics, our method attempts to organically combine boundary exploration with contrastive representation learning, thereby reducing false alarms under subtle anomaly scenarios and improving the generalization capability of the model. Specifically, the main contributions of this paper are summarized as follows: 
+
+• We propose BoundTSAD , a reinforcement learning-guided self-supervised con-trastive framework for unsupervised time series anomaly detection, which integrates boundary-aware negative generation with representation learning. 
+
+• We design a boundary-aware negative generation mechanism that adaptively controls the negative sample generation process through policy learning, producing training signals that are better aligned with anomaly boundary learning. 3Fig. 1 The difference of the methods 
+
+• We develop a contrastive training strategy based on boundary hard nega-tives , which improves the separability between normal and anomalous patterns in the latent space and enhances the detection of fine-grained anomalies. 
+
+• We conduct a preliminary feasibility study and empirical evaluation, and the results show that the proposed method achieves promising performance on the current dataset. 
+
+# 2 Method 
+
+This paper proposes a three-stage framework for time series anomaly detection, con-sisting of reconstruction pretraining, reinforcement learning-guided pseudo-anomaly generation with contrastive representation learning, and prototype-driven discrimina-tive refinement. The core objective of the proposed method is not merely to improve a single evaluation metric, but to learn an anomaly scoring function that keeps the scores of normal samples consistently close to low values while rapidly increasing when anomalies occur. Let the original time series be denoted as 
+
+x = {x1, x 2, . . . , x T }, (1) 4Fig. 2 The structure of the model 
+
+5where T is the sequence length. A sliding window of length w is applied to construct window-level samples: 
+
+Xi = [ xi, x i+1 , . . . , x i+w−1]⊤, i = 1 , 2, . . . , T − w + 1 . (2) The goal is to learn an anomaly scoring function s(Xi) such that normal windows receive low scores while anomalous windows receive high scores. 
+
+# 2.1 Overall Framework 
+
+The proposed method consists of the following three stages: 1. Stage 1: Reconstruction model pretraining. A reconstruction model is trained on normal temporal patterns to obtain basic temporal representation and reconstruction ability. 2. Stage 2: Reinforcement learning-guided pseudo-anomaly generation and triplet representation learning. Based on the pretrained reconstruction model, reinforcement learning is introduced to adaptively control the parameter update magnitude and generate pseudo-anomalous windows. The normal and pseudo-anomalous windows are then used to train a triplet encoder, yielding a more discriminative embedding space. 3. Stage 3: Prototype-based discriminative refinement. On top of the embed-ding space learned in Stage 2, a set of learnable prototypes is introduced. By jointly optimizing normal compactness, anomaly separation, prototype dispersion, and prototype balancing constraints, the normal manifold is further refined, and the distance from a sample to its nearest prototype is used as the anomaly score. It should be emphasized that Stage 3 is not a simple KMeans-based post-processing step, but rather a trainable prototype neural discrimination module . This stage inherits the encoder parameters learned in Stage 2 and continues to jointly optimize both the encoder and prototype parameters through backpropagation. Therefore, it is essentially a neural network-driven discriminative refinement process rather than a static clustering procedure. 
+
+# 2.2 Stage 1: Reconstruction Model Pretraining 
+
+We first construct a reconstruction model Mθ , whose backbone consists of a lin-ear input mapping layer, an ExtremeKAN nonlinear enhancement module, positional encoding, and a Transformer encoder. Given an input window Xi, the model outputs its reconstruction: ˆXi = Mθ(Xi). (3) The training objective is to minimize the window reconstruction error: 
+
+Lrec = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+∥ ˆXi − Xi∥22, (4) 6where N is the number of training windows. After this stage, the model acquires a basic ability to model normal temporal structures, providing initialization parameters for the subsequent reinforcement learning-based step control and pseudo-anomaly generation. 
+
+# 2.3 Stage 2: Reinforcement Learning-Guided Pseudo-Anomaly Generation 
+
+2.3.1 State Construction and Action Output 
+
+In Stage 2, the reconstruction error is not directly used for anomaly detection. Instead, it serves as a control signal for reinforcement learning to generate more discrimi-native pseudo-anomalous samples. For each batch of normal windows, the current reconstruction loss is first computed, and a state vector is constructed as 
+
+st = [ lt−k+1 , l t−k+2 , . . . , l t, u t−1], (5) where lt denotes the reconstruction loss at time step t, k is the length of the historical loss sequence, and ut−1 is the signed update applied at the previous step. The Actor network then outputs an action at according to the current state st:
+
+at = πϕ(st), at ∈ [amin , a max ], (6) where πϕ denotes the policy network parameterized by ϕ. In implementation, the Actor is realized as a multi-layer perceptron, making this part a standard neural controller. 
+
+2.3.2 Signed Step Mapping 
+
+To make the action directly applicable to the reconstruction model, the action is mapped to a signed step ut. Let the current reconstruction loss be lt, and let Llow and 
+
+Lup denote the predefined lower and upper bounds, respectively. Then, 
+
+ut =
+
+
+
+ηpos · at, lt > L up ,
+
+−ηneg · at, lt < L low ,
+
+0, Llow ≤ lt ≤ Lup ,
+
+(7) where ηpos and ηneg denote the base step sizes for positive and negative updates, respectively. The intuition behind this design is as follows: when the reconstruction error is too high, the model is encouraged to update in the direction that reduces the error; when the error is too low, the model parameters are perturbed in the reverse direction to construct pseudo-anomalous windows that deviate from the normal manifold; and when the error lies within the target band, no update is applied. 72.3.3 Reward Design 
+
+Let the losses before and after the update be denoted by lbef ore t and laf ter t , respectively, and let l∗ be the target loss. The reward is defined as 
+
+rt = |lbef ore t − l∗| − | laf ter t − l∗| + I(Llow ≤ laf ter t ≤ Lup ), (8) where I(·) is the indicator function. The reward increases when the updated loss moves closer to the target interval, and an additional reward is assigned when the updated loss falls into the desired band. 
+
+2.3.4 Pseudo-Anomalous Window Construction 
+
+After obtaining the action, a single gradient-based manual parameter update is applied to the reconstruction model: 
+
+θ′ = θ − ut∇θLrec . (9) The updated model is then used to generate the reconstructed window 
+
+Xneg i = Mθ′ (Xpos i ), (10) where Xpos i denotes a normal window and Xneg i denotes its corresponding pseudo-anomalous window. In this way, a normal sample set P and a pseudo-anomaly set N
+
+are obtained for subsequent representation learning. 
+
+# 2.4 Stage 2: Triplet Contrastive Representation Learning 
+
+To further enlarge the difference between normal and anomaly-related samples in the representation space, the window encoder f (·) is trained using the positive and nega-tive samples generated in Stage 2. For each normal window Xpos , a lightly augmented version ˜Xpos is first constructed as the positive pair. The triplet is then formed as 
+
+za = f (Xpos ), zp = f ( ˜Xpos ), zn = f (Xneg ). (11) The triplet loss is defined as 
+
+Ltri = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+max 
+
+
+
+0, ∥z(i) 
+
+> a
+
+− z(i) 
+
+> p
+
+∥2 − ∥ z(i) 
+
+> a
+
+− z(i) 
+
+> n
+
+∥2 + m
+
+
+
+, (12) where m is the margin parameter. To further make the representations of normal samples before and after augmen-tation more compact, a compactness loss is introduced: 
+
+Lcom = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+∥z(i) 
+
+> a
+
+− z(i) 
+
+> p
+
+∥22. (13) 8Therefore, the overall representation learning objective in Stage 2 is 
+
+Lstage 2 = Ltri + λLcom , (14) where λ is a weighting coefficient. After this stage, the encoder f (·) is expected to map normal windows, augmented normal windows, and RL-generated pseudo-anomalous windows into a more discriminative embedding space. 
+
+# 2.5 Stage 3: Prototype-Based Discriminative Refinement 
+
+2.5.1 Whether Stage 3 Uses a Neural Network 
+
+It should be explicitly clarified here that Stage 3 does use a neural network .This is because Stage 3 does not simply perform a fixed clustering on the embed-dings produced by Stage 2. Instead, it constructs a trainable model containing two sets of parameters: 
+
+G = {fψ (·), C}, (15) where fψ (·) denotes the encoder inherited from Stage 2, and C = {c1, c2, . . . , cK }
+
+denotes the set of K learnable prototype vectors. During training, the encoder parameters ψ and the prototype parameters C are jointly updated through gradient backpropagation. Therefore, Stage 3 is essentially a neural discriminative model composed of an encoder and learnable prototype parameters .
+
+2.5.2 Prototype Initialization and Soft Assignment 
+
+At the beginning of Stage 3, the encoder trained in Stage 2 is first used to encode nor-mal windows, and several normal embeddings are selected to initialize the prototype centers. For any sample embedding z, the squared distance to the k-th prototype is defined as 
+
+dk(z) = ∥z − ck∥22. (16) For normal samples, the soft assignment weight is further defined as 
+
+αk(z) = exp ( −dk(z)/τ )
+
+PKj=1 exp ( −dj (z)/τ ) , (17) where τ is the temperature coefficient. The introduction of soft assignment prevents each normal sample from being rigidly assigned to only one prototype and instead allows it to contribute probabilistically to multiple prototypes, thereby improving training stability. 
+
+2.5.3 Normal Compactness Loss 
+
+For the normal window set P, the embeddings are expected to stay close to some prototypes. Thus, the normal compactness loss is defined as 
+
+Ln = 1
+
+|P| 
+
+X
+
+> z∈P
+> K
+
+X
+
+> k=1
+
+αk(z)dk(z). (18) 9This term encourages normal samples to form compact cluster structures around the prototypes. 
+
+2.5.4 Anomaly Separation Loss 
+
+For the pseudo-anomalous window set N , the embeddings are expected to stay far away from all normal prototypes. The anomaly score is first defined as the distance to the nearest prototype: 
+
+s(z) = min  
+
+> k
+
+dk(z). (19) The anomaly separation loss is then formulated as 
+
+La = 1
+
+|N | 
+
+X
+
+> z∈N
+
+max(0 , m p − s(z)) , (20) where mp is the Stage 3 margin parameter. This term requires pseudo-anomalies to maintain at least a certain distance from the normal prototypes. 
+
+2.5.5 Prototype Dispersion Loss 
+
+If multiple prototypes are too close to one another, they may degenerate into only a few centers, thereby weakening the representation of multimodal normal structures. Therefore, the prototype dispersion loss is defined as 
+
+Lsep = 1
+
+K(K − 1) 
+
+X
+
+> i̸=j
+
+max(0 , m p − ∥ ci − cj ∥2)2. (21) This term forces different prototypes to maintain sufficient separation so that they can cover different modes of normal samples. 
+
+2.5.6 Prototype Balancing Loss 
+
+If, during training, most normal samples are assigned to only a few prototypes, proto-type utilization becomes highly imbalanced. To address this issue, the average usage of each prototype within a batch is computed as 
+
+uk = 1
+
+|P| 
+
+X
+
+> z∈P
+
+αk(z), (22) and the target distribution is set to the uniform distribution ¯uk = 1
+
+K . (23) The balancing loss is then defined as 
+
+Lbal = KL( u ∥ ¯u). (24) 10 This term alleviates prototype collapse and improves the modeling capability of multiple prototypes. 
+
+2.5.7 Overall Loss of Stage 3 
+
+Finally, the total loss of Stage 3 is defined as 
+
+Lstage 3 = αLn + βLa + γLsep + δLbal , (25) where α, β, γ, δ are the weighting coefficients of each loss term. During training, the encoder parameters and the prototype parameters are jointly updated through back-propagation, and prototype normalization is performed after each optimization step to maintain the stability of the representation space. 
+
+# 2.6 Anomaly Scoring and Decision Rule 
+
+During testing, for any input window Xi, the Stage 3 model first outputs its embedding representation: 
+
+zi = fψ (Xi), (26) and then computes its distances to all prototypes. The minimum distance is taken as the anomaly score: 
+
+si = min  
+
+> k
+
+∥zi − ck∥22. (27) Given a threshold τs, the predicted label is defined as ˆyi =
+
+(
+
+1, si ≥ τs,
+
+0, si < τ s. (28) Since the proposed method adopts window-level scoring, the score sequence is shifted by one window length during visualization so that the score curve is more consistent with the temporal location of the anomalous interval in an intuitive sense. 
+
+# 2.7 Advantages of the Proposed Method 
+
+Compared with traditional methods that rely only on reconstruction errors or static clustering centers, the proposed method has the following characteristics: 1. Through the reinforcement learning-based step control mechanism, pseudo-anomalous samples are generated adaptively according to the current reconstruc-tion state rather than via fixed perturbations. 2. Through triplet representation learning, normal samples, augmented samples, and pseudo-anomalous samples form a clearer geometric structure in the embedding space. 3. Through the learnable prototype model in Stage 3, the proposed method replaces traditional KMeans-based post-processing and enables end-to-end discriminative refinement. 11 4. Through the joint constraints of normal compactness, anomaly separation, pro-totype dispersion, and prototype balancing, the method is better suited to characterize multimodal manifold structures under complex normal patterns. 
+
+# 2.8 Algorithm Pipeline 
+
+Algorithm 1 The proposed three-stage time series anomaly detection framework  
+
+> 1:
+
+Train the reconstruction model Mθ and obtain pretrained parameters  
+
+> 2:
+
+Construct the sliding-window sample set  
+
+> 3:
+
+Initialize the RL agent, replay buffer, normal sample set, and pseudo-anomaly set  
+
+> 4:
+
+for each RL epoch do  
+
+> 5:
+
+for each batch of normal windows do  
+
+> 6:
+
+Construct the state vector  
+
+> 7:
+
+Compute the current reconstruction loss  
+
+> 8:
+
+The Actor outputs an action and maps it to a signed step  
+
+> 9:
+
+Apply one manual parameter update to the reconstruction model  
+
+> 10:
+
+Generate pseudo-anomalous windows and compute rewards  
+
+> 11:
+
+Update the RL agent  
+
+> 12:
+
+Collect normal windows and pseudo-anomalous windows  
+
+> 13:
+
+end for  
+
+> 14:
+
+end for  
+
+> 15:
+
+Train the triplet encoder using normal windows, augmented normal windows, and pseudo-anomalous windows  
+
+> 16:
+
+Initialize the Stage 3 prototype model  
+
+> 17:
+
+for each Stage 3 epoch do  
+
+> 18:
+
+for each batch of normal/pseudo-anomalous samples do  
+
+> 19:
+
+Compute the normal compactness loss  
+
+> 20:
+
+Compute the anomaly separation loss  
+
+> 21:
+
+Compute the prototype dispersion loss  
+
+> 22:
+
+Compute the prototype balancing loss  
+
+> 23:
+
+Jointly optimize the encoder and prototype parameters  
+
+> 24:
+
+end for  
+
+> 25:
+
+end for  
+
+> 26:
+
+Compute the distance from each test window to the nearest prototype as the anomaly score  
+
+> 27:
+
+Output the anomaly detection results according to the threshold 
+
+# 3 Experiments 
+
+# 3.1 Experimental Results Analysis 
+
+To verify the effectiveness of the proposed three-stage framework under different anomaly types, we conducted experiments on two representative scenarios, namely 12 Fig. 3 Display of the experience 
+
+Point and Collective Seasonal , and further analyzed the model behavior in conjunc-tion with the visualizations in Fig. 3. Specifically, the two groups on the left side of the figure correspond to global and contextual anomalies in the point-anomaly setting, while the three groups on the right side correspond to shapelet , seasonal , and trend 
+
+anomalies in the pattern-anomaly setting. The first row shows the input sequence and anomalous interval, the second row shows the anomaly score curve, and the third row shows the feature distribution or delay interpretation. 
+
+# 3.2 Comparative Analysis of the Two Anomaly Scenarios 
+
+To more clearly compare the detection performance of the proposed method under dif-ferent anomaly types, Table 1 presents the quantitative results of the two experiments.                    
+
+> Table 1 Comparison of the two experimental settings Experiment AUC TP TN FP FN Predicted Anomalies Seasonal 0.9606 73 297 011 73 Point 0.9438 48 304 22 770
+
+As shown in Table 1, the proposed method achieves high ROC AUC values on both tasks, demonstrating that the three-stage framework has strong anomaly discrimi-nation capability and a certain degree of generalization. However, the two anomaly types still exhibit noticeable differences in detection performance. Compared with the 13 Point setting, the Collective Seasonal setting achieves a higher AUC, a lower false positive rate, and a more desirable anomaly-score separation pattern, indicating that the proposed method is better suited for modeling persistent and structured anomaly patterns. This observation is consistent with the window-level representation learning mechanism of the method itself: pattern anomalies usually induce a consistent geomet-ric shift over a continuous temporal range, making them easier to capture jointly by the contrastive representation learning in Stage 2 and the prototype-based discrimination in Stage 3. In contrast, point anomalies only produce abrupt deviations within a very short local range, and their boundaries in the window representation space are more easily disturbed by normal fluctuations, which in turn leads to more false positives. 
+
+# 3.3 Visualization Results and Interpretability Analysis 
+
+The visualizations in Fig. 3 further reveal the detection behavior of the model. First, in the point-anomaly setting, anomaly scores usually form sharp peaks near the anoma-lous locations, indicating that the model has good local localization ability. Second, in the pattern-anomaly setting, anomaly scores are more likely to exhibit sustained segment-level elevation rather than isolated point-wise spikes, suggesting that the model can extract anomaly evidence from the overall structural change within local windows. In particular, for the three pattern anomalies, namely shapelet , seasonal , and trend ,the delay interpretation shown in the bottom row indicates that the significant rise of the anomaly score usually occurs with a slight delay relative to the true anomaly onset. This is because window-level detection requires the current analysis window to accumulate sufficient structural deviation information. When the anomalous seg-ment has not yet sufficiently entered the window, its discriminative signal remains relatively weak; once the anomalous segment begins to dominate the current window representation, the anomaly score rises rapidly. Therefore, such delay does not imply model failure, but rather is a natural consequence of the sliding-window modeling mechanism. This also suggests that the response process of the proposed method has a certain degree of interpretability. In addition, the feature distribution shown in the figure also indicates that normal and anomalous samples exhibit a relatively clear separation trend in the embedding space. This suggests that the anomaly detection capability of the proposed method does not merely arise from thresholding at the output layer, but is instead built upon a well-structured internal representation space. This further verifies the collaborative effect of the triplet representation learning in Stage 2 and the prototype compression mechanism in Stage 3: the former enlarges the margin between normal samples and pseudo-anomalous samples, while the latter further enhances the compactness of the normal manifold and the separability of anomalous deviations. 
+
+3.3.1 Training Process Analysis 
+
+From the perspective of the training process, the triplet encoder in both experiments exhibits stable convergence behavior. In the Collective Seasonal experiment, the triplet loss decreases from 0.0153 to 0.0007, with a minimum value of 0.0006. In the Point 14 experiment, the triplet loss decreases from 0.0256 to 0.0011, with a minimum value of approximately 0.0010. This indicates that, through RL-driven pseudo-anomaly con-struction, Stage 2 is able to effectively learn a discriminative embedding space that distinguishes normal samples, augmented samples, and pseudo-anomalous samples. In Stage 3, the total loss in both experiments remains stable within approximately 0.045–0.050, indicating that the prototype learning process is overall well-behaved. Further observations show that the normal compactness term consistently remains at a low level, suggesting that the prototypes exert a strong attraction effect on the normal manifold. The prototype dispersion term also remains relatively stable, indicating that the prototypes maintain sufficient separation from one another. In contrast, the anomaly separation term fluctuates more noticeably in the Point setting, which is consistent with the fact that point anomalies have blurrier boundaries and are more sensitive to local noise. Overall, the pseudo-anomaly-driven representation learning in Stage 2 and the prototype discrimination mechanism in Stage 3 exhibit good synergy during training. 
+
+3.3.2 Summary of Experimental Findings 
+
+Combining the above quantitative results and visualization analysis, the following conclusions can be drawn. First, the proposed three-stage framework achieves strong detection performance on both Point and Collective Seasonal anomaly detection tasks, which verifies the overall effectiveness of the framework. Second, the RL-driven pseudo-anomaly construction provides contrastive representation learning with discriminative negative samples, thereby improving the separability of normal and anomalous pat-terns in the embedding space. Third, the prototype mechanism in Stage 3 further enhances the modeling ability of the normal manifold, making the anomaly scores exhibit a clearer geometric separation pattern. Fourth, compared with point anoma-lies, the proposed method performs more stably on collective and pattern anomalies, especially in terms of false alarm suppression and response to anomalous segments. These results indicate that the proposed method not only has strong detection perfor-mance, but also exhibits a certain degree of structural interpretability in its response behavior. 
+
+# 4 Discussion 
+
+Relation to Existing TSAD Paradigms. 
+
+Existing time series anomaly detection methods can be broadly categorized into four groups: forecasting-based, reconstruction-based, representation-based, and hybrid methods. Forecasting-based methods usually characterize anomalies through devi-ations from future value prediction; reconstruction-based methods rely on the reconstructability of normal patterns; and representation-based methods focus more on enlarging the geometric boundary between normal and anomalous samples in the latent space. In recent years, contrastive learning and one-class modeling have gradually become important trends in this direction. Overall, the proposed method can be regarded as a three-stage hybrid framework that is reconstruction-driven, representation-centered, and further refined by prototype modeling in the later stage. 15 Specifically, Stage 1 learns the basic normal patterns through a reconstruction model; Stage 2 does not stop at the reconstruction-error level, but instead actively explores boundary samples near the normal manifold through reinforcement learning-controlled perturbation steps; Stage 3 further compresses the normal manifold and amplifies anomalous deviations by means of a prototype mechanism. Therefore, the proposed method does not simply follow the traditional paradigm of treating reconstruction error as the anomaly score, but instead attempts to unify reconstruction, pseudo-anomaly generation, contrastive representation learning, and prototype discrimination within a single detection framework. 
+
+Core Significance of the Proposed Method. 
+
+From the perspective of existing literature, a long-standing difficulty in unsupervised TSAD is the absence of real anomaly supervision, while the quality of negative sam-ples or anomaly priors often directly determines the final discriminative boundary. If the negative samples are too easy, the learned boundary becomes too loose; if they deviate too far semantically from normal patterns, they fail to provide genuinely useful near-boundary discriminative information. A key motivation of the proposed method is to avoid relying entirely on manually designed anomaly injection rules. Instead, it leverages the local generative basis provided by a pretrained reconstructor and uses reinforcement learning to control both the direction and magnitude of the signed step, so that pseudo-anomalous samples tend to appear near the normal manifold while still departing from normal patterns. The resulting pseudo-anomalies are there-fore neither completely random noise nor fixed-template perturbations, but rather boundary-neighborhood samples jointly induced by the data distribution and training dynamics. For contrastive learning, such samples are more valuable than coarse nega-tives far away from the data manifold, because they are closer to the hard boundary that the detection task truly needs to distinguish. 
+
+Difference from Anomaly Injection and Calibration-Based Methods. 
+
+The proposed method is conceptually related to existing anomaly-aware TSAD meth-ods, but differs in emphasis. One representative line of work constructs dummy anomalies or native anomalies to calibrate the normal boundary in one-class learning; another line directly introduces anomaly injection into contrastive learning so that the model jointly learns normal representations and anomalous deviations. The com-mon point between these approaches and ours is the recognition that merely learning from normal samples is often insufficient for forming a stable anomaly boundary. The difference lies in the fact that the proposed method does not predefine a fixed perturba-tion pattern for anomalies. Instead, it aims to adaptively generate boundary negatives during training through RL-controlled perturbation trajectories. In other words, exist-ing methods are more akin to providing anomaly priors to the model, whereas our approach is closer to allowing the model to actively explore the anomaly boundary near the normal manifold. This difference makes the proposed method conceptually better suited as a boundary learning or post-training enhancement mechanism, rather than just another static anomaly injection strategy. 16 Why the Method Is More Effective for Pattern Anomalies. 
+
+According to the current experimental observations, the proposed method is generally more stable on collective or pattern anomalies than on point anomalies, and this is consistent with the underlying mechanism of the framework. First, the discriminative unit of the method is essentially a sliding-window representation rather than an iso-lated single point. Therefore, it is naturally more sensitive to structural deviations that persist over a period of time. Whether the anomaly is a shapelet mutation, a seasonal phase disruption, or a trend drift, once sufficient structural discrepancy accumulates within a local window, the representation learned in Stage 2 is more likely to push it away from the normal manifold, and the prototype mechanism in Stage 3 is more likely to assign sustained high anomaly responses. In contrast, point anomalies are short-lived, highly localized, and more easily mixed with normal fluctuations, so their boundaries in the window-level latent space are inherently blurrier. This also explains why the proposed method can achieve high detection rates on point anomalies while often being less ideal in false-positive control than in pattern anomaly scenarios. 
+
+Understanding the Detection Delay. 
+
+For pattern anomalies, the proposed method may sometimes exhibit a slight detection delay. This does not necessarily mean that the model fails to recognize the anomaly; rather, it is more likely a natural consequence of the window-level decision mechanism. When the anomalous segment has not yet sufficiently entered the current analysis window, its influence on the overall representation remains limited. Only when the anomalous pattern begins to dominate the window does the latent deviation and prototype distance increase rapidly. Therefore, we tend to interpret this phenomenon as a window accumulation trigger rather than a true missed detection. This point is particularly important for industrial scenarios, where many real faults do not occur as strictly isolated points, but instead evolve gradually and reveal their statistical and structural abnormalities over time. In this sense, the proposed method has a certain interpretability advantage in modeling persistent and structural anomalies. 
+
+Current Limitations. 
+
+Although the preliminary results indicate that the proposed idea is promising, the current study still has several clear limitations. First, the experimental scope remains limited, and the method has not yet been systematically evaluated on a larger, more heterogeneous, and more rigorous collection of datasets. Therefore, at the present stage, this work is better viewed as a methodological exploration rather than a fully validated general solution. Second, the stability and efficiency of the RL process in Stage 2 may still be affected by the state design, reward function, number of training rounds, and action range, and its hyperparameter sensitivity has yet to be quantified more thoroughly. Third, the number of prototypes in Stage 3, the initialization strat-egy, and the regularization weights may also influence the degree of normal manifold compression and the separability of anomaly scores. Fourth, the current discussion is mainly based on window-level detection, which leaves room for further improvement in anomaly localization granularity, real-time response, and early detection capability. Fifth, the method has currently been verified only on several typical anomaly types, 17 and more sufficient evidence is still needed for cross-dataset generalization, robustness to training-set contamination, and effectiveness under complex multivariate coupling scenarios. 
+
+Remarks on Evaluation and the Boundary of Conclusions. 
+
+An important recent consensus in TSAD is that dataset quality, annotation bound-aries, threshold selection, and evaluation metrics can all significantly affect method conclusions. Therefore, at the current stage, the discussion of the proposed method should focus as much as possible on its mechanism rationality and preliminary effectiveness, while avoiding overly strong performance claims. In particular, for window-level detection results, reporting only a single AUC or classification statistics under a single threshold is not sufficient to fully demonstrate the merits of a method. In future work, more robust evaluation under a unified benchmark protocol is needed, such as event-level or interval-level metrics, VUS-PR, and other evaluation measures more suitable for TSAD. In addition, the stability of the conclusions should be verified under unified hyperparameter tuning and multiple random seeds. 
+
+Future Work. 
+
+Based on the above analysis, there are several natural directions for future extension. First, the current RL-driven pseudo-anomaly generation mechanism can be gener-alized into a more universal boundary sample generation module, allowing flexible integration with forecasting-based, reconstruction-based, or foundation-model-based TSAD backbones. Second, it would be valuable to further investigate the relationship between the samples generated by the RL policy and the distribution of real anomalies, in order to analyze whether the policy learns some transferable anomaly direction or boundary perturbation pattern. Third, multi-scale windows, hierarchical prototypes, or online update mechanisms may be introduced to improve the unified modeling of short point anomalies and long-term trend anomalies. Fourth, the proposed method should be systematically evaluated on larger-scale benchmarks, especially widely used TSAD datasets such as SMD. Fifth, from a theoretical perspective, if pseudo-anomaly generation, triplet representation learning, and prototype discrimination can be fur-ther unified as a progressive approximation process of the normal manifold boundary, this would help explain the source of effectiveness of the proposed method more clearly from a geometric viewpoint. 
+
+Summary. 
+
+Overall, the main value of this work lies not only in proposing a new structural com-bination for TSAD, but also in emphasizing a research direction that deserves further exploration: in unsupervised TSAD, the key to anomaly detection performance may not necessarily come only from stronger encoders or more complex reconstructors, but also from the active construction and utilization of hard negative samples near the normal boundary. From this perspective, the proposed method connects a recon-struction model, RL-driven boundary exploration, triplet representation learning, and prototype discrimination, providing a preliminary yet promising framework for more systematic boundary-learning-based TSAD research in the future. 18 5 Conclusion 
+
+This paper proposed a three-stage framework for unsupervised time series anomaly detection, which progressively optimizes the detection process from normal pattern modeling to anomaly boundary learning by organically combining reconstruction pre-training, RL-driven pseudo-anomaly generation, triplet representation learning, and prototype-based discrimination. Specifically, Stage 1 learns the basic representations of normal time series through a reconstruction task; Stage 2 uses reinforcement learning to control perturbation steps and generate pseudo-anomalous samples with boundary properties near the normal manifold, and then employs triplet learning to enlarge the latent-space gap between normal and pseudo-anomalous samples; Stage 3 further com-presses the normal manifold and enhances anomalous deviations through a prototype mechanism, thereby producing a clearer anomaly score representation. Experimental results show that the proposed method achieves promising detection performance on two representative anomaly detection tasks, namely Point and Col-lective Seasonal anomalies, and exhibits more stable false-positive control and more desirable anomaly-score separation in pattern anomaly scenarios. The visualization results further demonstrate that the proposed method can not only produce sensi-tive local responses to point anomalies, but also generate sustained and interpretable high-score responses to structural anomalies such as shapelet, seasonal, and trend anomalies. This indicates that the RL-driven pseudo-anomaly construction and the prototype discrimination mechanism can effectively improve boundary learning ability in unsupervised anomaly detection. Overall, the main contribution of this work lies in proposing a three-stage paradigm that differs from the traditional practice of directly treating reconstruction error as the anomaly score. By unifying pseudo-anomaly generation, contrastive represen-tation learning, and prototype-based discrimination within a single framework, the proposed method provides a new feasible path for hard negative construction and nor-mal boundary modeling in unsupervised TSAD. Future work will further investigate this framework on larger-scale benchmark datasets, complex multivariate scenarios, robustness to training contamination, and multi-scale anomaly modeling, so as to further validate and improve its generality and practical value. 
+
+# 6 Competing interests 
+
+No competing interest is declared. 
+
+# 7 Author contributions statement 
+
+L.W. and X.W. conceived the main idea. L.W. and R.W. developed the detailed methodology. X.W. and Z.Z. analysed the results. X.W. and M.Z. wrote the manuscript. All authors reviewed and approved the final manuscript. 19 Acknowledgments 
+
+This work was supported by The National Key Research and Development Program of China (2023YFB3308100), the China State Railway Group Co., Ltd. Science and Technology Research and Development Program Project (K2024J011), and the Nat-ural Science Foundation of Shandong Province (ZR2023ME124),the National Natural Science Foundation of China (No.52475553). 
+
+# References 
+
+[1] Zamanzadeh Darban, Z., Webb, G.I., Pan, S., Aggarwal, C., Salehi, M.: Deep learning for time series anomaly detection: A survey. ACM Computing Surveys 
+
+57 (1), 1–42 (2024) [2] Su, Y., Zhao, Y., Niu, C., Liu, R., Sun, W., Pei, D.: Robust anomaly detec-tion for multivariate time series through stochastic recurrent neural network. In: Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining, pp. 2828–2837 (2019) [3] Tuli, S., Casale, G., Jennings, N.R.: Tranad: Deep transformer networks for anomaly detection in multivariate time series data. arXiv preprint arXiv:2201.07284 (2022) [4] Hundman, K., Constantinou, V., Laporte, C., Colwell, I., Soderstrom, T.: Detect-ing spacecraft anomalies using lstms and nonparametric dynamic thresholding. In: Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining, pp. 387–395 (2018) [5] Xu, J., Wu, H., Wang, J., Long, M.: Anomaly transformer: Time series anomaly detection with association discrepancy. arXiv preprint arXiv:2110.02642 (2021) [6] Xu, H., Wang, Y., Jian, S., Liao, Q., Wang, Y., Pang, G.: Calibrated one-class classification for unsupervised time series anomaly detection. IEEE Transactions on Knowledge and Data Engineering 36 (11), 5723–5736 (2024) [7] Yue, Z., Wang, Y., Duan, J., Yang, T., Huang, C., Tong, Y., Xu, B.: Ts2vec: Towards universal representation of time series. In: Proceedings of the AAAI Conference on Artificial Intelligence, vol. 36, pp. 8980–8987 (2022) [8] Yang, Y., Zhang, C., Zhou, T., Wen, Q., Sun, L.: Dcdetector: Dual attention contrastive representation learning for time series anomaly detection. In: Proceed-ings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining, pp. 3033–3045 (2023) [9] Chen, T., Kornblith, S., Norouzi, M., Hinton, G.: A simple framework for contrastive learning of visual representations. In: International Conference on Machine Learning, pp. 1597–1607 (2020). PmLR 20 [10] Oord, A.v.d., Li, Y., Vinyals, O.: Representation learning with contrastive predictive coding. arXiv preprint arXiv:1807.03748 (2018) [11] Hendrycks, D., Mazeika, M., Dietterich, T.: Deep anomaly detection with outlier exposure. arXiv preprint arXiv:1812.04606 (2018) [12] Wu, T., Ortiz, J.: Rlad: Time series anomaly detection through reinforcement learning and active learning. arXiv preprint arXiv:2104.00543 (2021) [13] Yang, X., Howley, E., Schukat, M.: Adt: Time series anomaly detection for cyber-physical systems via deep reinforcement learning. Computers & Security 141 ,103825 (2024) [14] Zha, D., Lai, K.-H., Wan, M., Hu, X.: Meta-aad: Active anomaly detection with deep reinforcement learning. In: 2020 IEEE International Conference on Data Mining (ICDM), pp. 771–780 (2020). IEEE [15] Robinson, J., Chuang, C.-Y., Sra, S., Jegelka, S.: Contrastive learning with hard negative samples. arXiv preprint arXiv:2010.04592 (2020) 21

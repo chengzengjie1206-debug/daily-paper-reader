@@ -1,0 +1,499 @@
+Title: L2GTX: From Local to Global Time Series Explanations
+
+URL Source: https://arxiv.org/pdf/2603.13065v1
+
+Published Time: Mon, 16 Mar 2026 01:22:32 GMT
+
+Number of Pages: 18
+
+Markdown Content:
+# L2GTX: F ROM LOCAL TO GLOBAL TIME SERIES 
+
+# EXPLANATIONS 
+
+Ephrem Tibebe Mekonnen ∗
+
+School of Computer Science, Technological University Dublin Dublin, Ireland Artificial Intelligence and Cognitive Load Research Lab, University College Cork Cork, Ireland 
+
+D22125038@mytudublin.ie 
+
+Luca Longo 
+
+School of Computer Science and Information Technology, University College Cork Cork, Ireland Artificial Intelligence and Cognitive Load Research Lab, University College Cork Cork, Ireland 
+
+luca.longo@ucc.ie 
+
+Lucas Rizzo 
+
+School of Computer Science, Technological University Dublin Dublin, Ireland Artificial Intelligence and Cognitive Load Research Lab, University College Cork Cork, Ireland 
+
+lucas.rizzo@tudublin.ie 
+
+Pierpaolo Dondio 
+
+School of Computing, Dublin City University Dublin, Ireland 
+
+pierpaolo.dondio@dcu.ie 
+
+# ABSTRACT 
+
+Deep learning models achieve high accuracy in time series classification, yet understanding their class-level decision behaviour remains challenging. Time series explanations must account for temporal dependencies and capture patterns that recur across instances. However, existing approaches for extracting such explanations face three key limitations: (i) model-agnostic XAI methods developed for images and tabular data do not readily extend to time series due to temporally structured and non-independent observations; (ii) global explanation synthesis for time series remains underexplored; and (iii) the few global approaches that exist are largely model-specific, limiting architecture-neutral interpretability. We propose L2GTX , a fully model-agnostic method that generates class-wise global explanations by aggregating local explanations from a selective, representative set of time series instances. L2GTX first extracts the top local clusters of parameterised temporal event primitives, such as increasing or decreasing trends and local extrema, together with their associated importance scores, from instance-level explanations generated using LOMATCE (LOcal Model-Agnostic Time Series Classification Explanations). These clusters are merged across instances to reduce redundancy, and an instance–cluster importance matrix is constructed to estimate global relevance. Under a user-defined instance selection budget, L2GTX selects representative instances that maximise coverage 
+
+> ∗
+
+Accepted for publication in the Springer proceedings of the 4th World Conference on Explainable Artificial Intelligence (xAI-2026). 
+
+> arXiv:2603.13065v1 [cs.LG] 13 Mar 2026
+
+L2GTX: From Local to Global Time Series Explanations of influential clusters. The events from the selected instances that belong to the covered clusters are then aggregated into concise, class-wise global explanations by summarising event attributes per primitive type. Experiments on six benchmark time series datasets show that L2GTX produces compact and interpretable global explanations while maintaining stable global faithfulness, measured by mean local surrogate fidelity ( R2), across different levels of explanation consolidation. These results demonstrate that L2GTX enables faithful local-to-global explanation synthesis for time series classifiers without relying on internal model details. 
+
+Keywords Explainable AI · time-series explainability · global explanations · event-based explanations · local-to-global aggregation · model-agnostic interpretability · time series classification 
+
+# 1 Introduction 
+
+Deep learning models can achieve strong predictive performance in time series classification and are increasingly deployed across a wide range of application domains, including finance Kim and Kang [2019], sensor monitoring Shu et al. [2019], and safety-critical settings such as healthcare Liu et al. [2022], Strodthoff et al. [2020]. Despite their accuracy, understanding a model’s class-level decision behaviour, that is, the temporal patterns it consistently relies on across instances and classes, remains challenging. In practice, most time series models operate as opaque black boxes: given an input sequence, they produce a prediction without providing human-understandable insight into the temporal cues that drive that decision. This lack of transparency limits trust, complicates error analysis, and raises concerns in settings where reliability, accountability, and regulatory compliance are required. To address these challenges, a substantial body of research has emerged in explainable artificial intelligence (XAI) Theissler et al. [2022], Longo et al. [2024], Vilone and Longo [2021]. Existing explanation methods can be categorised along several dimensions, one of which distinguishes between local explanations, which aim to explain individual predictions, and global explanations, which seek to characterise a model’s overall decision-making behaviour. While local explanations are valuable for instance-level inspection and debugging, global explanations are essential for understanding systematic patterns, biases, and failure modes learned by a model. Although XAI has produced mature and widely adopted methods for static modalities such as image and tabular data, extending these approaches to time series models is non-trivial Theissler et al. [2022], Schlegel et al. [2019], Rojat et al. [2021]. Time series are characterised by strong temporal dependencies, variable-length events, and shifting pattern locations across instances. As a result, explanations must preserve temporal ordering, event duration, and the recurrence of patterns across samples. These constraints complicate the direct adoption of existing XAI techniques, particularly when the goal is to synthesise interpretable explanations at a global, class-wise level. Consequently, most explainability methods for time series classifiers focus on local explanations Di Martino and Delmastro [2022], Rojat et al. [2021], identifying salient time steps or subsequences for individual predictions. In contrast, global explanation methods for time series remain comparatively sparse and typically tied to specific model architectures. There is therefore a clear need for a model-agnostic approach that can synthesise class-wise global explanations from local temporal patterns observed across a selective and representative set of instances. In this work, we propose L2GTX (Local-to-Global Time-series eXplanations), a model-agnostic local-to-global explanation method for deep time series classifiers. L2GTX first extracts instance-level explanations using LOMATCE Mekonnen et al. [2025], which represents model behaviour in terms of parameterised temporal event primitives Kadous [1999], Mekonnen et al. [2024a]. These local event clusters are consolidated across instances to reduce redundancy, and an instance–cluster importance matrix is constructed to estimate global relevance. Under a fixed explanation budget, L2GTX selects a diverse and representative subset of instances that jointly cover influential temporal patterns. The events associated with the selected clusters are then aggregated into concise, class-wise global explanations that summarise typical event timing, duration (for monotonic trends), magnitude (for local extrema), and variability. This research contributes with a model-agnostic method for synthesising class-wise global explanations in time series classification by selecting representative instances and aggregating structured temporal events aligned with globally influential clusters. The remainder of this article is organised as follows. Section 2 reviews related work in explainable time series classification as well as conceptually related approaches. Section 3 presents the proposed L2GTX method. Section 4 describes the experimental setup, parameter settings, and evaluation protocol. Section 5 reports the results and discusses the findings. Finally, Section 6 concludes the paper and outlines directions for future work. 2L2GTX: From Local to Global Time Series Explanations 
+
+# 2 Related Work 
+
+Explainable Artificial Intelligence seeks to make the behaviour of complex machine learning models more transparent, with much of the literature focusing on post-hoc explanations that analyse trained models Theissler et al. [2022], Rojat et al. [2021]. These methods are commonly divided into local explanations, which explain individual predictions, and global explanations, which aim to summarise a model’s overall behaviour Molnar [2025], Vilone and Longo [2021]. Most work on explainability for time-series classifiers has focused on local explanations that identify temporal regions or events contributing to a specific prediction. Many of these works adapt explainability methods originally developed for image or tabular data to sequential settings by treating individual time steps or contiguous segments Schlegel et al. [2019, 2021]. These local explanation methods include both model-specific and model-agnostic approaches. Several model-specific approaches extend Class Activation Mapping (CAM) Zhou et al. [2016] or Layer-wise Relevance Propagation (LRP) Bach et al. [2015] to time-series models Zhou et al. [2021], Vielhaben et al. [2023]. Although effective in analysing internal model behaviour, these methods often depend on architectural assumptions or latent activations and tend to produce explanations that are more suitable for developers than for end users Schlegel and Keim [2021], Jeyakumar et al. [2020]. Model-agnostic methods such as LIME Ribeiro et al. [2016] and SHAP Lundberg and Lee [2017] have also been adapted to time-series settings Schlegel et al. [2019]. Many of these adaptations treat time steps as independent features, which ignores temporal dependencies. To address this, several extensions perturb longer segments or homogeneous regions Guillemé et al. [2019], Neves et al. [2021], Sivill and Flach [2022], while others incorporate temporal or frequency representations, such as TF-LIME Wang et al. [2025]. More recently, LOMATCE (LOcal Model-Agnostic Time-series Classification Explanations) Mekonnen et al. [2025] was proposed as a model-agnostic local explanation method for time-series classifiers. LOMATCE represents explanations using parameterised event primitives, such as increasing or decreasing trends and local extrema, yielding event-based explanations that align with how humans typically interpret time series. Despite their effectiveness for instance-level analysis, local explanations alone do not capture how explanatory patterns recur or stabilise across a dataset or class. However, deriving global explanations for time-series models also introduces further challenges. Global explanations must capture patterns that are not only important for individual predictions, but also consistent and representative across instances and classes. In time-series data, this requires consolidating temporally localised events that may vary in timing, duration, or magnitude, while avoiding redundancy and maintaining fidelity to the underlying model. As a result, global explanation methods for time-series classifiers remain limited Rojat et al. [2021], Di Martino and Delmastro [2022], Theissler et al. [2022]. For example, existing approaches often rely on model-specific components, such as activations or filters, to extract global insights Oviedo et al. [2019], Siddiqui et al. [2019], Cho et al. [2020], thereby limiting their general applicability. A small number of model-agnostic methods attempt to provide global explanations for time-series classifiers using rule-based abstractions or event primitives. In particular, the works described in Mekonnen et al. [2024b, 2023] propose global explainers that extract parameterised event primitives and derive explanations through decision-tree surrogate models that approximate black-box predictions. Hence, these methods derive global explanations through surrogate rule extraction rather than by aggregating local surrogate explanations from representative instances. As a result, global fidelity is determined by the surrogate’s approximation quality, with no explicit control over instance-level explanation fidelity, coverage, or representativeness. Related ideas have also been explored outside the time-series domain. SP-LIME Ribeiro et al. [2016] selects repre-sentative instances whose local explanations reflect model behaviour, but does not aggregate explanations or produce class-wise summaries. Other methods, such as GLocalX Setzu et al. [2021], aggregate local explanations to form global models for tabular data. Similarly, global aggregation methods in natural language processing derive class-wise explanations over discrete feature spaces Van Der Linden et al. [2019], but do not model temporal structure. In contrast, we propose L2GTX, a model-agnostic method that connects local and global explainability for time-series classifiers. L2GTX aggregates local explanation events into interpretable, class-wise global summaries using importanceaware clustering and budgeted selection of representative instances. Section 3 presents the proposed L2GTX method in detail. 
+
+# 3 The L2GTX Method 
+
+This section describes L2GTX (Local-to-Global Time series eXplanations), a method for deriving global insights from local, model-agnostic explanations of black-box time series classifiers. Let the dataset be denoted as X =
+
+{(X1, y 1), . . . , (Xm, y m)}, where each Xi ∈ RT is a univariate time series of length T and yi ∈ { 1, . . . , C } is its corresponding class label. As illustrated in Figure 1, the methodology comprises five sequential steps. 3L2GTX: From Local to Global Time Series Explanations Generate Local Explanations (Using LOMATCE)     
+
+> 1. Apply LOMATCE
+> Batch of Time Series Data
+> Aggregate Importance Across Instances
+> 3. Global Cluster Importance DataFrame (Instances × Clusters)
+> Local Explanations
+> Instance Selection (Max Coverage)
+> 4. Select Top B Instances
+> Budget
+> Extract PEPs for Selected Instances within Clusters
+> Mean ± Std of PEPs per Cluster
+> 5. Extract and Aggregate Events per Cluster
+> Global Cluster Importance
+> Set of Selected Instances
+> Global Explanation
+> Merge Similar Clusters
+> 2. Merge Similar Clusters & Construct Matrix
+> Construct Instance-Cluster Matrix
+
+Figure 1: Overview of the L2GTX method. (1) Local explanations are generated for a batch of time-series instances using LOMATCE. (2) Similar event clusters are merged to reduce redundancy, producing an instance–cluster importance matrix. (3) Global importance scores are computed for the clusters. (4) Given an instance selection budget B, the instance–cluster importance matrix, and the global cluster importance scores, a representative subset of instances that maximises the coverage of influential clusters is selected. (5) Parameterised event primitives (PEPs) from the selected instances are aggregated to produce the final class-wise global explanation. To ensure class-balanced global explanations and control computational cost, L2GTX operates on a subset of ninst 
+
+instances per class randomly sampled without replacement from X , yielding a total of N = C · ninst instances. All subsequent steps operate on this selected subset. 
+
+3.1 Step 1: Local Attribution via LOMATCE 
+
+L2GTX begins by generating local explanations for a batch of time-series instances X using the LOMATCE algo-rithm Mekonnen et al. [2025], which is detailed in Appendix A.1. For each instance Xi, LOMATCE constructs a local neighbourhood of S perturbed samples by randomly perturbing temporal segments and weighting each sample by its similarity to the original instance. From these samples, all Parameterised Event Primitives (PEPs) are extracted, including increasing and decreasing segments parameterised by (start_time , duration , avg_gradient ), and local maxima 
+
+and local minima parameterised by (time , value ).For each PEP type, events from all neighbourhood samples are clustered independently using the K-means algorithm, with K determined using the silhouette method. The number of events assigned to each cluster is organised into a structured event matrix Zi ∈ RS×K , where rows correspond to perturbed samples, columns correspond to PEP clusters, and each entry records the event count for that sample–cluster pair. A weighted linear surrogate (ridge regression) is then trained on Zi using the sample weights and the corresponding black-box predictions, yielding importance scores 
+
+ˆβi ∈ RK for the clusters. L2GTX retains the top-n PEP clusters per instance, analogous to selecting the top-n features in feature-attribution methods Ribeiro et al. [2016], based on the magnitude of their surrogate importance coefficients, producing a compact local explanation for subsequent aggregation. 
+
+3.2 Merge Similar Clusters & Construct Instance-Cluster Matrix 
+
+For each instance Xi in the dataset, the LOMATCE explainer produces a set of local clusters Ci,k , representing distinct subsequences or events (e.g., Increasing_cluster_1 , LocalMax_cluster_2 ). Since clusters differ across instances, similar clusters of the same PEP type are merged to obtain a concise global representation. We perform event-wise agglomerative hierarchical clustering based on the Euclidean distance between cluster centroids. Let μi,k denote the centroid of cluster Ci,k . For each event type e ∈ { Increasing, Decreasing, LocalMax, LocalMin }, all centroids of type 
+
+e are clustered across instances. Let {dr } denote the set of merge distances produced by the hierarchical clustering procedure. Given a user-defined merge percentile p, we compute the cut distance τ = percentile p({dr }) and obtain global clusters by cutting the dendrogram at distance τ . Higher values of p yield larger τ and therefore fewer, more consolidated global clusters, while lower values preserve more fine-grained distinctions. Formally, the merged cluster mapping is 
+
+fmerge : Ci,k 7 → Gj , Gj ∈ G e, (1) 4L2GTX: From Local to Global Time Series Explanations where Ge denotes the set of global clusters for event type e.After merging, we construct the instance-cluster matrix M ∈ RN ×|G| , where N is the number of instances and |G| is the total number of global clusters across all event types. Each entry represents the importance of a global cluster Gj ,for instance i:
+
+Mi,j = X 
+
+> Ci,k ∈Gj
+
+I(Ci,k ), (2) where I(Ci,k ) is the importance score of the local cluster Ci,k assigned by LOMATCE. 
+
+3.3 Compute Global Cluster Importance 
+
+To summarise the contribution of each global cluster across the dataset, we adopt the aggregation strategy from SP-LIME Ribeiro et al. [2016], adapting it to time-series clusters. Given the instance–cluster matrix M ∈ RN ×G, the global importance of cluster j is computed as: 
+
+Ij =
+
+vuut NX
+
+> i=1
+
+|Mi,j |, j = 1 , . . . , G, (3) where N is the number of instances, G is the total number of global clusters, and Mi,j represents the importance of cluster j for instance i.Unlike SP-LIME, which aggregates feature importances for tabular models, here we aggregate cluster-level importance scores derived from LOMATCE, treating each global cluster of Parameterised Event Primitives (PEPs) as a “feature” summarising temporal patterns. The resulting vector I = [ I1, . . . , I G] captures the overall significance of each global cluster and serves as the basis for selecting representative and non-redundant instances in the next step. 
+
+3.4 Select Top B Instances 
+
+Given the instance–cluster matrix M ∈ RN ×|G| , where Mi,j represents the importance of global cluster Gj for instance 
+
+i, and the global cluster importance vector I ∈ R|G| , we select a subset of B representative instances that collectively cover the most important clusters. Let S ⊆ { 1, . . . , N } denote the set of selected instances, and let c ∈ { 0, 1}|G| be a coverage indicator vector, initially 
+
+c = 0. The selection proceeds greedily: at each step, we choose the instance that maximises the marginal coverage of uncovered clusters weighted by their global importance: 
+
+i∗ = arg max 
+
+> i / ∈S
+> |G|
+
+X
+
+> j=1
+
+Ij · 1{Mi,j > 0 ∧ cj = 0 }, (4) where 1{·} is the indicator function. After selecting i∗, the coverage vector is updated to mark newly covered clusters: 
+
+cj ← max( cj , 1{Mi∗,j > 0}), ∀j. (5) This process is repeated until |S| = B, ensuring that the selected instances maximise coverage of the most globally important clusters while respecting the user-specified budget B.
+
+3.5 Extract & Aggregate Events per Global Cluster 
+
+After selecting the top B representative instances, we identify the global clusters they cover. Each global cluster Gj
+
+originally contains multiple local clusters Ci,k from the selected instances, each with a set of events. To simplify the representation and produce a concise global explanation, we remove the local cluster level and aggregate all events from the selected instances directly into the corresponding global cluster: 
+
+Ej = [
+
+> i∈S
+
+[
+
+> k
+
+Ei,k . (6) 5L2GTX: From Local to Global Time Series Explanations Here, the first union iterates over all selected instances, and the second union iterates over the local clusters within each instance. This flattening ensures that all events contributing to a global cluster are included. Importantly, since each global cluster inherently encodes the event type (e.g., Increasing, Decreasing, LocalMax, LocalMin), the local cluster structure is no longer needed for summarisation. For each event attribute a ∈ { start_time , duration , time , value } of the events in Ej , we compute the mean and standard deviation: 
+
+μaj = 1
+
+|E j |
+
+X
+
+> e∈E j
+
+a(e) (7) 
+
+σaj =
+
+vuut 1
+
+|E j |
+
+X
+
+> e∈E j
+
+(a(e) − μaj )2. (8) These statistics are then used to summarise the global cluster by event type. For increasing and decreasing events, the cluster is described as starting at μstart_time  
+
+> j
+
+± σstart_time  
+
+> j
+
+and extending over μduration  
+
+> j
+
+± σduration  
+
+> j
+
+, representing the typical temporal range. For local maxima and local minima , the cluster is summarised at time μtime  
+
+> j
+
+± σtime  
+
+> j
+
+with value 
+
+μvalue  
+
+> j
+
+± σvalue  
+
+> j
+
+, capturing the typical occurrence and magnitude of the extrema. This flattening and summarisation provides a concise, interpretable representation of each global cluster, forming class-level explanations that can be visualised and inspected to understand typical model behaviour. The complete L2GTX procedure is formally summarised in Algorithm 1. 
+
+Algorithm 1 L2GTX: Local-to-Global Time Series Explanations  
+
+> 1:
+
+Input: Dataset X , Black-box f , Instances per class ninst , Budget B, Threshold τ 
+
+> 2:
+
+Output: Global Explanation Summary S 
+
+> 3:
+
+Instance Selection  
+
+> 4:
+
+X ′ ← Sample ninst instances per class from X 
+
+> 5:
+
+N ← |X ′| 
+
+> 6:
+
+Step 1: Local Attribution  
+
+> 7:
+
+for each Xi ∈ X ′ do  
+
+> 8:
+
+{C i, ˆβi} ← LOMATCE (Xi, f ) 
+
+> 9:
+
+end for  
+
+> 10:
+
+Step 2: Meta-Clustering  
+
+> 11:
+
+G ← AgglomerativeClustering ({μi,k }, τ ) 
+
+> 12:
+
+Construct M ∈ RN ×|G| where Mi,j = Importance (Gj , X i) 
+
+> 13:
+
+Step 3: Global Importance  
+
+> 14:
+
+Ij ←
+
+qPNi=1 |Mi,j | for all Gj ∈ G  
+
+> 15:
+
+Step 4: Submodular Selection  
+
+> 16:
+
+S ← ∅ , c ← 0 
+
+> 17:
+
+while |S| < B do  
+
+> 18:
+
+i∗ ← arg max i / ∈S
+
+P 
+
+> j
+
+Ij · ⊮{Mi,j > 0 ∧ cj = 0 } 
+
+> 19:
+
+S ← S ∪ { i∗}; update c 
+
+> 20:
+
+end while  
+
+> 21:
+
+Step 5: Global Synthesis  
+
+> 22:
+
+S ← AggregatePEPs ({Gj : j ∈ S}) 
+
+> 23:
+
+return S
+
+# 4 Experimental Setup 
+
+This section details the empirical setup used to evaluate L2GTX, including the selection of datasets, the architectural specifications of the black-box models, and the quantitative evaluation metric used to assess explanation fidelity, with the expectation that local-to-global aggregation preserves surrogate fidelity while producing compact global summaries. 
+
+4.1 Datasets 
+
+We evaluate our method on six widely used univariate time series datasets from the UCR Archive Dau et al. [2019]. This selection comprises five real-world datasets ( ECG200 , GunPoint , Coffee , FordA , and FordB ) and one synthetic 6L2GTX: From Local to Global Time Series Explanations dataset ( CBF ). ECG200 contains electrocardiogram (ECG) signals representing individual heartbeats, with the task of distinguishing normal heartbeats from those associated with myocardial infarction. GunPoint consists of hand movement trajectories performed by two actors, where the goal is to classify the gestures as either gun-draw or point. The Coffee dataset contains spectrographic measurements of coffee beans, with two classes, Arabica and Robusta. FordA and FordB contain time series data of engine noise collected during standard operating conditions, where the task is to classify the presence or absence of fault symptoms. However, the FordB dataset is gathered in a noisier environment. Finally, CBF is a synthetic dataset composed of three characteristic patterns: cylinder, bell, and funnel. The descriptive statistics for these datasets are summarised in Table 1. Table 1: Descriptive statistics of the six UCR datasets used in the experiment.                             
+
+> Name Data Size No. Classes Length Type
+> ECG200 200 296 Medical GunPoint 200 2150 Action Coffee 48 2286 Food FordA 4921 2500 Sensor FordB 4446 2500 Sensor CBF 900 3128 Synthetic
+
+4.2 Black-box Classifiers and Training 
+
+The datasets were partitioned into training (70%), validation (15%), and test (15%) sets. Minimal preprocessing was applied, restricted to batch-wise standardisation using the TSStandardize() function from the tsai library Oguiza [2022] to ensure zero mean and unit variance. The model-agnostic nature of L2GTX is demonstrated by its applicability to two distinct deep learning architectures. The first is a Fully Convolutional Network (FCN) comprising three 1D convolutional layers with filter sizes (128, 256, 128) and kernel sizes sizes of (7, 5, 3). Each layer is followed by batch normalisation and a ReLU activation, culminating in a Global Average Pooling (GAP) layer and a softmax output Wang et al. [2017]. The second architecture is an LSTM-FCN that incorporates a parallel Long Short-Term Memory (LSTM) to capture long-range temporal dependencies. Both models were trained with early stopping, with patience set to 15 epochs to prevent overfitting. In addition, to ensure accuracy and stability, the model was trained 100 times with randomised splits for training, validation, and testing. The resulting validation and test accuracies are reported in Table 2. Table 2: Mean test and validation accuracy (Test Acc and Valid Acc) for each dataset–model pairs, reported as mean ± 95% confidence interval. 
+
+Dataset FCN LSTM-FCN Test Val Test Val 
+
+ECG200 0.87 ± 0.03 0.86 ± 0.04 0.86 ± 0.01 0.85 ± 0.01 GunPoint 0.99 ± 0.01 0.98 ± 0.02 0.98 ± 0.01 0.98 ± 0.01 Coffee 1.00 ± 0.00 1.00 ± 0.00 1.00 ± 0.00 1.00 ± 0.00 FordA 0.90 ± 0.02 0.90 ± 0.02 0.88 ± 0.01 0.87 ± 0.01 FordB 0.88 ± 0.02 0.89 ± 0.02 0.86 ± 0.01 0.86 ± 0.01 CBF 0.98 ± 0.01 0.97 ± 0.01 1.00 ± 0.00 0.99 ± 0.01 
+
+4.3 L2GTX Configuration 
+
+For L2GTX global explanation synthesis, we sampled ninst = 15 instances per class for small and medium-sized datasets, and ninst = 30 for larger datasets (FordA, FordB, and CBF) to ensure adequate class coverage while maintaining computational feasibility. The instance selection budget B specifies the maximum number of instances chosen by submodular optimisation and was set equal to ninst . These sampled instances are used solely for explanation synthesis and do not influence the training or evaluation of the underlying classifiers. 7L2GTX: From Local to Global Time Series Explanations Multiple agglomerative merge percentiles ( p ∈ { 25 , 50 , 75 , 95 }) were evaluated to assess robustness, as reported in the metric results. For visualisation of global explanations, p = 95 was adopted as the default setting, as it yields compact yet behaviour-preserving cluster summaries while retaining the dominant temporal events. Local explanations were generated using the LOMATCE explainer with its default parameter settings as described in Mekonnen et al. [2025], including neighbourhood sampling, event clustering, and silhouette-based estimation of the number of clusters. 
+
+4.4 Global Faithfulness and Stability 
+
+The primary evaluation metric is Global Faithfulness (GF) , which quantifies how accurately a global explanation summary reflects the behaviour of the underlying black-box model. Given a summary set S with budget B (i.e., 
+
+|S| = B), GF is defined as the mean local fidelity , measured using the coefficient of determination ( R2), across the selected instances: 
+
+GF( S) = 1
+
+|S| 
+
+X
+
+> xi∈S
+
+F (xi), (9) where F (xi) denotes the local surrogate fidelity for instance xi.To assess the stability and reproducibility of the explanations, all experiments were conducted using three independent random seeds. We report the macro-averaged GF across classes together with the corresponding 95% confidence intervals (CI). 
+
+# 5 Results and Discussion 
+
+The quantitative results in Tables 3 and 4 show that global faithfulness (GF) remains robust under varying degrees of consolidation. The consistent GF values observed for merge percentiles ( p ∈ 25 , 50 , 75 , 95 ), together with overlapping confidence intervals for nearly all model–dataset pairs, indicate that L2GTX effectively compresses the explanation space into a compact set of global clusters without sacrificing global faithfulness to the underlying model behaviour. Table 3: Global faithfulness (mean ± 95% CI) of L2GTX explanations using the FCN classifier under different merge percentiles. Results are macro-averaged across classes and aggregated over three random seeds. 
+
+Dataset p = 25 p = 50 p = 75 p = 95 
+
+ECG200 0.784 ± 0.015 0.788 ± 0.013 0.780 ± 0.026 0.792 ± 0.014 GunPoint 0.593 ± 0.007 0.599 ± 0.019 0.601 ± 0.007 0.597 ± 0.011 Coffee 0.683 ± 0.010 0.678 ± 0.006 0.678 ± 0.005 0.678 ± 0.015 FordA 0.674 ± 0.021 0.672 ± 0.029 0.673 ± 0.021 0.672 ± 0.028 FordB 0.675 ± 0.008 0.679 ± 0.034 0.673 ± 0.006 0.673 ± 0.029 CBF 0.625 ± 0.018 0.626 ± 0.011 0.633 ± 0.016 0.625 ± 0.008 Table 4: Global faithfulness (mean ± 95% CI) of L2GTX explanations using the LSTM-FCN classifier under different merge percentiles. Results are macro-averaged across classes and aggregated over three random seeds. 
+
+Dataset p = 25 p = 50 p = 75 p = 95 
+
+ECG200 0.828 ± 0.010 0.832 ± 0.013 0.829 ± 0.021 0.831 ± 0.007 GunPoint 0.617 ± 0.074 0.619 ± 0.067 0.588 ± 0.086 0.638 ± 0.011 Coffee 0.617 ± 0.008 0.609 ± 0.004 0.616 ± 0.036 0.608 ± 0.003 FordA 0.618 ± 0.028 0.621 ± 0.015 0.614 ± 0.039 0.627 ± 0.035 FordB 0.661 ± 0.021 0.656 ± 0.039 0.651 ± 0.050 0.655 ± 0.027 CBF 0.519 ± 0.020 0.508 ± 0.025 0.519 ± 0.033 0.502 ± 0.015 Figure 2 further illustrates this structural effect: as p increases, the number of global clusters decreases monotonically, producing a more compact explanation space. In practice, we present results for p = 95 , which provides a compact rep-resentation while still capturing the dominant temporal event clusters in the resulting global explanations. This indicates that L2GTX retains shared decision-relevant cues rather than dispersing or discarding them during consolidation. Most existing XAI methods applied to time-series data are adapted to provide local explanations at the level of individual time steps or predefined temporal segments. While such representations can indicate where a model assigns importance, 8L2GTX: From Local to Global Time Series Explanations 
+
+> (a) FCN
+> (b) LSTM-FCN
+
+Figure 2: Effect of the agglomerative clustering threshold (merge percentile) on the number of class-averaged global clusters. Increasing the merge percentile progressively consolidates event clusters, resulting in a monotonic reduction in the total number of global clusters. Across both models, this consolidation does not degrade explanation faithfulness, as reflected by stable or improved class-averaged global faithfulness scores. 9L2GTX: From Local to Global Time Series Explanations they often offer limited interpretability: stating that a particular segment or time step is important does not explain what temporal behaviour within that region drives the decision. In contrast, describing an increasing trend over a temporal interval or identifying a pronounced local maximum provides a semantically meaningful explanation that aligns with how humans reason about time series signals. Aggregating importance values alone therefore reduces the complex temporal structure to a coarse “bag of events” that lacks morphological specificity. By explicitly parameterising explanations in terms of structural behavioural primitives, L2GTX provides insight into the “why” behind the “where” of a model’s attention. For example, identifying a top-ranked local maximum or increasing trend conveys a recognisable signal behaviour, whereas ranking a specific time step or segment primarily reflects position rather than temporal pattern. Such behavioural primitives can also be naturally translated into domain-specific semantics; for instance, an increasing trend may correspond to a spike in physiological signals in healthcare or a bullish movement in financial time series. We illustrate the interpretability of the resulting global explanations using two representative case studies, ECG200 
+
+and Coffee , while quantitative faithfulness results are reported for all datasets. As shown in Figures 3, 4, 5, and 6, L2GTX aggregates local events into concise global clusters and summarises them using attribute statistics. The importance scores shown on the bars are normalised so that their sum equals one, representing the relative contribution of each event cluster to the global explanation for the class. Trend-based clusters are described by their temporal span, while extrema-based clusters are summarised using time–value statistics. This representation yields human-readable explanations that indicate where salient temporal events occur, how they manifest, and how consistently they appear across instances. For example, previous work on distinguishing between Arabica and Robusta coffee beans has shown that Robusta samples tend to exhibit stronger overall spectral intensities, while Arabica samples are characterised by deeper absorption valleys and comparatively less dominant peaks El-Abassy et al. [2011]. As illustrated in Figures 5 and 6, both FCN and LSTM-FCN assign importance to overlapping spectral regions in the interval t ∈ [210 , 240] , yet the resulting explanations differ in the types of temporal events emphasised. For the Robusta class, importance is concentrated on high-magnitude local maxima, whereas the Arabica class exhibits a more distributed pattern involving lower-intensity peaks alongside local minima. These differences are expressed through distinct configurations of extrema and accompanying spectral trends, consistent with how spectroscopic distinctions between coffee varieties are commonly discussed in the coffee spectroscopy literature. Similarly, in the ECG200 dataset (Figures 3 and 4), the global explanations highlight distinct configurations of extrema and short temporal trends for the Normal and Myocardial Infarction classes. Normal heartbeats are characterised by a more distributed set of moderate-importance events, whereas infarction signals are dominated by fewer, more pronounced deflections and transitions. These patterns align with qualitative descriptions of ECG morphology commonly used to distinguish healthy and pathological cardiac signals, without relying on explicit clinical annotations. Across both case studies, the global explanations consistently identify class-specific temporal regions composed of extrema and short directional trends. While the relative importance of individual clusters varies between FCN and LSTM-FCN, reflecting differences in architectural inductive biases, the explanations emphasise overlapping temporal regions for each class. This indicates that L2GTX captures behaviour-consistent global explanations while remaining sensitive to how different models rely on temporal information. A practical limitation of the proposed method arises from the clustering of parameterised event primitives within LOMATCE, which constitutes the most computationally demanding stage of the explanation pipeline. This cost becomes more pronounced for long time series or when many neighbourhood samples are generated to construct local explanations. To mitigate this overhead, event clustering is parallelised on multicore architectures, and the number of clusters is estimated using a silhouette-based heuristic applied to a subset of the extracted events. While this strategy provides a favourable balance between computational efficiency and clustering stability, there remains room for further improvement in the scalability and efficiency of event-level clustering, particularly for large-scale or resource-constrained settings. Overall, these results demonstrate that L2GTX performs a reliable local-to-global explanation synthesis. Explanation fidelity is preserved under strong consolidation, the resulting global explanations are structurally stable, and the identified temporal behaviours align with domain-level signal characteristics. Rather than producing arbitrary or fragmented aggregates of importance scores, L2GTX highlights shared, decision-relevant temporal primitives that support meaningful interpretation of time-series classifiers. 10 L2GTX: From Local to Global Time Series Explanations 
+
+> (a) FCN – Normal
+> (b) FCN – Infarction
+
+Figure 3: Class-wise global explanations produced by L2GTX for the ECG200 dataset using the FCN model. Bars indicate the global importance of aggregated temporal event clusters, with colours denoting event types. 11 L2GTX: From Local to Global Time Series Explanations 
+
+> (a) LSTM-FCN – Normal
+> (b) LSTM-FCN – Infarction
+
+Figure 4: Class-wise global explanations produced by L2GTX for the ECG200 dataset using the LSTM-FCN model. Bars indicate the global importance of aggregated temporal event clusters, with colours denoting event types. 12 L2GTX: From Local to Global Time Series Explanations 
+
+> (a) FCN – Arabica
+> (b) FCN – Robusta
+
+Figure 5: Class-wise global explanations produced by L2GTX for the Coffee dataset using the FCN model at merge percentile 95. Bars denote the global importance of aggregated temporal event clusters, with colours indicating event dynamics. 13 L2GTX: From Local to Global Time Series Explanations 
+
+> (a) LSTM-FCN – Arabica
+> (b) LSTM-FCN – Robusta
+
+Figure 6: Class-wise global explanations produced by L2GTX for the Coffee dataset using the LSTM-FCN model at merge percentile 95. 14 L2GTX: From Local to Global Time Series Explanations 
+
+# 6 Conclusion and Future Work 
+
+In this work, we introduced L2GTX, a model-agnostic method for producing interpretable, class-wise global explana-tions of time-series classifiers by aggregating local explanations from a selective and representative set of instances. Rather than relying on a single global surrogate, L2GTX builds global understanding directly from faithful instance-level explanations, enabling a principled transition from local reasoning to global model behaviour. This addresses a key limitation in existing time series XAI approaches, which predominantly provide local or architecture-specific explanations and lack principled mechanisms for synthesising faithful class-wise global summaries. Through experiments on multiple time-series datasets, we show that L2GTX produces compact global explanations while maintaining stable Global Faithfulness. The consistency of faithfulness scores across different levels of explanation consolidation suggests that selecting a diverse and representative set of instances is effective for capturing invariant class-level temporal patterns, while suppressing redundant or instance-specific variation. Moreover, explanations generated across different model architectures exhibit strong structural agreement, indicating that L2GTX highlights shared decision-relevant temporal cues. In contrast to approaches that aggregate raw attribution scores or depend on model-internal representations, L2GTX preserves temporal structure and yields semantically interpretable global patterns. Future work will extend L2GTX to multivariate time series, where capturing interactions and dependencies across channels introduces additional challenges for global interpretability. Additionally, human-centred evaluation of global explanations, including structured assessments with domain experts, could further examine the perceived usefulness, clarity, and trustworthiness of the generated class-level summaries in real-world decision-making settings. 
+
+# References 
+
+Sangyeon Kim and Myungjoo Kang. Financial series prediction using attention lstm. arXiv preprint arXiv:1902.10877 ,2019. Tongxin Shu, Jiahong Chen, Vijay K Bhargava, and Clarence W de Silva. An energy-efficient dual prediction scheme using lms filter and lstm in wireless sensor networks for environment monitoring. IEEE Internet of Things Journal , 6 (4):6736–6747, 2019. Pengfei Liu, Xiaoming Sun, Yang Han, Zhishuai He, Weifeng Zhang, and Chenxu Wu. Arrhythmia classification of lstm autoencoder based on time series anomaly detection. Biomedical Signal Processing and Control , 71:103228, 2022. Nils Strodthoff, Patrick Wagner, Tobias Schaeffter, and Wojciech Samek. Deep learning for ecg analysis: Benchmarks and insights from ptb-xl. IEEE Journal of Biomedical and Health Informatics , 25(5):1519–1528, 2020. Andreas Theissler, Francesco Spinnato, Udo Schlegel, and Riccardo Guidotti. Explainable ai for time series classifica-tion: A review, taxonomy and research directions. IEEE Access , 2022. Luca Longo et al. Explainable artificial intelligence (xai) 2.0: A manifesto of open challenges and interdisciplinary research directions. Information Fusion , 106:102301, 2024. ISSN 1566-2535. Giulia Vilone and Luca Longo. Classification of explainable artificial intelligence methods through their output formats. 
+
+Machine Learning and Knowledge Extraction , 3(3):615–661, 2021. Udo Schlegel, Hiba Arnout, Mennatallah El-Assady, Daniela Oelke, and Daniel A Keim. Towards a rigorous evaluation of xai methods on time series. In 2019 IEEE/CVF International Conference on Computer Vision Workshop (ICCVW) ,pages 4197–4201. IEEE, 2019. Thomas Rojat, Raphaël Puget, David Filliat, Javier Del Ser, Rodolphe Gelin, and Natalia Díaz-Rodríguez. Explainable artificial intelligence (xai) on timeseries data: A survey. arXiv preprint arXiv:2104.00950 , 2021. Flavio Di Martino and Franca Delmastro. Explainable ai for clinical and remote health applications: a survey on tabular and time series data. Artificial Intelligence Review , pages 1–55, 2022. Ephrem Tibebe Mekonnen, Luca Longo, and Pierpaolo Dondio. Lomatce: Local model-agnostic time series classifica-tion explanations. IEEE Access , 13:185218–185232, 2025. Mohammed Waleed Kadous. Learning comprehensible descriptions of multivariate time series. In ICML , volume 454, page 463, 1999. Ephrem T Mekonnen, Luca Longo, and Pierpaolo Dondio. Interpreting black-box time series classifiers using parameterised event primitives. xAI-2024 Late-breaking Work, Demos & Doctoral Consortium Joint Proceedings ,2024a. 15 L2GTX: From Local to Global Time Series Explanations Christoph Molnar. Interpretable Machine Learning . Christoph Molnar, 3 edition, 2025. ISBN 978-3-911578-03-5. URL https://christophm.github.io/interpretable-ml-book .Udo Schlegel, Duy Lam Vo, Daniel A Keim, and Daniel Seebacher. Ts-mule: Local interpretable model-agnostic explanations for time series forecast models. In Joint European Conference on Machine Learning and Knowledge Discovery in Databases , pages 5–14. Springer, 2021. Bolei Zhou, Aditya Khosla, Agata Lapedriza, Aude Oliva, and Antonio Torralba. Learning deep features for discrimina-tive localization. In Proc. of the IEEE conference on computer vision and pattern recognition , pages 2921–2929, 2016. Sebastian Bach, Alexander Binder, Grégoire Montavon, Frederick Klauschen, Klaus-Robert Müller, and Wojciech Samek. On pixel-wise explanations for non-linear classifier decisions by layer-wise relevance propagation. PloS one ,10(7):e0130140, 2015. Linjiang Zhou, Chao Ma, Xiaochuan Shi, Dian Zhang, Wei Li, and Libing Wu. Salience-cam: Visual explanations from convolutional neural networks via salience score. In 2021 International Joint Conference on Neural Networks (IJCNN) , pages 1–8. IEEE, 2021. Johanna Vielhaben, Sebastian Lapuschkin, Grégoire Montavon, and Wojciech Samek. Explainable ai for time series via virtual inspection layers. arXiv preprint arXiv:2303.06365 , 2023. Udo Schlegel and Daniel A Keim. Time series model attribution visualizations as explanations. In 2021 IEEE Workshop on TRust and EXpertise in Visual Analytics (TREX) , pages 27–31. IEEE, 2021. Jeya Vikranth Jeyakumar, Joseph Noor, Yu-Hsi Cheng, Luis Garcia, and Mani Srivastava. How can i explain this to you? an empirical study of deep neural network explanation methods. Advances in Neural Information Processing Systems , 33:4211–4222, 2020. Marco Tulio Ribeiro, Sameer Singh, and Carlos Guestrin. Why should i trust you? explaining the predictions of any classifier. In Proc. of the 22nd ACM SIGKDD Int. Conf. on knowledge discovery and data mining , pages 1135–1144, 2016. Scott M Lundberg and Su-In Lee. A unified approach to interpreting model predictions. Advances in neural information processing systems , 30, 2017. Maël Guillemé, Véronique Masson, Laurence Rozé, and Alexandre Termier. Agnostic local explanation for time series classification. In 2019 IEEE 31st Int. Conf. on tools with artificial intelligence (ICTAI) , pages 432–439. IEEE, 2019. Ines Neves, Duarte Folgado, Sara Santos, Marilia Barandas, Andrea Campagner, Luca Ronzio, Federico Cabitza, and Hugo Gamboa. Interpretable heartbeat classification using local model-agnostic explanations on ecgs. Computers in Biology and Medicine , 133:104393, 2021. Torty Sivill and Peter Flach. Limesegment: Meaningful, realistic time series explanations. In International Conference on Artificial Intelligence and Statistics , pages 3418–3433. PMLR, 2022. Jiazhan Wang, Ruifeng Zhang, and Qiang Li. Tf-lime: Interpretation method for time-series models based on time–frequency features. Sensors , 25(9):2845, 2025. Felipe Oviedo, Zekun Ren, Shijing Sun, Charles Settens, Zhe Liu, Noor Titan Putri Hartono, Savitha Ramasamy, Brian L DeCost, Siyu IP Tian, Giuseppe Romano, et al. Fast and interpretable classification of small x-ray diffraction datasets using data augmentation and deep neural networks. npj Computational Materials , 5(1):60, 2019. Shoaib Ahmed Siddiqui, Dominique Mercier, Mohsin Munir, Andreas Dengel, and Sheraz Ahmed. Tsviz: Demystifica-tion of deep learning models for time-series analysis. IEEE Access , 7:67027–67040, 2019. Sohee Cho, Ginkyeng Lee, Wonjoon Chang, and Jaesik Choi. Interpretation of deep temporal representations by selective visualization of internally activated nodes. arXiv preprint arXiv:2004.12538 , 2020. Ephrem T Mekonnen, Pierpaolo Dondio, and Luca Longo. A global model-agnostic rule-based xai method based on parameterised event primitives for time series classifiers. Frontiers in Artificial Intelligence , 7:1381921, 2024b. Ephrem Mekonnen, Pierpaolo Dondio, and Luca Longo. Explaining deep learning time series classification models using a decision tree-based post-hoc xai method. In xAI-2023 Late-breaking Work, Demos and Doctoral Consortium Joint Proceedings . CEUR-WS.org, 2023. Mattia Setzu, Riccardo Guidotti, Anna Monreale, Franco Turini, Dino Pedreschi, and Fosca Giannotti. Glocalx-from local to global explanations of black box ai models. Artificial Intelligence , 294:103457, 2021. Ilse Van Der Linden, Hinda Haned, and Evangelos Kanoulas. Global aggregations of local explanations for black box models. arXiv preprint arXiv:1907.03039 , 2019. 16 L2GTX: From Local to Global Time Series Explanations Hoang Anh Dau, Anthony Bagnall, Kaveh Kamgar, Chin-Chia Michael Yeh, Yan Zhu, Shaghayegh Gharghabi, Chotirat Ann Ratanamahatana, and Eamonn Keogh. The ucr time series archive. IEEE/CAA Journal of Automatica Sinica , 6(6):1293–1305, 2019. Ignacio Oguiza. tsai - a state-of-the-art deep learning library for time series and sequential data. Github, 2022. URL 
+
+https://github.com/timeseriesAI/tsai .Zhiguang Wang, Weizhong Yan, and Tim Oates. Time series classification from scratch with deep neural networks: A strong baseline. In 2017 Int. joint conference on neural networks (IJCNN) , pages 1578–1585. IEEE, 2017. Rasha M El-Abassy, Patrice Donfack, and Arnulf Materny. Discrimination between arabica and robusta green coffee using visible micro raman spectroscopy and chemometric analysis. Food Chemistry , 126(3):1443–1448, 2011. 17 L2GTX: From Local to Global Time Series Explanations 
+
+# A Additional Experimental Details 
+
+A.1 LOMATCE Algorithm Algorithm 2 LOMATCE: LOcal Model-Agnostic Time Series Classification Explanations  
+
+> 1:
+
+Input: Time series X, Black-box f , Number of samples Nz , Bandwidth σ 
+
+> 2:
+
+Output: Local Cluster Importance Weights ˆβ 
+
+> 3:
+
+Stage A: Neighborhood Generation  
+
+> 4:
+
+Z ← { X} ▷ Include original instance  
+
+> 5:
+
+for i = 1 to Nz − 1 do  
+
+> 6:
+
+Choose method ∈ { 0, μ seg , μ total , rnd } 
+
+> 7:
+
+z ← Perturb (X, method ) ▷ Apply random segment perturbation  
+
+> 8:
+
+Z ← Z ∪ { z} 
+
+> 9:
+
+end for  
+
+> 10:
+
+Stage B: Distance and Weighting  
+
+> 11:
+
+for each z ∈ Z do  
+
+> 12:
+
+d ← FastDTW (X, z ) 
+
+> 13:
+
+πX (z) ← exp( −d2/σ 2) 
+
+> 14:
+
+end for  
+
+> 15:
+
+Stage C: PEP Extraction and Transformation  
+
+> 16:
+
+E ← ExtractPEPs (Z) ▷ Extracting increasing, decreasing, max and min  
+
+> 17:
+
+C ← KMeans (flattened E) ▷ Optimal k via Silhouette  
+
+> 18:
+
+D ← EventAttribution (E, C) ▷ Build count-based matrix  
+
+> 19:
+
+Stage D: Surrogate Training  
+
+> 20:
+
+Y ← f (Z) ▷ Get black-box predictions  
+
+> 21:
+
+ˆβ ← RidgeRegression (D, Y, weights = πX ) 
+
+> 22:
+
+return ˆβ
+
+18
