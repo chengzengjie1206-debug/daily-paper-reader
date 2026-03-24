@@ -1,0 +1,532 @@
+Title: Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference
+
+URL Source: https://arxiv.org/pdf/2603.17549v1
+
+Published Time: Thu, 19 Mar 2026 01:04:07 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference 
+
+Lanlan Yu 1 2 Quan-Hui Liu 1 2 Haoyue Zheng 1 2 Xinfu Yang 1 2 
+
+## Abstract 
+
+Estimating time-varying reproduction numbers from epidemic incidence data is a central task in infectious disease surveillance, yet it poses an inherently ill-posed inverse problem. Existing ap-proaches often rely on strong structural assump-tions derived from epidemiological models, which can limit their ability to adapt to non-stationary transmission dynamics induced by interventions or behavioral changes, leading to delayed detec-tion of regime shifts and degraded estimation ac-curacy. In this work, we propose a Conditional In-verse Reproduction Learning framework (CIRL) that addresses the inverse problem by learning a conditional mapping from historical incidence pat-terns and explicit time information to latent repro-duction numbers. Rather than imposing strongly enforced parametric constraints, CIRL softly in-tegrates epidemiological structure with flexible likelihood-based statistical modeling, using the renewal equation as a forward operator to enforce dynamical consistency. The resulting framework combines epidemiologically grounded constraints with data-driven temporal representations, produc-ing reproduction number estimates that are robust to observation noise while remaining responsive to abrupt transmission changes and zero-inflated incidence observations. Experiments on synthetic epidemics with controlled regime changes and real-world SARS and COVID-19 data demon-strate the effectiveness of the proposed approach. 
+
+## 1. Introduction 
+
+The estimation of the time-varying reproduction number, 
+
+Rt, is fundamental to characterizing the dynamics of infec-tious disease outbreaks and guiding public health interven-tions (Wallinga & Teunis, 2004; Fraser et al., 2011; Gostic 
+
+> 1
+
+College of Computer Science, Sichuan University, Chengdu, China 2Engineering Research Center of Machine Learning and In-dustry Intelligence, Ministry of Education, Sichuan University, Chengdu, China. Correspondence to: Quan-Hui Liu <quan-huiliu@scu.edu.cn >.
+
+Preprint. March 19, 2026. 
+
+et al., 2020; Trevisin et al., 2023). Values of Rt above or be-low the critical threshold of 1 indicate expanding or declin-ing epidemics, respectively (Wallinga & Lipsitch, 2007; Liu et al., 2020). From a mechanistic perspective, the transmis-sion dynamics is governed by the renewal process (Kermack & McKendrick, 1927). The expected incidence at time t,denoted as E[It], is modeled as the product of the instanta-neous reproduction number and the total infectiousness of the population (Cori et al., 2013): 
+
+E[It] = Rt
+
+> ∞
+
+X 
+
+> τ=1
+
+It−τ w(τ ), (1) where It denotes the number of newly infected individuals in discrete time t, the time-varying reproduction number Rt
+
+denotes the ratio of the number of new infections generated at time step t, and w(τ ) represents the serial (or generation) interval distribution, satisfying P∞  
+
+> τ=1
+
+w(τ ) = 1 . This equa-tion defines a forward operator mapping latent transmission dynamics to the observed cases (Dai et al., 2023). Since Rt is unobserved, inferring it from noisy and poten-tially delayed incidence data I = {It}Tt=1 constitutes a classic ill-posed inverse problem (Benning & Burger, 2018; Parag, 2021). Multiple latent trajectories may explain the same observations, and small perturbations in the data can induce large variations in inferred dynamics. It is therefore necessary to constrain the solution space in order to recover meaningful latent transmission trajectories. (Wallinga & Teunis, 2004; Cori et al., 2013; Abbott et al., 2020). To mitigate this ill-posedness, standard approaches typi-cally impose hard constraints —rigid structural assumptions designed to force a unique solution (Wallinga & Teunis, 2004; Cori et al., 2013; Abbott et al., 2020; Song & Xiao, 2022). However, recent theoretical analyses indicate that hard-constrained or purely deterministic Rt estimation can be problematic, since rigid assumptions are incompatible with non-stationary transmission dynamics (Ghosh et al., 2023), especially in scenarios with early missing observa-tions and sudden shifts driven by interventions (Dai et al., 2023; Lau et al., 2021). For instance, the local stationarity assumption inherent in sliding-window methods (e.g., Epi-Estim) fundamentally contradicts the instantaneous changes of intervention-induced discontinuities (Cori et al., 2013; Parag, 2021). Similarly, neural methods rooted in differen-tial equations often implicitly enforce exponential genera-1
+
+> arXiv:2603.17549v1 [cs.LG] 18 Mar 2026 Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference
+
+tion intervals (memoryless dynamics) (Song & Xiao, 2022), diverging from the non-Markovian and context-dependent nature of real transmission processes(Pang et al., 2025). When transmission dynamics change abruptly, such struc-tural mismatches can cause model to conflate transient re-porting artifacts with genuine epidemiological signals, lead-ing to detection lags and smoothed trajectories (Nash et al., 2022). This failure mode mirrors convergence pathologies frequently observed in scientific machine learning when physical laws are enforced on imperfectly observed sys-tems (Karniadakis et al., 2021; Lu et al., 2021). Second, deterministic frameworks are ill-equipped to han-dle stochasticity arising from missing observations, leading to poorly calibrated uncertainty (Wang & Walker, 2025). Observation processes in realistic surveillance are distorted by structural zeros (e.g., due to limited diagnostic capacity) and stochastic delays, which rigid or purely deterministic optimization tends to misinterpret as meaningful transmis-sion changes (Parag, 2021; Abbott et al., 2020; Lison et al., 2024). While probabilistic frameworks like EpiNow2 (Ab-bott et al., 2020) introduce smoothness priors to mitigate noise, they typically lack explicit mechanisms to model these systematic reporting failures. This limitation results in poorly calibrated uncertainty quantification, particularly in low-incidence regimes where the model produces danger-ously narrow confidence intervals around potentially biased estimates (Lison et al., 2024; Hettinger et al., 2025). In this work, we advocate a shift from rigid structural as-sumptions toward a conditional inverse learning (Arridge et al., 2019; Ongie et al., 2020) perspective for estimat-ing time-varying reproduction numbers, which we term 
+
+Conditional Inverse Reproduction Learning (CIRL) . In-stead of imposing piecewise-constant dynamics or window-based smoothing constraints on Rt, we reformulate the problem as learning a flexible conditional inverse mapping, 
+
+Rt = fθ (t, Ht), conditioned on the recent explicit time coordinate t and epidemiological history Ht. Under this formulation, the admissible solution space is implicitly con-strained by the conditioning structure, rather than by hard-coded temporal assumptions. CIRL consists of two key components. (i) A Conditional Inverse Mapping Network that parameterizes fθ (·) using a neural architecture conditioned on historical observations and time. (ii) A Statistical Observation and Consistency Module , which replaces deterministic fitting targets with a probabilistic objective to accommodate the heterogene-ity and sparsity of real-world surveillance data, including over-dispersion, reporting artifacts, and early missing obser-vations. This soft consistency constraint suppresses noise-induced high-frequency oscillations while retaining sensi-tivity to abrupt transmission changes when supported by sufficient evidence in the conditioning history. Since con-ditional inverse mapping depends only on past incidence, the framework can be applicable in prospective estimation settings, while naturally enabling short-term forward simu-lation as an auxiliary check of epidemiological consistency. Our key contributions are summarized as follows: • We reformulate Rt estimation as a probabilistic con-ditional inverse problem under the renewal equation, avoiding hard-coded temporal assumptions on Rt.• We introduce a likelihood-based consistency formu-lation that replaces deterministic fitting targets, en-abling principled handling of heterogeneous and sparse surveillance data. • We empirically validate the proposed framework on synthetic epidemics and real epidemic data, demon-strating robust inverse inference under under-reporting, missing observations, and abrupt transmission changes. 
+
+## 2. Problem Formulation 
+
+The time-varying reproduction number ( Rt) quantifies the average number of secondary infections generated by in-fectious individuals at time t. We formulate the epidemic dynamics as a discrete-time process with observed incidence 
+
+I = {It}Tt=1 , where It ∈ N denotes the number of newly re-ported cases at time t. The goal is to recover the underlying time-varying reproduction numbers, denoted as R = {Rt},which are treated as latent, time-varying variables inferred from the observables I.
+
+Forward Renewal Equation. The relationship between latent transmission trajectories R and observed cases I is governed by the renewal equation: 
+
+It ∼ D (λt), (2) where D denotes a discrete count distribution with expecta-tion λt. The term λt denotes the conditional expectation: 
+
+λt = Rtt−1X 
+
+> τ=1
+
+It−τ wτ , (3) where wτ is the empirical generation interval distribution with P 
+
+> τ
+
+wτ = 1 . This defines a forward mapping F : R → I, which is both many-to-one and one-to-many. Given the renewal intensity λt, the observed incidence It is modeled as a noisy count process centered at λt, potentially subject to reporting noise and over-dispersion. 
+
+Conditional Inverse Mapping. Given observed incidence 
+
+I and a known generation interval distribution {wτ }, esti-mating Rt corresponds to the inverse recovery under the renewal equation. This problem is inherently ill-posed, since 2Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference 
+
+multiple Rt trajectories can produce identical incidence se-quences. To address this ambiguity, our objective is to learn a conditional inverse mapping F−1 : I → R that infers latent Rt sequences consistent with the observed epidemic dynamics while leveraging past incidence as conditioning information, as follows: 
+
+F−1 : Rt = fθ (t, Ht), (4) where fθ is a parameterized inverse mapping learned from the data, t denotes the explicit time coordinate, and Ht =
+
+{It−L, . . . , I t−1} defines a historical context (receptive field) of size L.Accordingly, Eq. (4) applies only to t > L ,as the initial window lacks sufficient historical context to infer Rt. It is worth emphasizing that our conditioning horizon L solely defines the temporal context available to the conditional inverse mapping, and does not impose any piecewise-constant, local smoothness, or stability assump-tions on Rt. Under this formulation, Rt inference is formu-lated as a conditional inverse learning problem grounded in epidemiological renewal dynamics. 
+
+## 3. Method 
+
+We propose a Conditional Inverse Reproduction Learning 
+
+(CIRL) framework that learns a parameterized conditional inverse mapping fθ associated with the renewal operator F
+
+to infer Rt from observed incidence data. As illustrated in Figure 1, fθ is conditioned on the retrospective epidemic history Ht and the temporal coordinate t, and outputs latent transmission dynamics R, from which the expected inci-dence E[It] is obtained via the renewal equation (Eq. (1)). Based on the architecture of fθ and the strategy for learning its parameters, the CIRL framework is organized into two complementary components: (i) the Conditional Inverse Mapping Network , which maps historical incidence and temporal context to latent transmission dynamics, and (ii) the Statistical Observation and Consistency Module , which enforces consistency with observed incidence through a probabilistic renewal-based formulation. Together, these components enable flexible, data-driven inference of Rt
+
+while respecting epidemiological dynamics. 
+
+3.1. Conditional Inverse Mapping Network 
+
+We instantiate fθ using a modular neural architecture de-signed to capture non-stationarity, temporal dependence, and multi-scale epidemic dynamics. The conditional inverse mapping fθ (tc, Htc ) is implemented as a modular neural architecture that decomposes the inference task into dis-tinct functional components. Specifically, the architecture consists of: (i) a temporal embedding module that encodes explicit time information, (ii) a historical incidence encoder that extracts multi-scale features from past observations, (iii) a fusion module that produces a latent reproduction number 
+
+Rtc at time tc.
+
+Temporal Coordinate Embedding (TCE). The explicit time index tc is embedded via a coordinate-based encoding, 
+
+etc = ϕtime (ϕFF (tc)) , (5) where ϕtime (·) is a learnable embedding function imple-mented as a multilayer perceptron (MLP). Here, ϕFF (tc) is a Fourier feature mapping about time tc:
+
+ϕFF (tc) = 
+
+cos( απt c)sin( απt c)
+
+
+
+, (6) where α is a user-defined, non-trainable frequency vector. This mapping addresses spectral bias, enabling the model to efficiently capture both high-frequency variations and long-range temporal dependencies, going beyond local pat-terns to model global temporal effects and long-term non-stationarity (Ning et al., 2023). 
+
+Historical Incidence Encoder (HIE). To extract infor-mative representations from the historical incidence context 
+
+Htc , we employ a sequence encoder: 
+
+htc = ϕhist 
+
+ [Htc ; ∆ Htc ], (7) where ϕhist is designed to capture epidemic dynamics at multiple temporal scales, via multi-scale Temporal Convo-lutions Network (TCN) (Szegedy et al., 2015; Bai, 2018) with different receptive fields. In particular, to augment the representational capacity of the temporal encoder, we incor-porate the first-order temporal difference ∆Htc ← { ∆It =
+
+It − It−1, t ≤ tc} as a secondary input channel. This explic-itly provides the model with instantaneous growth dynamics, enabling the TCN to effectively distinguish between differ-ent epidemic phases (e.g., peak deceleration vs. early-stage acceleration) even when absolute incidence magnitudes are comparable. To capture diverse temporal dynamics, we use an Inception-style convolutional block with two parallel TCN branches employing different kernel sizes (e.g., K = {3, 7}). The short-term branch detects rapid fluctuations and localized outbreaks, while the long-term branch smooths noise and tracks stable trends. Both branches use dilated causal convo-lutions for a large receptive field while preserving temporal causality, generating multi-scale feature maps Fshort tc and 
+
+Flong tc . The concatenated multi-scale features are projected into a sequence of embeddings, which are then processed by a Transformer Encoder (Vaswani et al., 2017): 
+
+htc = Attn  [Fshort tc ; Flong tc ]. (8) By leveraging the self-attention mechanism, the model learns to selectively weight specific historical time points that are most informative for the current Rtc state, effec-tively capturing non-local temporal dependencies that are often missed by purely convolutional filters. 3Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference Conditional Inverse Mapping Network Statistical Observation and 
+
+Consistency Module 
+
+> Historical Incidence Encoder
+> Temporal Coordinate Embedding
+
+## tIncidence Data      
+
+> ... It-1It-2It-τ
+> ... t-τt-2t-1t
+
+It 
+
+> Ht
+> ΔHt
+> Short -kernel TCN
+> Long -kernel TCN
+> Attention
+> Fourier Mapping Linear Layer
+> Conditional Inverse
+> Inference
+
+Rt
+
+## πt 
+
+> Renewal Equation
+> Zero -Inflated Poisson (ZIP) likelihood
+> Generation Interval
+> Distribution
+
+λt 
+
+> Ht
+> ΔHt
+> Figure 1. Overview of Conditional Inverse Reproduction Learning (CIRL) framework
+
+Conditional Inverse Inference of Rt The temporal coor-dinate embedding etc and historical incidence feature htc
+
+are integrated through a nonlinear fusion operator: 
+
+ztc = ϕfusion (etc , htc ), (9) where ϕfusion (·) is implemented as feature concatenation followed by a Cross-Attention module (Vaswani et al., 2017) to capture interactions between global temporal context and local historical dynamics. The latent reproduction number is then obtained as 
+
+Rtc = fθ (tc, Htc ) = ϕout (ztc ; tc, Htc , θ ), (10) where ϕout (·) is implemented as an MLP followed by a positivity-preserving activation function. This design in-troduces a low-dimensional bottleneck between historical observations and transmission dynamics, which regularizes the inverse mapping and improves estimation stability. 
+
+3.2. Statistical Observation and Consistency Module 
+
+Given the conditional inverse mapping in Eq. ( (10) ), here, we describe how the parameters θ of fθ (tc, Htc ) are learned from observed incidence using a physics-informed statistical objective, enabling accurate inference of the latent reproduc-tion numbers. To this end, the Statistical Observation and Consistency Module defines a probabilistic, renewal-based likelihood that enforces coherence between the inferred Rt
+
+trajectory and observed incidence, while robustly handling over-dispersion, reporting noise, and observation gaps via a zero-inflated objective. By optimizing the network parame-ters under this objective, the framework learns a conditional inverse mapping that is both epidemiologically consistent and flexible enough to capture complex temporal transmis-sion patterns. 
+
+Renewal-based Zero-Inflated Poisson Observation Model. As defined Eq. (3) in the problem formulation, the renewal equation acts as a forward operator that maps the la-tent reproduction number Rt and historical incidence to the expected number of new cases λt. This forward mapping enables us to enforce statistical consistency between the inferred transmission dynamics and the observed epidemic curve. Rather than treating the renewal equation as a hard constraint, we incorporate it as a fully differentiable struc-tural component within the learning objective. This design facilitates gradient flow through epidemiological laws, guid-ing the model toward physically plausible solutions without compromising optimization flexibility. To explicitly account for the stochasticity, reporting noise, and zero-inflation char-acteristic of surveillance data, we model the observed in-cidence It using a robust probabilistic count distribution conditioned on the renewal expectation λt (Eq. (3)). Real-world surveillance data is characterized by two dis-tinct types of noise: over-dispersion (variance exceeding the mean) and zero-inflation (excess zeros due to under-reporting or low transmission periods). Standard Poisson objectives fail to capture these dynamics. Therefore, we model the observed incidence It using a Zero-Inflated Pois-son (ZIP) distribution (Lambert, 1992). The probability mass function is defined as: 
+
+PZIP (It | λt, π t) = 
+
+(πt + (1 − πt)e−λt , if It = 0 (1 − πt) λItt e−λt 
+
+> It!
+
+, if It > 0 .
+
+(11) Notably, unlike standard ZIP models that assume a static 
+
+π, we estimate πt as a time-varying latent parameter via a parallel network branch (activated by Sigmoid), allowing the model to dynamically account for structural reporting failures. By optimizing the likelihood of the observed data under this distribution, our model creates a robust buffer against observation noise, preventing the ”over-fitting to noise” problem common in deterministic inversion. We formulate the inference of Rt as a regularized maximum likelihood estimation problem, yielding the data fidelity term 
+
+Lobs = − log PZIP (It | λt, π t), (12) which encourages the inferred reproduction numbers to gen-4Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference 
+
+erate incidence trajectories that are statistically aligned with observations. 
+
+Temporal Smoothness Regularization of Rt. To miti-gate the inherent ill-posedness of inferring Rt from noisy incidence, we impose a smoothness regularization (Rudin et al., 1992) on the inferred reproduction number sequence. Specifically, we penalize abrupt changes in Rt by applying a robust loss to its first-order temporal differences: 
+
+Lsmooth = X
+
+> t
+
+ℓHuber (Rt, R t−1), (13) where ℓHuber (·) denotes the Huber loss (Huber, 1992), serv-ing as a differentiable approximation of Total Variation (TV) regularization (Rudin et al., 1992). This formulation sup-presses spurious high-frequency fluctuations while remain-ing tolerant to minor stochastic variations and preserving sensitivity to genuine regime shifts. 
+
+Overall Training Objective. The final learning objective integrates observation consistency with physics-informed regularization: 
+
+L = Lobs + ωLsmooth , (14) where ω control the relative strength of temporal smooth-ness. All components are fully differentiable, enabling end-to-end optimization of the conditional inverse operator via gradient-based methods. 
+
+3.3. Inference and Usage 
+
+After training, the learned inverse mapping fθ(t, Ht) en-ables retrospective estimation of R for the training window and real-time inference for incoming data ( t ≥ T ). Ad-ditionally, the corresponding incidence trajectories can be reconstructed by recursively applying the renewal equation (Eq. (1)) with the inferred rates. 
+
+## 4. Experimental Evaluation 
+
+4.1. Experimental Setup Datasets. To evaluate the robustness and generalization capability of our framework, we conducted experiments on synthetic benchmarks and two diverse real-world epidemic scenarios. • Synthetic datasets were generated by sampling in-cidence counts from a Poisson distribution (Dai et al., 2023), using a SARS-like generation interval (Mean= 8.0, SD= 3.0) under two Rt profiles: single-step and double-step changes, with a low seed of 2 infected individuals ( I0 = 2 ). Furthermore, we applied a proportional zero-inflated mask (pre-peak p = 0 .3,post-peak p = 0 .05 ) to simulate realistic surveillance evolution and stress-test the model against structural sparsity. • Real-world datasets consisted of (i) SARS 2003 (Hong Kong) (Cori et al., 2009), characterized by data sparsity and a long generation interval (Lipsitch et al., 2003), and (ii) COVID-19 (Ontario) (Song & Xiao, 2022), representing a dense, high-noise scenario with a short generation interval (Knight & Mishra, 2020). 
+
+Evaluation Metrics. Synthetic experiments are evaluated using RMSE as the primary accuracy metric, MAE as a robustness measure, and detection delay to quantify respon-siveness to regime changes: 
+
+RMSE = 
+
+s 1
+
+T ′
+
+X
+
+> t∈T
+
+ ˆRt − R⋆t
+
+2
+
+, (15) 
+
+MAE = 1
+
+T ′
+
+X
+
+> t∈T
+
+ˆRt − R⋆t , (16) where ˆRt denotes the inferred reproduction number, T is the set of valid time t ≥ L, and T ′ = |T | .Beyond pointwise accuracy, we evaluated the responsive-ness of inferred reproduction numbers to shifts in transmis-sion dynamics. For scenarios with known change points (e.g., abrupt or multiple regime shifts), we measure the detection delay as 
+
+∆delay = ˆ tcp − tcp , (17) where tcp denotes the first true change point, and ˆtcp is the first index where the inferred ˆRt crosses the epidemic threshold Rt = 1 . To assess methods’ ability to detect regime shifts, we report the Missed Detection Rate (MDR), defined as the fraction of simulations in which ˆRt fails to cross the threshold at the true change point. To emulate the genesis of real-world epidemics, which typi-cally originate from a few index cases, all simulations were initialized with a low seed of I0 = 2 . This realistic ini-tialization naturally predisposes the system to stochastic extinctions and high variance. Therefore, we summarize per-formance metrics using the median and interquartile interval ([Q1, Q 3]) rather than the mean and standard deviation. For real epidemic data, where R⋆t is unobserved, we do not report regression-based accuracy metrics. Instead, we assessed qualitative consistency, temporal plausibility, and forward validation through short-term incidence forecasting (10 days). Specifically, we evaluate the predictive perfor-mance of the implied incidence ˆIt+h (Eq. (1) ) using stan-dard metrics (e.g., RMSE and MAE) over short horizons, serving as an auxiliary check on the inferred transmission dynamics. 5Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference 
+
+Baselines. To strictly evaluate the proposed framework, we compare it with three representative methods, catego-rized by their strategy to solve the ill-posed inverse problem of Rt estimation: • EpiEstim (Cori et al., 2013) is a widely used Bayesian framework that estimates Rt by locally inverting the renewal equation under a sliding window assumption. Within each window, Rt is assumed to be constant and inferred using a Poisson likelihood with a Gamma prior. • EpiNow2 (Abbott et al., 2020) extends the renewal equation framework by incorporating reporting delays, observation noise, and time-varying reproduction num-bers within a Bayesian state-space model. It models latent infections and Rt jointly through hierarchical probabilistic inference, providing posterior uncertainty estimates. • Deep Learning–based Estimation (UDENet) (Song & Xiao, 2022) parameterizes Rt using neural networks trained on simulated epidemic data. This model learns a direct mapping from the recent incidence to repro-duction numbers without explicit enforcement of the renewal equation during inference. All baseline methods are provided with the same incidence data and generation interval distribution. 
+
+4.2. Performance on Synthetic Benchmarks 
+
+To systematically evaluate the proposed method under con-trolled transmission dynamics, we design a set of synthetic epidemic benchmarks with known time-varying reproduc-tion numbers. Specifically, we consider abrupt regime-change scenarios with single or double-step changes and zero-inflated observation regimes, for which we generate 100 stochastic simulations with identical parameters and assess estimation accuracy (RMSE and MAE), regime shift detection rate (MDR), and shift detection delay ( ∆delay ). Supplementary analysis of incidence reconstruction is pro-vided in Appendix C. 
+
+Single regime-change scenario. We examine stochastic settings characterized by single-step Rt shifts, designed to emulate the abrupt discontinuities in transmission dynam-ics triggered by stringent non-pharmaceutical interventions (NPIs), such as city-wide lockdowns. Figure 2 reveals dis-tinct failure modes inherent to the baseline methods, trace-able to their rigid structural priors. UDENet fails to de-tect shifts (MDR=97% in Table 1) due to its unrealistic memoryless generation interval formulation. EpiEstim is fundamentally limited by its rigid block-constant assump-tion, which presumes Rt remains strictly constant within 0 20 40 60 80 100   
+
+> Time
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> Rt
+> Rt: 2.5 →0.9
+> UDENet
+> CIRL(Ours)
+> EpiEstim
+> EpiNow2
+> True
+
+Figure 2. Median and interquartile range of the inferred Rt over 100 simulations. Solid lines denote the median estimate across 100 simulations, while shaded regions indicate the interquartile range (25%–75%). (a) Rt estimation across single-step change scenarios, while (b) estimation on double-step change scenarios. . 
+
+the sliding window (e.g., τ = 7 ). This assumption acts as a temporal smoothing filter, rendering the method in-capable of resolving instantaneous shifts and leading to a significant median delay of 6 time steps in Table 1. Sim-ilarly, EpiNow2, due to its reliance on Gaussian Process smoothing priors to enforce temporal continuity, tends to over-regularize abrupt changes, producing overly smooth trajectories. Conversely, our data-driven approach avoids these structural biases, achieving near-instantaneous detec-tion (median delay = 1 step), while maintaining compet-itive accuracy (RMSE/MAE within 0.03/0.06 of the best baseline). In this case, we also note a single failure in-stance (MDR= 0.01 ) where CIRL interpreted the shift as noise. In greater detail, the post-hoc analysis of Appendix A reveals that this specific failure occurred in an extreme ’low-information’ regime: the simulation was characterized by a zero-proportion exceeding 50% and a peak incidence of only 4.0 20 40 60 80 100       
+
+> Time
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> Rt
+> Rt: 2.5 →0.9 →1.8 →0.9
+> UDENet
+> CIRL(Ours)
+> EpiEstim
+> EpiNow2
+> True
+
+(a) Poisson-generated incidence 0 20 40 60 80 100        
+
+> Time
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> Rt
+> Rt: 2.5 →0.9 →1.8 →0.9
+> UDENet
+> CIRL(Ours)
+> EpiEstim
+> EpiNow2
+> True
+
+(b) Poisson incidence with mask 
+
+Figure 3. Estimated reproduction number trajectories under dif-ferent observation noise conditions. Both panels show estimates obtained from a single synthetic epidemic with smooth oscillation dynamics. (a) corresponds to incidence generated from a Poisson process, while (b) illustrates the same epidemic after introducing proportional zero-inflated mask in the observations. The compari-son highlights the robustness of the inferred transmission dynamics to observation sparsity. 
+
+6Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference 
+
+Table 1. Quantitative comparison of different methods on synthetic benchmarks over 100 simulations. For continuous metrics (RMSE, MAE, and ∆delay ), results are reported as Median [ Q1, Q 3]. Bold values indicate the best performance in each column, and underlined values indicate the second-best.                                                               
+
+> Method Single-step Double-step Double-step(masked)
+> ∆delay MDR RMSE MAE ∆delay MDR RMSE MAE ∆delay MDR RMSE MAE EpiEstim 6.00[5.00,6.00] 0.00 0.36 [0.31,0.42] 0.22 [0.19,0.26] 6.00[5.00,6.00] 0.00 0.40 [0.37,0.49] 0.27 [0.24,0.31] 6.00[-9.00,12.00] 0.00 0.83[0.57,1.76] 0.50[0.38,0.74] EpiNow2 8.00[7.00,11.00] 0.00 0.35[0.32,0.39] 0.22 [0.20,0.27] 47.00[27.50,49.00] 0.01 0.45[0.37,0.59] 0.36[0.27,0.47] 52.00[50.00,55.00] 0.03 0.57[0.52,0.62] 0.49[0.45,0.52] UDENet -39.00[-39.50,7.00] 0.97 0.60[0.47,2.04] 0.52[0.40,1.86] -29.00[-29.20,-28.00] 0.97 1.53[0.55,2.17] 1.35[0.51,2.03] ∼1.00 0.61[0.55,1.93] 0.56[0.51,1.75] CIRL(ours) 1.00 [0.00,1.00] 0.01 0.38[0.32, 0.48] 0.28[0.23,0.33] 1.00 [0.00,2.00] 0.01 0.48[0.36,0.56] 0.33[0.26,0.39] 5.00 [2.00,9.00] 0.02 0.51 [0.44,0.58] 0.36 [0.31,0.42]
+
+Double regime-change scenario. We further extend the evaluation to a double-step regime, designed to emulate the dynamics of stringent intervention (precipitating a sharp drop in Rt) followed by policy relaxation (leading to viral resurgence). The results corroborate our single-step analy-sis, as shown in Figure 3a. In this complex setting, UDENet remains effectively blind to these changes (MDR=97%), with its median trajectory failing to register the shifts en-tirely. Among the other baselines, EpiNow2 consistently over-smooths transitions, while EpiEstim exhibits a system-atic detection lag at every change point. In stark contrast, our method captures every structural shift with a median 
+
+∆delay of only 1 time step. Although this responsiveness comes with a negligible trade-off in median precision (a gap of < 0.08 in RMSE compared to EpiEstim in Table 1), our method provides significantly higher estimation certainty, evidenced by a tighter Interquartile Range (IQR) compared to EpiNow2. 
+
+Zero-Inflated Observation Regimes. Real-world surveil-lance, particularly in early outbreak stages, is often plagued by under-reporting due to limited diagnostic capacity and asymptomatic transmission. To emulate this, we introduce a state-dependent sparsity mechanism into the double-step scenario, applying a proportional zero-inflate mask. Un-der this stress test, UDENet collapses (MDR=100%), and EpiNow2 fails to identify clear change points. EpiEstim confirms its structural limitation, lagging by a median of 6 steps. Notably, the high density of zeros in the early phase creates an identifiability bottleneck for the initial Rt → 0
+
+transition, affecting both our method and EpiEstim, shown in Figure 3b. However, whereas EpiEstim produces highly unstable estimates (large IQR for RMSE in Table 1), our framework demonstrates remarkable resilience. This ro-bustness arises from our Physics-Informed Statistical Learn-ing module, which mitigates the influence of observation artifacts and enables more reliable learning of the latent transmission dynamics, resulting in consistently strong per-formance across RMSE, MAE, and ∆delay .
+
+4.3. Ablation Study 
+
+To assess the contribution of each model component un-der realistic surveillance conditions, we conducted an abla-
+
+Table 2. Quantitative comparison on synthetic double-regime-change epidemics with proportional zero-inflated mask in the ob-serations. All regression metrics are reported as Median [ Q1, Q 3]over 100 simulations.                             
+
+> Method ∆delay MDR RMSE MAE Full CIRL 5.00[2.00,9.00] 0.02 0.51 [0.44,0.58] 0.36 [0.31,0.42] w/o TCE 3.00 [1.00,7.75] 0.02 0.72[0.59,0.83] 0.48[0.40,0.54] w/o HIE -9.00[-10.00,-7.00] 0.018 0.67[0.66,0.68] 0.54[0.53,0.55] w/ MSE -7.00[-11.25,-3.00] 0.00 0.75[0.67,0.84] 0.52[0.45,0.61] w/ Poisson -10.00[-15.00,-5.00] 0.00 0.78[0.65,0.88] 0.51[0.43,0.58]
+
+tion study on datasets with proportional zero-inflated mask, revealing their complementary roles in shaping the accu-racy–responsiveness trade-off. Removing the Temporal Coordinate Embedding (TCE) mod-ule results in the lowest latency (median ∆delay = 3 .00 ), suggesting a highly reactive model. However, this comes at the cost of over-reacting to noise: while it achieves the second-best MAE, its RMSE deteriorates significantly to 
+
+0.72 . This discrepancy (decent MAE vs. poor RMSE) in-dicates that without TCE, the model suffers from sporadic large errors/spikes, confirming TCE’s role in suppressing extreme outliers. Conversely, excluding the Historical Incidence Encoder (HIE) leads to a reduction in IQR of the delay, implying a more rigid response pattern. While this variant achieves the second-best RMSE and an MAE of 0.54 , it fails to attain the optimal precision of the full model. This suggests that HIE introduces necessary temporal flexibility, allowing the model to adaptively adjust its lag for different scenarios rather than defaulting to a fixed (low-variance) but subopti-mal response. Furthermore, we find that replacing the ZIP-based likelihood of the Renewal-based Zero-Inflated Poisson Observation Model with standard MSE-based (using Mean Square Error loss) or Poisson-based (using Poisson likelihood) variants leads to consistent performance degradation, with RMSE rising to 0.75 and 0.78, respectively. This indicates that the ZIP likelihood functions beyond regularization, acting as a principled observation model that coherently aligns the learning objective with the sparse and zero-inflated data-generating process. Consequently, the proposed architecture does not rely on a single module but leverages the synergy 7Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference 
+
+of all components to achieve a robust equilibrium between timeliness and accuracy. 
+
+4.4. Empirical Validation on Real-World Epidemic Dynamics 
+
+Finally, given the absence of ground truth R in real-world settings, we assess the performance of our framework by focusing on epidemiological plausibility and internal consis-tency. We train the CIRL model on the observed period to retrospectively infer and extrapolate R trajectories (10-day horizon), benchmarking our R estimates against retrospec-tive baseline estimates obtained from the full time series, and assessing the alignment between model-generated inci-dence and reported case counts. 20 40 60 80 
+
+> Time
+> 0
+> 2
+> 4
+> 6
+> 8
+> 10
+> 12
+> 14
+> Rt
+> UDENet
+> CIRL(Ours)
+> EpiEstim
+> EpiNow2
+
+(a) Rt trajectory 0 
+
+> 20
+> 40
+> 60
+> 80
+> Time
+> 0
+> 20
+> 40
+> 60
+> 80
+> 100
+> Number of Cases
+> Observed Cases
+> Fitted Cases
+> Predicted Cases
+
+(b) Fitted & Projected incidence 
+
+Figure 4. Evaluation during the 2003 SARS in Hong Kong. (a) Retrospective Rt estimation by CIRL and baseline methods, with CIRL additionally generating short-term future Rt trajectories. (b) Incidence fitting and short-horizon projection implied by CIRL. The comparison highlights the robustness of the inferred transmis-sion dynamics to observation sparsity. 
+
+SARS 2003 (Hong Kong, China). We utilized the canon-ical daily incidence dataset of the 2003 Hong Kong SARS outbreak (February–June 2003), sourced from the EpiEstim R package (Cori et al., 2013). Our inferred Rt trajectory closely follows that of EpiEstim, as shown in Figure 4a, capturing the two prominent peaks identified by EpiEstim, albeit with slightly reduced fluctuations. During the late containment phase, our model’s prospective forecasts con-sistently indicate Rt < 1.0, in agreement with all compari-son methods, reflecting the effective control of the outbreak. Furthermore, The model demonstrates high predictive con-sistency for incidence (Figure 4b), with RMSE and MAE below 2 (Appendix B), indicating that the inferred transmis-sion dynamics reliably reconstruct the observed epidemic trajectory. 
+
+COVID-19 (Ontario, Canada). We analyzed the first wave of the COVID-19 epidemic in Ontario, Canada (Jan-uary–June 2020), using the comparison benchmarks re-ported in UDENet (Song & Xiao, 2022). As shown in Fig-ure 5a, our inferred Rt trajectory closely follows the overall trend of EpiNow2, while exhibiting variability comparable to that of EpiEstim but with slightly reduced fluctuation 2020-03-01 
+
+> 2020-03-15
+> 2020-04-01
+> 2020-04-15
+> 2020-05-01
+> 2020-05-15
+> 2020-06-01
+> 2020-06-15
+> Time
+> 0
+> 2
+> 4
+> 6
+> 8
+> 10
+> 12
+> Rt
+> UDENet
+> CIRL(Ours)
+> EpiEstim
+> EpiNow2
+> 0.50
+> 0.75
+> 1.00
+
+(a) Rt trajectory 2020-03-01  
+
+> 2020-03-15
+> 2020-04-01
+> 2020-04-15
+> 2020-05-01
+> 2020-05-15
+> 2020-06-01
+> 2020-06-15
+> Time
+> 0
+> 100
+> 200
+> 300
+> 400
+> 500
+> 600
+> Number of Cases
+> Observed Cases
+> Fitted Cases
+> Predicted Cases
+
+(b) Fitted & Projected incidence 
+
+Figure 5. Evaluation on the Ontario COVID-19 first wave. (a) Comparison of retrospective Rt estimates. (b) Incidence fitting and implied projection. The results provide a qualitative assessment of the internal consistency of the learned conditional inverse mapping under noisy and non-stationary real-world observations. 
+
+magnitude. Following epidemic control in May, all meth-ods estimate Rt to be near, yet below, the critical threshold of 1.0. Notably, over the final ten days, our predicted Rt
+
+remains close to the EpiNow2 estimates while stabilizing nearer to 1.0 toward the terminal stage, reflecting a conser-vative characterization of residual transmission dynamics. Meanwhile, the predicted incidence ( It) produced by our model closely matches the observed trend (Figure 5b), with both RMSE and MAE smaller than those obtained from direct fitting (Appendix B), suggesting that the learned con-ditional inverse mapping does not exhibit overfitting. 
+
+## 5. Conclusion 
+
+We presented a Conditional Inverse Reproduction Learning (CIRL) framework for estimating time-varying reproduc-tion numbers from epidemic incidence data. By formulating the task as a conditional inverse problem, CIRL learns a direct mapping from historical incidence patterns and time information to latent reproduction numbers, avoiding strong parametric assumptions or piecewise-constant constraints commonly imposed in existing approaches. The proposed framework integrates epidemiological consistency through the renewal equation as a forward operator, while employ-ing a Zero-Inflated Poisson observation model to account for inherent reporting noise and excess zeros ubiquitous in real-world surveillance. Without imposing parametric or piecewise-constant assumptions on the temporal evolution of Rt, the learned mapping remains responsive to abrupt transmission changes. Evaluations across synthetic and em-pirical benchmarks confirm CIRL’s precise Rt inference, which is further corroborated by high-fidelity short-term forward simulations. A natural extension of this work is to jointly infer the generation interval distribution within the same conditional inverse framework, further reducing reliance on external epidemiological assumptions. 8Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference 
+
+## Impact Statement 
+
+This paper presents work whose goal is to advance the field of Machine Learning. There are many potential societal consequences of our work, none which we feel must be specifically highlighted here. 
+
+## References 
+
+Abbott, S., Hellewell, J., Thompson, R. N., Sherratt, K., Gibbs, H. P., Bosse, N. I., Munday, J. D., Meakin, S., Doughty, E. L., Chun, J. Y., et al. Estimating the time-varying reproduction number of sars-cov-2 using national and subnational case counts. Wellcome Open Research , 5 (112):112, 2020. Arridge, S., Maass, P., ¨Oktem, O., and Sch ¨onlieb, C.-B. Solving inverse problems using data-driven models. Acta Numerica , 28:1–174, 2019. Bai, S. An empirical evaluation of generic convolutional and recurrent networks for sequence modeling. arXiv preprint arXiv:1803.01271 , 2018. Benning, M. and Burger, M. Modern regularization methods for inverse problems. Acta numerica , 27:1–111, 2018. Cori, A., Bo ¨elle, P.-Y., Thomas, G., Leung, G. M., and Valleron, A.-J. Temporal variability and social hetero-geneity in disease transmission: the case of sars in hong kong. PLoS computational biology , 5(8):e1000471, 2009. Cori, A., Ferguson, N. M., Fraser, C., and Cauchemez, S. A new framework and software to estimate time-varying re-production numbers during epidemics. American journal of epidemiology , 178(9):1505–1512, 2013. Dai, C., Zhou, D., Gao, B., and Wang, K. A new method for the joint estimation of instantaneous reproductive number and serial interval during epidemics. PLOS Computa-tional Biology , 19(3):e1011021, 2023. Fraser, C., Cummings, D. A., Klinkenberg, D., Burke, D. S., and Ferguson, N. M. Influenza transmission in house-holds during the 1918 pandemic. American journal of epidemiology , 174(5):505–514, 2011. Ghosh, S., Birrell, P. J., and De Angelis, D. An approxi-mate diffusion process for environmental stochasticity in infectious disease transmission modelling. PLOS Com-putational Biology , 19(5):e1011088, 2023. Gostic, K. M., McGough, L., Baskerville, E. B., Abbott, S., Joshi, K., Tedijanto, C., Kahn, R., Niehus, R., Hay, J. A., De Salazar, P. M., et al. Practical considerations for measuring the effective reproductive number, r t. PLoS computational biology , 16(12):e1008409, 2020. Hettinger, G., Rubin, D., and Huang, J. Refining estimation of the instantaneous reproduction number during early pandemic stages: addressing case-reporting variability and serial interval uncertainty. American Journal of Epi-demiology , 194(7):2012–2022, 2025. Huber, P. J. Robust estimation of a location parameter. In 
+
+Breakthroughs in statistics: Methodology and distribu-tion , pp. 492–518. Springer, 1992. Karniadakis, G. E., Kevrekidis, I. G., Lu, L., Perdikaris, P., Wang, S., and Yang, L. Physics-informed machine learning. Nature Reviews Physics , 3(6):422–440, 2021. Kermack, W. O. and McKendrick, A. G. A contribution to the mathematical theory of epidemics. Proceedings of the royal society of london. Series A, Containing papers of a mathematical and physical character , 115(772):700–721, 1927. Knight, J. and Mishra, S. Estimating effective reproduction number using generation time versus serial interval, with application to covid-19 in the greater toronto area, canada. 
+
+Infectious Disease Modelling , 5:889–896, 2020. Lambert, D. Zero-inflated poisson regression, with an appli-cation to defects in manufacturing. Technometrics , 34(1): 1–14, 1992. Lau, H., Khosrawipour, T., Kocbach, P., Ichii, H., Bania, J., and Khosrawipour, V. Evaluating the massive under-reporting and undertesting of covid-19 cases in multiple global epicenters. Pulmonology , 27(2):110–115, 2021. doi: 10.1016/j.pulmoe.2020.05.015. Lipsitch, M., Cohen, T., Cooper, B., Robins, J. M., Ma, S., James, L., Gopalakrishna, G., Chew, S. K., Tan, C. C., Samore, M. H., et al. Transmission dynamics and control of severe acute respiratory syndrome. science , 300(5627): 1966–1970, 2003. Lison, A., Abbott, S., Huisman, J., and Stadler, T. Genera-tive bayesian modeling to nowcast the effective reproduc-tion number from line list data with missing symptom on-set dates. PLOS Computational Biology , 20(4):e1012021, 2024. Liu, Q.-H., Bento, A. I., Yang, K., Zhang, H., Yang, X., Merler, S., Vespignani, A., Lv, J., Yu, H., Zhang, W., et al. The covid-19 outbreak in sichuan, china: epidemiology and impact of interventions. PLoS computational biology ,16(12):e1008467, 2020. Lu, L., Pestourie, R., Yao, W., Wang, Z., Verdugo, F., and Johnson, S. G. Physics-informed neural networks with hard constraints for inverse design. SIAM Journal on Scientific Computing , 43(6):B1105–B1132, 2021. 9Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference 
+
+Nash, R. K., Nouvellet, P., and Cori, A. Real-time esti-mation of the epidemic reproduction number: Scoping review of the applications and challenges. PLOS Digital Health , 1(6):e0000052, 2022. Ning, X., Jia, L., Wei, Y., Li, X.-A., and Chen, F. Epi-dnns: Epidemiological priors informed deep neural networks for modeling covid-19 dynamics. Computers in biology and medicine , 158:106693, 2023. Ongie, G., Jalal, A., Metzler, C. A., Baraniuk, R. G., Di-makis, A. G., and Willett, R. Deep learning techniques for inverse problems in imaging. IEEE Journal on Selected Areas in Information Theory , 1(1):39–56, 2020. Pang, X., Han, Y., Tressier, E., Abdul Aziz, N., Pellis, L., House, T., and Hall, I. Time-varying reproduction num-ber estimation: fusing compartmental models with gen-eralized additive models. Journal of the Royal Society Interface , 22(222):20240518, 2025. Parag, K. V. Improved estimation of time-varying reproduc-tion numbers at low case incidence and between epidemic waves. PLoS Computational Biology , 17(9):e1009347, 2021. Rudin, L. I., Osher, S., and Fatemi, E. Nonlinear total variation based noise removal algorithms. Physica D: nonlinear phenomena , 60(1-4):259–268, 1992. Song, P. and Xiao, Y. Estimating time-varying reproduction number by deep learning techniques. J Appl Anal Comput ,12(3):1077–1089, 2022. Szegedy, C., Liu, W., Jia, Y., Sermanet, P., Reed, S., Anguelov, D., Erhan, D., Vanhoucke, V., and Rabinovich, A. Going deeper with convolutions. In Proceedings of the IEEE conference on computer vision and pattern recognition , pp. 1–9, 2015. Trevisin, C., Bertuzzo, E., Pasetto, D., Mari, L., Miccoli, S., Casagrandi, R., Gatto, M., and Rinaldo, A. Spatially explicit effective reproduction numbers from incidence and mobility data. Proceedings of the National Academy of Sciences , 120(20):e2219816120, 2023. Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N., Kaiser, Ł., and Polosukhin, I. At-tention is all you need. Advances in neural information processing systems , 30, 2017. Wallinga, J. and Lipsitch, M. How generation intervals shape the relationship between growth rates and repro-ductive numbers. Proceedings of the Royal Society B: Biological Sciences , 274(1609):599–604, 2007. Wallinga, J. and Teunis, P. Different epidemic curves for severe acute respiratory syndrome reveal similar impacts of control measures. American Journal of epidemiology ,160(6):509–516, 2004. Wang, S. and Walker, S. G. Bayesian data augmentation for partially observed stochastic compartmental models. 
+
+Bayesian Analysis , 20(1):107–130, 2025. 10 Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference 
+
+## A. Failure Mode Analysis 
+
+In Section 4, we reported a single failure instance out of 100 simulations (MDR = 0.01). To provide complete transparency, we visualized the incidenc data and model estimation for this specific instance of single-step regime shift scenario in Figure 6. 0 20 40 60 80 100 
+
+Time       
+
+> 0.0
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> Infection count
+> (a) Infection counts 020 40 60 80 100
+
+Time           
+
+> 0.5
+> 1.0
+> 1.5
+> 2.0
+> 2.5
+> 3.0
+> Rt
+> EpiEstim
+> EpiNow2
+> CIRL
+> True Rt(b) Time-varying reproduction number
+> Figure 6. Visual analysis of the solitary failure case. (a) shows the synthetic incidence data, characterized by extreme sparsity and low counts ( ymax ≤4). (b) exhibits the estimated Rttrajectory. Due to the indistinguishability between the weak transmission signal and background noise, the model conservatively maintained a flat trend, resulting in a missed detection of the Rtshift.
+
+As illustrated in Figure 6, this simulation represents an extreme edge case characterized by critical data sparsity. The maximum daily incidence count recorded is only 3, with a zero-proportion exceeding 50%. In such a low-count regime, the signal-to-noise ratio is severely degraded, making the mathematical distinction between stochastic zeros and a true reduction in transmissibility ambiguous. Consequently, the CIRL model predicts a flat trend (blue line), failing to capture the ground-truth step change (red dashed line) at t = 40 . This indicates that in the absence of strong data evidence, the model defaults to a conservative estimate rather than ”hallucinating” a regime shift. However, a comparative analysis of baseline behaviors highlights the relative robustness of our approach even in this failure case. While CIRL misses the detection, standard methods exhibit more detrimental failure modes. EpiEstim (green line) displays extreme volatility, oscillating violently between Rt values of approximately 0.5 and 3.0. This behavior confirms that standard renewal methods are prone to overfitting stochastic noise in low-incidence settings. Similarly, EpiNow2 (purple line) produces an incorrect linear drift, failing to identify the abrupt dynamics. Thus, while quantitatively categorized as a miss for CIRL, this qualitative examination suggests that our framework maintains a higher degree of safety and stability compared to baselines, avoiding noise-induced volatility when the data quality is insufficient for reliable inference. 
+
+## B. Additional Results on Incidence Fitting and Prediction 
+
+In addition to the main evaluations on the reproduction number Rt, we report quantitative results on incidence fitting and short-term prediction on real-world datasets. Specifically, we compute RMSE and MAE between the observed incidence and the corresponding fitted and predicted incidence ˆIt produced by our model, as shown in Table 3. These results are provided in the appendix for completeness, as the primary focus of this work is the inference and forecasting of latent transmission dynamics rather than direct optimization for incidence-level accuracy. Nevertheless, accurate incidence reconstruction and prediction serve as an important consistency check, ensuring that the inferred and predicted Rt jointly explains both the observed and future incidence patterns. 11 Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference 
+
+Table 3. Evaluation of incidence reconstruction and short-term forecasting accuracy. RMSE and MAE are reported for both in-sample fitting and rolling prospective forecasts of incidence ( It). The fitting error measures how well the inferred transmission dynamics reconstruct the observed data, while the rolling forecast error assesses the temporal consistency and generalization of the learned conditional inverse mapping. Datasets SARS 2003 COVID-19 RMSE MAE RMSE MAE Fitting 8.62 5.05 45.34 33.58 Prediction 1.51 1.35 37.41 27.84 
+
+## C. Reconstructing Latent Dynamics from Noisy Observations 
+
+In this section, we provide a detailed analysis of the reconstructed incidence ( ˆIt), which is the intermediate outputs generated during the Rt estimation process described in the main text. 
+
+C.1. Evaluation Scenarios and Metrics 
+
+We analyze the model outputs across the three synthetic scenarios of the main experiments: 1. Scenario-1 : A single abrupt change in transmissibility. 2. Scenario-2 : Double-step shifts in Rt.3. Scenario-3 : The incidence observations of Scenario-2 with proportional zero-inflated mask .To rigorously assess the quality of the reconstructed ˆIt, we compare it against distinct ground-truth targets derived directly from the simulation data generation process: • λtrue : The time-varying Poisson rate parameter used to generate the synthetic data (Dai et al., 2023). This represents the theoretical expectation of daily cases derived from the true Rt.• Iobs : The final synthetic data used for model training, which includes stochastic Poisson noise ( Scenario-1 and 
+
+Scenario-2 ) and artificial reporting zeros ( Scenario-3 ). Comparison here assesses how well the model fits the training data with structural noise. • Iraw : Specifically for Scenario-3 , these are the incidence counts from Scenario-2 . Comparing against this target evaluates the model’s ability to recover the original case counts lost to reporting failures. • λrenewal : The expected incidence calculated using incidence counts revised by the standard renewal equation under the true Rt. Comparison against this target evaluates the mathematical consistency of the framework (i.e., verifying that the estimated Rt and the reconstructed incidence are aligned via the epidemiological renewal process). 
+
+C.2. Performance Analysis 
+
+Table 4 and Table 5 summarize the quantitative results. Below, we discuss the implications of these metrics regarding latent trend recovery, overfitting risks, and robustness to reporting failures. 
+
+Table 4. Reconstruction Performance. RMSE of estimated incidence ˆIt against the true Poisson rate λtrue . Values are reported as the Median [Q1, Q 3].
+
+Dataset Scenario Comparison Target CIRL(Ours) EpiNow2 EpiEstim Scenario-1 λtrue 10.04[ 6.03,14.10] 8.45 [ 5.21,12.03] 10.26[ 6.31,14.06] 
+
+Scenario-2 λtrue 7.13[ 4.66,10.81] 5.93 [ 4.12, 8.45] 7.03[ 4.88,10.44] 
+
+Scenario-3 λtrue 7.04[ 4.86,10.39] 6.80 [ 4.49,10.66] 7.83[ 5.34,12.08] 
+
+12 Conditional Inverse Learning of Time-Varying Reproduction Numbers Inference                                               
+
+> Table 5. Reconstruction Metrics. Values are Median [ Q1, Q 3]. Left (Fitting to Noisy Observations): Near-zero error on Iobs indicates overfitting to noise. Middle (Internal Consistency): Low error against λrenewal confirms mathematical validity. Right (Reconstruction / Counterfactual Recovery): Evaluated solely on Scenario-3 , measuring the error against the unmasked truth (Iraw ). Note that while baselines fit Iobs well, they fail to recover the hidden cases.
+> Method Fitting to Noisy Observations Internal Consistency Reconstruction
+> (Target: Iobs )(Target: λrenewal )(Target: Iraw )
+> Scenario-1 Scenario-2 Scenario-3 Scenario-1 Scenario-2 Scenario-3 Scenario-3
+> EpiEstim 0.00 [0.00,0.00] 0.00 [0.00,0.00] 0.00 [0.00,0.00] 4.41[3.37,5.87] 3.90[3.01,5.31] 4.76[3.56,7.50] 3.16[1.90,5.19] EpiNow2 3.91[2.87,4.79] 3.40[2.71,4.66] 4.53[3.26,7.17] 3.31 [2.11,4.51] 2.78 [1.99,3.75] 3.59[2.35,5.77] 4.01[3.05,6.02] CIRL(Ours) 1.94[1.55,2.42] 1.89[1.58,2.47] 3.67[2.51, 5.86] 3.62[2.66,5.35] 3.31[2.35,4.85] 3.03 [2.23,4.32] 2.44 [1.91,3.06]
+
+Recovery of Latent Dynamics and Generalization. As detailed in Table 4, the Gaussian Process-based baseline, EpiNow2, exhibits strong performance in standard scenarios, achieving the lowest RMSE against the true latent intensity 
+
+λtrue due to its smoothness priors. Our proposed CIRL framework demonstrates competitive stability. In Scenario-2, CIRL achieves a median RMSE of 7.13, which is statistically indistinguishable from EpiNow2’s 5.93 and EpiEstim’s 7.03 given the substantial overlap in interquartile intervals. However, the key distinction lies in consistency. While EpiEstim performs comparably in Scenario-2, it yields higher errors in Scenario-1 (10.26 vs. 10.04) and Scenario-3 (7.83 vs. 7.04). This fluctuation indicates that EpiEstim’s reliance on observations makes it sensitive to stochastic variations, whereas CIRL maintains a more robust performance profile across varying degrees of complexity. 
+
+The Overfitting Trap versus Rigid Underfitting. A critical diagnostic insight is provided by the evaluation against noisy observations ( Iobs ) in Table 5 (Left). EpiEstim achieves a median RMSE of 0.00 across all scenarios. While mathematically perfect, this zero-error fit reveals severe overfitting, confirming that the model is tracking stochastic Poisson noise and reporting artifacts rather than the epidemiological trend. In contrast, EpiNow2 consistently exhibits the highest RMSE against observations across all scenarios. While this indicates a resistance to noise, the elevated error in Scenario-3 (4.53 compared to CIRL’s 3.67) suggests that its smoothing mechanism becomes overly rigid in the presence of zero-inflated data, leading to underfitting. CIRL strikes a balance with RMSE values ranging from 1.89 to 3.67, fitting the data sufficiently well to learn the trend while maintaining enough deviation to avoid modeling the noise. 
+
+Robustness to Sparsity and Counterfactual Reconstruction. The advantages of the proposed framework become most pronounced in Scenario-3, where reporting failures introduce structural zeros. As shown in Table 5 (Middle), while EpiNow2 performs well in standard scenarios (Scenario-1 and Scenario-2), its internal consistency deteriorates in Scenario-3 (RMSE 3.59). In contrast, CIRL achieves the lowest consistency error (RMSE 3.03) in this challenging setting, confirming that its inferred Rt remains mathematically aligned with the reconstructed incidence even under severe data sparsity. Most importantly, the Counterfactual Reconstruction metric (Table 5, Right) provides the definitive evidence of our method’s efficacy. When evaluated against the unmasked truth ( Iraw ), EpiNow2 yields a high RMSE of 4.01, implying that its smoothing priors are biased downwards by the artificial zeros. CIRL, however, achieves a significantly lower RMSE of 2.44. By explicitly modeling the zero-inflation probability ( πt), CIRL effectively identifies structural reporting failures and ”fills in” the missing cases, thereby recovering the true underlying incidence that baselines fail to capture. Most importantly, the counterfactual recovery (reconstruction) metric (Table 5, right) offers the most direct evidence of the effectiveness of our method. When evaluated against the unmasked truth ( Iraw ), EpiNow2 yields a high RMSE of 4.01, implying that its smoothing priors are biased by the artificial zeros. CIRL, however, achieves a significantly lower RMSE of 2.44. By explicitly modeling the zero-inflation probability ( πt), CIRL effectively identifies structural reporting failures and ”fills in” the missing cases, thereby recovering the true underlying incidence that baselines fail to capture. 13
