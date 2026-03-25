@@ -1,0 +1,1197 @@
+Title: Cost Trade-offs in Matrix Inversion Updates for Streaming Outlier Detection
+
+URL Source: https://arxiv.org/pdf/2603.16697v1
+
+Published Time: Wed, 18 Mar 2026 01:30:08 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# Cost Trade-offs in Matrix Inversion Updates for Streaming Outlier Detection 
+
+## Florian Grivet a,b ,∗, Louise Travé-Massuyès b,1 
+
+> a
+
+CNES, 18 Av. Edouard Belin, Toulouse, 31400, Toulouse, France 
+
+> b
+
+LAAS-CNRS, University of Toulouse, CNRS, 7 Av. du Colonel Roche, 31400, Toulouse, France 
+
+A R T I C L E I N F O 
+
+Keywords :Outlier Detection Christoffel function Rank update Matrix Inversion Sherman-Morrison Woodbury Matrix Identity Computational cost 
+
+Abstract 
+
+Outlier detection identifies data points that deviate significantly from expected patterns, revealing anomalies that may require special attention. Incorporating online learning further improves accuracy by continuously updating the model to reflect the most recent data. When employing the Christoffel function as an outlier score, online learning requires updating the inverse of a matrix following a rank-𝑘 update, given the initial inverse. Surprisingly, there is no consensus on the optimal method for this task. This technical note aims to compare three different updating methods: Direct Inversion (DI), Iterative Sherman-Morrison (ISM), and Woodbury Matrix Identity (WMI), to identify the most suitable approach for different scenarios. We first derive the theoretical computational costs of each method and then validate these findings through comprehensive Python simulations run on a CPU. These results allow us to propose a simple, quantitative, and easy-to-remember rule that can be stated qualitatively as follows: ISM is optimal for rank-1 updates, WMI excels for small updates relative to matrix size, and DI is preferable otherwise. This technical note produces a general result for any problem involving a matrix inversion update. In particular, it contributes to the ongoing development of efficient online outlier detection techniques. 
+
+## 1. Introduction 
+
+The detection of outliers in data streams has become increasingly important in a wide range of applications, from fraud detection to quality control in manufacturing. In such settings, data arrive sequentially and often at high rates, mak-ing online learning approaches particularly attractive. These methods continuously update models as new observations become available, allowing anomaly detection systems to adapt to evolving data distributions while maintaining strong performance over time. Among recent approaches to anomaly detection in data streams [10, 17], Ducharlet et al. [2] introduce an outlier scoring mechanism based on the Christoffel function (CF) [6]. This score is defined in terms of the inverse of a symetric positive definite moment matrix associated with the data. In streaming settings, this matrix is updated sequentially via rank-𝑘 corrections as new observations arrive. While the resulting CF scores are invariant to the specific in-verse update strategy employed – up to numerical precision – the choice of update method has a substantial impact on computational cost, numerical stability, and scalability. These considerations are critical in streaming settings, where efficiency directly constrains real-time applicability. Several strategies are available for updating matrix in-verses after rank-𝑘 corrections, including Direct Inversion (DI), Iterative Sherman-Morrison (ISM) [11], and the Wood-bury Matrix Identity (WMI) [15]. Despite their widespread 
+
+> ∗
+
+Corresponding author  
+
+> florian.grivet@cnes.fr
+
+(F. Grivet); louise@laas.fr (L. Travé-Massuyès) 
+
+> ORCID
+
+(s): 0009-0007-7096-3258 (F. Grivet); 0000-0002-5322-8418 (L. Travé-Massuyès) 
+
+> 1
+
+Head of ANITI chair ADDX 
+
+use, there is currently no clear quantitative guidance on which method is preferable under different conditions, such as varying matrix size 𝑠 or update rank 𝑘 . This lack of guidance can lead to inefficient implementations that unnec-essarily limit the practicality of CF-based anomaly detection in streaming environments. This article is presented as a technical note aimed at addressing this gap by comparing inverse update strategies in the context of Christoffel-function-based outlier detection. It does not propose a new scoring model, but instead analyzes how different matrix update methods may affect computa-tional efficiency. The contributions of this technical note are summarized as follows: - This note introduces the Christoffel function, explores its key properties, and presents DyCF, a frugal stream-ing outlier detection method inspired by these founda-tions, that motivates the paper’s work. - This work derives the computational costs of three matrix inverse rank-k update methods, namely Direct Inversion, Iterative Sherman-Morrison, and Wood-bury Matrix Identity. - Summarizing and comparing the three theoretical computational costs yields a unified reference, and the findings are validated through comprehensive Python simulations run on a CPU. - As a key takeaway, this note offers a simple, quantita-tive, and easy-to-remember rule, expressed in terms of the matrix dimension 𝑠 and the update rank 𝑘 ,for selecting among the three rank-𝑘 matrix inverse update strategies implemented in Python on CPU. 
+
+Grivet and Travé-Massuyès: Published in Array. DOI: 10.1016/j.array.2026.100737 Page 1 of 10 
+
+> arXiv:2603.16697v1 [cs.LG] 17 Mar 2026
+
+Cost Trade-offs in Matrix Inversion Updates for Streaming Outlier Detection 
+
+The technical note is organized as follows. Section 2 briefly reviews the Christoffel function, highlighting the properties relevant to anomaly detection. Section 3 then discusses its use in streaming outlier detection, empha-sizing the need for efficient inverse updates under rank-𝑘 
+
+corrections. Section 4 presents the Direct Inversion, Iter-ative Sherman–Morrison, and Woodbury Matrix Identity approaches, detailing their algorithms and theoretical com-putational costs. Section 5 compares the theoretical compu-tational costs of the three methods. Section 6 analyzes theo-retical predictions with empirical results to derive practical implementations. Finally, Section 7 summarizes the main findings, resumes practical guidance, discusses limitations, and points at interesting topics for future work. 
+
+## 2. The Christoffel function 
+
+The CF originates from the theory of approximation and orthogonal polynomials. Lasserre and Pauwels [6] demonstrated that the CF is related to a sum-of-squares (SOS) polynomial whose sublevel set effectively captures the shape of a dataset. Building on this discovery, Lasserre and Pauwels [7], and Lasserre et al. [8] developed a com-prehensive theoretical framework for data analysis, and in particular, anomaly detection. This section explores key properties of both the theoret-ical CF (referred to as the population Christoffel function) and its empirical counterpart. 
+
+2.1. The population Christoffel function 
+
+Let 𝐱 = (𝑥 1, 𝑥 2, ⋯ , 𝑥 𝑑 
+
+) ∈ ℝ𝑑 . To define polynomials, we adopt the multi-index notation 𝛼 = (𝛼 𝑖 
+
+) 
+
+> 𝑖 =1 ...𝑑
+
+∈ ℕ𝑑 ,such that the monomial 𝐱 𝛼 of total degree 𝑑𝑒𝑔 (𝐱 𝛼 ) = |𝛼 | =
+
+∑𝑑 𝑖 =1 𝛼 𝑖 is given by 𝐱 𝛼 = 𝑥 𝛼 1 
+
+> 1
+
+𝑥 𝛼 2 
+
+> 2
+
+⋯ 𝑥 𝛼 𝑑  
+
+> 𝑑
+
+. In short form, we denote the set of 𝑑 -variate polynomials by ℝ[𝐱 ]. The dimension of ℝ𝑛 [𝐱 ], the space of 𝑑 -variate polynomials of degree at most 𝑛 , is given by 𝑠 𝑑 (𝑛 ) = 
+
+(𝑑 + 𝑛 𝑛 
+
+)
+
+.Let {𝑃 𝑖 ∶ 1 ≤ 𝑖 ≤ 𝑠 𝑑 (𝑛 )} be a basis of ℝ𝑛 [𝐱 ]. We denote 
+
+𝑣 𝑛 ∶ ℝ𝑑 ⟶ ℝ𝑠 𝑑 (𝑛 )
+
+𝐱 ⟼
+
+(
+
+𝑃 1(𝐱 ), 𝑃 2(𝐱 ), ⋯ , 𝑃 𝑠 𝑑 (𝑛 )(𝐱 )
+
+)𝑇 
+
+The monomials in 𝑣 𝑛 (𝐱 ) are graded in the lexicographic order 2.Let Ω ⊂ ℝ𝑑 be a compact set, with non-empty interior. Let 𝜇 be a Borel measure supported on Ω and define the associated moment matrix. 
+
+Definition 2.1 (The moment matrix). The moment matrix of degree 𝑛 ∈ ℕ, associated with measure 𝜇 , denoted by 
+
+𝑀 𝑛 (𝜇 ) ∈ ℝ𝑠 𝑑 (𝑛 )× 𝑠 𝑑 (𝑛 ), is defined as 
+
+𝑀 𝑛 (𝜇 ) = ∫ℝ𝑑 
+
+𝑣 𝑛 (𝐱 ) 𝑣 𝑛 (𝐱 )𝑇 𝑑𝜇 (𝐱 ). (1)        
+
+> 2lexicographic order: monomials are first ordered according to as-cending total degree |𝛼 |, and then using lexicographic order on variables considering 𝐱 1=𝑎, 𝐱 2=𝑏 , etc.
+
+Note that this matrix is symetric positive definite, thus non-singular for all 𝑛 (see [6, Section 2.2] or [13, Remark 2.3] for the proof). The population Christoffel function is defined as follows. 
+
+Definition 2.2 (The population Christoffel function). The population Christoffel function of degree 𝑛 ∈ ℕ, associated with the measure 𝜇 , denoted by Λ𝜇 𝑛 (𝐱 ), is defined as 
+
+Λ𝜇 𝑛 (𝐱 ) = 𝑚𝑖𝑛  
+
+> 𝑃 ∈ℝ𝑛 [𝐱 ]
+
+{
+
+∫Ω
+
+𝑃 2(𝐳 ) 𝑑𝜇 (𝐳 ), 𝑃 (𝐱 ) = 1 
+
+}
+
+. (2) Now, for any polynomial 𝑃 ∈ ℝ𝑛 [𝐱 ], there exists some 
+
+𝐩 ∈ ℝ𝑠 𝑑 (𝑛 ) such that 𝑃 (𝐱 ) = 𝐩 𝑇 𝑣 𝑛 (𝐱 ) for any 𝐱 ∈ ℝ𝑑 . Thus, the objective function becomes ∫Ω 𝐩 𝑇 𝑣 𝑛 (𝐳 ) 𝑣 𝑛 (𝐳 )𝑇 𝐩 𝑑𝜇 (𝐳 ) = 
+
+𝐩 𝑇 𝑀 𝑛 (𝜇 ) 𝐩 , so that 
+
+Λ𝜇 𝑛 (𝐱 ) = 𝑚𝑖𝑛  
+
+> 𝐩 ∈ℝ𝑠 𝑑 (𝑛 )
+
+{𝐩 𝑇 𝑀 𝑛 (𝜇 ) 𝐩 , 𝐩 𝑇 𝑣 𝑛 (𝐱 ) = 1 } . (3) The Christoffel-Darboux Kernel, which is defined below, is related to the Christoffel function. 
+
+Definition 2.3 (The Christoffel-Darboux Kernel). The Christoffel-Darboux Kernel (CD-Kernel) associated with the measure 𝜇 , denoted by 𝐾 𝜇 𝑛 (𝐱 , 𝐲 ), is defined as 
+
+(𝐱 , 𝐲 ) ↦ 𝐾 𝜇 𝑛 (𝐱 , 𝐲 ) = 𝑣 𝑛 (𝐱 )𝑇 𝑀 𝑛 (𝜇 ) 𝑣 𝑛 (𝐲 ), (4) while the polynomial 𝑄 𝜇,𝑛 reads 
+
+𝐱 ↦ 𝑄 𝜇,𝑛 (𝐱 ) = 𝐾 𝜇 𝑛 (𝐱 , 𝐱 ) = 𝑣 𝑛 (𝐱 )𝑇 𝑀 𝑛 (𝜇 )−1 𝑣 𝑛 (𝐱 ). (5) 
+
+𝑄 𝜇,𝑛 is a sum-of-squares (SOS) polynomial of degree 2𝑛 . An interesting property of this SOS polynomial is its behavior inside and outside its support Ω. Lasserre et al. [8, Lemma 4.3.1] quantifies at least the exponential growth with 𝑛 for data points outside the support, while inside, it is at most polynomial [8, Lemma 4.3.2]. The CF of degree 𝑛 ∈ ℕ
+
+defined in equation (2) can be rewritten as 
+
+Λ𝜇 𝑛 (𝐱 ) = 1
+
+𝑄 𝜇,𝑛 (𝐱 ) = 1
+
+𝑣 𝑛 (𝐱 )𝑇 𝑀 𝑛 (𝜇 )−1 𝑣 𝑛 (𝐱 ) (6) and we have 
+
+Λ𝜇 𝑛 (𝐱 )−1 = 𝑄 𝜇,𝑛 (𝐱 ), (7) so that Λ𝜇 𝑛 (𝐱 )−1 inherits from the properties of 𝑄 𝜇,𝑛 (𝐱 ).
+
+2.2. The empirical Christoffel function 
+
+In practical applications, the measure 𝜇 is unknown. Let  be a cloud of 𝑁 data points 𝐱 ∈ ℝ𝑑 sampled from the theoretical measure 𝜇 supported on Ω. We define the discrete measure 𝜇 𝑁 supported on  such that 𝜇 𝑁 =
+
+> 1
+> 𝑁
+
+∑𝐱 ∈ 𝛿 𝐱 where 𝛿 𝐱 corresponds to the Dirac measure at 𝐱 .The empirical version of the moment matrix can be written as 
+
+𝑀 𝑛 (𝜇 𝑁 ) = 1
+
+𝑁 
+
+∑
+
+> 𝐱 ∈
+
+𝑣 𝑛 (𝐱 ) 𝑣 𝑛 (𝐱 )𝑇 . (8) 
+
+Grivet and Travé-Massuyès: Published in Array. DOI: 10.1016/j.array.2026.100737 Page 2 of 10 Cost Trade-offs in Matrix Inversion Updates for Streaming Outlier Detection 
+
+Lasserre et al. [8, Corollary 6.3.5] guarantees that the matrix 
+
+𝑀 𝑛 (𝜇 𝑁 ) is invertible if the size of : 𝑁 , is greater than 
+
+𝑠 𝑑 (𝑛 ), e.g. the number of samples is greater than the size of the moment matrix. 
+
+Definition 2.4 (The empirical Christoffel function). Under the condition || = 𝑁 > 𝑠 𝑑 (𝑛 ), the empirical CF is defined as 
+
+Λ𝜇 𝑁  
+
+> 𝑛
+
+(𝐱 ) = 1
+
+𝑣 𝑛 (𝐱 )𝑇 𝑀 𝑛 (𝜇 𝑁 )−1 𝑣 𝑛 (𝐱 ) . (9) According to Lasserre and Pauwels [7, Theorem 3.13], the empirical CF converges to the population CF as 𝑁 
+
+increases: 
+
+‖Λ𝜇 𝑁  
+
+> 𝑛
+
+−Λ 𝜇 𝑛 ‖∞ = 𝑠𝑢𝑝 
+
+> 𝐱 ∈ℝ𝑑
+
+{|Λ𝜇 𝑁  
+
+> 𝑛
+
+(𝐱 ) − Λ 𝜇 𝑛 (𝐱 )|} ⟶ 
+
+> 𝑁 →∞
+
+0 𝑎.𝑠. 
+
+## 3. The Christoffel function for outlier detection in data streams 
+
+Ducharlet et al. [2] introduce DyCF, a novel outlier de-tection algorithm for data streams leveraging the Christoffel function. This algorithm supports online learning using a rank-𝑘 update. This section details the anomaly detection method based on the CF as well as the online learning principle of the method. 
+
+3.1. The Christoffel function for outlier detection 
+
+As mentioned in section 2, the polynomial 𝑄 𝜇,𝑛 (𝐱 ),and hence Λ𝜇 𝑛 (𝐱 )−1 , effectively captures the shape of the underlying dataset. Furthermore, as explained above, there exists a dichotomy in the growth behavior of Λ𝜇 𝑛 (𝐱 )−1 : it exhibits at most polynomial growth when 𝐱 is within the support Ω and at least exponential growth when 𝐱 is outside 
+
+Ω. Since Λ𝜇 𝑁  
+
+> 𝑛
+
+(𝐱 )−1 converges to Λ𝜇 𝑛 (𝐱 )−1 , these properties are preserved for finite datasets. Consequently, Λ𝜇 𝑁  
+
+> 𝑛
+
+(𝐱 )−1 is well-suited as a scoring function for outlier detection. One can define a level set, or threshold, 𝛾 𝑛,𝑑 such that all points 
+
+𝐱 ∈ ℝ𝑑 with a value of Λ𝜇 𝑁  
+
+> 𝑛
+
+(𝐱 )−1 higher than 𝛾 𝑛,𝑑 are considered as outliers. This define the scoring function 
+
+𝑆 𝑛,𝑑 (𝐱 ) = Λ𝜇 𝑁  
+
+> 𝑛
+
+(𝐱 )−1 
+
+𝛾 𝑛,𝑑 
+
+, (10) where a point is detected as an outlier if 𝑆 𝑛,𝑑 ≥ 1.
+
+3.2. Online learning in DyCF 
+
+Considering  as a dataset, 𝑀 𝑛 (𝜇 𝑁 ) can be seen as a summary or an encoding of this dataset. In a data stream, if a new nominal instance 𝐱 arrives, we can improve the performance of the algorithm by integrating this point into the database  and updating the moment matrix 𝑀 𝑛 (𝜇 𝑁 ).This is called online learning. The first update method would be to recalculate the moment matrix 𝑀 𝑛 (𝜇 𝑁 ) using equation (8) and to invert it. However, this last operation is very costly. Nevertheless, we can notice that: 
+
+𝑀 𝑛 (𝜇 𝑁 +1 ) = 1
+
+𝑁 + 1 
+
+∑
+
+> 𝐳 ∈∪{ 𝐱 }
+
+𝑣 𝑛 (𝐳 ) 𝑣 𝑛 (𝐳 )𝑇 
+
+= 1
+
+𝑁 + 1 
+
+(𝑁 𝑀 𝑛 (𝜇 𝑁 ) + 𝑣 𝑛 (𝐱 ) 𝑣 𝑛 (𝐱 )𝑇 ) .
+
+Thus, we can use the Sherman-Morrison’s formula or the Woodbury Matrix Identity to avoid recalculating the inverse of 𝑀 𝑛 (𝜇 𝑁 +1 ), which is an 𝑠 𝑑 (𝑛 ) × 𝑠 𝑑 (𝑛 ) matrix. When the update involves 𝑘 ∈ ℕ∗ new data points 
+
+𝐱 ∈ ℝ𝑑 , the online learning phase goes as follows in three steps: (i) We denormalize 𝑀 𝑛 (𝜇 𝑁 ) to obtain either 
+
+𝑀 = 𝑀 𝑛 (𝜇 𝑁 ) × 𝑁 , or 𝑀 −1 = 𝑀 𝑛 (𝜇 𝑁 )−1 ∕𝑁 .(ii) The DI method calculates 𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+from 𝑀 using 
+
+𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+=
+
+(
+
+𝑀 +
+
+> 𝑘
+
+∑
+
+> 𝑖 =1
+
+𝑣 𝑛 
+
+(𝐱 (𝑖 )) 𝑣 𝑛 
+
+(𝐱 (𝑖 ))𝑇 
+
+)−1 
+
+(11) and the ISM and WMI methods calculate 𝑀 −1 
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+from 𝑀 −1 using Sherman-Morrison (SM) and WMI formulas, e.g. equations (13) and (14) given below, respectively. (iii) Renormalize 𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+to obtain the updated inverse moment matrix 𝑀 𝑛 (𝜇 𝑁 +𝑘 )−1 = 𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+× ( 𝑁 + 𝑘 ).
+
+The Sherman-Morrison formula and the Woodbury Matrix Identity – Suppose 𝐴 ∈ ℝ𝑛 ×𝑛 is an invertible square matrix and 𝑢, 𝑣 ∈ ℝ𝑛 are column vectors. Then 
+
+𝐴 + 𝑢𝑣 𝑇 is invertible if and only if 1 + 𝑣 𝑇 𝐴 −1 𝑢 ≠ 0. In this case, the SM formula [1] states the following 
+
+(𝐴 + 𝑢𝑣 𝑇 )−1 = 𝐴 −1 − 𝐴 −1 𝑢𝑣 𝑇 𝐴 −1 
+
+1 + 𝑣 𝑇 𝐴 −1 𝑢 , (12) which, in our case, becomes: 
+
+(𝑀 + 𝑣 𝑛 (𝐱 )𝑣 𝑛 (𝐱 )𝑇 )−1 = 𝑀 −1 − 𝑀 −1 𝑣 𝑛 (𝐱 )𝑣 𝑛 (𝐱 )𝑇 𝑀 −1   
+
+> 1+ 𝑣 𝑛 (𝐱 )𝑇 𝑀 −1 𝑣 𝑛 (𝐱 )
+
+. (13) Now, let us recall the Woodbury Matrix Identity (WMI): 
+
+(𝐴 + 𝑈 𝐶𝑉 )−1 = 𝐴 −1 − 𝐴 −1 𝑈 (𝐶 −1 + 𝑉 𝐴 −1 𝑈 )−1 𝑉 𝐴 −1 , (14) which, in our case, becomes:              
+
+> (𝑀 +𝑋 𝑇 𝐼𝑋 )−1 =𝑀 −1 −𝑀 −1 𝑋 𝑇 (𝐼 −1 +𝑋𝑀 −1 𝑋 𝑇 )−1 𝑋𝑀 −1 ,
+
+(15) with 𝐼 the identity matrix of size 𝑘 and 𝑋 the design matrix: 
+
+𝑋 = [𝑣 𝑛 
+
+(𝐱 (1) ) 𝑣 𝑛 
+
+(𝐱 (2) ) ⋯ 𝑣 𝑛 
+
+(𝐱 (𝑘 ))] 𝑇 ∈ ℝ𝑘 ×𝑠 .Note that the normalization costs of steps (i) and (iii) are the same regardless of the method used. The most efficient method will therefore be the one with the lowest cost in step (ii). Moreover, the DI method updates both 𝑀 𝑛 (𝜇 𝑁 ) and 
+
+𝑀 𝑛 (𝜇 𝑁 )−1 . However, to detect outliers, since Λ𝜇 𝑁  
+
+> 𝑛
+
+only uses 
+
+𝑀 𝑛 (𝜇 𝑁 )−1 , we do not need to compute 𝑀 𝑛 (𝜇 𝑁 +𝑘 ), so we can use the ISM or WMI methods. 
+
+Grivet and Travé-Massuyès: Published in Array. DOI: 10.1016/j.array.2026.100737 Page 3 of 10 Cost Trade-offs in Matrix Inversion Updates for Streaming Outlier Detection 
+
+## 4. Computational costs 
+
+For the sake of simplifying calculations, the size of the moment matrix 𝑠 𝑑 (𝑛 ) will be referred to as 𝑠 in this section. Appendix A reports the costs of the intermediate steps used in this section in terms of floating-point operations (flops). 
+
+4.1. Computational cost of the DI method for a rank-𝑘 update 
+
+In this subsection, we calculate the computational cost of the DI method and provide an algorithm for it. 
+
+4.1.1. Computational cost of a matrix inversion 
+
+The computational cost of inverting the moment matrix 
+
+𝑀 𝑛 (𝜇 𝑁 ) of size 𝑠 × 𝑠 is dependent on the algorithm em-ployed. Using an LU factorization, the computational cost of 𝑀 𝑛 (𝜇 𝑁 )−1 is expressed as [9, Theorem 2.31]: 
+
+𝑂 (2𝑠 3) 𝑓 𝑙𝑜𝑝𝑠. (16) Since our moment matrix 𝑀 𝑛 (𝜇 𝑁 ) is symetric positive definite (spd), employing Cholesky decomposition reduces the cost to [5, Section III.A]: 
+
+𝑂 
+
+( 56 𝑠 3)
+
+𝑓 𝑙𝑜𝑝𝑠. (17) 
+
+4.1.2. Rank-𝑘 update computational cost 
+
+To perform a rank-𝑘 update and apply equation (11), we first need to compute 
+
+> 𝑘
+
+∑
+
+> 𝑖 =1
+
+𝑣 𝑛 
+
+(𝐱 (𝑖 )) 𝑣 𝑛 
+
+(𝐱 (𝑖 ))𝑇 . This in-volves performing 𝑘 column-vector by row-vector products as described in equation (29), with a computational cost of 
+
+𝑘 × 𝑠 2 𝑓 𝑙𝑜𝑝𝑠 . Then, we need to sum the 𝑘 resulting matrices of size 𝑠 × 𝑠 , requiring 𝑘 − 1 term-by-term matrix additions with a total cost of (𝑘 − 1) 𝑠 2 𝑓 𝑙𝑜𝑝𝑠 . Next, we perform a term-by-term matrix addition with 𝑀 , which incurs a cost of 𝑠 2 𝑓 𝑙𝑜𝑝𝑠 .Thus, the computational cost of updating 𝑀 to form 
+
+𝑀 𝑢𝑝𝑑𝑎𝑡𝑒𝑑 = 𝑀 + ∑𝑘 𝑖 =1 𝑣 𝑛 
+
+(𝐱 (𝑖 )) 𝑣 𝑛 
+
+(𝐱 (𝑖 ))𝑇 amounts to: 
+
+𝑘𝑠 2 + ( 𝑘 − 1) 𝑠 2 + 𝑠 2 = 2 𝑘𝑠 2 𝑓 𝑙𝑜𝑝𝑠 .Note that if we compute 𝑀 𝑢𝑝𝑑𝑎𝑡𝑒𝑑 using the design ma-trix 𝑋 = [𝑣 𝑛 
+
+(𝐱 (1) ) 𝑣 𝑛 
+
+(𝐱 (2) ) ⋯ 𝑣 𝑛 
+
+(𝐱 (𝑘 ))] 𝑇 ∈ ℝ𝑘 ×𝑠 
+
+and the relation 𝑀 𝑢𝑝𝑑𝑎𝑡𝑒𝑑 = 𝑀 + 𝑋 𝑇 𝑋 , the computational cost remains equivalent: 1 matrix-by-matrix product accord-ing to equation (32) and 1 term-by-term addition yields a cost of: 2𝑘𝑠 2 − 𝑠 2 + 𝑠 2 = 2 𝑘𝑠 2 𝑓 𝑙𝑜𝑝𝑠 . However, considering the superior optimization in Python, we will employ this computational approach for efficiency during our tests. Finally, we need to compute the inverse of 𝑀 𝑢𝑝𝑑𝑎𝑡𝑒𝑑 ,which is a spd matrix with the cost described in equation (17). Thus, the computational cost for the DI method (Algo-rithm 1) is 
+
+𝑂 
+
+( 56 𝑠 3)
+
++ 2 𝑘𝑠 2 𝑓 𝑙𝑜𝑝𝑠. (18) 
+
+Algorithm 1 Direct Inversion Algorithm with 𝑂 
+
+( 56 𝑠 3
+
+)
+
++2𝑘𝑠 2 𝑓 𝑙𝑜𝑝𝑠 (18) 
+
+Require: Matrix 𝑀 with size 𝑠 × 𝑠 , and vectors 
+
+𝑣 𝑛 
+
+(𝑥 (𝑖 )) , 𝑖 = 1 ...𝑘 to add to 𝑀 ; 
+
+> 1:
+
+Construct the design matrix 
+
+𝑋 = [𝑣 𝑛 
+
+(𝐱 (1) ) 𝑣 𝑛 
+
+(𝐱 (2) ) ⋯ 𝑣 𝑛 
+
+(𝐱 (𝑘 ))] 𝑇 ∈ ℝ𝑠 ×𝑠 ; 
+
+> 2:
+
+𝑀 𝑢𝑝𝑑𝑎𝑡𝑒𝑑 ← 𝑀 + 𝑋 𝑇 𝑋 ; ⊳ 2𝑘𝑠 2 𝑓 𝑙𝑜𝑝𝑠  
+
+> 3:
+
+Compute 𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+using Cholesky decomposition; 
+
+⊳ 𝑂 
+
+( 56 𝑠 3
+
+)
+
+𝑓 𝑙𝑜𝑝𝑠  
+
+> 4:
+
+Output 𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+;
+
+4.2. Computational cost of the ISM method for a rank-N update 
+
+In this subsection, we calculate the computational cost of the ISM method and provide an algorithm for it. 
+
+4.2.1. Computational cost of the numerator 
+
+There are three ways to compute the numerator of the SM’s formula given by equation (13) and recalled below: 
+
+(𝑀 + 𝑣 𝑛 (𝐱 )𝑣 𝑛 (𝐱 )𝑇 )−1 = 𝑀 −1 − 𝑀 −1 𝑣 𝑛 (𝐱 )𝑣 𝑛 (𝐱 )𝑇 𝑀 −1 
+
+1 + 𝑣 𝑛 (𝐱 )𝑇 𝑀 −1 𝑣 𝑛 (𝐱 ) .
+
+- Compute the outer product first , i.e., 
+
+𝑀 −1 (𝑣 𝑛 (𝐱 )𝑣 𝑛 (𝐱 )𝑇 ) 𝑀 −1 . This involves 1 column-vector by row-vector product (equation (29)) and 2 matrix products (equation (32)), totaling: 𝑠 2 + 2(2 𝑠 3 −
+
+𝑠 2) = 4 𝑠 3 − 𝑠 2 𝑓 𝑙𝑜𝑝𝑠 .- Compute left to right . This involves 1 product matrix by column-vector (equation (31)), 1 column-vector by row-vector product (equation (29)), and 1 matrix product (equation (32)), totaling: 2𝑠 2 − 𝑠 + 𝑠 2 + 2 𝑠 3 −
+
+𝑠 2 = 2 𝑠 3 + 2 𝑠 2 − 𝑛 𝑓 𝑙𝑜𝑝𝑠 .- Compute the matrices-vectors products first , i.e., (𝑀 −1 𝑣 𝑛 (𝐱 )) ( 𝑣 𝑛 (𝐱 )𝑇 𝑀 −1 ). This involves 2 matrix-vector products (equations (31) and (30)), and 1 column-vector by row-vector product (equation (29)), totaling: 2(2 𝑠 2 − 𝑠 ) + 𝑠 2 = 5 𝑠 2 − 2 𝑠 𝑓 𝑙𝑜𝑝𝑠 . Moreover, since 𝑀 is symmetric, 𝑀 −1 𝑣 𝑛 (𝐱 ) = (𝑣 𝑛 (𝐱 )𝑇 𝑀 −1 )𝑇 ,so we only have 1 matrix-vector product to compute. Thus, the computational cost is 3𝑠 2 − 𝑠 𝑓 𝑙𝑜𝑝𝑠 .The most effective way to compute the numerator of equation (13) is to first perform the matrix-vector products, resulting in a computational cost of 5𝑠 2 − 2 𝑠 𝑓 𝑙𝑜𝑝𝑠 , and in our spd case, a cost of 
+
+3𝑠 2 − 𝑠 𝑓 𝑙𝑜𝑝𝑠. (19) 
+
+4.2.2. Computational cost of the denominator 
+
+Since we have already computed 𝑀 −1 𝑣 𝑛 (𝐱 ) during the numerator computation, we only need to perform 1 row-vector by column-vector product (equation (28)), and 1 addition which amounts to 2𝑠 − 1 + 1 flops, i.e., 
+
+2𝑠 𝑓 𝑙𝑜𝑝𝑠. (20)   
+
+> Grivet and Travé-Massuyès: Published in Array. DOI: 10.1016/j.array.2026.100737 Page 4 of 10
+
+Cost Trade-offs in Matrix Inversion Updates for Streaming Outlier Detection 
+
+4.2.3. Sherman-Morrison computational cost 
+
+The numerator of equation (13) gives us an 𝑠 × 𝑠 matrix, and the denominator is real. Thus, there is a term-by-term division that costs 𝑠 2 𝑓 𝑙𝑜𝑝𝑠 . However, if we perform the division after computing 𝑀 −1 𝑣 𝑛 (𝐱 ) and before the column-vector by row-vector product of the numerator, we only divide a vector of size 𝑠 , reducing the division cost from 
+
+𝑠 2 to 𝑠 . Finally, we have a term-by-term matrix subtraction that costs 𝑠 2 𝑓 𝑙𝑜𝑝𝑠 . Thus, the computational cost of the SM’s formula for a spd matrix is (19) + (20) + 𝑠 + 𝑠 2 =3𝑠 2 − 𝑠 + 2 𝑠 + 𝑠 + 𝑠 2 flops, i.e., 
+
+4𝑠 2 + 2 𝑠 𝑓 𝑙𝑜𝑝𝑠. (21) 
+
+4.2.4. Iterative Sherman-Morrison computational cost 
+
+The SM formula provides a method for computing the inverse of a matrix that has been modified by a rank-1 update. Specifically, if the matrix is updated with 𝑘 outer products of the form 𝑣 𝑛 (𝐱 )𝑣 𝑛 (𝐱 )𝑇 , the inverse can be obtained by applying the SM formula iteratively 𝑘 times. As a result, the computational cost with a rank-𝑘 update using the ISM method for a spd matrix (Algorithm 2) is 
+
+4𝑘𝑠 2 + 2 𝑘𝑠 𝑓 𝑙𝑜𝑝𝑠. (22) 
+
+Algorithm 2 Iterative Sherman-Morrison Algorithm with 
+
+4𝑘𝑠 2 + 2 𝑘𝑠 𝑓 𝑙𝑜𝑝𝑠 (22) 
+
+Require: The inverse of the matrix 𝑀 : 𝑀 −1 with size 𝑠 ×𝑠 ,and vectors (𝑣 𝑛 
+
+(𝑥 (𝑖 )))  
+
+> 𝑖 =1 ...𝑘
+
+∈ ℝ𝑠 to add to 𝑀 ; 
+
+> 1:
+
+Initialize 𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+← 𝑀 −1 ; 
+
+> 2:
+
+for 𝑖 = 1 to 𝑁 do  
+
+> 3:
+
+𝑙 ← 𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+× 𝑣 𝑛 
+
+(𝑥 (𝑖 )) ; ⊳ 2𝑠 2 − 𝑠 𝑓 𝑙𝑜𝑝𝑠  
+
+> 4:
+
+𝑑 ← 1 + 𝑣 𝑛 
+
+(𝑥 (𝑖 ))𝑇 × 𝑙 ; ⊳ 2𝑠 𝑓 𝑙𝑜𝑝𝑠  
+
+> 5:
+
+𝑙 𝑑 ← 𝑙 ∕𝑑 ; ⊳ 𝑠 𝑓 𝑙𝑜𝑝𝑠  
+
+> 6:
+
+𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+← 𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+− 𝑙 𝑑 × 𝑙 𝑇 ; ⊳ 2𝑠 2 𝑓 𝑙𝑜𝑝𝑠  
+
+> 7:
+
+end for  
+
+> 8:
+
+Output 𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+;
+
+4.3. Computational cost of the WMI method for a rank-N update 
+
+In this subsection, we calculate the computational cost of the WMI method and provide an algorithm for it. The WMI is given by equation (15) is recalled below:             
+
+> (𝑀 +𝑋 𝑇 𝐼𝑋 )−1 =𝑀 −1 −𝑀 −1 𝑋 𝑇 (𝐼 −1 +𝑋𝑀 −1 𝑋 𝑇 )−1 𝑋𝑀 −1 .
+
+The first step is to compute the matrix products 𝑋𝑀 −1 𝑋 𝑇 ,with a computational cost of equation (32): 𝐶 𝑘 ×𝑠 𝑠 ×𝑠 + 𝐶 𝑘 ×𝑠 𝑠 ×𝑘 =2𝑘𝑠 2 − 𝑘𝑠 ⏟⏞⏞⏟⏞⏞⏟ 
+
+> 𝑅 =𝑋 ×𝑀 −1
+
++ 2 𝑘 2𝑠 − 𝑘 2
+
+⏟⏞⏞⏟⏞⏞⏟ 
+
+> 𝑅 ×𝑋 𝑇
+
+= 2 𝑘𝑠 2 + (2 𝑘 2 − 𝑘 )𝑠 − 𝑘 2 𝑓 𝑙𝑜𝑝𝑠 .Next, we perform a term-by-term addition with 𝐼 , which has a computational cost of 𝑘 2 𝑓 𝑙𝑜𝑝𝑠 .Then, we need to invert the resulting summed matrix, which by construction is a spd 𝑘 × 𝑘 matrix. The computa-tional cost of this inversion step is 𝑂 
+
+( 56 𝑘 3
+
+)
+
+𝑓 𝑙𝑜𝑝𝑠 (17). Since we have already computed 𝑅 = 𝑋 × 𝑀 −1 , and given that 𝑀 is spd, then 𝑀 −1 × 𝑋 𝑇 = ( 𝑋 × 𝑀 −1 )𝑇 = 𝑅 𝑇 .Thus, we only have 2 matrix products to compute, that is 
+
+2𝑘 2𝑠 − 𝑘𝑠 ⏟⏞⏞⏟⏞⏞⏟  
+
+> 𝑄 =𝑅 𝑇 ×𝑖𝑛𝑣
+
++ 2 𝑘𝑠 2 − 𝑠 2
+
+⏟⏞⏞⏟⏞⏞⏟ 
+
+> 𝑄 ×𝑅
+
+= (2 𝑘 − 1) 𝑠 2 + (2 𝑘 2 − 𝑘 )𝑛 𝑓 𝑙𝑜𝑝𝑠 .Finally, a term-by-term subtraction is performed, which costs 𝑠 2 𝑓 𝑙𝑜𝑝𝑠 .Combining these steps, the overall computational cost for applying the WMI method (Algorithm 3) is: 
+
+2𝑘𝑠 2 + (2 𝑘 2 − 𝑘 )𝑠 − 𝑘 2 + 𝑘 2 + 𝑂 
+
+( 56 𝑘 3)
+
++ (2 𝑘 − 1) 𝑠 2 + (2 𝑘 2 − 𝑘 )𝑠 + 𝑠 2
+
+= 4 𝑘𝑠 2 + (4 𝑘 2 − 2 𝑘 )𝑠 + 𝑂 
+
+( 56 𝑘 3)
+
+𝑓 𝑙𝑜𝑝𝑠 (23) 
+
+Algorithm 3 Woodbury Matrix Identity Algorithm with 
+
+4𝑘𝑠 2 + (4 𝑘 2 − 2 𝑘 )𝑠 + 𝑂 
+
+( 56 𝑘 3
+
+)
+
+𝑓 𝑙𝑜𝑝𝑠 (23) 
+
+Require: The inverse of the matrix 𝑀 : 𝑀 −1 with size 𝑠 ×𝑠 ,and vectors (𝑣 𝑛 
+
+(𝑥 (𝑖 )))  
+
+> 𝑖 =1 ...𝑘
+
+∈ ℝ𝑠 to add to 𝑀 ; 
+
+> 1:
+
+Initialize 𝐼 ∈ ℝ𝑘 ×𝑘 and construct the design matrix 
+
+𝑋 = [𝑣 𝑛 
+
+(𝐱 (1) ) 𝑣 𝑛 
+
+(𝐱 (2) ) ⋯ 𝑣 𝑛 
+
+(𝐱 (𝑘 ))] 𝑇 ∈ ℝ𝑠 ×𝑠 ; 
+
+> 2:
+
+𝑅 ← 𝑋𝑀 −1 ; ⊳ 2𝑘𝑠 2 − 𝑘𝑠 𝑓 𝑙𝑜𝑝𝑠  
+
+> 3:
+
+𝑆 ← 𝐼 + 𝑅𝑋 𝑇 ; ⊳ 2𝑘 2𝑠 𝑓 𝑙𝑜𝑝𝑠  
+
+> 4:
+
+Compute 𝑆 −1 using Cholesky decomposition; 
+
+⊳ 𝑂 
+
+( 56 𝑘 3
+
+)
+
+𝑓 𝑙𝑜𝑝𝑠  
+
+> 5:
+
+𝑄 ← 𝑅 𝑇 𝑆 −1 ; ⊳ 2𝑘 2𝑠 − 𝑘𝑠 𝑓 𝑙𝑜𝑝𝑠  
+
+> 6:
+
+𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+← 𝑀 −1 − 𝑄𝑅 ; ⊳ 2𝑘𝑠 2 𝑓 𝑙𝑜𝑝𝑠  
+
+> 7:
+
+Output 𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+;
+
+## 5. Comparison of the computational costs of the DI, ISM, and WMI methods 
+
+We recall that the size of the moment matrix 𝑀 𝑛 (𝜇 𝑁 ) is 
+
+𝑠 ×𝑠 , and that we want to add 𝑘 new data points into 𝑀 𝑛 (𝜇 𝑁 ).The computational cost of each method is summarized in Table 1. The goal of this section is to find the number of new data 
+
+𝑘 to add such that the DI cost given by equation (18) is lower than that of the ISM method given by equation (22) or that of the WMI method given by equation (23). 
+
+5.1. Direct inversion method vs. Iterative Sherman-Morrison method 
+
+The condition on 𝑘 under which the DI method is prefer-able to the ISM method is obtained by comparing their computational cost given by equations (18) and (22), re-spectively. The condition is obtained by isolating 𝑘 in the following inequality: 
+
+𝑂 
+
+( 56 𝑠 3)
+
++ 2 𝑘𝑠 2 < 4𝑘𝑠 2 + 2 𝑘𝑠 
+
+⟺ 56 𝑠 2 < (2 𝑠 + 2) 𝑘 
+
+⟺ 𝑘 > 5𝑠 2
+
+12 ( 𝑠 + 1) (24) 
+
+Grivet and Travé-Massuyès: Published in Array. DOI: 10.1016/j.array.2026.100737 Page 5 of 10 Cost Trade-offs in Matrix Inversion Updates for Streaming Outlier Detection 
+
+Table 1 
+
+Computational cost of the three compared methods (in flops) DI (Algorithm 1) ISM (Algorithm 2) WMI (Algorithm 3) Computational cost 𝑂 
+
+( 56 𝑠 3
+
+)
+
++ 2 𝑘𝑠 2 (18) 4𝑘𝑠 2 + 2 𝑘𝑠 (22) 4𝑘𝑠 2 + (4 𝑘 2 − 2 𝑘 )𝑠 + 𝑂 
+
+( 56 𝑘 3
+
+)
+
+(23) 
+
+(a) DI (subsection 4.1) vs. ISM (subsection 4.2) (b) DI (subsection 4.1) vs. WMI (subsection 4.3) 
+
+Figure 1: Theoretical representation of thresholds from which choosing DI over ISM or WMI 
+
+5.2. Direct inversion method vs. Woodbury matrix identity method 
+
+We next compare the DI method with the WMI method: 
+
+𝑂 
+
+( 56 𝑠 3)
+
++ 2 𝑘𝑠 2 < 4𝑘𝑠 2 + (4 𝑘 2 − 2 𝑘 )𝑠 + 𝑂 
+
+( 56 𝑘 3)
+
+⟺ 56 𝑠 3 < 2𝑘𝑠 2 + (4 𝑘 2 − 2 𝑘 )𝑠 + 56 𝑘 3
+
+⟺ 56 𝑘 3 + 4 𝑠𝑘 2 + 2( 𝑠 2 − 𝑠 )𝑘 − 56 𝑠 3 > 0 (25) Here we have a cubic equation that we need to solve with a fixed s. An empirical approximation is given in subsection 6.1. 
+
+5.3. Woodbury matrix identity method vs. Iterative Sherman-Morrison method 
+
+For 𝑠 ≥ 1 and 𝑘 ≥ 1, the computation cost of the ISM method (equation (22)) is generally lower than that of the WMI method (equation (23)). However, these figures do not account for memory efficiency (read/write operations), nor for the optimization of matrix computations compared to vector calculations and successive iterations, which intro-duce significant overheads. The measurements carried out in subsection 6.2 show that the WMI method quickly becomes more efficient than the ISM method. 
+
+## 6. Optimal method selection based on the number 𝑘 of new data 
+
+6.1. Theoretical guide for method selection based on new data volume 𝑘 
+
+The results shown in Figure 1 are obtained by computing equations (24) and (25) for all 𝑘 ∈ J1, 4200 K and 𝑠 ∈
+
+J1, 10000 K.Figure 1a shows that one must choose the DI method over the ISM method when 𝑘 > 𝑠 ∕2 .4002 ≈ 5 𝑠 ∕12 .Figure 1b shows that one must choose the DI method over the WMI method when 𝑘 > 𝑠 ∕3 .7506 . We name this relation the empirical DI over WMI threshold: 
+
+𝑘 > 𝑠 
+
+3.7506 (26) Table 2 summarizes the different theoretical thresholds identified for choosing the DI method over the ISM or WMI methods. 
+
+6.2. Experimental results 
+
+The following results were obtained on a laptop equipped with an Intel Core Ultra 5 135U CPU and 32 GB of RAM, running Windows 11. All results can be reproduced using the Python code and data available on GitHub 3.We generate a random dataset of 𝑆 = 2000 samples in 
+
+ℝ1287 . This simulates 2000 vectors 𝑣 𝑛 (𝐱 ) with 𝐱 ∈ ℝ𝑑 =8 and polynomials of degree at most 𝑛 = 5 :
+
+𝑠 = 𝑠 𝑑 (𝑛 ) = 
+
+(𝑑 + 𝑛 𝑛 
+
+)
+
+=
+
+(8 + 5 5
+
+)
+
+= 1287 .For every 𝑘 in {1 , 2, 3, 4, 5, 10 , 20 , 30 , 40 , 50 , 100 , 200 ,
+
+300 , 400 , 500 , 750 , 1000} , we compute the moment matrix 
+
+𝑀 𝑛 (𝜇 𝑁 ) and its inverse 𝑀 𝑛 (𝜇 𝑁 )−1 with the first 𝑁 = 𝑆 − 𝑘 
+
+samples. Then we update the inverse of the moment matrix with the last 𝑘 samples using the three different methods and report the average execution times on the 𝑛𝑠 = 200 
+
+simulations in Table 3. Note that for the ISM method, we reduced 𝑛𝑠 to 50 when 𝑘 > 50 .We also computed, for each method, the error of the inverse moment matrix: 𝑒 𝑚 = ‖𝐼 −𝑀 𝑢𝑝𝑑𝑎𝑡𝑒𝑑 ×𝑀 −1 
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑,𝑚
+
+‖𝐹 ,where 𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑,𝑚
+
+corresponds to the updated inverse mo-ment matrix 𝑀 −1  
+
+> 𝑢𝑝𝑑𝑎𝑡𝑒𝑑
+
+found by the method 𝑚 ∈ { DI, ISM, 
+
+> 3Link to the GitHub repository: https://github.com/fgrivet/cost-trade-offs-matrix-inversion-update
+
+Grivet and Travé-Massuyès: Published in Array. DOI: 10.1016/j.array.2026.100737 Page 6 of 10 Cost Trade-offs in Matrix Inversion Updates for Streaming Outlier Detection 
+
+Table 2 
+
+Theoretical thresholds for choosing the DI method over the ISM or WMI methods DI over ISM DI over WMI Empirical DI over WMI 
+
+𝑘 5𝑠 2∕(12( 𝑠 + 1)) (24) 56 𝑘 3 + 4 𝑠𝑘 2+ 2( 𝑠 2 − 𝑠 )𝑘 − 56 𝑠 3 > 0 (25, to solve with 𝑠 fixed) 𝑠 ∕3 .7506 (26) 
+
+Table 3 
+
+Average execution time (in seconds) for a rank-𝑘 
+
+update of the moment matrix 𝑀 𝑛 (𝜇 𝑁 ) of size 1287 × 1287 
+
+Smallest time – Second best time 
+
+𝑘 DI ISM WMI 
+
+1 0.08594638 0.007743145 0.0077865 
+
+2 0.08421694 0.01141714 0.007551792 
+
+3 0.08086838 0.01424055 0.005989846 
+
+4 0.07941904 0.02148158 0.005903258 
+
+5 0.07437832 0.01883538 0.004278867 
+
+10 0.08314858 0.06215603 0.008458068 
+
+20 0.08020028 0.09959804 0.008605508 
+
+30 0.08923532 0.1900465 0.01317246 
+
+40 0.08028041 0.1966603 0.01141213 
+
+50 0.08450316 0.2969778 0.01532174 
+
+100 0.08219219 0.4851311 0.02341882 
+
+200 0.08573109 0.9612609 0.04289328 
+
+300 0.09368211 1.453023 0.06708244 
+
+400 0.09056586 1.795042 0.09021928 
+
+500 0.09777304 2.207409 0.1229474 
+
+750 0.1082857 3.867214 0.2134477 
+
+1000 0.118939 3.829742 0.3350951 
+
+Table 4 
+
+Errors for a rank-𝑘 update of the moment matrix 𝑀 𝑛 (𝜇 𝑁 )
+
+of size 1287 × 1287 with conditioning 𝑐𝑜𝑛𝑑 (𝑀 𝑛 (𝜇 𝑁 )) , 𝑁 = 𝑆 − 𝑘 
+
+Smallest error – Second best error 
+
+𝑘 DI ISM WMI 𝑐𝑜𝑛𝑑 (𝑀 𝑛 (𝜇 𝑁 )) 
+
+1 1.580182e-13 1.582999e-13 1.583327e-13 83.9304 2 1.593879e-13 2.902351 1.605027e-13 84.0449 3 1.594071e-13 4.358941 1.595547e-13 84.2276 4 1.593055e-13 5.333518 1.609318e-13 85.1681 5 1.59972e-13 6.150092 1.604706e-13 85.412 10 1.598138e-13 9.544279 1.610103e-13 86.4186 20 1.606954e-13 14.10532 1.628296e-13 88.7121 30 1.607787e-13 17.76659 1.641526e-13 91.1043 40 1.607618e-13 20.82128 1.662739e-13 93.5837 50 1.61661e-13 23.75783 1.677276e-13 96.0594 100 1.618503e-13 38.34813 1.773381e-13 104.694 200 1.625134e-13 71.4727 2.144143e-13 136.435 300 1.656789e-13 120.5727 2.788295e-13 219.31 400 1.654148e-13 210.0006 4.830752e-13 325.742 500 1.655513e-13 417.0248 1.316689e-12 604.421 750 1.681712e-13 5.943877e+10 21941.93 3.44460e+18 1000 1.694056e-13 2.559507e+11 503624.6 4.4279e+18 
+
+WMI } and ‖.‖𝐹 is the Frobenius norm [3] given by: 
+
+‖𝐴 ‖𝐹 =
+
+√∑
+
+> 𝑖,𝑗
+
+|𝑎 𝑖,𝑗 |2 (27) The errors for each method and each value of 𝑘 are reported in Table 4. We observe that the errors associated with the WMI and ISM methods increase rapidly, when 
+
+𝑘 > 500 , indicating numerical instability. This behavior is largely explained by the poor conditioning (≈ 10 18 ) of the empirical moment matrix constructed from limited data (1250 and 1000 samples, respectively). According to Vershynin [12], and Wainwright [14], in-creasing the number of samples improves conditioning and numerical stability. So we repeated the experiment with a larger sample size: 𝑆 = 15000 . The errors for all methods stabilize around 10 −13 across all tested values of 𝑘 (up to 
+
+𝑘 = 1500 ) and matrix sizes up to 𝑠 = 2000 , confirming that the large errors observed in the small-sample regime are primarily due to ill conditioning of the moment matrix. For ISM method, the error still increases with 𝑘 for both 
+
+𝑆 = 2000 and 𝑆 = 15000 , reflecting the accumulation of floating-point rounding errors inherent to successive rank-one updates [4]. However, with sufficiently many samples, the error growth remains bounded and no longer exhibits the rapid instability observed for small sample sizes. The numerical stability of the Sherman-Morrison and Woodbury updates has been analyzed previously in [16]. 
+
+6.3. Comparison with theoretical results 
+
+The goal of this subsection is to validate the theoretical thresholds identified in subsection 6.1, Table 2 and the values measured in subsection 6.2, Table 3. In Table 5, we present the theoretical and experimental thresholds for selecting the DI method over the ISM or WMI methods, with the matrix size 𝑠 fixed at 1287. First, we observe that the empirical DI over WMI approximation, given by equation (26) as 343 .145 , is very close to the theoretical threshold of equation (25), which is 343 .250 .Second, as predicted in subsection 5.3, the WMI method proves to be more efficient than the ISM method even for small values of 𝑘 ; specifically, starting from 𝑘 = 2 .When comparing the thresholds for choosing the DI method over the ISM or WMI methods, we observe that the threshold (24) for the ISM method is significantly over-estimated. The theoretical prediction is 535 .834 , whereas experimentally, it falls between 10 and 20. Conversely, the threshold (25) for the WMI method is substantially under-estimated. The theoretical prediction is 343 .250 , but ex-perimental results place it between 400 and 500, which is approximately 𝑠  
+
+> 3
+
+. These discrepancies arise because our analysis considered only the number of operations (flops) and did not account for the efficiency of memory access 
+
+Grivet and Travé-Massuyès: Published in Array. DOI: 10.1016/j.array.2026.100737 Page 7 of 10 Cost Trade-offs in Matrix Inversion Updates for Streaming Outlier Detection                             
+
+> Table 5
+> Thresholds for choosing the DI method over the ISM or WMI methods with 𝑠 = 1287 :𝑑 = 8 and 𝑛 = 5
+> DI over ISM DI over WMI Empirical DI over WMI
+> 𝑘 𝑡ℎ𝑒𝑜𝑟𝑒𝑡𝑖𝑐𝑎𝑙 (24) =5×1287 2
+> 12(1287+1) ≈ 535 .834 (25) ≈ 343 .250 (26) =1287 3.7506 ≈ 343 .145
+> 𝑘 𝑒𝑥𝑝𝑒𝑟𝑖𝑚𝑒𝑛𝑡𝑎𝑙 Between 10 and 20 Between 400 and 500
+> Figure 2: Fastest method for each (s, k) pair based on execution time
+
+(read/write operations) or the intrinsic Python optimizations for matrix calculations compared to vector calculations or iterative loops. 
+
+6.4. Experimental guide for method selection based on new data volume 𝑘 
+
+We repeated the experiment conducted in subsection 6.2. This time, we used 𝑆 = 2000 samples in ℝ𝑠 with 𝑠 ranging in {10 , 20 , 50 , 100 , 250 , 500 , 750 , 1000} and 𝑛𝑠 = 200 sim-ulations. However, for the ISM method, when 𝑠 > 500 and 
+
+𝑘 > 50 , we reduced 𝑛𝑠 to 50 .Figure 2 illustrates the fastest method for performing the rank-𝑘 update for each pair (𝑠, 𝑘 ). A green point signifies that ISM (Algorithm 2) is the fastest method, a blue point indicates that WMI (Algorithm 3) is the fastest method, and a red point denotes that the DI (Algorithm 1) is the fastest method. Firstly, we notice that for a small matrix size ( 𝑠 =10 ), the DI method outperforms the other two. Secondly, as expected, ISM is faster for a rank-1 update. Then the WMI method is faster for a rank-𝑘 update when 𝑘 < 𝑠  
+
+> 3
+
+, and finally, for a large update, the DI method is superior. Our recommendation, for a Python CPU implementa-tion, is hence as follows: - Use the ISM method (Algorithm 2) for a rank-1 up-date. - Use the WMI method (Algorithm 3) for a rank-𝑘 
+
+update when 𝑘 ≤ 𝑠  
+
+> 3
+
+, where 𝑠 is the matrix size. - Use the DI method (Algorithm 1) if 𝑘 > 𝑠  
+
+> 3
+
+.
+
+## 7. Conclusion 
+
+This paper compares three methods for updating the inverse of a matrix after a rank-𝑘 update, assuming the orig-inal inverse is known. Although motivated by Christoffel-function-based outlier detection, the analysis applies more broadly to problems involving rank-𝑘 updates of spd invert-ible matrices. Theoretical thresholds for method selection are derived and summarized in Table 2. They are validated empirically with comprehensive experiments that account for implementation effects. This note includes practical guidance for Python CPU implementations. With 𝑠 denoting the matrix dimension and 
+
+𝑘 the update rank, it recommends the following rule: - For 𝑘 = 1 , use ISM (Algorithm 2). - For 𝑘 ≤ 𝑠  
+
+> 3
+
+, use WMI (Algorithm 3). - For 𝑘 > 𝑠  
+
+> 3
+
+, use DI (Algorithm 1). Although the theoretical computational costs derived in this work are expressed in terms of the matrix dimension 
+
+𝑠 and the update rank 𝑘 , and are therefore independent of any specific programming language or hardware platform, the practical recommendations and proposed selection rule are empirically validated only for Python implementations executed on CPU. In particular, the quantitative thresholds identified in this study depend on memory-access patterns characteristic of standard Python numerical linear algebra   
+
+> Grivet and Travé-Massuyès: Published in Array. DOI: 10.1016/j.array.2026.100737 Page 8 of 10 Cost Trade-offs in Matrix Inversion Updates for Streaming Outlier Detection
+
+libraries, and should not be assumed to transfer directly to other languages, libraries, or hardware architectures. Several directions for future work emerge from this study. First, it would be of interest to extend the empirical comparison to other programming languages and computa-tional platforms, including compiled implementations such as C++ and GPU-accelerated environments, where differ-ences in parallelism and memory hierarchies may signifi-cantly affect performance. Second, beyond inverse update strategies, a fundamental limitation of Christoffel-function-based anomaly detection lies in the size 𝑠 of the moment matrix, which grows rapidly with the ambient dimension. Future work could therefore focus on reducing the effective dimension of this matrix in order to lower computational cost and enable CF-based scoring to scale to high-dimensional data streams. 
+
+## CRediT authorship contribution statement 
+
+Florian Grivet: Writing - original draft, Writing -review and editing, Conceptualization, Formal analysis, Methodology, Software, Data curation, Investigation, Val-idation. Louise Travé-Massuyès: Writing - review and editing, Supervision, Funding acquisition, Resources, Con-ceptualization, Validation. 
+
+## Data availability 
+
+All code and datasets are available on GitHub: github.com/fgrivet/cost-trade-offs-matrix-inversion-update. All the tests conducted in this paper can be reproduced. The README file explains how to use the code. 
+
+## Declaration of generative AI and AI-assisted technologies in the manuscript preparation process 
+
+During the preparation of this work the authors used Mistral in order to check the text grammar. After using this tool/service, the authors reviewed and edited the content as needed and hence take full responsibility for the content of the submitted article. 
+
+## Declaration of competing interest 
+
+The authors declare the following financial interests/personal relationships which may be considered as potential compet-ing interests: Louise Travé-Massuyès reports financial sup-port was provided by AI Interdisciplinary Institute ANITI. 
+
+## Acknowledgments 
+
+This work has benefited from the AI Interdisciplinary Institute ANITI funded by the France 2030 program under the Grant agreements n °ANR-19-P3IA-0004 and n °ANR-23-IACL-0002. The authors would like to thank Jean-Bernard Lasserre (LAAS-CNRS) and Didier Henrion (LAAS-CNRS) for their insightful discussions and contributions to the Christoffel function method used in this paper. 
+
+## A. Computational costs of generic elementary products 
+
+In this appendix, we detail the computational costs of the intermediate steps employed in section 4, expressed in terms of flops. 
+
+Notations – We adopt the following generic notation: scalars are denoted by lowercase letters (e.g., 𝑎 ), vectors by boldface lowercase letters (e.g., 𝐚 ), and matrices by uppercase letters (e.g., 𝐴 ). The dimensions of vectors and matrices are represented by 𝑝 , 𝑞 and 𝑚 . The computational costs are denoted by 𝐶 𝑖 𝑗 , where the superscript 𝑖 indicates the dimension of the left element in the multiplication, and the subscript 𝑗 indicates the dimension of the right element. 
+
+A.1. Computational cost of multiplying a row-vector by a column-vector       
+
+> 𝑎 1⋯𝑎 𝑝 −1 𝑎 𝑝
+> []
+> 𝑏 1
+> ⋮
+> 𝑏 𝑝 −1
+> 𝑏 𝑝
+> ⎡⎢⎢⎢⎢⎢⎢⎣
+> ⎤⎥⎥⎥⎥⎥⎥⎦
+> 𝑤 ×=
+> Figure 3: Representation of the product of a row-vector by a column-vector
+
+Let 𝐚 ∈ ℝ1× 𝑝 , 𝐛 ∈ ℝ𝑝 ×1 and 𝑤 ∈ ℝ such that 𝑤 = 𝐚 × 𝐛 
+
+(Figure 3). 
+
+𝑤 =
+
+> 𝑝
+
+∑
+
+> 𝑖 =1
+
+𝑎 𝑖 × 𝑏 𝑖 , i.e. 𝑝 multiplications and 𝑝 − 1 additions, which provides the following cost: 
+
+1× 𝑝 𝑝 ×1 = 2 𝑝 − 1 𝑓 𝑙𝑜𝑝𝑠. (28) 
+
+A.2. Computational cost of multiplying a column-vector by a row-vector       
+
+> 𝑎 1
+> 𝑎 2
+> ⋮
+> 𝑎 𝑝
+> ⎡⎢⎢⎢⎢⎢⎣
+> ⎤⎥⎥⎥⎥⎥⎦
+> 𝑏 1⋯𝑏 𝑞 −1 𝑏 𝑞
+> []
+> 𝑊 1,1
+> 𝑊 𝑝,𝑞 −1
+> ⎡⎢⎢⎢⎢⎣
+> ⎤⎥⎥⎥⎥⎦
+> ×=
+> Figure 4: Representation of the product of a column-vector by a row-vector
+
+Let 𝐚 ∈ ℝ𝑝 ×1 , 𝐛 ∈ ℝ1× 𝑞 and 𝑊 ∈ ℝ𝑝 ×𝑞 such that 
+
+𝑊 = 𝐚 × 𝐛 (Figure 4). For every element of 𝑊 , we have 𝑊 𝑖,𝑗 = 𝑎 𝑖 × 𝑏 𝑗 ,i.e. 1 multiplication for 𝑝 × 𝑞 elements, which provides the following cost: 
+
+𝑝 ×1 1× 𝑞 = 𝑝 × 𝑞 𝑓 𝑙𝑜𝑝𝑠. (29) When considering two vectors of equal length 𝑝 , the compu-tational cost of their product is 𝑝 ×1 1× 𝑝 = 𝑝 2 𝑓 𝑙𝑜𝑝𝑠 .  
+
+> Grivet and Travé-Massuyès: Published in Array. DOI: 10.1016/j.array.2026.100737 Page 9 of 10
+
+Cost Trade-offs in Matrix Inversion Updates for Streaming Outlier Detection 
+
+A.3. Computational cost of multiplying a row-vector by a matrix 
+
+𝑎 1 𝑎 2 ⋯ 𝑎 𝑝 
+
+[ ] 𝐵 1,1 𝐵 1,𝑞 
+
+⋮ ⋮
+
+⋮ ⋮
+
+𝐵 𝑝, 1 𝐵 𝑝,𝑞 
+
+⎡⎢⎢⎢⎢⎢⎢⎣
+
+⎤⎥⎥⎥⎥⎥⎥⎦
+
+𝑤 1 𝑤 2 ⋯ 𝑤 𝑞 
+
+[ ]
+
+× =
+
+Figure 5: Representation of the product of a row-vector by a matrix 
+
+Let 𝐚 ∈ ℝ1× 𝑝 , 𝐵 ∈ ℝ𝑝 ×𝑞 and 𝐰 ∈ ℝ1× 𝑞 such that 
+
+𝐰 = 𝐚 × 𝐵 (Figure 5). For every element of 𝐰 , we have 𝑤 𝑗 =
+
+𝑝 ∑
+
+𝑖 =1 
+
+𝑎 𝑖 × 𝐵 𝑖,𝑗 , i.e. 
+
+𝑝 multiplications and 𝑝 − 1 additions for 𝑞 elements, which equals to 𝑞 × (2 𝑝 − 1) , which provides the following cost: 
+
+1× 𝑝 𝑝 ×𝑞 = 2 𝑝𝑞 − 𝑞 𝑓 𝑙𝑜𝑝𝑠. (30) When considering a square matrix of size 𝑝 × 𝑝 , the computational cost of this product is 1× 𝑝 𝑝 ×𝑝 = 2 𝑝 2 − 𝑝 𝑓 𝑙𝑜𝑝𝑠 .
+
+A.4. Computational cost of multiplying a matrix by a column-vector 
+
+𝐴 1,1 ⋯ ⋯ 𝐴 1,𝑞 
+
+𝐴 𝑝, 1 ⋯ ⋯ 𝐴 𝑝,𝑞 
+
+⎡⎢⎢⎢⎢⎣
+
+⎤⎥⎥⎥⎥⎦
+
+𝑏 1
+
+𝑏 2
+
+⋮
+
+𝑏 𝑞 
+
+⎡⎢⎢⎢⎢⎢⎢⎣
+
+⎤⎥⎥⎥⎥⎥⎥⎦
+
+𝑤 1
+
+𝑤 2
+
+⋮
+
+𝑤 𝑝 
+
+⎡⎢⎢⎢⎢⎢⎣
+
+⎤⎥⎥⎥⎥⎥⎦
+
+× =
+
+Figure 6: Representation of the product of a matrix by a column-vector 
+
+Let 𝐴 ∈ ℝ𝑝 ×𝑞 , 𝐛 ∈ ℝ𝑞 ×1 and 𝐰 ∈ ℝ𝑝 ×1 such that 
+
+𝐰 = 𝐴 × 𝐛 (Figure 6). For every element of 𝐰 , we have 𝑤 𝑗 =
+
+𝑞 ∑
+
+𝑖 =1 
+
+𝐴 𝑗,𝑖 × 𝑏 𝑖 , i.e. 
+
+𝑞 multiplications and 𝑞 − 1 additions for 𝑝 elements, which equals to 𝑝 × (2 𝑞 − 1) , which provides the following cost: 
+
+𝑝 ×𝑞 𝑞 ×1 = 2 𝑝𝑞 − 𝑝 𝑓 𝑙𝑜𝑝𝑠. (31) When considering a square matrix of size 𝑝 × 𝑝 , the computational cost of this product is 𝑝 ×𝑝 𝑝 ×1 = 2 𝑝 2 − 𝑝 𝑓 𝑙𝑜𝑝𝑠 
+
+A.5. Computational cost of multiplying a matrix by a matrix 
+
+𝐴 1,1 ⋯ 𝐴 1,𝑚 
+
+𝐴 𝑝, 1 ⋯ 𝐴 𝑝,𝑚 
+
+⎡⎢⎢⎢⎢⎣
+
+⎤⎥⎥⎥⎥⎦
+
+𝐵 1,1 𝐵 1,2 ⋯ 𝐵 1,𝑞 
+
+⋮ ⋮ ⋮
+
+⋮ ⋮ ⋮
+
+𝐵 𝑚, 1 𝐵 𝑚, 2 ⋯ 𝐵 𝑚,𝑞 
+
+⎡⎢⎢⎢⎢⎢⎣
+
+⎤⎥⎥⎥⎥⎥⎦
+
+𝑊 1,1 ⋯ ⋯ 𝑊 1,𝑞 
+
+𝑊 𝑝, 1 𝑊 𝑝, 2 ⋯ 𝑊 𝑝,𝑞 
+
+⎡⎢⎢⎢⎢⎣
+
+⎤⎥⎥⎥⎥⎦
+
+× =
+
+Figure 7: Representation of the product of a matrix by a matrix 
+
+Let 𝐴 ∈ ℝ𝑝 ×𝑚 , 𝐵 ∈ ℝ𝑚 ×𝑞 and 𝑊 ∈ ℝ𝑝 ×𝑞 such that 
+
+𝑊 = 𝐴 × 𝐵 (Figure 7). For every element of 𝑊 , we have 𝑊 𝑖,𝑗 =
+
+𝑚 ∑
+
+𝑙 =1 
+
+𝐴 𝑖,𝑙 × 𝐵 𝑙,𝑗 ,i.e. 𝑚 multiplications and 𝑚 − 1 additions for 𝑝 × 𝑞 elements, which equals to 𝑝𝑞 × (2 𝑚 − 1) , which provides the following cost: 
+
+𝑝 ×𝑚 𝑚 ×𝑞 = 2 𝑝𝑞𝑚 − 𝑝𝑞 𝑓 𝑙𝑜𝑝𝑠. (32) When considering squares matrices of size 𝑝 × 𝑝 , the computational cost of this product is 𝑝 ×𝑝 𝑝 ×𝑝 = 2 𝑝 3 − 𝑝 2 𝑓 𝑙𝑜𝑝𝑠 .
+
+## References 
+
+[1] Bartlett, M.S., 1951. An Inverse Matrix Adjustment Arising in Discriminant Analysis. The Annals of Mathematical Statistics 22, 107 – 111. doi: 10.1214/aoms/1177729698 .[2] Ducharlet, K., Travé-Massuyès, L., Lasserre, J.B., Le Lann, M.V., Miloudi, Y., 2025. Leveraging the christoffel function for outlier detection in data streams. International Journal of Data Science and Analytics 20, 2021–2037. doi: 10.1007/s41060-024-00581-2 .[3] Golub, G.H., Van Loan, C.F., 2013. Matrix Computations - 4th Edition. Johns Hopkins University Press, Philadelphia, PA. doi: 10. 1137/1.9781421407944 .[4] Higham, N.J., 2002. Accuracy and stability of numerical algorithms. SIAM. doi: 10.1137/1.9780898718027 .[5] Krishnamoorthy, A., Menon, D., 2013. Matrix inversion using cholesky decomposition, in: 2013 Signal Processing: Algorithms, Architectures, Arrangements, and Applications (SPA), pp. 70–72. URL: https://ieeexplore.ieee.org/document/6710599 .[6] Lasserre, J.B., Pauwels, E., 2016. Sorting out typicality with the inverse moment matrix sos polynomial, in: Proceedings of the 30th International Conference on Neural Information Processing Systems, Curran Associates Inc., Red Hook, NY, USA. p. 190–198. URL: 
+
+> https://dl.acm.org/doi/10.5555/3157096.3157118
+
+.[7] Lasserre, J.B., Pauwels, E., 2019. The empirical christoffel function with applications in data analysis. Advances in Computational Mathematics 45, 1439–1468. doi: 10.1007/s10444-019-09673-1 .[8] Lasserre, J.B., Pauwels, E., Putinar, M., 2022. The Christof-fel–Darboux Kernel for Data Analysis. 1st ed., Cambridge University Press. doi: 10.1017/9781108937078 .[9] Lu, J., 2024. Numerical matrix decomposition. arXiv:2107.02579 .[10] Lu, T., Wang, L., Zhao, X., 2023. Review of anomaly detection algorithms for data streams. Applied Sciences 13. doi: 10.3390/ app13106353 .[11] Sherman, J., Morrison, W.J., 1950. Adjustment of an Inverse Matrix Corresponding to a Change in One Element of a Given Matrix. The Annals of Mathematical Statistics 21, 124 – 127. doi: 10.1214/aoms/ 1177729893 .[12] Vershynin, R., 2018. High-dimensional probability: An introduction with applications in data science. volume 47. Cambridge university press. [13] Vu, Mai Trang, Bachoc, François, Pauwels, Edouard, 2022. Rate of convergence for geometric inference based on the empirical christoffel function. ESAIM: PS 26, 171–207. doi: 10.1051/ps/2022003 .[14] Wainwright, M.J., 2019. High-dimensional statistics: A non-asymptotic viewpoint. volume 48. Cambridge university press. doi: 10.1017/9781108627771 .[15] Woodbury, M., of Statistics, P.U.D., 1950. Inverting Modified Ma-trices. Memorandum Report / Statistical Research Group, Princeton, Department of Statistics, Princeton University. [16] Yip, E.L., 1986. A note on the stability of solving a rank-p modifica-tion of a linear system by the sherman–morrison–woodbury formula. SIAM Journal on Scientific and Statistical Computing 7, 507–513. doi: 10.1137/0907034 .[17] Zhou, P., 2025. A survey of streaming data anomaly detection in network security. PeerJ Comput. Sci. 11, e3066. doi: 10.7717/ peerj-cs.3066 .
+
+Grivet and Travé-Massuyès: Published in Array. DOI: 10.1016/j.array.2026.100737 Page 10 of 10

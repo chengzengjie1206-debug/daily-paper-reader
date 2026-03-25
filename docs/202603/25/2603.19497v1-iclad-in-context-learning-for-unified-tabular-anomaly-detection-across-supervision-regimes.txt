@@ -1,0 +1,1138 @@
+Title: ICLAD: In-Context Learning for Unified Tabular Anomaly Detection Across Supervision Regimes
+
+URL Source: https://arxiv.org/pdf/2603.19497v1
+
+Published Time: Mon, 23 Mar 2026 00:17:37 GMT
+
+Number of Pages: 33
+
+Markdown Content:
+# ICLAD: In-Context Learning for Unified Tabular Anomaly Detection Across Supervision Regimes 
+
+Jack Yi Wei 1,2 and Narges Armanfard 1,2 
+
+> 1
+
+Department of Electrical and Computer Engineering, McGill University, Canada  
+
+> 2
+
+Mila - Quebec Artificial Intelligence Institute, Montreal, Canada 
+
+yi.wei4@mail.mcgill.ca, narges.armanfard@mcgill.ca 
+
+Abstract. Anomaly detection on tabular data is commonly studied under three supervision regimes, including one-class settings that as-sume access to anomaly-free training samples, fully unsupervised settings with unlabeled and potentially contaminated training data, and semi-supervised settings with limited anomaly labels. Existing deep learn-ing approaches typically train dataset-specific models under the assump-tion of a single supervision regime, which limits their ability to leverage shared structures across anomaly detection tasks and to adapt to differ-ent supervision levels. We propose ICLAD, an in-context learning foun-dation model for tabular anomaly detection that generalizes across both datasets and supervision regimes. ICLAD is trained via meta-learning on synthetic tabular anomaly detection tasks, and at inference time, the model assigns anomaly scores by conditioning on the training set with-out updating model weights. Comprehensive experiments on 57 tabu-lar datasets from ADBench show that our method achieves state-of-the-art performance across three supervision regimes, establishing a unified framework for tabular anomaly detection. 
+
+Keywords: Anomaly Detection · Tabular Data · In-Context Learning. 
+
+1 Introduction 
+
+Most real-world datasets are represented as tables, with rows corresponding to samples and columns representing attributes. Tabular anomaly detection aims to identify unusual rows within such datasets and has widespread applications in cybersecurity, healthcare, and industrial systems, where anomalies may indicate network intrusions [2], medical risks [48], or equipment failures [34]. Despite the recent popularity of deep learning, effective anomaly detection on tabular data remains challenging. Tabular data often consist of heterogeneous features with mixed continuous and discrete variables, and lack strong relation structures such as spatial, sequential or graphical dependencies [4]. In tabular supervised learning, deep learning models have historically struggled to consis-tently outperform gradient-boosted decision trees [42, 12, 23]. A similar trend holds for tabular anomaly detection, where numerous deep methods have been proposed but classical density-based methods remain competitive on standard  
+
+> arXiv:2603.19497v1 [cs.LG] 19 Mar 2026 2Jack Yi Wei and Narges Armanfard
+
+benchmarks [13, 21]. These observations suggest that generic deep learning ap-proaches often struggle to capture inductive biases well suited to tabular data, motivating approaches that can acquire tabular-specific inductive biases. Beyond the challenge of tabular deep learning, tabular anomaly detection is further complicated by a diverse but fragmented set of supervision settings [25]. Recent deep learning methods typically assume the one-class setting, in which the training data is clean with all normal samples [3, 45, 41]. However, in practice, datasets can contain an unknown proportion of unlabeled anomalies [7], and in many cases a number of anomalies can be labeled with little cost [38]. Although some works treat the one-class scenario as a special case of semi-supervised learning [21, 36], we distinguish three supervision regimes for clarity. We refer to the case of a clean training set as the one-class setting, the case of unlabeled but potentially contaminated training data as the unsupervised setting, and to that with a small number of labeled anomalies as the semi-supervised setting, where unlabeled samples are not assumed to be normal. While specialized methods exist for each regime [38, 30], their objectives are typically tied to the assumed supervision setting, and models trained under one regime may not apply to others or fail to generalize robustly when applied across settings [21]. These limitations motivate an approach that can acquire inductive biases aligned to tabular anomaly detection and adapt inference behavior to differ-ent supervision regimes. This can be achieved through in-context learning, a paradigm that allows a model to adapt inference from the training data pro-vided as a context, without updating model parameters. In the case of anomaly detection, a model can infer the supervision regime from the labels in the context and modulate the decision function accordingly. Such in-context adaptation can be enabled through meta-learning over a distribution of tasks. With an appro-priate distribution of tabular tasks, meta-learning can impart inductive biases suitable for tabular data. Recent tabular foundation models [17, 18, 32] provide evidence for this approach, demonstrating that meta-learning on synthetic data can capture shared structure across tabular classification and regression prob-lems. Contemporaneous work [40] explores in-context learning for anomaly de-tection, yet the ability of a single model to adapt to different supervision regimes in anomaly detection remains underexplored. We propose In-Context Learning for Anomaly Detection (ICLAD), a foun-dation model designed to generalize across tabular datasets and supervision regimes. A key component of our approach is the construction of a distribu-tion of synthetic tabular anomaly detection tasks that vary in dataset charac-teristics, supervision assumptions, and anomaly contamination levels. ICLAD is implemented as a transformer trained on this task distribution. After this single training phase, the model can be reused on new datasets without updat-ing its parameters. At inference time, ICLAD conditions on the training data and their associated labels as context, enabling adaptation to new datasets and supervision regimes through in-context learning. In this way, ICLAD captures generalizable patterns across tabular anomaly detection tasks and provides a unified framework for one-class, unsupervised, and semi-supervised settings. ICLAD 3Labeled Normal 
+
+(a) One-class setting Unlabeled (b) Unsupervised setting Unlabeled  
+
+> Labeled Anomaly
+
+(c) Semi-supervised setting 
+
+Fig. 1: Each column corresponds to a training regime. The top row shows the training dataset, and the bottom row shows the test set and the anomaly-score landscape from ICLAD after conditioning on training dataset. In the test set, orange diamonds denote ground-truth anomalies and dark circles denote ground-truth normal samples. Darker regions indicate higher anomaly scores. The main contributions of this work are summarized as follows: 1. We introduce ICLAD, an in-context learning foundation model for tabular anomaly detection that performs task-level inference and generalizes across datasets and supervision regimes without retraining. To the best of our knowledge this work is the first to introduce a unified in-context anomaly de-tection model that generalize across anomaly detection supervision regimes. 2. We show that this capability arises from meta-learning on a diverse distri-bution of synthetic tabular tasks spanning dataset properties, supervision, and contamination levels. 3. We conduct an extensive empirical evaluation on ADBench [13], a benchmark of 57 real-world tabular datasets, comparing ICLAD with a wide range of classical and deep anomaly detection methods across unsupervised, one-class, and semi-supervised settings. 
+
+2 Related Work 
+
+2.1 One-Class and Unsupervised Tabular Anomaly Detection 
+
+Classical approaches to tabular anomaly detection typically operate directly in the input space or through shallow transformations. These include distance- and density-based methods such as kNN [33], LOF [6], CBLOF [14], and Isolation Forest [20]; one-class classification approaches such as OCSVM [39]; subspace-based methods such as PCA [43]; and statistical techniques such as HBOS [10] 4 Jack Yi Wei and Narges Armanfard 
+
+and ECOD [19]. Motivated by the success of deep learning, more recent work has explored using neural networks for tabular anomaly detection, including autoencoders [16], Deep SVDD [37], LUNAR [11], and various self-supervised representation learning approaches such as GOAD [3], ICL [41], MCM [47], Neu-tralAD [31], DRL [46], and SLAD [45]. DTE [21] introduces diffusion time as a proxy for outlier scoring, which is related to k-NN density estimation but with ef-ficient neural approximations. While deep models offer greater representational flexibility, empirical studies suggest that they do not consistently outperform strong classical baselines on tabular datasets [21, 5, 13]. Another line of work in unsupervised tabular anomaly detection involves contamination-robust approaches. Most of the aforementioned methods, partic-ularly deep methods, assume virtually clean training data aligned with the one-class setting. In the common scenario where there are unknown levels of contami-nation, these models often face deteriorating performance [21], motivating robust approaches such as the Minimum Covariance Determinant (MCD) [35] and the recent iterative refinement methods like Latent Outlier Exposure (LOE) [30]. 
+
+2.2 Semi-Supervised Anomaly Detection on Tabular Data 
+
+In the unsupervised setting, labeled anomalies can guide anomaly detection by providing prior information. In this case, anomaly detection can be framed as a semi-supervised learning problem related to positive-unlabeled (PU) learning. Representative methods include DevNet [27], PreNet [26], FEAWAD [49], and GANomaly [1]. These methods rely on objectives that require labeled anomalies during training and are therefore tied to the semi-supervision regime. Deep-SAD [38] partially addresses this by extending Deep SVDD with the ability to utilize supervision, but still requires retraining when supervision levels change. 
+
+2.3 Prior-data Fitted Networks 
+
+Prior-data fitted networks (PFNs) [24] are models trained to perform in-context learning by meta-learning over a distribution of related tasks, often instanti-ated through synthetic datasets. PFNs amortize Bayesian inference over data-generating mechanisms into a single training stage, enabling in-context adap-tation on new datasets without parameter updates. The representative PFN-based models for tabular data are TabPFN [17, 18] and TabICL [32], which achieve strong performance on tabular classification and regression. These mod-els demonstrate that in-context learning can capture shared structure across tab-ular tasks and generalize effectively to unseen datasets without retraining. Re-cently, a similar work Fomo-0D [40] investigated a PFN framework to one-class anomaly detection, showing that outliers can be identified through in-context learning. However, a crucial direction remains under-explored, i.e., the capability of in-context learning model to adapt its inductive bias to targeted supervision settings, which we hypothesize to be a natural capability of PFNs. In this work, we also adopt the PFN paradigm for tabular anomaly detection but with a focus on in-context adaptation across supervision regimes. ICLAD 5
+
+3 In-Context Learning for Tabular AD 
+
+3.1 Problem Formulation 
+
+We begin by reformulating tabular anomaly detection as a task-level inference problem. We are given a training/context dataset C = ( X , Y), where X = {xi}Ni=1 
+
+denotes tabular samples that may contain an unknown but typically small pro-portion of anomalies and Y = {yi}Ni=1 denotes labels with yi ∈ { 0, 1, ∅}, where 0 indicates normal samples, 1 indicates anomalous samples, and ∅ denotes the absence of a label. The goal is to infer a context-conditioned anomaly scoring function s(· | C ) : Rd → R, which, when applied to unseen (query) samples, assigns higher scores to anomalous samples than to normal samples. This formulation unifies common supervision regimes in tabular anomaly detection as special cases of the same task-level inference problem. In the one-class setting, all samples are assumed to be normal and labeled as such, i.e., 
+
+yi = 0 for all i. In the unsupervised setting, labels are completely absent ( yi = ∅
+
+for all i), and the context may contain an unknown proportion of anomalous samples. In the semi-supervised setting, a small subset of anomalies are labeled as anomalous ( yi = 1 ), while the remaining samples are unlabeled. Importantly, in all cases, the absence of a label does not imply normality, and neither the supervision regime nor the contamination level is assumed to be known to the model a priori , i.e. before observing the training set. 
+
+3.2 Context-Conditioned Anomaly Scoring 
+
+We interpret anomaly detection as estimating the probability that a query sam-ple is anomalous given a context dataset. Concretely, given a dataset C, we define the anomaly score of a query sample x as the conditional probability 
+
+s(x | C ) = p(y = 1 | x, C),
+
+This formulation conditions the anomaly score on both the distributional pat-terns present in the dataset and any supervision available in the context. From a probabilistic perspective, this conditional probability can also reflect the uncertainty over the underlying data-generating process. Let ϕ denote a latent data-generating mechanism drawn from a prior distribution Π. Condi-tioning on the context induces a posterior over plausible mechanisms, and the anomaly score can be interpreted as a posterior predictive distribution (PPD): 
+
+p(y = 1 | x, C) = 
+
+Z
+
+> Π
+
+p(y = 1 | x, ϕ ) p(ϕ | C ) dϕ. (1) Although this probability is generally intractable to compute, it motivates an approach that approximates the mapping from (x, C) to p(y = 1 | x, C)
+
+directly. PFNs learn this mapping by training over a large number of synthetic tasks sampled from the prior distribution. During inference, a PFN estimates the PPD by in-context learning, and thus approximates Bayesian inference over data-generating mechanisms of normal and anomalous samples. 6 Jack Yi Wei and Narges Armanfard (0)  (0) (0)       
+
+> (x 1, y 1)X4X5(x 2, y 2)(x 3, y 3)
+
+Transformer  ICLAD                             
+
+> 21Prior Fitting Stage Inference Stage
+> Assets
+> f1f2y
+> -0.5 10
+> -0.2 10
+> 0.1 20
+> Assets
+> f1f2y
+> 0.8 21
+> 0.4 21
+> -0.7 11
+> Assets
+> f1f2
+> -0.5 1
+> Assets
+> f1f2
+> 4.8 2
+> Perturb
+> Unsupervised Task
+> (1) (?) (?)
+> Semi-supervised Task
+> One Class Task
+> (?) (?) (?)
+> SCM Anomalies Perturbation-based
+> y
+> f1
+> f2
+> (0) (1)
+> (0) (1)
+> (0) (1)
+
+Fig. 2: Overview of the ICLAD framework and synthetic task construction. The top region depicts anomaly generation and the construction of supervision tasks. The bottom region shows the two-stage procedure of ICLAD. Left: prior-fitting on synthetic tasks. Right: inference on real datasets. 
+
+4 ICLAD Framework 
+
+We propose ICLAD, an in-context learning framework for tabular anomaly de-tection that unifies one-class, unsupervised, and semi-supervised settings using a single model trained on a distribution of anomaly tasks. ICLAD follows a two-stage procedure consisting of a prior-fitting stage and an inference stage. 
+
+Prior-Fitting Stage In this stage, we train an in-context learning model qθ
+
+parameterized by weights θ on synthetic anomaly detection tasks sampled from a distribution p(T ). Each task T consists of a support set Dsupport and a query set 
+
+Dquery = {(xj , y j )}Mj=1 . The support set defines the context, which conditions the model’s predictions for query samples. The model parameters θ are optimized by minimizing the binary classification error on the query samples using the following objective: 
+
+LBCE = ET ∼ p(T ) [BCE (yj , q θ (xj | D support ))] ,
+
+where BCE denotes the binary cross-entropy loss, and the expectation is taken over a large number of tasks sampled from p(T ). After training, the model qθ
+
+effectively approximates the anomaly scoring as defined in Equation 1. 
+
+Inference Stage At inference time, the learned parameters ˆθ are fixed. Given a real dataset Dtrain , we treat it as the support set and compute the context-conditioned anomaly scores for new samples using the model qˆθ (· | D train ).ICLAD 7 
+
+> (a) SCM Anomalies (b) Perturbation-based Anomalies
+
+Fig. 3: Feature interaction and t-SNE [22] plots of normal and anomalous sam-ples. The orange rectangles are anomalies; the blue circles are normal samples. ICLAD can thus adapt its scoring behavior based on context data, requiring only forward computations at test time. Notably, the predictions for query sam-ples are conditionally independent given the support set and are not influenced by other query instances. 
+
+4.1 Synthetic Anomaly Detection Tasks 
+
+To enable generalization across tabular anomaly detection tasks with diverse data characteristics and supervision settings, we construct a synthetic task dis-tribution that reflects this variability. Task generation consists of three stages: (i) sampling tabular datasets from structural causal models (SCMs) (ii) generat-ing anomalies through structural and perturbation-based mechanisms, and (iii) constructing tasks under one-class, unsupervised and semi-supervised regimes. 
+
+Simulating Tabular Datasets We generate synthetic tabular datasets us-ing the structural causal model (SCM) prior introduced in TabPFN [17]. An SCM defines a joint distribution over variables through a directed acyclic graph (DAG) Gscm , where each variable zi is generated by a causal mechanism zi =
+
+fi(zpa( i), ϵ i), with pa( i) denoting the parents of node i, fi a deterministic func-tion, and ϵi a Gaussian noise term. Synthetic datasets are obtained by sampling from the SCM and selecting a subset of variables as observed features. One variable is discretized to form a binary label y ∈ { 0, 1}, which induces class-conditional distributions pscm (x | y)
+
+that correspond to normal ( y = 0 ) and anomalous ( y = 1 ) samples. To emulate real tabular data, a random subset of features is discretized to produce mixed continuous and categorical variables. This process creates datasets with varying dimensionality, heterogeneous feature types, and complex feature relationships. 
+
+Simulating Anomalies To model the diversity of anomalies encountered in practice, we employ two complementary anomaly generation mechanisms. The first mechanism produces structural anomalies by sampling from the anomalous class generated by the SCM, pscm (x | y = 1) , resulting in samples that exhibit global distributional shifts relative to the normal data, which are sampled from 8 Jack Yi Wei and Narges Armanfard 
+
+the distribution pscm (x | y = 0) . These anomalies reflect shifts in the underlying causal mechanisms and capture structured, semantic deviations relative to nor-mal samples as shown in Figure 3a. Crucially, these samples share an underlying relational structure which, when labeled, can create meaningful supervision to guide anomaly scoring in semi-supervised setting. The second mechanism generates perturbation-based anomalies by corrupting selected features of normal samples. For continuous features, we sample a feature-wise sparsity mask from a Bernoulli distribution for each sample and apply additive Gaussian noise, 
+
+˜xi = xi + miσiϵi, ϵi ∼ N (0 , 1) ,
+
+where mi ∈ { 0, 1} indicates whether feature i is perturbed and σi is drawn independently per sample and feature from a log-uniform distribution. For cat-egorical features, corruption is implemented by randomly replacing the original value with another valid category. 
+
+Constructing Supervision Tasks A central component of ICLAD is the con-struction of synthetic anomaly detection tasks which span the commonly en-countered supervision regimes. Each task consists of a support or the context set 
+
+Dsupport = ( Xsupport , Y support ) and a query set Dquery = ( Xquery , Y query ). Query labels satisfy Yquery ∈ { 0, 1}, while support labels satisfy Ysupport ∈ {− 1, 0, 1},where −1 denotes unlabeled samples. The query set is constructed as a balanced mixture of normal and anomalous samples with equal proportions of structural and perturbation-based anomalies. Contrary to the query set, the composition and labeling of the support set vary across tasks to simulate different supervision regimes: 1. In the one-class setting, the support set contains only normal samples drawn from pscm (x | y = 0) , and all support labels are 0.2. In the unsupervised regime, the support set is unlabeled and contaminated with anomalies. The anomaly ratio is sampled uniformly from [0 , 0.4] and all labels in Ysupport are −1, indicating unknown. 3. In the semi-supervised regime, the support set is constructed as in the un-supervised setting, but a uniformly sampled fraction of anomalous samples is labeled as 1, while all remaining samples remain -1. Across all regimes, all anomalous samples in the support set are drawn from the structural anomaly class induced by the SCM. Perturbation-based anoma-lies are applied in the query set which complements the structural anomalies and guide the model to detect anomalies beyond the support of labeled anoma-lies, i.e. open-set anomalies. During the prior-data fitting, we uniformly sample tasks from the one-class , unsupervised , and semi-supervised regimes, exposing the model to diverse supervision scenarios and enabling it to infer the supervision setting from its context. The resulting joint distribution over SCMs, supervision regimes, and anomaly generation mechanisms defines the prior we designed for tabular anomaly detection. ICLAD 9
+
+4.2 Model Architecture 
+
+ICLAD adopts the transformer architecture of TabPFN [17], where support and query samples are processed jointly using an asymmetric attention pattern that prevents information leakage between queries and implements qθ (· | D support ).Input samples are zero-padded to a fixed dimension of 512 and projected to the model embedding space, and labels are embedded using a lookup table Ey with unlabeled samples mapped to the zero vector. 
+
+FiLM Label Conditioning To incorporate supervision signals in the support set, we apply feature-wise linear modulation (FiLM) [29] to support sample embed-dings. Given an embedding x and its label embedding c = Ey (y), FiLM computes 
+
+˜x = (1 + γ(c)) ⊙ x + β(c),
+
+where γ(·) and β(·) are learned linear mappings. Unlabeled samples correspond to c = 0 , for which FiLM reduces to the identity transformation. 
+
+4.3 Key Implementation Details 
+
+In this section, we provide some key implementation details and defer the com-plete details to section A of the supplementary materials. 
+
+Training We instantiate ICLAD as a 12-layer Transformer [44] trained over 52 million tasks. Training takes about 53 hours over 4 Nvidia H100 GPUs. 
+
+Context Size and Feature Size During the prior fitting, the number of support samples is sampled uniformly from 5 to 12,000, with feature dimensions ranging from 2 to 512, which enables ICLAD to be directly applicable on moderate sized tabular datasets. Adapting to larger datasets or those with higher dimensionality is enabled through feature and context subsampling. 
+
+Ensembling Following standard PFN implementations, predictions are averaged across multiple ensemble tasks, each operating on different subsets of support samples and feature ordering or feature subsets. This generally improves perfor-mance and makes predictions more invariant to feature permutations. 
+
+KV Caching Since the predictions are conditionally independent given the sup-port set, we decouple the processing of context samples from query evaluation using key-value (KV) caching. This allows support representations to be com-puted once and reused across query batches and enables an efficient two-stage fit-and-predict pipeline. 10 Jack Yi Wei and Narges Armanfard 
+
+5 Experiments 
+
+5.1 Setup 
+
+We evaluate ICLAD on the ADBench benchmark suite, which contains 57 real-world anomaly detection tabular datasets. These datasets cover a wide range of data characteristics and anomaly ratios, to illustrate, dimensionality ranges from 3 to up to 1,555, and anomaly ratios vary from approximately 3% to 39%. Experiments are conducted under the one-class, unsupervised, and semi-supervised settings. In the one-class setting, the training dataset is constructed by sampling 50% of the normal samples from the full dataset without replace-ment. The remaining normal samples together with all anomalous samples form the test set. In the unsupervised setting, we follow the protocol proposed by DTE [21], where the training set is obtained by bootstrapping for robustness evaluation, and the full dataset is used for testing. In the semi-supervised set-ting, datasets are partitioned into 70% training and 30% test data using stratified sampling to preserve the original anomaly ratio. Within the same training data, a fraction ra of anomalous samples is randomly selected and assigned anomaly labels, while all remaining samples remain unlabeled. We evaluate all methods using three standard anomaly detection metrics: AUC-ROC, AUC-PR, and F1. Due to space constraints, we report mainly AUC-ROC, while AUC-PR and F1 results are provided in section E of the supplemen-tary. The statistical significance of model performance are assessed by critical difference (CD) diagrams based on the Friedman test with Wilcoxon-Holm post-hoc analysis at a significance level of 0.05 [9]. All experiments are repeated with five random seeds, and results are reported as the average performance over the seeds and datasets. To maintain reasonable computation time, larger datasets are subsampled to a maximum of 100,000 samples. This is substantially larger than the 10,000 sample cap used in previous works [13, 21], allowing us to evaluate the scalability of ICLAD on larger datasets. 
+
+5.2 Baseline Methods 
+
+Classical Baselines We compare ICLAD against several widely used classical baselines, including CBLOF, ECOD, iForest, kNN, LOF, OCSVM, PCA, MCD, HBOS, and the non-parametric version of DTE, DTE-NP. 
+
+Deep Learning Baselines For deep learning models, we include Autoencoder (AE), Deep-SVDD, SLAD, ICL, GOAD, MCM, DRL, NeuTraLAD (NTL), LU-NAR, Fomo-0D, and the parametric DTE variants, DTE-C and DTE-IG. For the unsupervised learning scenario, we include LOE with the NTL backbone. 
+
+Semi-Supervised Baselines We select well known semi-supervised approaches such as DevNet, FeaWAD, DeepSAD, PreNet and GANomaly to measure how well ICLAD utilize available labels. For hyperparameters, we use the default PyOD [8] configurations where ap-plicable. Other methods follow their recommended settings. ICLAD 11 GOAD 
+
+> ECOD
+> DSVDD
+> HBOS
+> PCA
+> MCD
+> IForest
+> OCSVM
+> NeuTraL
+> CBLOF
+> LOF
+> DTE-IG
+> SLAD
+> MCM
+> DRL
+> FOMO-0D
+> AE
+> DTE-C
+> KNN
+> ICL
+> LUNAR
+> DTE-NP
+> ICLAD
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> AUC-ROC
+
+(a) One-class setting FOMO-0D 
+
+> LUNAR
+> LOF
+> DTE-NP
+> LOE
+> NeuTraL
+> GOAD
+> DRL
+> KNN
+> SLAD
+> DTE-IG
+> DSVDD
+> ICL
+> HBOS
+> PCA
+> ECOD
+> OCSVM
+> MCM
+> CBLOF
+> AE
+> DTE-C
+> IForest
+> MCD
+> ICLAD
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> AUC-ROC
+
+(b) Unsupervised setting 
+
+Fig. 4: Boxplots of AUC-ROC across 57 datasets. Boxes show the interquartile range (IQR) with medians indicated by the center line and whiskers extending to 1.5 times IQR. Models are ordered by average AUC-ROC and color-coded by family: classical (green), deep learning (blue), and ICLAD (red). 
+
+6 Results 
+
+One-class and Unsupervised Regimes Figure 4 reports the performances in the one-class and unsupervised setting. ICLAD achieves the highest average AUC-ROC among all baselines which shows strong generalization to real world datasets. In the one-class setting, ICLAD achieves decent improvement gains over prior arts with wider performance gaps in AUC-PR and F1 scores. This is further supported by the CD-diagram in Figure 5, showing that ICLAD obtains the lowest average rank. Notably, DTE-NP, a variant of kNN, performs strongly in this regime and appears in the same top-performing clique as ICLAD under the Wilcoxon–Holm post-hoc test. This is consistent with prior observations that local-density methods are highly competitive under the one-class setting [21, 41]. In the unsupervised regime, ICLAD’s performance is on par with contam-ination robust methods such as MCD and strong classical baselines including CBLOF and iForest, as illustrated in the boxplot and CD diagram. While we do 12 Jack Yi Wei and Narges Armanfard 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23            
+
+> ICLAD 6.31
+> DTE-NP 6.86
+> LUNAR 6.89
+> AE 8.63
+> KNN 8.74
+> ICL 8.96
+> DTE-C 10.09
+> DRL 10.54
+> MCM 11.16
+> LOF 11.37
+> FOMO-0D 11.61
+> CBLOF 11.79
+> OCSVM 12.03
+> SLAD 12.31
+> DTE-IG 12.90
+> NeuTraL 13.58
+> IForest 14.37
+> MCD 14.60
+> PCA 15.26
+> GOAD 16.32
+> HBOS 16.51
+> DSVDD 17.39
+> ECOD 17.82
+
+(a) One-class setting 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23 24             
+
+> AE 8.11
+> ICLAD 8.33
+> CBLOF 8.42
+> MCD 8.72
+> MCM 8.95
+> IForest 9.32
+> DTE-C 9.37
+> OCSVM 9.63
+> PCA 11.14
+> HBOS 11.60
+> ECOD 11.82
+> KNN 11.97
+> ICL 12.63
+> GOAD 13.23
+> DSVDD 13.79
+> SLAD 14.67
+> DRL 14.72
+> DTE-IG 15.07
+> DTE-NP 15.43
+> LOF 15.49
+> LOE 16.35
+> NeuTraL 16.42
+> LUNAR 16.89
+> FOMO-0D 17.93
+
+(b) Unsupervised setting 
+
+Fig. 5: Critical difference diagrams of average AUC-ROC ranks. Models are color coded by: classical (green), deep learning (blue) and ICLAD (red) not observe significant differences in performance compared to these baselines, it is important to note that strong performing methods in the one-class setting are generally less robust under this setting. For example, DTE-NP and LUNAR exhibit large performance drops due to their sensitivity to contamination in the training data. In contrast, ICLAD demonstrates greater robustness to contami-nation and is the only method that consistently ranks among the top performers across both the one-class and unsupervised settings. 
+
+Semi-supervised Regime In the semi-supervised setting, where partial su-pervision is available through labeled anomalies, substantial performance im-provements are observed across all methods, as shown in Figure 6. With 5% labeled anomalies, nearly all semi-supervised baselines outperform ICLAD in the unsupervised setting, showcasing the benefit of label information. Notably, ICLAD maintains a performance margin over all baselines in both the AUC-ROC and AUC-PR curves. Furthermore, with only 10% labeled anomalies, ICLAD achieves a 10% increase in AUC-ROC compared to its unsupervised counterpart, demonstrating that the model benefits significantly from partial supervision. 
+
+6.1 Ablation and efficiency analysis 
+
+For the ablation study, we evaluate variants of ICLAD trained with only unsuper-vised tasks, only one-class tasks, and a version using only SCM-based anomalies. ICLAD 13 1% 5% 10% 25% 50% 75% 100% 
+
+Labeled anomalies       
+
+> 70
+> 75
+> 80
+> 85
+> 90
+> 95
+> AUC-ROC (%)
+> 1% 5% 10% 25% 50% 75% 100%
+
+Labeled anomalies       
+
+> 30
+> 40
+> 50
+> 60
+> 70
+> 80
+> AUC-PR (%)
+> ICLAD DeepSAD GANomaly DevNet PReNet FEAWAD ICLAD (unsupervised)
+
+Fig. 6: Semi-supervised performance curves against ratio of labeled anomalies. Left: AUC-ROC Right: AUC-PR DSVDD    
+
+> CBLOF
+> HBOS
+> DRL
+> IForest
+> DTE-C
+> DTE-IG
+> MCM
+> AE
+> ICL
+> LOE
+> NeuTraL
+> MCD
+> PCA
+> ECOD
+> LOF
+> LUNAR
+> GOAD
+> ICLAD
+> SLAD
+> FOMO-0D
+> OCSVM
+> KNN
+> DTE-NP
+> 10 2
+> 10 1
+> 10 0
+> 10 1
+> 10 2
+> Inference Time (seconds, log scale) CBLOF
+> HBOS
+> IForest
+> PCA
+> ECOD
+> LOF
+> ICLAD
+> GOAD
+> LUNAR
+> DSVDD
+> DRL
+> AE
+> MCD
+> SLAD
+> FOMO-0D
+> MCM
+> KNN
+> DTE-NP
+> NeuTraL
+> DTE-C
+> DTE-IG
+> LOE
+> OCSVM
+> ICL
+> 10 1
+> 10 0
+> 10 1
+> 10 2
+> Total Time (seconds, log scale)
+
+Variants One-class Unsup. One-class only 84.00 68.26 Unsup. only 82.61 74.80 SCM only 83.37 74.14 ICLAD 83.97 75.17 
+
+Fig. 7: Efficiency and ablation analysis. Left Top: average inference runtime (sec-onds). Left Bottom: average total runtime (training + inference)(seconds). Run-time axes use a log scale. Right: Ablation study of ICLAD variants. Performance are measured in average AUC-ROC across the respective supervision setting. As expected, the one-class-only model performs best in the one-class setting, yet the model degrades substantially on the unsupervised benchmark as shown on the right of Figure 7. Our model has the most balanced performance out of the variants over one-class and unsupervised benchmarks. This justifies the inclusion of unsupervised tasks as well as perturbation-based anomalies in the query set. In terms of efficiency, ICLAD exhibits moderate inference time due to the quadratic complexity of self-attention. Nevertheless, when considering the total runtime (training and inference), it remains competitive and is only outper-formed by traditional baselines as shown on the left of Figure 7. All runtime measurements were conducted on a single NVIDIA H100 GPU. 14 Jack Yi Wei and Narges Armanfard 
+
+7 Conclusion 
+
+We introduced ICLAD, an in-context learning framework for anomaly detection. The emperical results show ICLAD acquires inductive bias aligned to real-world anomaly detection problems and achieves consistently competitive performance in all three supervision settings. Our findings suggest that in-context learning provides a promising direction for more general anomaly detection systems. Fu-ture works can focus on developing better synthetic task generation strategies that improves generalization especially under the case of anomaly contamination. 
+
+References 
+
+1. Akcay, S., Atapour-Abarghouei, A., Breckon, T.P.: GANomaly: Semi-supervised Anomaly Detection via Adversarial Training. In: Jawahar, C.V., Li, H., Mori, G., Schindler, K. (eds.) Computer Vision – ACCV 2018. pp. 622–637. Springer Inter-national Publishing, Cham (2019) 2. Alrawashdeh, K., Purdy, C.: Toward an Online Anomaly Intrusion Detection Sys-tem Based on Deep Learning. In: 2016 15th IEEE International Conference on Machine Learning and Applications (ICMLA). pp. 195–200 (Dec 2016) 3. Bergman, L., Hoshen, Y.: Classification-Based Anomaly Detection for General Data. In: International Conference on Learning Representations (Sep 2019) 4. Borisov, V., Leemann, T., Seßler, K., Haug, J., Pawelczyk, M., Kasneci, G.: Deep neural networks and tabular data: A survey. IEEE transactions on neural networks and learning systems 35 (6), 7499–7519 (2022) 5. Bouman, R., Bukhsh, Z., Heskes, T.: Unsupervised anomaly detection algorithms on real-world data: How many do we need? J. Mach. Learn. Res. 25 (1), 105:5199– 105:5232 (Jan 2024) 6. Breunig, M.M., Kriegel, H.P., Ng, R.T., Sander, J.: LOF: Identifying density-based local outliers. SIGMOD Rec. 29 (2), 93–104 (May 2000) 7. Chalapathy, R., Chawla, S.: Deep learning for anomaly detection: A survey. arXiv preprint arXiv:1901.03407 (2019) 8. Chen, S., Qian, Z., Siu, W., Hu, X., Li, J., Li, S., Qin, Y., Yang, T., Xiao, Z., Ye, W., Zhang, Y., Dong, Y., Zhao, Y.: PyOD 2: A Python Library for Outlier Detec-tion with LLM-powered Model Selection. In: Companion Proceedings of the ACM on Web Conference 2025. pp. 2807–2810. WWW ’25, Association for Computing Machinery, New York, NY, USA (May 2025) 9. Demšar, J.: Statistical Comparisons of Classifiers over Multiple Data Sets. J. Mach. Learn. Res. 7, 1–30 (Dec 2006) 10. Goldstein, M., Dengel, A.: Histogram-based Outlier Score (HBOS): A fast Unsu-pervised Anomaly Detection Algorithm (2012) 11. Goodge, A., Hooi, B., Ng, S.K., Ng, W.S.: LUNAR: Unifying Local Outlier Detec-tion Methods via Graph Neural Networks. Proceedings of the AAAI Conference on Artificial Intelligence 36 (6), 6737–6745 (Jun 2022) 12. Grinsztajn, L., Oyallon, E., Varoquaux, G.: Why do tree-based models still outper-form deep learning on typical tabular data? In: Proceedings of the 36th Interna-tional Conference on Neural Information Processing Systems. pp. 507–520. NIPS ’22, Curran Associates Inc., Red Hook, NY, USA (Nov 2022) ICLAD 15 13. Han, S., Hu, X., Huang, H., Jiang, M., Zhao, Y.: ADBench: Anomaly Detection Benchmark. In: Thirty-Sixth Conference on Neural Information Processing Sys-tems Datasets and Benchmarks Track (Jun 2022) 14. He, Z., Xu, X., Deng, S.: Discovering cluster-based local outliers. Pattern Recog-nition Letters 24 (9), 1641–1650 (Jun 2003) 15. Hendrycks, D., Gimpel, K.: Gaussian Error Linear Units (GELUs) (Jun 2023) 16. Hinton, G.E., Salakhutdinov, R.R.: Reducing the Dimensionality of Data with Neural Networks. Science 313 (5786), 504–507 (Jul 2006) 17. Hollmann, N., Müller, S., Eggensperger, K., Hutter, F.: TabPFN: A Transformer That Solves Small Tabular Classification Problems in a Second. In: The Eleventh International Conference on Learning Representations (Sep 2022) 18. Hollmann, N., Müller, S., Purucker, L., Krishnakumar, A., Körfer, M., Hoo, S.B., Schirrmeister, R.T., Hutter, F.: Accurate predictions on small data with a tabular foundation model. Nature 637 (8045), 319–326 (Jan 2025) 19. Li, Z., Zhao, Y., Hu, X., Botta, N., Ionescu, C., Chen, G.H.: ECOD: Unsuper-vised Outlier Detection Using Empirical Cumulative Distribution Functions. IEEE Transactions on Knowledge and Data Engineering 35 (12), 12181–12193 (Dec 2023) 20. Liu, F.T., Ting, K.M., Zhou, Z.H.: Isolation Forest. In: Proceedings of the 2008 Eighth IEEE International Conference on Data Mining. pp. 413–422. ICDM ’08, IEEE Computer Society, USA (Dec 2008) 21. Livernoche, V., Jain, V., Hezaveh, Y., Ravanbakhsh, S.: On Diffusion Modeling for Anomaly Detection. In: The Twelfth International Conference on Learning Representations (Oct 2023) 22. van der Maaten, L., Hinton, G.: Visualizing Data using t-SNE. Journal of Machine Learning Research 9(86), 2579–2605 (2008) 23. McElfresh, D., Khandagale, S., Valverde, J., C., V.P., Ramakrishnan, G., Gold-blum, M., White, C.: When do neural nets outperform boosted trees on tabular data? In: Proceedings of the 37th International Conference on Neural Informa-tion Processing Systems. pp. 76336–76369. NIPS ’23, Curran Associates Inc., Red Hook, NY, USA (Dec 2023) 24. Müller, S., Hollmann, N., Arango, S.P., Grabocka, J., Hutter, F.: Transformers Can Do Bayesian Inference. In: International Conference on Learning Representations (Oct 2021) 25. Pang, G., Shen, C., Cao, L., Hengel, A.V.D.: Deep Learning for Anomaly Detection: A Review. ACM Comput. Surv. 54 (2), 38:1–38:38 (Mar 2021) 26. Pang, G., Shen, C., Jin, H., van den Hengel, A.: Deep Weakly-supervised Anomaly Detection. In: Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining. pp. 1795–1807. KDD ’23, Association for Computing Machinery, New York, NY, USA (Aug 2023) 27. Pang, G., Shen, C., van den Hengel, A.: Deep Anomaly Detection with Deviation Networks. In: Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining. pp. 353–362. KDD ’19, Association for Computing Machinery, New York, NY, USA (Jul 2019) 28. Pedregosa, F., Varoquaux, G., Gramfort, A., Michel, V., Thirion, B., Grisel, O., Blondel, M., Prettenhofer, P., Weiss, R., Dubourg, V., Vanderplas, J., Passos, A., Cournapeau, D., Brucher, M., Perrot, M., Duchesnay, É.: Scikit-learn: Machine Learning in Python. Journal of Machine Learning Research 12 (85), 2825–2830 (2011) 29. Perez, E., Strub, F., de Vries, H., Dumoulin, V., Courville, A.: FiLM: Visual reason-ing with a general conditioning layer. In: Proceedings of the Thirty-Second AAAI 16 Jack Yi Wei and Narges Armanfard Conference on Artificial Intelligence and Thirtieth Innovative Applications of Ar-tificial Intelligence Conference and Eighth AAAI Symposium on Educational Ad-vances in Artificial Intelligence. pp. 3942–3951. AAAI’18/IAAI’18/EAAI’18, AAAI Press, New Orleans, Louisiana, USA (Feb 2018) 30. Qiu, C., Li, A., Kloft, M., Rudolph, M., Mandt, S.: Latent Outlier Exposure for Anomaly Detection with Contaminated Data. In: Proceedings of the 39th Interna-tional Conference on Machine Learning. pp. 18153–18167. PMLR (Jun 2022) 31. Qiu, C., Pfrommer, T., Kloft, M., Mandt, S., Rudolph, M.: Neural Transformation Learning for Deep Anomaly Detection Beyond Images. In: Proceedings of the 38th International Conference on Machine Learning. pp. 8703–8714. PMLR (Jul 2021) 32. Qu, J., Holzmüller, D., Varoquaux, G., Morvan, M.L.: TabICL: A Tabular Founda-tion Model for In-Context Learning on Large Data. In: Forty-Second International Conference on Machine Learning (Jun 2025) 33. Ramaswamy, S., Rastogi, R., Shim, K.: Efficient algorithms for mining outliers from large data sets. SIGMOD Rec. 29 (2), 427–438 (May 2000) 34. Ringler, N., Knittel, D., Nouari, M., Ponsart, J.C., Yakob, A., Romani, D.: Un-supervised Anomaly Detection using Vibration Signals for Milling Processes. 20th CIRP Conference on Modeling of Machining Operations in Mons 133 , 710–715 (Jan 2025) 35. Rousseeuw, P.J.: Least Median of Squares Regression. Journal of the American Statistical Association 79 (388), 871–880 (Dec 1984) 36. Ruff, L., Kauffmann, J.R., Vandermeulen, R.A., Montavon, G., Samek, W., Kloft, M., Dietterich, T.G., Müller, K.R.: A unifying review of deep and shallow anomaly detection. Proceedings of the IEEE 109 (5), 756–795 (2021) 37. Ruff, L., Vandermeulen, R., Goernitz, N., Deecke, L., Siddiqui, S.A., Binder, A., Müller, E., Kloft, M.: Deep One-Class Classification. In: Proceedings of the 35th International Conference on Machine Learning. pp. 4393–4402. PMLR (Jul 2018) 38. Ruff, L., Vandermeulen, R.A., Görnitz, N., Binder, A., Müller, E., Müller, K.R., Kloft, M.: Deep Semi-Supervised Anomaly Detection. In: International Conference on Learning Representations (Sep 2019) 39. Schölkopf, B., Williamson, R.C., Smola, A., Shawe-Taylor, J., Platt, J.: Support Vector Method for Novelty Detection. In: Advances in Neural Information Process-ing Systems. vol. 12. MIT Press (1999) 40. Shen, Y., Wen, H., Akoglu, L.: FoMo-0D: A Foundation Model for Zero-shot Tab-ular Outlier Detection. Transactions on Machine Learning Research (May 2025) 41. Shenkar, T., Wolf, L.: Anomaly Detection for Tabular Data with Internal Con-trastive Learning. In: International Conference on Learning Representations (Oct 2021) 42. Shwartz-Ziv, R., Armon, A.: Tabular data: Deep learning is not all you need. Information Fusion 81 , 84–90 (May 2022) 43. Shyu, M.L., Chen, S.C., Sarinnapakorn, K., Chang, L.: A novel anomaly detection scheme based on principal component classifier (2003) 44. Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A.N., ukasz Kaiser, Ł., Polosukhin, I.: Attention is All you Need. In: Advances in Neural In-formation Processing Systems. vol. 30. Curran Associates, Inc. (2017) 45. Xu, H., Wang, Y., Wei, J., Jian, S., Li, Y., Liu, N.: Fascinating supervisory signals and where to find them: Deep anomaly detection with scale learning. In: Proceed-ings of the 40th International Conference on Machine Learning. ICML’23, vol. 202, pp. 38655–38673. JMLR.org, Honolulu, Hawaii, USA (Jul 2023) ICLAD 17 46. Ye, H., Zhao, H., Fan, W., Zhou, M., dan Guo, D., Chang, Y.: DRL: Decomposed Representation Learning for Tabular Anomaly Detection. In: The Thirteenth In-ternational Conference on Learning Representations (Oct 2024) 47. Yin, J., Qiao, Y., Zhou, Z., Wang, X., Yang, J.: MCM: Masked Cell Modeling for Anomaly Detection in Tabular Data. In: The Twelfth International Conference on Learning Representations (Oct 2023) 48. Yousef, H., Feng, S.F., Jelinek, H.F.: Exploratory risk prediction of type II diabetes with isolation forests and novel biomarkers. Scientific Reports 14 (1), 14409 (Jun 2024) 49. Zhou, Y., Song, X., Zhang, Y., Liu, F., Zhu, C., Liu, L.: Feature Encoding With Autoencoders for Weakly Supervised Anomaly Detection. IEEE Transactions on Neural Networks and Learning Systems 33 (6), 2454–2465 (Jun 2022) 18 Jack Yi Wei and Narges Armanfard 
+
+A Additional Implementation Details 
+
+A.1 Model Architecture 
+
+We adapt the Transformer encoder architecture [44] from TabPFN [18] in our implementation of ICLAD. The transformer encoder consists of 12 layers, each with 4 attention heads, a hidden dimension of 512, and a feed-forward network with an intermediate dimension of 1024. The feed-forward networks employs the GELU activation function [15]. We adopt a post-normalization architecture, following the original Transformer implementation, but omit positional encod-ings to respect the permutation invariance of independent tabular samples. The model contains approximately 26.5 million trainable parameters. 
+
+A.2 Input Preprocessing 
+
+All features are standardized using z-score normalization and clipped to the range [-100, 100] to improve numerical stability during optimization. The ICLAD model assumes that all inputs are preprocessed in this manner. For each task, consisting of a support set and a query set, normalization is performed using the mean and standard deviation computed from the support set only. Specifically, for each feature j, we compute the mean μj and standard deviation σj over the support set, and normalize each sample’s jth dimension x as 
+
+˜xj = xj − μj
+
+σj
+
+.
+
+These statistics are then applied to both the support and query samples to pre-vent information leakage from the query set. Note that the z-score normalization is applied uniformly to all features, without distinguishing between continuous and discrete variables. This feature-type agnostic design aligns with previous anomaly detection approaches, which typically operate directly on vectorized features without specialized embeddings for categorical or ordinal variables. Fol-lowing established protocols, we embed inputs as a vector, and all features are treated uniformly by the model. Features with zero variance are left unchanged, following the behavior of standard Scikit-learn implementation [28]. The maximum number of features admissible for the ICLAD transformer, 
+
+dmax , is set to 512, corresponding to the model hidden dimension. Input samples with fewer than dmax features are zero-padded to dmax , following TabPFN. To ensure consistent input magnitudes across datasets with varying numbers of features din , we rescale each zero-padded input vector ˜x ∈ Rdmax as 
+
+x =
+
+r dmax 
+
+din 
+
+˜x. 
+
+Under the assumption that features are standardized, this scaling normalizes the expected squared ℓ2-norm of the input vectors, making it approximately invariant to din . This normalization step helps stabilize training and improves generalization across tabular datasets with varying dimensionality. ICLAD 19 
+
+A.3 Training and Optimization Details 
+
+The ICLAD model is trained for 100 epochs during the prior fitting stage using the Adam optimizer with no weight decay. Training is distributed across 4 ×
+
+NVIDIA H100 GPUs using mixed precision. Each epoch consists of 2048 training steps. At each step, every GPU processes 16 tasks, resulting in a per-step batch size of 64 across all GPUs. We employ gradient accumulation over 8 steps, resulting in an effective batch size of 512 with 256 optimization steps per epoch. A learning rate schedule with linear warm-up (3 epochs) followed by cosine annealing is used, with a maximum learning rate of 1 × 10 −4.In total, ICLAD is trained on 13 ,107 ,200 synthetic anomaly detection tasks. Training takes approximately 55 wall-clock hours per GPU, corresponding to about 220 GPU hours in total. 
+
+A.4 Key-Value Caching 
+
+We employ key-value (KV) caching to accelerate both training and inference by exploiting the asymmetric structure of in-context learning. In particular, query samples attend only to support samples, while support samples do not attend to queries. This allows the in-context learning inference to be decomposed into two stages. 
+
+Fitting stage Given a support set Xs, we compute and cache the key and value representations at each layer: 
+
+(K(ℓ) 
+
+> s
+
+, V (ℓ) 
+
+> s
+
+) = KVProj (ℓ)(Xs), ℓ = 1 , . . . , L. 
+
+Predict stage Given a query set Xq , we compute query representations and attend only to the cached support keys and values: 
+
+Attention (ℓ) = softmax Q(ℓ) 
+
+> q
+
+(K(ℓ) 
+
+> s
+
+)⊤
+
+√d
+
+!
+
+V (ℓ) 
+
+> s
+
+.
+
+Compare to using full attention with specialized masks as in TabPFN [17], this avoids recomputing support representations for each query and reduces re-dundant attention operations, leading to improved efficiency. 
+
+B Additional Details of Synthetic Prior Task Generation 
+
+In this section, we describe the construction of synthetic prior tasks used to train ICLAD. Following the prior-data fitted networks (PFN) framework, tasks are created using data-generating processes that define both the input distribution and the associated prediction objective. These processes are based on structural causal models (SCMs) and perturbation-based corruption mechanisms, each pa-rameterized by task-specific hyperparameters. 20 Jack Yi Wei and Narges Armanfard  
+
+> (a) SCM Example 1 (b) SCM Example 2
+
+Fig. 8: Two visual examples of SCM that can be sampled from the SCM prior. Gray circles represent observed variables and white circles are latent variables. 
+
+xi are selected features and y is the (continuous) target variable. 
+
+B.1 SCM Data Generation 
+
+While TabPFN considers a mixture of structural causal models (SCMs) and Bayesian neural networks (BNNs) during prior-data fitting, we adopt only the SCM prior. This choice is motivated by prior ablations showing that the SCM prior alone is sufficient to achieve strong performance across a wide range of tabular tasks, suggesting better alignment with real-world tabular data. We briefly describe the SCM generation process (see Appendix C.1 of [17] for full details). A directed acyclic graph (DAG) is first sampled to define de-pendencies among variables: 1. Sample the architecture of a multi-layer perceptron (MLP), including the number of layers ℓ ∼ p(ℓ) and hidden nodes per layer h ∼ p(h).2. Initialize network weights using normal distributions and randomly drop connections to induce sparsity, resulting in a DAG structure, Gscm .3. Define each node as an affine transformation of its parent nodes followed by a randomly sampled activation function. 4. Assign each node a noise distribution p(ϵ), sampled from a meta-distribution over noise distributions. This defines a structured causal model, where each node is defined as zi =
+
+fi(zpa( i), ϵ i). Given the sampled SCM, a tabular dataset is generated as follows: 1. Sample root variables (causes) from a mixture of Gaussian, multinomial, and Zipfian distributions. 2. Propagate samples through the DAG with additive noise, i.e., ˜x = x + ϵi,where ϵi ∼ p(ϵ) and i is the index of the node. 3. Randomly select din nodes as input features xi and one node as the contin-uous target ˆy.ICLAD 21 
+
+4. With probability 0.5 generate mixed-type datasets, where each feature is independently converted to a discrete variable with probability p ∼ U (0 , 1) .Otherwise, we generate homogeneous datasets: with probability 0.5 all fea-tures are discretized, and with probability 0.5 all features remain continu-ous. For categorical features, the number of categories is sampled as k ∼
+
+max( round (Gamma (1 , 8)) , 1) , and values are obtained mapping values to in-terval indices, following the procedure used in TabPFN. 5. Discretize the continuous target ˆy into a binary label y either by thresholding at its median or by assigning samples in the lower and upper quantiles (e.g., 25th and 75th percentiles) with probability 0.5 for each case. Finally, this procedure allows the generation of synthetic tabular datasets while also enabling sampling from two distributions p(x | y = 0) and p(x | y = 1) .This forms the basis for the generation of normal samples and SCM anomalies. 
+
+B.2 Perturbation-based Anomalies 
+
+In addition to SCM-based labels, we generate anomalies through feature-level perturbations. This approach produces anomalous samples independently of the SCM label and complements the SCM anomaly. For instance, SCM anomalies rarely represent large feature-wise deviations. These are large feature spikes are captured by the perturbation-based anomalies. 1. Generate a dataset using the SCM prior (steps 1–4 above). 2. Sample support and query sets according to the supervision regime. 3. Z-score normalize the features using statistics from the support set. 4. Apply corruption to half of the query samples labeled as anomalous: (a) Categorical corruption Sample a corruption rate λ ∼ U (0 , λ max ) where 
+
+λmax = 1 . For each categorical feature, replace its value with a uniformly sampled category with probability λ.(b) Continuous corruption For each sample, draw a sparsity rate s ∼ U (0 , 1) .For each feature j, sample a mask mj ∼ Bernoulli (s). Apply the Gaussian noise: 
+
+˜xj = xj + mj σj ϵj , ϵj ∼ N (0 , 1) ,
+
+where σj ∼ LogUniform (σmin , σ max ).
+
+B.3 Synthetic Tasks Hyperparameters 
+
+In this section, we summarize the hyperparameters in task generation. The SCM hyperparameters are listed in Tables 1 and 2, while hyperparameters for general task construction and perturbation-based anomalies are provided in Table 3. 22 Jack Yi Wei and Narges Armanfard 
+
+Table 1: Categorical Hyperparameters and configuration settings for SCMs. Each is sampled independently with uniform probability per dataset.      
+
+> Hyperparameter Choices Share node-wise noise True, False Apply blockwise dropout True, False Preserve feature order True, False Blockwise feature selection True, False Activation function Tanh, ELU, Sigmoid, Identity, Sine, Softplus, Heaviside
+
+Table 2: Continuous hyperparameter distributions used in synthetic SCM gener-ation. TNLU( μ, ˜μ, round , min) denotes log-uniform distribution over parameter 
+
+μ followed by a truncated log normal distribution with minimal values and po-tentially rounding the sampled value to the nearest integer.                                  
+
+> Hyperparameter Distribution MLP weight dropout 0.9 Beta (a, b ), where a, b ∼ U (0 .1,5.0)
+> Max μMin ˜μRound Min MLP depth TNLU 81Yes 2MLP width (hidden nodes) TNLU 180 5Yes 4Number of Causes (Nodes at layer 1) TNLU 12 1Yes 1SCM Node noise Std. TNLU 0.3 0.0001 No 0.0 SCM Weight Std. TNLU 10.0 0.01 No 0.0
+
+Table 3: Hyperparameter distributions or constants used in task generation and perturbation-based anomalies.                
+
+> Hyperparameter Distribution / Constant Dataset dimension din U(2 ,512)
+> Support set size NsU(5 ,12000)
+> Query set size Nq1024 Perturbation Noise Std. ( σj)LogUniform(0 .1,10 .0)
+> Categorical corruption rate λU(0 ,1)
+
+B.4 Pseudocode for Tasks Construction across Supervision Regimes 
+
+Algorithm 1 provides a high-level description of the task construction procedure across supervision regimes. Particularly, in line 2, the contamination ratio ρ ranges from little to no anomaly contamination in the near 0 case to the extreme case of 40% contami-nation. Line 14 to 16 shows supervision levels ranging from 0% anomalies labeled to full partial supervision where 100% of anomalies are labeled. Here, we also see that the unsupervised scenario is a special case of semi-supervised scenario where no supervision is available and one-class setting is a special case of unsu-ICLAD 23 
+
+Algorithm 1 Synthetic task construction across supervision regimes 
+
+Require: support size Ns, query size Nq , supervision regime weights π
+
+Ensure: support set (Xs, Y s) and query set (Xq , Y q )
+
+1: Sample scenario r ∼ Categorical( π), where π = ( πone-class , π unsup , π semi )
+
+2: Sample contamination ratio ρ ∼ U (0 , 0.4) 
+
+3: Generate dataset D using the SCM prior 
+
+Support set construction 
+
+4: if r = one-class then 
+
+5: Sample Ns normal samples from D
+
+6: Set Ys ← 0
+
+7: else if r = unsupervised then 
+
+8: Sample Ns samples with contamination ratio ρ
+
+9: Mark Na = round (ρN s) anomalous samples. 10: Set Ys ← − 1
+
+11: else if r = semi-supervised then 
+
+12: Sample Ns samples with contamination ratio ρ
+
+13: Mark Na = round (ρN s) anomalous samples. 14: Sample supervision ratio ρsup ∼ U (0 , 1) 
+
+15: Mark Nsup = round (ρsup Na) anomalous samples to reveal labels. 16: Set Ys = 1 for revealed anomalies and Ys = −1 otherwise 17: end if Query set construction 
+
+18: Sample Nq /2 normal samples and Nq /2 anomalous samples 19: Assign anomaly types for anomalous samples. 20: Replace half of query anomalous samples with SCM anomalies. 21: Replace the other half with perturbation-based anomalies. 
+
+Post-processing 
+
+22: Z-score normalize all samples using statistics from the support set 23: Apply perturbation-based corruption where required 24: return (Xs, Y s), (Xq , Y q )
+
+pervised setting where there is no contamination. This gradual transition from one setting to another motivates the need for a model that can adapt seamlessly to the full spectrum of supervision and contamination levels. 24 Jack Yi Wei and Narges Armanfard 
+
+C Additional Visualizations of SCM and Perturbation-based Anomalies 
+
+Fig. 9: Feature interaction and t-SNE plots of normal samples and SCM anoma-lies. 
+
+Fig. 10: Feature interaction and t-SNE plots of normal and perturbation-based anomaly samples. The orange rectangles are anomalies and the blue circles rep-resent normal samples. ICLAD 25 
+
+D Model and Synthetic Tasks Validation 
+
+We validate our models and synthetic tasks using a small development set and do not perform extensive per-dataset tuning. This design choice reflects our goal of evaluating ICLAD as a general-purpose in-context learner, rather than optimizing performance for individual datasets. 
+
+D.1 Development Datasets 
+
+We validate ICLAD on a development set consisting of 7 datasets that are not part of the ADBench test suite. This separation helps prevent meta-overfitting to the test benchmarks during development. The development set includes 5 real-world datasets from [41], namely abalone , arrhythmia , ecoli , mulcross , and 
+
+seismic . In addition, we construct two synthetic two-dimensional datasets based on the Scikit-learn moons and circles generators. 
+
+Supervision Regimes For each dataset, we construct three evaluation scenar-ios corresponding to our supervision regimes. These scenarios are designed to match the testing protocol we used for ADBench. 
+
+One-class setting Following the one-class protocols from previous works, we split the normal class into two disjoint subsets. One subset is used as the training set that contains only normal samples, while the other subset is combined with all anomaly samples to form the test set. 
+
+Unsupervised setting We construct the training set by sampling with replace-ment from the full dataset, resulting in a dataset with anomaly contamination. The test set is the full dataset. 
+
+Semi-supervised setting Starting from the unsupervised setting, we randomly label 10% of the anomalies in the training set, while the remaining samples remain unlabeled. 26 Jack Yi Wei and Narges Armanfard 
+
+E Additional Experimental Results 
+
+E.1 One-class Setting Box Plots ECOD 
+
+> HBOS
+> MCD
+> IForest
+> DSVDD
+> GOAD
+> PCA
+> CBLOF
+> LOF
+> OCSVM
+> MCM
+> NeuTraL
+> SLAD
+> DTE-C
+> DRL
+> DTE-IG
+> AE
+> KNN
+> FOMO-0D
+> ICL
+> DTE-NP
+> LUNAR
+> ICLAD
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+> AUC-PR ECOD
+> HBOS
+> MCD
+> IForest
+> DSVDD
+> GOAD
+> PCA
+> CBLOF
+> OCSVM
+> MCM
+> LOF
+> SLAD
+> NeuTraL
+> DTE-IG
+> DRL
+> DTE-C
+> AE
+> KNN
+> FOMO-0D
+> ICL
+> DTE-NP
+> LUNAR
+> ICLAD
+
+0.0 
+
+0.2 
+
+0.4 
+
+0.6 
+
+0.8 
+
+1.0 
+
+> F1
+
+Fig. 11: Boxplots for one-class setting. Boxes show the interquartile range (IQR) with medians indicated by the center line and whiskers extending to 1.5 times IQR. Models are ordered by average AUC-PR or F1 and color-coded by family: classical (green), deep learning (blue), and ICLAD (red). Figures 11 shows the boxplots for AUC-PR and F1 in the one-class setting. The overall trends for both metrics are consistent with the AUC-ROC results reported in the main paper. We highlight the noticeable improvement in F1 over the baselines methods. ICLAD 27 
+
+E.2 Unsupervised Setting Box Plots FOMO-0D 
+
+> LOF
+> LUNAR
+> LOE
+> DRL
+> DTE-IG
+> DTE-NP
+> NeuTraL
+> SLAD
+> KNN
+> ICL
+> AE
+> GOAD
+> DTE-C
+> MCM
+> ICLAD
+> DSVDD
+> HBOS
+> ECOD
+> CBLOF
+> OCSVM
+> PCA
+> IForest
+> MCD
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> AUC-PR FOMO-0D
+> LOF
+> LOE
+> LUNAR
+> DRL
+> DTE-IG
+> NeuTraL
+> DTE-NP
+> SLAD
+> ICL
+> KNN
+> AE
+> GOAD
+> MCM
+> DTE-C
+> ICLAD
+> HBOS
+> DSVDD
+> ECOD
+> CBLOF
+> MCD
+> PCA
+> OCSVM
+> IForest
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> F1
+
+Fig. 12: Boxplots for the unsupervised setting. Boxes show the interquartile range (IQR) with medians indicated by the center line and whiskers extending to 1.5 times IQR. Models are ordered by average AUC-PR or F1 and color-coded by family: classical (green), deep learning (blue), and ICLAD (red). Figure 12 suggests that the AUC-PR and F1 results for ICLAD are on par with the best performing deep learning approaches but fall short of strong clas-sical baselines. In contrast with the strong AUC-ROC results, this discrepancy suggest that contamination still degrades the model’s ability to form a sharp de-cision boundary, affecting precision in the high anomaly score region. This result shows the persistent challenge in the unsupervised regime for deep learning ap-proaches. Nevertheless, our framework partially bridges this gap by maintaining strong global ranking performance under contamination. This challenge also un-derlines the importance of supervision for deep learning approaches where even minimal labeled anomalies consistently lead to substantial improvements. 28 Jack Yi Wei and Narges Armanfard 
+
+E.3 One-class Setting Critical Difference Diagrams 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23 
+
+ICLAD 6.43 
+
+LUNAR 6.46 
+
+DTE-NP 7.74 
+
+AE 8.28 
+
+ICL 8.59 
+
+KNN 9.63 
+
+DRL 10.57 
+
+DTE-C 11.00 
+
+FOMO-0D 11.08 
+
+LOF 11.51 
+
+MCM 11.63 
+
+DTE-IG 11.73 
+
+OCSVM 11.90 
+
+CBLOF 12.05 
+
+SLAD 12.11 
+
+NeuTraL 12.47 
+
+PCA 15.18 
+
+MCD 15.23 
+
+IForest 15.65 
+
+GOAD 15.77 
+
+HBOS 16.68 
+
+DSVDD 16.81 
+
+ECOD 17.49 
+
+(a) AUC-PR Ranks 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23 
+
+ICLAD 5.85 
+
+LUNAR 7.42 
+
+DTE-NP 7.97 
+
+ICL 8.02 
+
+AE 9.46 
+
+KNN 9.61 
+
+DTE-C 10.04 
+
+DRL 10.74 
+
+FOMO-0D 11.11 
+
+SLAD 11.35 
+
+LOF 11.39 
+
+MCM 11.85 
+
+CBLOF 12.00 
+
+DTE-IG 12.03 
+
+OCSVM 12.04 
+
+NeuTraL 12.58 
+
+PCA 14.88 
+
+GOAD 15.17 
+
+IForest 15.63 
+
+MCD 16.08 
+
+HBOS 16.54 
+
+DSVDD 16.62 
+
+ECOD 17.62 
+
+(b) F1 Ranks 
+
+Fig. 13: Critical difference diagrams for the one-class setting. Figure 13 further strengthens ICLAD superior performance in the one-class regime, particularly in terms of F1. While ICLAD is statistically competitive with the top-performing method LUNAR, it achieves a lower (better) average rank and improves upon strong baselines such as kNN and DTE-NP. ICLAD 29 
+
+E.4 Unsupervised Setting Critical Difference Diagrams 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23 24 
+
+CBLOF 8.42 
+
+MCM 8.95 
+
+OCSVM 9.47 
+
+AE 9.54 
+
+MCD 9.96 
+
+IForest 9.98 
+
+ICLAD 10.30 
+
+DTE-C 10.35 
+
+PCA 10.89 
+
+KNN 11.08 
+
+HBOS 11.16 
+
+ECOD 11.46 
+
+GOAD 12.19 
+
+DSVDD 12.35 
+
+DTE-NP 13.62 
+
+ICL 14.07 
+
+LUNAR 14.33 
+
+SLAD 14.93 
+
+LOF 15.19 
+
+DTE-IG 15.42 
+
+DRL 15.60 
+
+LOE 16.35 
+
+NeuTraL 16.74 
+
+FOMO-0D 17.63 
+
+(a) AUC-PR Ranks 12345678910 11 12 13 14 15 16 17 18 19 20 21 22 23 24 
+
+CBLOF 9.96 
+
+MCM 9.98 
+
+KNN 10.07 
+
+OCSVM 10.15 
+
+ICLAD 10.26 
+
+DTE-C 10.44 
+
+AE 10.68 
+
+IForest 10.78 
+
+PCA 10.93 
+
+ECOD 11.05 
+
+GOAD 11.78 
+
+DTE-NP 11.85 
+
+DSVDD 12.19 
+
+MCD 12.29 
+
+HBOS 12.30 
+
+ICL 13.59 
+
+LUNAR 13.70 
+
+LOF 14.55 
+
+SLAD 14.56 
+
+DTE-IG 14.80 
+
+DRL 14.95 
+
+NeuTraL 15.75 
+
+LOE 16.48 
+
+FOMO-0D 16.89 
+
+(b) F1 Ranks 
+
+Fig. 14: Critical difference diagrams for the unsupervised setting. The critical difference diagram in Figure 14 shows comparable performance across all methods in terms of AUC-PR and F1, with CBLOF achieving the best overall performance. ICLAD lies within the same statistical group as the top-performing methods, indicating competitive performance. Consistent with the bar plot results, deep learning models generally exhibit a loss in precision under anomaly contamination, whereas ICLAD demonstrates comparatively stronger robustness to contamination. 30 Jack Yi Wei and Narges Armanfard 
+
+E.5 Semi-supervised Setting F1 Curves 1% 5% 10% 25% 50% 75% 100% 
+
+Labeled anomalies 
+
+> 30
+> 40
+> 50
+> 60
+> 70
+> 80
+> F1 Score (%)
+> ICLAD
+> DeepSAD
+> GANomaly
+> DevNet
+> PReNet
+> FEAWAD
+> ICLAD (unsupervised)
+
+Fig. 15: Semi-supervised performance curves measured by F1 (%) against ratio of labeled anomalies. Figure 15 show the improvements over F1 with increasing ratio of labeled anomalies provided to the semi-supervised models. As with AUC-ROC and AUC-PR, all methods except for GANomaly benefit significantly from partial super-vision. Although ICLAD’s F1 performance is generally comparable to PreNet and DevNet when 1% of anomalies are labeled, ICLAD’s performance gap with stronger baselines start to manifest when 10% of anomalies are available with the gap increasing with more labeled anomalies. This trend shows that ICLAD utilizes labeled more effectively than other semi-supervised models. ICLAD 31 
+
+E.6 Total Time vs Average AUC-ROC plots 0.675 0.700 0.725 0.750 0.775 0.800 0.825 0.850 
+
+Average AUC-ROC 
+
+10 1
+
+10 0
+
+10 1
+
+10 2
+
+> Average Fit + Predict Time (s, log scale)
+
+Better Better CBLOF 
+
+IForest 
+
+OCSVM 
+
+ECOD 
+
+KNN 
+
+LOF 
+
+PCA 
+
+MCD 
+
+HBOS 
+
+AE 
+
+DSVDD 
+
+SLAD 
+
+ICL 
+
+GOAD LUNAR 
+
+MCM 
+
+DRL 
+
+DTE-NP 
+
+DTE-C DTE-IG 
+
+NeuTraL 
+
+FOMO-0D 
+
+ICLAD 
+
+Classical 
+
+Deep 
+
+Ours 
+
+Fig. 16: Average Total Time (Fit + Predict) in seconds vs. Average AUC-ROC in one-class setting. 0.575 0.600 0.625 0.650 0.675 0.700 0.725 0.750 0.775 
+
+Average AUC-ROC 
+
+10 1
+
+10 0
+
+10 1
+
+10 2
+
+> Average Fit + Predict Time (s, log scale)
+
+Better Better CBLOF 
+
+IForest 
+
+OCSVM 
+
+ECOD 
+
+KNN 
+
+LOF 
+
+PCA 
+
+MCD 
+
+HBOS 
+
+AE 
+
+DSVDD 
+
+SLAD 
+
+ICL 
+
+GOAD 
+
+LUNAR 
+
+MCM 
+
+DRL 
+
+DTE-NP 
+
+DTE-C DTE-IG 
+
+NeuTraL 
+
+LOE 
+
+FOMO-0D 
+
+ICLAD 
+
+Classical 
+
+Deep 
+
+Ours 
+
+Fig. 17: Average Total Time (Fit + Predict) in seconds vs. Average AUC-ROC in the unsupervised setting. 32 Jack Yi Wei and Narges Armanfard 
+
+F Benchmark Dataset Details 
+
+Dataset #Samples #Feat. #Anom. %Anom. Category ALOI 49534 27 1508 3.04 Image annthyroid 7200 6 534 7.42 Healthcare backdoor 95329 196 2329 2.44 Network breastw 683 9 239 34.99 Healthcare campaign 41188 62 4640 11.27 Finance cardio 1831 21 176 9.61 Healthcare Cardiotocography 2114 21 466 22.04 Healthcare celeba 202599 39 4547 2.24 Image census 299285 500 18568 6.20 Sociology cover 286048 10 2747 0.96 Botany donors 619326 10 36710 5.93 Sociology fault 1941 27 673 34.67 Physical fraud 284807 29 492 0.17 Finance glass 214 7 9 4.21 Forensic Hepatitis 80 19 13 16.25 Healthcare http 567498 3 2211 0.39 Web InternetAds 1966 1555 368 18.72 Image Ionosphere 351 33 126 35.90 Oryctognosy landsat 6435 36 1333 20.71 Astronautics letter 1600 32 100 6.25 Image Lymphography 148 18 6 4.05 Healthcare magic.gamma 19020 10 6688 35.16 Physical mammography 11183 6 260 2.32 Healthcare mnist 7603 100 700 9.21 Image musk 3062 166 97 3.17 Chemistry optdigits 5216 64 150 2.88 Image PageBlocks 5393 10 510 9.46 Document pendigits 6870 16 156 2.27 Image Pima 768 8 268 34.90 Healthcare satellite 6435 36 2036 31.64 Astronautics satimage-2 5803 36 71 1.22 Astronautics shuttle 49097 9 3511 7.15 Astronautics skin 245057 3 50859 20.75 Image smtp 95156 3 30 0.03 Web SpamBase 4207 57 1679 39.91 Document speech 3686 400 61 1.65 Linguistics Stamps 340 9 31 9.12 Document thyroid 3772 6 93 2.47 Healthcare vertebral 240 6 30 12.50 Biology vowels 1456 12 50 3.43 Linguistics Waveform 3443 21 100 2.90 Physics 
+
+Table 4: Characteristics of classical tabular datasets from ADBench (Part 1). ICLAD 33 Dataset #Samples #Feat. #Anom. %Anom. Category WBC 223 9 10 4.48 Healthcare WDBC 367 30 10 2.72 Healthcare Wilt 4819 5 257 5.33 Botany wine 129 13 10 7.75 Chemistry WPBC 198 33 47 23.74 Healthcare yeast 1484 8 507 34.16 Biology 
+
+Table 5: Characteristics of classical tabular datasets from ADBench (Part 2). 
+
+Dataset #Samples #Feat. #Anom. %Anom. Category CIFAR10 5263 512 263 5.00 Image FashionMNIST 6315 512 315 5.00 Image MNIST-C 10000 512 500 5.00 Image MVTec-AD 5354 512 1258 23.50 Image SVHN 5208 512 260 5.00 Image Agnews 10000 768 500 5.00 NLP Amazon 10000 768 500 5.00 NLP Imdb 10000 768 500 5.00 NLP Yelp 10000 768 500 5.00 NLP 20newsgroups 11905 768 591 4.96 NLP 
+
+Table 6: Characteristics of embedding-based datasets (image and text) from ADBench.
