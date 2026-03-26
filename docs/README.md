@@ -6,87 +6,82 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-03-25
-- 运行时间：2026-03-25 20:10:37 UTC
+- 最新运行日期：2026-03-26
+- 运行时间：2026-03-26 20:21:16 UTC
 - 运行状态：成功
-- 本次总论文数：22
-- 精读区：11
+- 本次总论文数：20
+- 精读区：9
 - 速读区：11
 
 ### 今日简报（AI）
-今日深度研读 22 篇论文，聚焦 AI 在全球海洋系综预测与金融高频订单流建模中的前沿应用。
-核心突破在于利用神经隐马尔
-- 详情：[/202603/25/README](/202603/25/README)
+今日深挖 20 篇 AI 前沿成果，重点聚焦时间序列预测的架构革新与气象大模型的实战优化。
+两篇满分论文通过多分辨率 Transformer 和异方差建模，攻克了时序预测的鲁棒性与概率分布难题。
+推荐优先关注 IPatch 架构，并探索大模型在降水临近预报及异常检测解释性中的最新应用。
+- 详情：[/202603/26/README](/202603/26/README)
 
 ### 精读区论文标签
-1. [Data-driven ensemble prediction of the global ocean](/202603/25/2603.19591v1-data-driven-ensemble-prediction-of-the-global-ocean)  
+1. [IPatch: A Multi-Resolution Transformer Architecture for Robust Time-Series Forecasting](/202603/26/2603.24207v1-ipatch-a-multi-resolution-transformer-architecture-for-robust-time-series-forecasting)  
+   标签：评分：10.0/10、query:ts
+   evidence：用于多变量时间序列预测的多分辨率Transformer架构
+2. [Embracing Heteroscedasticity for Probabilistic Time Series Forecasting](/202603/26/2603.24254v1-embracing-heteroscedasticity-for-probabilistic-time-series-forecasting)  
+   标签：评分：10.0/10、query:ts
+   evidence：考虑异方差性的概率时间序列预测
+3. [Exploring Multimodal Prompts For Unsupervised Continuous Anomaly Detection](/202603/26/2603.21562v1-exploring-multimodal-prompts-for-unsupervised-continuous-anomaly-detection)  
    标签：评分：9.0/10、query:ts
-   evidence：针对全球海洋的长达365天的长期预测
-2. [Neural Hidden Markov Model with Adaptive Granularity Attention for High-Frequency Order Flow Modeling](/202603/25/2603.20456v1-neural-hidden-markov-model-with-adaptive-granularity-attention-for-high-frequency-order-flow-modeling)  
+   evidence：无监督连续异常检测框架
+4. [Cloud-Edge Collaborative Large Models for Robust Photovoltaic Power Forecasting](/202603/26/2603.22343v2-cloud-edge-collaborative-large-models-for-robust-photovoltaic-power-forecasting)  
    标签：评分：9.0/10、query:ts
-   evidence：具有多分辨率编码器的神经隐马尔可夫模型用于高频建模
-3. [Centrality-Based Pruning for Efficient Echo State Networks](/202603/25/2603.20684v1-centrality-based-pruning-for-efficient-echo-state-networks)  
+   evidence：用于光伏功率预测的云边协同大模型
+5. [Conditionally Identifiable Latent Representation for Multivariate Time Series with Structural Dynamics](/202603/26/2603.22886v1-conditionally-identifiable-latent-representation-for-multivariate-time-series-with-structural-dynamics)  
    标签：评分：9.0/10、query:ts
-   evidence：用于非线性时间序列预测的高效回声状态网络
-4. [Neural Inference Functions for Margins for Time Series Copula Models](/202603/25/2603.21075v1-neural-inference-functions-for-margins-for-time-series-copula-models)  
+   evidence：具有预测基准的多变量时间序列潜变量表示
+6. [GARP-EFM: Improving Foundation Models with Revealed Preference Structure](/202603/26/2603.23993v1-garp-efm-improving-foundation-models-with-revealed-preference-structure)  
    标签：评分：9.0/10、query:ts
-   evidence：多元时间序列 Copula 模型的神经推理框架
-5. [Noise Titration: Exact Distributional Benchmarking for Probabilistic Time Series Forecasting](/202603/25/2603.22219v1-noise-titration-exact-distributional-benchmarking-for-probabilistic-time-series-forecasting)  
+   evidence：改进用于预测的时间序列基础模型
+7. [S$^{3}$G: Stock State Space Graph for Enhanced Stock Trend Prediction](/202603/26/2603.24236v1-s3g-stock-state-space-graph-for-enhanced-stock-trend-prediction)  
    标签：评分：9.0/10、query:ts
-   evidence：概率时间序列预测的分布基准测试
-6. [Cloud-Edge Collaborative Large Models for Robust Photovoltaic Power Forecasting](/202603/25/2603.22343v1-cloud-edge-collaborative-large-models-for-robust-photovoltaic-power-forecasting)  
+   evidence：使用状态空间图进行股票趋势预测
+8. [Heatwave-Related Mortality Across Indian Cities Under Future Climate Scenarios](/202603/26/2603.24244v1-heatwave-related-mortality-across-indian-cities-under-future-climate-scenarios)  
    标签：评分：9.0/10、query:ts
-   evidence：用于鲁棒光伏功率预测的高级云边协同框架
-7. [Rethinking Multimodal Fusion for Time Series: Auxiliary Modalities Need Constrained Fusion](/202603/25/2603.22372v1-rethinking-multimodal-fusion-for-time-series-auxiliary-modalities-need-constrained-fusion)  
+   evidence：至21世纪末死亡率的长期时间序列预测
+9. [Forecasting with Guidance: Representation-Level Supervision for Time Series Forecasting](/202603/26/2603.24262v1-forecasting-with-guidance-representation-level-supervision-for-time-series-forecasting)  
    标签：评分：9.0/10、query:ts
-   evidence：具有约束集成的时序预测多模态融合
-8. [A Foundation Model for Instruction-Conditioned In-Context Time Series Tasks](/202603/25/2603.22586v1-a-foundation-model-for-instruction-conditioned-in-context-time-series-tasks)  
-   标签：评分：9.0/10、query:ts
-   evidence：用于上下文学习时间序列任务的基础模型
-9. [A Frequency-Domain Approach for Integrating Multiple Functional Time Series](/202603/25/2603.22719v1-a-frequency-domain-approach-for-integrating-multiple-functional-time-series)  
-   标签：评分：9.0/10、query:ts
-   evidence：多变量函数型时间序列的综合分析
-10. [A Comparative Study of Machine Learning Models for Hourly Forecasting of Air Temperature and Relative Humidity](/202603/25/2603.23282v1-a-comparative-study-of-machine-learning-models-for-hourly-forecasting-of-air-temperature-and-relative-humidity)  
-   标签：评分：9.0/10、query:ts
-   evidence：机器学习模型在小时预测中的对比研究
-11. [Statistical Efficiency of Single- and Multi-step Models for Forecasting and Control](/202603/25/2603.23465v1-statistical-efficiency-of-single--and-multi-step-models-for-forecasting-and-control)  
-   标签：评分：9.0/10、query:ts
-   evidence：单步与多步预测模型的统计效率分析
+   evidence：利用基础模型进行表示级监督的预测方法
 
 ### 速读区论文标签
-1. [Analysing Extreme Rainfall via a Geometric Framework](/202603/25/2603.18149v1-analysing-extreme-rainfall-via-a-geometric-framework)  
+1. [FoMo X: Modular Explainability Signals for Outlier Detection Foundation Models](/202603/26/2603.17570v1-fomo-x-modular-explainability-signals-for-outlier-detection-foundation-models)  
    标签：评分：8.0/10、query:ts
-   evidence：极端降雨预测的多变量尾部外推
-2. [On the Limits of Prediction: Forecastability Profiles and Information Decay in Time Series](/202603/25/2603.20546v1-on-the-limits-of-prediction-forecastability-profiles-and-information-decay-in-time-series)  
+   evidence：异常检测基础模型的模块化可解释性
+2. [Optimizing Multi-Agent Weather Captioning via Text Gradient Descent: A Training-Free Approach with Consensus-Aware Gradient Fusion](/202603/26/2603.21673v1-optimizing-multi-agent-weather-captioning-via-text-gradient-descent-a-training-free-approach-with-consensus-aware-gradient-fusion)  
    标签：评分：8.0/10、query:ts
-   evidence：时序预测中的信息论极限与可预测性分析
-3. [From Causal Discovery to Dynamic Causal Inference in Neural Time Series](/202603/25/2603.20980v1-from-causal-discovery-to-dynamic-causal-inference-in-neural-time-series)  
+   evidence：气象时间序列数据的可解释自然语言描述
+3. [Extending Precipitation Nowcasting Horizons via Spectral Fusion of Radar Observations and Foundation Model Priors](/202603/26/2603.21768v1-extending-precipitation-nowcasting-horizons-via-spectral-fusion-of-radar-observations-and-foundation-model-priors)  
    标签：评分：8.0/10、query:ts
-   evidence：从多变量时间序列中进行因果发现
-4. [An information criterion for detecting periodicities in functional time series](/202603/25/2603.21161v1-an-information-criterion-for-detecting-periodicities-in-functional-time-series)  
+   evidence：用于降水临近预报的频域融合框架
+4. [Extending Precipitation Nowcasting Horizons via Spectral Fusion of Radar Observations and Foundation Model Priors](/202603/26/2603.21768v2-extending-precipitation-nowcasting-horizons-via-spectral-fusion-of-radar-observations-and-foundation-model-priors)  
    标签：评分：8.0/10、query:ts
-   evidence：检测函数型时间序列中的周期性和频率
-5. [Probabilistic reconstruction of global sea surface temperature using generative diffusion models](/202603/25/2603.16272v1-probabilistic-reconstruction-of-global-sea-surface-temperature-using-generative-diffusion-models)  
+   evidence：降水临近预报的基础模型先验
+5. [The Multiverse of Time Series Machine Learning: an Archive for Multivariate Time Series Classification](/202603/26/2603.20352v1-the-multiverse-of-time-series-machine-learning-an-archive-for-multivariate-time-series-classification)  
    标签：评分：7.0/10、query:ts
-   evidence：用于概率性气候预测的生成式扩散模型
-6. [Probabilistic reconstruction of global sea surface temperature using generative diffusion models](/202603/25/2603.16272v2-probabilistic-reconstruction-of-global-sea-surface-temperature-using-generative-diffusion-models)  
+   evidence：多变量时间序列分类与机器学习存档
+6. [Watch an AI Weather Model Learn (and Unlearn) Tropical Cyclones](/202603/26/2603.20541v1-watch-an-ai-weather-model-learn-and-unlearn-tropical-cyclones)  
    标签：评分：7.0/10、query:ts
-   evidence：使用扩散模型进行概率重建和预测
-7. [RangeAD: Fast On-Model Anomaly Detection](/202603/25/2603.17795v1-rangead-fast-on-model-anomaly-detection)  
+   evidence：分析最先进的AI气象模型如何学习和预测极端事件
+7. [Time-adaptive functional Gaussian Process regression](/202603/26/2603.21144v1-time-adaptive-functional-gaussian-process-regression)  
    标签：评分：7.0/10、query:ts
-   evidence：利用主模型信息的模型内异常检测
-8. [ICLAD: In-Context Learning for Unified Tabular Anomaly Detection Across Supervision Regimes](/202603/25/2603.19497v1-iclad-in-context-learning-for-unified-tabular-anomaly-detection-across-supervision-regimes)  
+   evidence：时空场的泛函高斯过程回归
+8. [Calibeating Made Simple](/202603/26/2603.22167v1-calibeating-made-simple)  
    标签：评分：7.0/10、query:ts
-   evidence：用于统一表格异常检测的上下文学习
-9. [Cost Trade-offs in Matrix Inversion Updates for Streaming Outlier Detection](/202603/25/2603.16697v1-cost-trade-offs-in-matrix-inversion-updates-for-streaming-outlier-detection)  
+   evidence：在线外部预测结果的后处理
+9. [Scalable Learning of Multivariate Distributions via Coresets](/202603/26/2603.19792v1-scalable-learning-of-multivariate-distributions-via-coresets)  
    标签：评分：6.0/10、query:ts
-   evidence：流式离群点检测更新
-10. [Wasserstein-type Gaussian Process Regressions for Input Measurement Uncertainty](/202603/25/2603.17271v1-wasserstein-type-gaussian-process-regressions-for-input-measurement-uncertainty)  
+   evidence：多元分布的可扩展学习
+10. [Uncertainty Quantification Via the Posterior Predictive Variance](/202603/26/2603.19804v1-uncertainty-quantification-via-the-posterior-predictive-variance)  
    标签：评分：6.0/10、query:ts
-   evidence：针对输入测量不确定性的高斯过程回归
-11. [High-dimensional online learning via asynchronous decomposition: Non-divergent results, dynamic regularization, and beyond](/202603/25/2603.20696v1-high-dimensional-online-learning-via-asynchronous-decomposition-non-divergent-results-dynamic-regularization-and-beyond)  
+   evidence：预测中预测方差的不确定性量化
+11. [Learning Data-driven Surrogate and Correction Models for Satellite Observations in Numerical Weather Prediction](/202603/26/2603.22037v1-learning-data-driven-surrogate-and-correction-models-for-satellite-observations-in-numerical-weather-prediction)  
    标签：评分：6.0/10、query:ts
-   evidence：流式数据批次的高维在线学习
+   evidence：用于数值天气预报的机器学习代理模型
 
 
 <div class="dpr-home-promo-card">

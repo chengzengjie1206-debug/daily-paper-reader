@@ -1,0 +1,570 @@
+Title: FoMo X: Modular Explainability Signals for Outlier Detection Foundation Models
+
+URL Source: https://arxiv.org/pdf/2603.17570v1
+
+Published Time: Thu, 19 Mar 2026 01:06:43 GMT
+
+Number of Pages: 24
+
+Markdown Content:
+# FoMo-X: Modular Explainability Signals for Outlier Detection Foundation Models 
+
+Simon Klüttermann 1[0000 −0001 −9698 −4339] ⋆, Tim Katzke 1,2[0009 −0000 −0154 −7735] ⋆, Phuong Huong Nguyen 1[0009 −0009 −2144 −144 X],and Emmanuel Müller 1,2[0000 −0002 −5409 −6875]  
+
+> 1
+
+TU Dortmund University, Dortmund, Germany  
+
+> 2
+
+Research Center Trustworthy Data Science and Security, University Alliance Ruhr, Dortmund, Germany 
+
+Simon.Kluettermann@cs.tu-dortmund.de (corresponding author) tim.katzke@tu-dortmund.de 
+
+Abstract. Tabular foundation models, specifically Prior-Data Fitted Networks (PFNs), have revolutionized outlier detection (OD) by en-abling unsupervised zero-shot adaptation to new datasets without train-ing. However, despite their predictive power, these models typically func-tion as opaque black boxes, outputting scalar outlier scores that lack the operational context required for safety-critical decision-making. Exist-ing post-hoc explanation methods are often computationally prohibitive for real-time deployment or fail to capture the epistemic uncertainty inherent in zero-shot inference. In this work, we introduce FoMo-X, a modular framework that equips OD foundation models with intrin-sic, lightweight diagnostic capabilities. We leverage the insight that the frozen embeddings of a pretrained PFN backbone already encode rich, context-conditioned relational information. FoMo-X attaches auxiliary diagnostic heads to these embeddings, trained offline using the same gen-erative simulator prior as the backbone. This allows us to distill compu-tationally expensive properties, such as Monte Carlo dropout based epis-temic uncertainty, into a deterministic, single-pass inference. We instan-tiate FoMo-X with two novel heads: a Severity Head that discretizes de-viations into interpretable risk tiers, and an Uncertainty Head that pro-vides calibrated confidence measures. Extensive evaluation on synthetic and real-world benchmarks (ADBench) demonstrates that FoMo-X re-covers ground-truth diagnostic signals with high fidelity and negligible inference overhead. By bridging the gap between foundation model per-formance and operational explainability, FoMo-X offers a scalable path toward trustworthy, zero-shot outlier detection. 
+
+Keywords: Outlier Detection · Explainability · Tabular Foundation Models · Prior-Data Fitted Networks  
+
+> ⋆
+
+Equal contribution.  
+
+> arXiv:2603.17570v1 [cs.LG] 18 Mar 2026 2S. Klüttermann et al.
+
+## 1 Introduction 
+
+Outlier detection (OD) is a core problem in machine learning, with diverse ap-plications in safety-critical areas ranging from industrial monitoring [6,42] to cybersecurity [52,57] and healthcare [3,50]. In such deployments, practitioners rarely act on an outlier score alone: effective OD systems must also provide operationally meaningful signals that support downstream decisions such as es-calation to human review, prioritization, or follow-up investigation [24,34]. This need has motivated a broad literature on explainable outlier detec-tion [24,34,46], where common approaches include feature-centric attributions [28], example- or prototype-based rationales [33], rule-based explanations, and counterfactual explanations [61] that suggest minimal changes to render an in-stance nominal. In parallel, classical OD methods such as an Isolation Forest [35] have been augmented with model-specific explainers [25]. Recently, tabular foundation models based on prior-data fitted networks (PFNs) have introduced a new paradigm for tabular learning: instead of fitting a separate model per dataset, a transformer is pretrained under a simulator-induced task prior and adapts in-context at inference time [22,23,44]. FoMo-0D [51] applies this idea to context-conditioned outlier scoring, enabling zero-shot detection without per-dataset optimization; subsequent work further de-velops this line of OD foundation models [11]. Although these models reduce common OD burdens such as hyperparameter tuning and model selection, their interpretability remains an emerging research frontier, as they typically expose only a hard-to-interpret scalar outlier score at test time, leaving users without intrinsic diagnostics for trust calibration and triage. Computing such diagnostically valuable quantities post hoc can be costly. For instance, epistemic uncertainty via Monte Carlo dropout requires multiple stochastic forward passes, which is often impractical as an always-on layer [14]. In contrast, we argue that PFN internal representations provide the basis for more direct and computationally efficient intrinsic diagnostics and explanations. Consequently, we propose FoMo-X ( Fear Of Missing Outlier eXplanations ), a modular framework that augments PFN-style OD foundation models with lightweight, single-pass diagnostic heads . Building on the observation that PFN-based detectors such as FoMo-0D compute a rich, context-dependent embedding for each query point, FoMo-X freezes the pretrained backbone and trains auxil-iary readouts that decode operationally meaningful signals from this embedding, thereby preserving the original outlier predictions while adding almost no infer-ence overhead. Head training leverages the same simulator prior used for PFN pretraining, enabling supervision not only for outlier labels but also for addi-tional diagnostic targets that would be costly to compute online. In this paper, we instantiate FoMo-X with two diagnostics: a severity head that discretizes how strongly a sample deviates from context-defined normality, motivated by concerns that outlier scores are not necessarily severity-aligned [47] and by emerging multilevel OD benchmarks [9], and an uncertainty head, that distills an epistemic-uncertainty proxy otherwise obtained via repeated stochas-tic forward passes (MC dropout) into a single deterministic prediction [14]. FoMo-X: Modular Explainability for Outlier Foundation Models 3
+
+While these outputs are not intended as causal feature attributions or coun-terfactual recourse 3, they provide actionable explainability signals that support trust calibration and escalation decisions in safety-critical OD deployments, com-plementing feature-level explanation methods when those are available and ap-propriate [26,34]. Conceptually, FoMo-X transfers established ideas from knowl-edge/dropout distillation [8,18,21] and representation probing on frozen back-bones [1] to the context-conditioned OD foundation-model setting. Our main contributions are: (1) we propose a practical way to train outlier detection foundation models to explain themselves by introducing a head-based, modular approach, incorporating intrinsic diagnostic explainability signals with-out modifying the underlying detector, and (2) we instantiate this approach on top of FoMo-0D with an offline training protocol that relies solely on the model’s context-conditioned embedding and simulator-derived supervision under negli-gible additional inference cost. (3) We develop two diagnostic heads for severity and uncertainty prediction, and (4) we evaluate their utility on synthetic tasks and real-world tabular OD benchmarks to show the potential and limitations of future modular foundation models for OD. However, this represents only an initial step towards multi-headed explain-ability for outlier-detection foundation models; thus, we publish our trained model and the code to train additional heads at https://github.com/psorus/ FoMo-X .
+
+## 2 Related Work 
+
+2.1 Prior-Data Fitted Networks and Tabular Foundation Models 
+
+Prior-Data Fitted Networks (PFNs) [44] are a class of transformers designed to perform In-Context Learning (ICL) on tabular data. Originally popularized by TabPFN [22] for classification, these models have achieved state-of-the-art (SOTA) performance across diverse domains [23,36] and remain a focal point of theoretical and empirical research [15,17,60]. Architecturally, PFNs are trained on a vast corpus of synthetic datasets to approximate the Posterior Predictive Distribution (PPD). Unlike traditional models that learn a solution for a specific dataset, PFNs learn the algorithm for solving tasks within a model class. This paradigm has been successfully extended to regression [17] and, more recently, to outlier detection [11,51]. A significant advantage of this approach in the OD context is its reliance on purely simu-lated data during the pre-training phase, which bypasses the scarcity of labeled real-world outliers. Explainability for PFNs is an emergent research frontier [40,43] and, to our knowledge, remains largely unexplored for OD foundation models. While recent work begins to characterize what in-context tabular transformers implement and how their representations relate to classical, more interpretable model classes,   
+
+> 3Because of the way OD foundation models are currently trained, it is almost impos-sible to access feature information. See Section 6. 4S. Klüttermann et al.
+
+the scale and architectural complexity of PFNs make faithful, low-overhead ex-planations non-trivial. Traditional post-hoc methods can be computationally ex-pensive and technically challenging, and they often fail to match the simplicity of intrinsically interpretable tabular models [40,43]. We instead argue that PFNs can be extended beyond label prediction by incorporating diagnostic attributes into the simulator-based training objective, enabling the model to predict its own explanations via supervision from ground-truth logic defined with help of the synthetic data generator. 
+
+2.2 Explainable Outlier Detection 
+
+Outlier Detection (OD) is a mature field of machine learning with diverse ap-plications ranging from fraud detection [59] and finance [45] to fundamental science [41]. The primary advantage of OD lies in its ability to operate without expensive labels for rare outlier classes [19,46,49]. Traditional methods [29,35,37] typically follow a two-step paradigm: extracting patterns from normal train-ing data and subsequently validating these patterns against test samples. Re-cently, however, foundation models for OD [11,51], inspired by TabPFN [22], have emerged. These models process training and test data simultaneously to predict outlierness in a single forward pass, achieving state-of-the-art (SOTA) performance with high operational efficiency. Because OD often serves safety-critical domains where data collection is dif-ficult or costly [24], explainability is essential and has been surveyed exten-sively [34,54]. A consistent theme, especially important for our analysis, is that OD explanation quality is difficult to evaluate in the unsupervised setting be-cause explanatory “ground truth” is rarely defined, and deployed OD systems often require explanations that support triage and operational decision-making in safety-critical applications [24,34]. One direction therefore aims at intrinsic or self-interpretable detectors, either by constraining the detector class or by modifying existing algorithms to expose interpretable structure. For instance, work on making the Isolation Forest algo-rithm [35] more interpretable [25] illustrates how detector-specific mechanisms can be turned into feature-relevant rationales without treating the detector as a pure black box. Related trends appear in deep OD, where models such as explainable/robust autoencoders or prototype-based formulations seek to pro-vide interpretable intermediate artifacts (e.g., representative patterns) alongside outlier decisions [2,27,32,33,58]. While attractive, such approaches are typically tied to a specific detector family and still follow the classical per-dataset training paradigm, which does not apply to tabular foundation models [34,51]. A second direction provides post-hoc explanations for pre-trained detectors, including feature-importance approaches (e.g., Shapley-value based explanations for OD ensembles [28]) and industrial root-cause style analyses built on fea-ture relevance measures [10]. Counterfactual explanations for outliers, sometimes framed as “outlier repair”, aim to provide actionable guidance by proposing min-imal changes that turn an outlier instance into a nominal one [61]. However, post-hoc explainers often incur substantial per-instance computation (sampling, FoMo-X: Modular Explainability for Outlier Foundation Models 5
+
+optimization, repeated queries), and they typically explain the detector output rather than quantify whether the output itself is stable or reliable [24,34]. To the best of our knowledge, neither approach has been adapted for out-lier foundation models. While post-hoc methods are technically applicable, we demonstrate a computationally highly attractive alternative. By training the foundation model to learn explanations directly, our approach provides accu-rate insights in negligible additional inference time, without compromising OD performance, enabling explanations that would otherwise be computationally infeasible to obtain. 
+
+2.3 Uncertainty and Severity as Explainability Signals 
+
+Uncertainty estimation can reveal epistemic instability, thereby identifying when predictions are unreliable. In outlier detection (OD), uncertainty has there-fore been explored as an auxiliary output complementing outlier scores, e.g., in uncertainty-aware time-series OD systems [55]. For deep predictors, Monte Carlo dropout is a common operational proxy for epistemic uncertainty, but it increases test-time cost by requiring multiple stochastic forward passes [14]. FoMo-X addresses this uncertainty-aware motivation while targeting single-pass deployment by distilling a dropout-based signal into a lightweight head evaluated once per query. Severity signals, on the other hand, allow for prioritizing outliers by crit-icality rather than merely detecting their presence. Recent work argues that standard outlier scores are often not severity-aligned and introduces a multilevel OD setting to create severity-aware outlier detectors [9]. While uncertainty and severity are not feature-attribution explanations, they can provide diagnostic artifacts for trust calibration and safe decision-making. For instance, [26] recently proposed a framework to study how such cues can influence and calibrate user trust in a high-stakes domain. Analogously, for OD, diagnostic signals can guide users on when to trust a flagged outlier versus when to escalate to deeper analysis or human review, which is particularly relevant for foundation models whose internal decision-making can otherwise be very difficult to inspect [34,51]. Conceptually, FoMo-X connects distilling expensive predictive procedures into cheaper predictors with probing learned representations using lightweight readouts. Knowledge distillation compresses costly teachers into single mod-els [21], and related dropout-distillation work approximates stochastic ensem-bling with reduced test-time cost [8,18]. Probing means training small heads on frozen representations to extract targeted attributes without modifying the backbone [1]. FoMo-X adopts these ideas in the OD foundation-model setting by training modular heads on frozen PFN embeddings with simulator-derived supervision, producing uncertainty- and severity-related diagnostics that would otherwise be either expensive or impossible to compute online while preserving the detector’s original outputs [51]. 6 S. Klüttermann et al. 
+
+## 3 Preliminaries 
+
+3.1 Unsupervised Tabular Outlier Detection and PFNs 
+
+We consider tabular outlier detection (OD), where observations are feature vec-tors x ∈ Rd and the goal is to infer an outlier label y ∈ { 0, 1}, where y = 1 
+
+denotes an outlier. For the unsupervised setting, the established paradigm is to learn a dataset-specific detector by optimizing model parameters θ on a representative, predominantly normal, unlabeled training set. At inference, the trained model produces an outlier score sθ (x) ∈ R for a query x, and predicts 
+
+ˆy = I[sθ (x) > τ ] for some threshold τ . However, a central practical bottleneck is that, without labels, selecting a suitable OD model family, hyperparameters, and a threshold is difficult and often dominates the end-to-end effort. Prior-data fitted networks (PFNs) replace per-dataset training with a pre-trained predictor that is capable of in-context learning (ICL) . Given test query 
+
+x and dataset context C, a PFN can output a conditional outlier score sθ (x; C)
+
+in a single forward pass, without gradient-based optimization of θ on the specific dataset. Pretraining such a foundation model can be performed over a simulator-induced hypothesis space Φ as the data prior. Here, each hypothesis ϕ ∼ Φ is specified by latent parameters and induces a joint distribution over dataset con-texts and labeled queries. A useful abstraction is that ϕ defines (i) an inlier-generating mechanism and (ii) an outlier mechanism. Training then minimizes the expected predictive loss under Φ,
+
+θ⋆ ∈ arg min  
+
+> θ
+
+Eϕ∼Φ E(C,x,y )∼pϕ
+
+h
+
+L sθ (x; C), y i
+
+. (1) 
+
+3.2 FoMo-0D as a PFN for Zero-shot OD 
+
+FoMo-0D (Foundation Model for zero/0-shot OD) [51] is a transformer-based PFN specialized to the context-conditioned OD setting. During inference, given an inlier-only training data context Cin and a test point x ∈ Ctest , it predicts an outlier score sθ (x; Cin ) in a single forward pass (zero-shot). The pretrain-ing is performed on a hypothesis space Φ based on Gaussian mixture mod-els (GMMs), where a hypothesis ϕ ∼ Φ is specified by the dimensionality 
+
+d ∈ D, number of components m ∈ M , centers {μj }mj=1 ∈ [a, b ]d and covariances 
+
+{Σj }mj=1 (diag (Σj ) ∈ [a, b ]d) of a GMM, where the authors proposed D = [5 , 100] ,
+
+M = [1 , 5] , a = −5 and b = 5 as sensible default hyperparameters [51]. Inliers are sampled from the GMM and retained if they lie within a 90 th percentile region. Outliers are synthesized from a variance-inflated variant that shares the same mixture centers but inflates the variances in a randomly drawn subset of dimensions, retaining only points outside the inlier percentile region. Per-centile membership is determined via Mahalanobis-distance thresholding using 
+
+χ2 
+
+> d
+
+quantiles for each Gaussian mixture component. This yields labeled synthetic datasets from which Cin (inlier-only) and Ctest (mixed) are formed for labeled PFN training according to Equation 1, with L being chosen as the binary cross-entropy over a 2-logit output (inlier vs outlier). Internally, FoMo-0D encodes FoMo-X: Modular Explainability for Outlier Foundation Models 7
+
+each sample as a token via a linear embedding layer, then applies a transformer encoder that enables sample-to-sample attention between context points and query-to-context attention for the test point, followed by an MLP readout head. 
+
+## 4 FoMo-X                            
+
+> Test Query (100 dim)
+> Inlier Context Data (100 dim)
+> Normalize Linear
+> 100 →256
+> Normalize Linear
+> 100 →256
+> Transformer Encoder
+> ×4 Layers
+> Linear
+> 256 →512 GELU Linear
+> 512 →2
+> Existing Outlier Detection Head
+> Linear
+> 256 →512 GELU Linear
+> 512 →4Severity Head
+> Linear
+> 256 →512 GELU Linear
+> 512 →1Uncertainty Head
+
+Fig. 1: Architecture of FoMo-X. We now introduce FoMo-X (Fear Of Missing Outlier eXplanations), a mod-ular framework that augments a pretrained outlier PFN —in our case FoMo-0D [51]— with additional explainability signals. FoMo-X is designed as an add-on that attaches lightweight auxiliary heads to the embedding computed for each query point, yielding low-overhead, per-sample diagnostic information without changing the underlying outlier-detection predictions. Namely, while FoMo-0D outputs only an outlier prediction per query sample, it internally computes a rich, context-dependent representation that encodes how the query relates to the context-defined normality. In turn, we can decompose this output into an encoder Eθ and an outlier detection head: 
+
+z = Eθ (x; C) ∈ Rdz , sθ (x; C) = hOD  
+
+> θ0
+
+(z) ∈ [0 , 1] , (2) where z denotes the context-conditioned query embedding and hOD  
+
+> θ0
+
+maps to the outlier prediction. We refer to z as the FoMo embedding of x given context C.FoMo-X introduces a set of K auxiliary heads 
+
+h(k) 
+
+> θk
+
+: Rdz → E k, k ∈ { 1, . . . , K }, (3) which produce additional diagnostic explainability signals ˆek = h(k) 
+
+> θk
+
+(z) .
+
+A key design requirement is that FoMo-X must not alter the outlier detector’s behavior. We therefore freeze the pretrained parameters of both Eθ and hOD  
+
+> θ0
+
+and train only the auxiliary parameters {θk}Kk=1 . Since each auxiliary head reads out 
+
+z but does not feed information back into the backbone, the outlier prediction remains identical. While any lightweight readout operating on z is valid, in our instantiation, we use small MLP heads (Figure 1) that mirror the original FoMo-0D classifier head design (linear projection, nonlinearity, output layer with a hidden dimension of 512 ), so that auxiliary outputs incur negligible overhead relative to the transformer encoder. 8 S. Klüttermann et al. 
+
+Fig. 2: Example of a synthetic context dataset used to train FoMo-X .The left plot indicates whether a sample is an outlier and corresponds to the supervision used for the original FoMo-0D head, whereas the remaining plots show the ground-truth targets used to train the auxiliary heads. The middle plot shows outlier severity, and the right plot shows epistemic uncertainty under the FoMo-0D model. 
+
+4.1 Training Auxiliary Heads 
+
+FoMo-X heads are trained offline using automatically generated supervision from synthetic tasks drawn from a distribution induced by a simulator over OD tasks. Concretely, let Φ denote the simulator-induced distribution used to generate head-training contexts and queries. For each head k, we define a task- and sample-dependent target generation function 
+
+gk : ( ϕ, C, x, y ) 7 → ek ∈ E k, (4) which produces the desired diagnostic label ek for a query x given context C
+
+with the outlier ground truth y induced under hypothesis ϕ. Target generation can depend on quantities that are available in simulation (e.g., likelihood under the generating distribution) or on an offline probe that is too expensive for deployment (e.g., Monte Carlo dropout). In all cases, target computation is performed on simulated data during head training only. Each auxiliary head is trained on frozen embeddings by minimizing an ex-pected loss under the task prior: 
+
+θ⋆k ∈ arg min 
+
+> θk
+
+Eϕ∼Φ E(C,x,y )∼pϕ
+
+h
+
+Lk
+
+ h(k) 
+
+> θk
+
+(Eθ (x; C)) , g k(ϕ, C, x, y )i
+
+, (5) where Lk is a head-specific loss. Because the backbone is fixed, heads can be trained independently and added iteratively. This supports a workflow in which a deployment may start with the base detector to later be augmented with addi-tional explainability signals, without retraining FoMo-0D or previously trained FoMo-X: Modular Explainability for Outlier Foundation Models 9
+
+heads. In the remainder of this section, we instantiate FoMo-X with two heads: a severity head providing a four-level significance tiering of the outlier decision and an uncertainty head distilling dropout-based epistemic instability, see Fig-ure 1. Before formalizing them, Figure 2 provides an example for ground truth as specified by their respective target generation functions. 
+
+4.2 Instantiation I: Severity Head 
+
+FoMo-0D is trained as a binary classifier that separates normal and outlier sam-ples given context. However, under the simulator that generates training tasks, outlier labels arise from a continuous notion of normality: samples can be more 
+
+or less likely under the generating distribution. FoMo-X leverages this structure to define an interpretable severity tiering: points that are clearly either normal or abnormal should be distinguished from those closer to the decision boundary between the two. Consider a simulated hypothesis ϕ ∼ Φ with an inlier GMM specified by mixture weights {πj }mj=1 , component means {μj }mj=1 and covariances {Σj }mj=1 . In our simulator, each hypothesis additionally specifies a (latent) subset of “active” features Sϕ ⊆ { 1, . . . , d } s.t. all density-based quantities below are computed on the projected vector xSϕ . Namely, as a continuous notion of normality, we use the maximum component log-density 
+
+rϕ(x) := max  
+
+> j∈[m]
+
+log N xSϕ | μj,S ϕ , Σ j,S ϕ
+
+, (6) where larger values indicate that x lies in a higher-density region of the inlier mixture. Let y ∈ { 0, 1} denote the simulator-induced inlier/outlier label. To obtain a four-class severity target, we split each class into “sure” and “likely” outlier and normal regions using within-class medians of rϕ(x):
+
+m0 := median {rϕ(x) : y = 0 }, m1 := median {rϕ(x) : y = 1 }. (7) We then define the severity tier esev ∈ E sev with Esev = {SN , LN , LO , SO } via 
+
+gsev (ϕ, C, x, y ) = 
+
+
+
+SN if y = 0 and rϕ(x) > m 0,
+
+LN if y = 0 and rϕ(x) ≤ m0,
+
+LO if y = 1 and rϕ(x) > m 1,
+
+SO if y = 1 and rϕ(x) ≤ m1.
+
+(8) The severity head maps the FoMo-0D embedding z to logits hsev  
+
+> θsev
+
+(z) ∈ R4 and is trained via cross-entropy against the one-hot encoded target gsev (ϕ, C, x, y ):
+
+Lsev = − gsev (ϕ, C, x, y )⊤log softmax  hsev  
+
+> θsev
+
+(z) . (9) On real-world datasets, the ground-truth likelihood under the generating simulator is not available. We therefore interpret predicted severity as an intrinsic reliability tier: “sure” predictions are expected to be more stable and less error-prone than “likely” ones, conditional on the model’s own internal representation. 10 S. Klüttermann et al. 
+
+4.3 Instantiation II: Uncertainty Head 
+
+For transformer-based predictors, a commonly used operational proxy for epis-temic uncertainty is Monte Carlo dropout: repeating stochastic forward passes with dropout enabled and measuring predictive variability. While informative, this procedure increases inference cost substantially if executed online. We there-fore distill a dropout-based uncertainty estimate into a single auxiliary head evaluated in one forward pass. Let pt = sθ0 (x; C, ξ ) ∈ [0 , 1] denote the outlier probability of the frozen de-tector under a sampled dropout mask ξ (a stochastic forward pass with dropout enabled). For an integer M ≥ 2, we draw i.i.d. masks ξ1, . . . , ξ M and compute 
+
+u(x; C) := Std {pt}Mt=1 =
+
+vuut 1
+
+M − 1
+
+> M
+
+X
+
+> t=1
+
+(pt − ¯p)2, ¯p = 1
+
+M
+
+> M
+
+X
+
+> t=1
+
+pt. (10) To combat heteroscedasticity and to increase numerical stability, we use the log-uncertainty as the regression target: 
+
+gunc (ϕ, C, x ) := log  u(x; C) + ε, (11) with a small ε > 0 and eunc ∈ E unc = R. Note that gunc does not depend explicitly on ϕ beyond providing (C, x ). The uncertainty head predicts a scalar and is trained via a regression loss, namely, mean absolute error: 
+
+Lunc = hunc  
+
+> θunc
+
+(z) − gunc (ϕ, C, x ) . (12) At deployment, the uncertainty head provides a one-pass approximation to the dropout-based variability proxy, enabling uncertainty-aware prediction sta-bility assessment and diagnostics without repeated stochastic forward passes. 
+
+## 5 Experiments 
+
+We empirically assess FoMo-X along three questions: (i) fidelity under the sim-ulator prior: can auxiliary heads recover their simulator-defined targets when trained on frozen FoMo-0D embeddings? (ii) utility and transfer: do the learned diagnostics provide meaningful signals on real-world datasets, despite being trained purely on synthetic tasks? (iii) efficiency: what is the additional compu-tational overhead of producing these diagnostics at inference time? 
+
+5.1 Experimental Setup 
+
+We build on the pretrained FoMo-0D outlier detection foundation model and freeze all backbone and original OD-head parameters throughout. All auxiliary heads follow the architecture in Figure 1 (a lightweight MLP readout on the frozen query embedding), ensuring that the original outlier scores remain un-changed for any input. FoMo-X: Modular Explainability for Outlier Foundation Models 11 
+
+To train the severity and uncertainty heads, we generate synthetic OD tasks from a GMM-based simulator distribution that closely follows the FoMo-0D training prior, with minor adaptations. 4 For each synthetic task, we compute simulator-derived targets as described in Sections 4.2–4.3: a four-level severity label and a dropout-based uncertainty target. Each head is trained independently on frozen embeddings for 200 epochs. Each epoch consists of 250 batches with 8 synthetic datasets per batch, i.e., 250 ·8 = 2000 synthetic datasets per epoch and 400k datasets per head in total. This amounts to 25% of the number of datasets used during the original FoMo-0D pretraining [51]. We optimize using Adam with an initial learning rate of 0.001, decayed by 20% every 10 epochs down to a final learning rate of 1.15 · 10 −5. For the uncertainty head, we compute the Monte Carlo dropout uncertainty target using M = 10 stochastic forward passes with dropout enabled at probability p = 0 .1, and we set ε = 10 −6. Both heads use the same MLP architecture as depicted in Figure 1. To evaluate transfer beyond the simulator prior, we use the native tabular subset of ADBench [19], consisting of 47 datasets from diverse domains. We restrict to this subset as it mostly matches FoMo-0D’s tabular input regime (up to 100 features). For each dataset, FoMo-0D receives an inlier-only context Cin 
+
+and predicts outlier scores for the test points. Labels are used only for evaluation (e.g., AUROC reporting and outlier-fraction analyses). Figure 3 provides a qualitative illustration on the ADBench cardio dataset (ID 6_cardio ), chosen because it is low-dimensional enough for PCA visualiza-tion and yields a non-trivial detection quality (FoMo-0D AUROC of 0.88). The plot highlights two desirable behaviors: (i) prediction errors (red circles) tend to occur near ambiguous regions where the severity head outputs “likely” tiers and the uncertainty head assigns high uncertainty; and (ii) severity tiers provide a coarse view of the decision boundary structure (blue circle), complementing the scalar, almost binary, outlier prediction. For the severity head, we report balanced accuracy [7] on synthetic validation data (four-class classification) 5. On ADBench, no ground-truth severity exists; we therefore evaluate the utility of severity tiers as an intrinsic reliability signal through error rates conditioned on predicted tiers (Table 1) and outlier fractions per predicted tier across datasets (Figure 5). We evaluate the uncertainty head using Spearman rank correlation ρs between predicted uncertainty and the MC-                 
+
+> 4We sample the dimensionality uniformly, d∼Unif {5, . . . , 100 }, and the number of mixture components uniformly up to five, m∼Unif {1, . . . , 5}. Mixture means are drawn i.i.d. from Unif([ −5,5] d). In contrast to FoMo-0D’s diagonal-only covariance restriction, we use full (non-diagonal) positive-definite covariances by sampling ran-dom eigenbases and exponentially distributed eigenvalue scales (to cover multiple feature scales). Each synthetic dataset contains 5000 inlier and 5000 outlier samples; a random subset is used as inlier-only context and as test queries. Outliers corre-spond to low-density samples under the inlier-generating distribution (i.e., sampled from the complement of a high-density region), enabling supervision for the head targets.
+> 5We use balanced accuracy because class frequencies across severity tiers are not guaranteed to be uniform; standard accuracy yields similar trends in our setting. 12 S. Klüttermann et al.
+
+Fig. 3: FoMo-X explanations for the cardio dataset, visualized using PCA [39]. The red circles highlight prediction errors, corresponding to differences between the ground truth (center left) and the outlier detection head (left). These errors generally occur in regions of low severity (center right) and high uncertainty (right). The blue circle illustrates how severity can help interpret a complex decision boundary. dropout teacher uncertainty on the same dataset [56]. We report correlations per dataset and summarize their distribution across datasets (Figure 6). 
+
+5.2 Training Dynamics 
+
+Both heads were trained on a single Nvidia RTX Pro Blackwell GPU. Training required 12 hours for the severity head and 18 hours for the uncertainty head. Synthetic data generation was performed on an Intel Xeon w9-3495X CPU (56 physical cores). These costs are offline and incurred only once per head. Figure 4 summarizes training loss and validation quality over epochs. Be-cause the FoMo-0D backbone remains frozen, optimization is stable and con-verges rapidly, consistent with the interpretation that both diagnostic targets are already strongly encoded in the pretrained query embedding. After a single epoch, the uncertainty head already achieves a Spearman corre-lation of 97% on validation tasks, and improves to nearly 99% after full training. The severity head reaches 55% balanced accuracy after one epoch and 59% after 200 epochs. While this implies that we can train additional heads in signifi-cantly fewer epochs, we train for the full training timeline and report the results to emphasize the full potential of our approach. FoMo-X: Modular Explainability for Outlier Foundation Models 13 0 50 100 150 200   
+
+> Epoch
+> 0.30
+> 0.60
+> 0.90
+> Loss
+> Uncertainty Head
+> 97%
+> 98%
+> 99%
+> Correlation
+> 0.80
+> 0.85
+> 0.90
+> Loss
+> Severity Head
+> 54%
+> 55%
+> 56%
+> 57%
+> 58%
+> 59%
+> Balanced Accuracy Train Val Quality
+
+Fig. 4: Training progress of both proposed heads. While performance continues to improve throughout training, both heads already achieve high accuracy after only a few epochs .
+
+5.3 Results: Severity Head 
+
+On synthetic validation tasks, the severity head achieves 59% balanced accuracy (four-way classification), substantially above the 25% expected from a trivial classifier. We do not expect perfect accuracy here: the simulator defines “sure” vs. “likely” boundaries via within-class medians of a latent density score, which induces inherent ambiguity and cannot always be recovered from finite context alone. Nevertheless, the head recovers a meaningful tiering signal that can be used as an intrinsic reliability indicator. Since ADBench does not provide ground-truth severity labels, we evaluate whether the predicted severity tiers correlate with decision reliability . Table 1 reports the confusion matrix for cardio when collapsing severity tiers into nor-mal vs. outlier decisions (SN/LN vs. LO/SO). The mistake rates are sharply tier-dependent: “Surely Normal” has only 0.58% mistakes, whereas “Likely Nor-mal” has 15.15% mistakes, indicating that the model’s internal “sure”/“likely” split provides actionable reliability information. This behavior generalizes beyond a single dataset. Figure 5a shows, on 1000 synthetic test datasets, that predicted “surely” categories are substantially cleaner: Table 1: Confusion matrix of our severity predictions for the cardio dataset. The model makes fewer mistakes when it is sure of its prediction.                
+
+> Prediction True Normal True Outlier Fraction of Mistakes
+> Surely Normal 684 40.58%
+> Likely Normal 112 20 15 .15%
+> Likely Outlier 31 146 17 .51%
+> Surely Outlier 1614 .29%
+
+14 S. Klüttermann et al. Surely 
+
+> Normal
+> Likely
+> Normal
+> Likely
+> Outlier
+> Surely
+> Outlier
+> 0%
+> 20%
+> 40%
+> 60%
+> 80%
+> 100%
+> Fraction of Outliers in category  Artificial
+> Optimal
+
+(a) Fraction of outliers by severity head prediction. We generate 1000 artificial test datasets, and show the distribution of outlier fractions for each of these in a violin plot. Surely   
+
+> Normal
+> Likely
+> Normal
+> Likely
+> Outlier
+> Surely
+> Outlier
+> 0%
+> 20%
+> 40%
+> 60%
+> 80%
+> 100%
+> Fraction of Outliers in category  ADBench
+> AUROC ≥0.9
+> Optimal
+
+(b) Fraction of outliers for real-world datasets. We give the distribution for all datasets in purple, and only those datasets that are well separable by FoMo-0D in orange. 
+
+Fig. 5: Predictions of “surely” by the severity head are more reliable than predictions of “likely”. This pattern is observed for artificial test data (left) and also generalizes to real-world datasets (right). “Surely Normal” contains near-zero outliers, and “Surely Outlier” contains near-all outliers, whereas the “likely” tiers concentrate the ambiguous region. Figure 5b shows the same outlier-fraction stratification on ADBench. The separation is clearest on datasets where FoMo-0D is already accurate (AUROC ≥ 0.9), which is expected: when the base detector is weak or labels are noisy, any internal tiering signal becomes less distinct. Finally, Figure 3 qualitatively illustrates the same phenomenon: FoMo-0D’s misclassifications concentrate in regions where the severity head assigns “likely” tiers (decision-boundary proximity), support-ing the interpretation of severity as an intrinsic reliability tier rather than as an externally validated ground-truth notion of harm. 
+
+5.4 Results: Uncertainty Head 
+
+On synthetic validation tasks, the uncertainty head achieves near-perfect rank agreement with the MC-dropout teacher (up to ≈99% Spearman correlation; Figure 4). To evaluate transfer, we compute the same MC-dropout uncertainty on ADBench and compare it to the head prediction. Figure 6a shows an exam-ple scatter plot on cardio with ρs = 97% , indicating that the head preserves uncertainty rankings closely over several orders of magnitude and validating the predicted uncertainties in Figure 3. Across all ADBench datasets, Figure 6b shows that most datasets achieve ρs ≥ 90% , demonstrating that the distilled single-pass head generalizes well despite being trained purely on synthetic tasks. Operationally, this provides a practical approximation to dropout-based epis-temic instability without repeated stochastic forward passes. FoMo-X: Modular Explainability for Outlier Foundation Models 15 10 −6 10 −5 10 −4 10 −3 10 −2
+
+> True Uncertainty
+> 10 −6
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> Predicted Uncertainty
+> Cardio Data ( ρs=97%)
+
+(a) Example for cardio dataset. 50% 60% 70% 80% 90% 100%  
+
+> Spearman Correlation ( ρs) per Dataset
+> 0
+> 10
+> 20
+> 30
+> Number of Datasets
+> Artificial
+> ADBench
+
+(b) Overview across datasets. 
+
+Fig. 6: The uncertainty head generalizes to real-world data: We show an illus-trative comparison for the cardio dataset in blue, along with a histogram of Spearman correlations across artificial test data (green) and ADBench datasets (purple). For nearly all datasets, the correlation between ground-truth and predicted uncertainty exceeds 90%. 5.5 Runtime 
+
+Foundation models are often limited by the computational resources required to run them. Thus, we also evaluate the computational overhead incurred by FoMo-X at inference. Following the FoMo-0D evaluation protocol [51], we report average prediction time per test sample on ADBench by predicting each dataset 100 times. Figure 7 shows that our implementation requires less than 2 μs per sample for FoMo-0D inference, and adding both auxiliary heads increases this time by only 36 ns (< 2% overhead; < 1% per head). To contextualize these costs, we also compare to reported runtimes of highly optimized fast OD baselines from [30], which still remain more than 27 × slower per sample in this setting. Absolute runtimes depend on implementation details (e.g., batching and hardware). 6 However, importantly, the marginal cost of computing the auxiliary diagnostics is negligible relative to the base model and especially to competitors, leaving room for additional heads in future work. 
+
+## 6 Discussion and Limitations 
+
+FoMo-X demonstrates that a frozen OD PFN can be augmented with lightweight diagnostic heads that are evaluated in a single forward pass, adding operationally useful signals (severity tiers and uncertainty) at negligible runtime overhead. At the same time, our ablations indicate that the feasibility and transferability of additional heads depends strongly on the type of target being predicted and  
+
+> 6
+
+The original FoMo-0D paper reports 7.7 ms per sample; our substantially lower absolute time is largely due to batch-wise GPU inference in our implementation. We therefore emphasize relative overheads (FoMo vs. FoMo-X) as the main takeaway for deployment. 16 S. Klüttermann et al. FoMo FoMo-X SEAN IForest 
+
+> 1.90
+> 1.95
+> 2.00
+> 2.05
+> 2.10
+> 2.15
+> Time per Sample ( μs )
+> +1.9%
+> ×26
+> SEAN
+> ×60
+> IF
+> FoMo
+> FoMo-X
+> SEAN/26
+> IForest/60
+> 54 μs  128 μs
+> +2602.6%
+
+Fig. 7: FoMo-X explanations incur negligible computational overhead :Combined training and inference time of FoMo and FoMo-X (zero-shot) com-pared with that of the fastest algorithms from Reference [30] on ADBench. The additional cost of explanation generation is below 1% per head and remains neg-ligible relative to even the fastest competitors. on the degree of mismatch between the simulator-induced training prior and real-world datasets. In the following, we (i) discuss observed failure modes when training further heads beyond severity and uncertainty, and (ii) summarize key limitations of current OD foundation model priors and architectures that con-strain generalization and the space of explainability signals that can be exposed. 
+
+6.1 Training Further Heads 
+
+Beyond severity and uncertainty, FoMo-X can, in principle, support many addi-tional diagnostic readouts trained on frozen embeddings. However, our experi-ments show that validating their performance is a crucial step, as generalization is not guaranteed. We trained an auxiliary head to estimate the outlier-detection performance of the frozen FoMo-0D model on a dataset, using AUROC [20] as the target. Such a head would be attractive for deployment because it could serve as a dataset-level reliability indicator and could enable automated model selection and pipeline decisions (e.g., selecting preprocessing steps) without ground-truth labels. In our implementation, the head produces a per-sample prediction that is aggregated (averaged) into a single dataset-level estimate. As shown in Figure 8a, this approach yields strong correlation on synthetic test tasks ( ρs ≈ 0.95 ), but the correlation collapses on ADBench ( ρs ≈ − 0.01 ), indicating a near-complete failure to transfer. This failure suggests that the head exploits regularities that are specific to the simulator prior and do not hold for real datasets. From our experiments, it seems that heads predicting dataset-level (global) properties are substantially harder to train than heads predicting per-sample 
+
+(local) diagnostics. FoMo-X: Modular Explainability for Outlier Foundation Models 17 50% 60% 70% 80% 90% 100% 
+
+> True AUROC
+> 50%
+> 60%
+> 70%
+> 80%
+> 90%
+> 100%
+> Predicted AUROC
+> Artificial (Corr: 95%)
+> ADBench (Corr: -1%)
+
+(a) Predicting the outlier detection per-formance. On artificial data, this head is very effective, whereas for real world data, the head only predicts noise. −10.0 −7.5 −5.0 −2.5 0.0 2.5 5.0 7.5 
+
+> Max F1-Score Threshold
+> −4
+> −2
+> 0
+> 2
+> 4
+> 6
+> Predicted Threshold
+> Artificial (Corr: 95%)
+> 1.31 ·ADBench+4.80
+> (Corr: 60%)
+
+(b) Maximum F1-score thresholds pre-dicted compared to ground truth. Here shown with a linear correction ( y →
+
+1.31 · y + 4 .8), not affecting correlation. 
+
+Fig. 8: Some heads show weaker generalization from artificial to real-world data: One head is trained to predict the outlier detection performance of FoMo-0D (left), and another to predict the F1-optimal threshold [16] (right). Results on artificial data are shown in green and on real-world data in purple. This can also be seen in a related experiment that targeted a practically im-portant, but similarly global, quantity: the decision threshold that maximizes the F1-score [16]. While AUROC/AUPRC [5,20] summarize ranking quality, opera-tional OD deployments often require a binary decision (“outlier” vs. “normal”), making threshold selection a central bottleneck in unsupervised settings. On synthetic tasks, the threshold head achieves a high correlation with the oracle (label-derived) optimum ( ρs ≈ 0.95 ), but transfer again degrades on ADBench (ρs ≈ 0.60 ). Interestingly, we observe a systematic bias in absolute threshold values (Figure 8b), with predicted thresholds that are usually too small. Such systematic deviation is consistent with a calibration mismatch between the simulator prior and real-world datasets: even if the head preserves some relative ordering of “easier” vs. “harder” threshold regimes, the absolute operat-ing point shifts. While Figure 8b illustrates that a simple linear transformation can partially correct the bias, such a correction requires at least some labeled real-world data and should therefore be viewed as a post-hoc calibration step. In a realistic evaluation protocol, any calibration must be learned on held-out datasets (or a separate calibration split) to avoid test-set leakage. Even with an unrealistically strong correction and possible test-set leakage, we still observe a significant drop in performance. 
+
+6.2 Modular Outlier Foundation Models 
+
+The transfer gaps observed for global heads point to broader limitations of cur-rent outlier foundation models and motivate directions for improvement. FoMo-0D and our heads are trained under a simulator-induced prior based on GMM-style generative mechanisms. While this prior enables large-scale train-ing without labeled real outliers, it is necessarily a simplification of real-world 18 S. Klüttermann et al. Artificial Training Data ADBench 
+
+Fig. 9: t-SNE embedding of ADBench (purple) and artificial datasets (cyan) used for foundation model training based on dataset-level meta-features [53]. We visu-alize the distribution of the training datasets using kernel density estimation [48], with the density region chosen to cover all training datasets. A large number of real-world datasets are well separated from the training data used to train our foundation model heads. 
+
+tabular OD. The fact that we observe a systematic bias in the threshold head’s predictions suggests a difference between artificial and real-world datasets. Fig-ure 9 supports this mismatch qualitatively: a t-SNE embedding of dataset-level meta-features [53] shows that many ADBench datasets occupy regions that are weakly covered by the synthetic training distribution. This separation is consis-tent with the systematic deviations we observe when transferring certain heads, and suggests that the simulator prior does not span important real-world dataset characteristics (e.g., complex dependencies, heavy tails, heterogeneous feature scales, and non-Gaussian structures; see Figure 3). A direct consequence is that improving the data prior is central for scaling FoMo-X beyond the heads studied here. Promising options include richer, more expressive priors [11,17] and continued pretraining or adaptation using real-world tabular data [15], analogous to recent advances in supervised tabular foundation models. For outlier detection, the current limitation is the relatively small num-ber of curated real OD datasets for such adaptation (e.g., the 47 native-tabular ADBench datasets). Nevertheless, our training curves indicate that some heads saturate after few epochs (Figure 4), which suggests that head-level adaptation on real data may be feasible even with moderate dataset collections, provided that the evaluation is performed on previously unseen datasets. A second limitation concerns the architecture of current outlier foundation models. FoMo-0D embeds all raw features through a single dense projection into a fixed token space, which enforces a hard feature limit (100 features) and mixes feature identity early, making it difficult to attach auxiliary heads that produce faithful, column-aligned feature-level explanations (e.g., feature impor-tances [10], shapley values [28], or counterfactuals [61]). While post-hoc feature attribution methods remain applicable in principle, a more direct integration of feature-centric explainability would likely require architectures that preserve col-FoMo-X: Modular Explainability for Outlier Foundation Models 19 
+
+umn identity explicitly (e.g., column-wise tokenization or structured per-feature embeddings) and scale beyond the current truncation regime. Existing work mit-igates the 100-feature limit via ensembling across feature subsets [11,31], but this increases runtime, complicates explanation methods and further mixes feature identities, thus also preventing feature-level explanations. Besides explainability, the modular setup of FoMo-X can also be used to add further heads for diverse use cases. This is particularly relevant because OD covers heterogeneous problem settings and operational goals [47], which are not always well served by a single out-of-the-box detector [38]. Thus, outlier pre-dictions specialized for outliers, anomalies, or novelties [13], for global or local deviations [4], or with different requirements like fairness [12] now only require artificial training datasets to add specialized heads, provided that suitable sim-ulator targets and robust real-world evaluation protocols can be defined. Overall, FoMo-X suggests a practical direction for trustworthy OD foun-dation models: expose a selection of single-pass diagnostic heads that decode uncertainty- and triage-relevant signals from frozen representations. Our results also highlight that head design must explicitly consider transfer under prior shift. Heads that estimate global dataset properties appear particularly frag-ile, whereas local diagnostics aligned with the backbone’s inference mechanism transfer more reliably. Closing the simulator–real gap, and adopting feature-structured architectures, are therefore key steps toward broader and more faith-ful explainability in modular outlier foundation models. 
+
+## 7 Conclusion 
+
+In this paper, we introduce FoMo-X , a modular framework that augments foun-dation models for outlier detection with lightweight, self-explanatory diagnostic signals. Building on FoMo-0D [51], FoMo-X attaches auxiliary heads to frozen PFN embeddings, enabling the model to explain its own predictions without altering detection behavior, while requiring negligible computational cost. We instantiated FoMo-X with two heads that capture epistemic uncertainty and outlier severity, and are trained solely on simulator-derived supervision. Ex-periments show that both signals generalize meaningfully to real-world bench-marks: the uncertainty head accurately approximates expensive dropout-based variability in a single pass, while the severity head provides a reliable tiering that correlates with prediction errors and decision boundary ambiguity. Our analysis also reveals limitations. Not all explainability targets transfer equally well from synthetic priors to real data—heads predicting global, dataset-level properties exhibit strong prior dependence and limited generalization. Overall, FoMo-X demonstrates that foundation models for outlier detection can be trained to explain themselves efficiently, without affecting inherent pre-dictions. We view this as a first step towards richer, modular outlier foundation models. 20 S. Klüttermann et al. 
+
+Acknowledgments. This research was in part funded by the Research Center Trust-worthy Data Science and Security ( https://rc-trust.ai ), one of the Research Al-liance centres within the University Alliance Ruhr ( https://uaruhr.de ). The research was further supported with computing time provided on LiDO3 (https://lido.itmc.tu-dortmund.de/lido3/ ). 
+
+Declaration on Generative AI. During the preparation of this article, we used the ChatGPT 5.2 model from OpenAI to preselect additional related work and for language edits, aiming to enhance readability. After using this service, the authors reviewed and edited the content as needed and take full responsibility for the manuscript’s content. 
+
+Disclosure of Interests. The authors have no competing interests to declare that are relevant to the content of this article. 
+
+## References 
+
+1. Alain, G., Bengio, Y.: Understanding intermediate layers using linear classifier probes (2016). https://doi.org/10.48550/arXiv.1610.01644 
+
+2. Angiulli, F., Fassetti, F., Ferragina, L., Nisticò, S.: Explaining anomalies through semi-supervised autoencoders. Array p. 100537 (2025) 3. Archana N., Soudamini Pawar Somvanshi: Periodicity detection of outlier se-quences using constraint based pattern tree with MAD (2015). https://doi.org/ 10.48550/arXiv.1507.01685 
+
+4. Bouman, R., Bukhsh, Z., Heskes, T.: Unsupervised anomaly detection algorithms on real-world data: How many do we need? Journal of Machine Learning Research 
+
+25 (105), 1–34 (2024) 5. Boyd, K., Eng, K.H., Page, C.D.: Area under the precision-recall curve: Point estimates and confidence intervals. In: Machine Learning and Knowledge Discovery in Databases. Lecture Notes in Computer Science, vol. 8190, pp. 451–466. Springer (2013). https://doi.org/10.1007/978-3-642-40994-3_29 
+
+6. Brito, L.C., Susto, G.A., Brito, J.N., Duarte, M.A.V.: Fault detection of bearing: An unsupervised machine learning approach exploiting feature extraction and di-mensionality reduction. Informatics 8(4), 85 (2021). https://doi.org/10.3390/ informatics8040085 
+
+7. Brodersen, K.H., Ong, C.S., Stephan, K.E., Buhmann, J.M.: The balanced ac-curacy and its posterior distribution. In: Proceedings of the 20th International Conference on Pattern Recognition (ICPR 2010). pp. 3121–3124 (2010). https: //doi.org/10.1109/ICPR.2010.764 
+
+8. Bulò, S.R., Porzi, L., Kontschieder, P.: Dropout distillation. In: Proceedings of the 33rd International Conference on Machine Learning. Proceedings of Machine Learning Research, vol. 48, pp. 99–107. PMLR (2016) 9. Cao, T., Trinh, M.H., Deng, A., Nguyen, Q.N., Duong, K., Cheung, N.M., Hooi, B.: Are anomaly scores telling the whole story? a benchmark for multilevel anomaly detection (2024). https://doi.org/10.48550/arXiv.2411.14515 
+
+10. Carletti, M., Masiero, C., Beghi, A., Susto, G.A.: Explainable machine learning in industry 4.0: Evaluating feature importance in anomaly detection to enable root cause analysis. In: 2019 IEEE International Conference on Systems, Man and Cybernetics (SMC). pp. 21–26 (2019). https://doi.org/10.1109/SMC.2019. 8913901 FoMo-X: Modular Explainability for Outlier Foundation Models 21 11. Ding, X., Wen, H., Klüttermann, S., Akoglu, L.: From zero to hero: Advancing zero-shot foundation models for tabular outlier detection (2026). https://doi. org/10.48550/arXiv.2602.03018 
+
+12. Ding, X., Xi, R., Akoglu, L.: Outlier detection bias busted: Understanding sources of algorithmic bias through data-centric factors. In: Proceedings of the Seventh AAAI/ACM Conference on AI, Ethics, and Society. pp. 384–395. AAAI Press (2024). https://doi.org/10.1609/aies.v7i1.31644 
+
+13. Foorthuis, R.: On the nature and types of anomalies: A review of deviations in data. International Journal of Data Science and Analytics 12 , 297–331 (2021). 
+
+https://doi.org/10.1007/s41060-021-00265-1 
+
+14. Gal, Y., Ghahramani, Z.: Dropout as a bayesian approximation: Representing model uncertainty in deep learning. In: Proceedings of the 33rd International Con-ference on Machine Learning. Proceedings of Machine Learning Research, vol. 48, pp. 1050–1059. PMLR (2016) 15. Garg, A., Ali, M., Hollmann, N., Purucker, L., Müller, S., Hutter, F.: Real-TabPFN: Improving tabular foundation models via continued pre-training with real-world data (2025). https://doi.org/10.48550/arXiv.2507.03971 
+
+16. Goutte, C., Gaussier, E.: A probabilistic interpretation of precision, recall and F-score, with implication for evaluation. In: Advances in Information Retrieval. Lecture Notes in Computer Science, vol. 3408, pp. 345–359. Springer (2005). https: //doi.org/10.1007/978-3-540-31865-1_25 
+
+17. Grinsztajn, L., Flöge, K., Key, O., Birkel, F., Jund, P., Roof, B., Jäger, B., Safaric, D., Alessi, S., Hayler, A., Manium, M., Yu, R., Jablonski, F., Hoo, S.B., Garg, A., Robertson, J., Bühler, M., Moroshan, V., Purucker, L., Cornu, C., Wehrhahn, L.C., Bonetto, A., Schölkopf, B., Gambhir, S., Hollmann, N., Hutter, F.: TabPFN-2.5: Advancing the state of the art in tabular foundation models (2025). https: //doi.org/10.48550/arXiv.2511.08667 
+
+18. Gurau, C., Bewley, A., Posner, I.: Dropout distillation for efficiently estimating model confidence (2018). https://doi.org/10.48550/arXiv.1809.10562 
+
+19. Han, S., Hu, X., Huang, H., Jiang, M., Zhao, Y.: ADBench: Anomaly detection benchmark. In: Advances in Neural Information Processing Systems. vol. 35, pp. 32142–32159 (2022) 20. Hanley, J.A., McNeil, B.J.: The meaning and use of the area under a receiver operating characteristic (ROC) curve. Radiology 143 (1), 29–36 (1982). https: //doi.org/10.1148/radiology.143.1.7063747 
+
+21. Hinton, G., Vinyals, O., Dean, J.: Distilling the knowledge in a neural network (2015). https://doi.org/10.48550/arXiv.1503.02531 
+
+22. Hollmann, N., Müller, S., Eggensperger, K., Hutter, F.: TabPFN: A transformer that solves small tabular classification problems in a second. In: The Eleventh International Conference on Learning Representations (2023) 23. Hollmann, N., Müller, S., Purucker, L., Krishnakumar, A., Körfer, M., Hoo, S.B., Schirrmeister, R.T., Hutter, F.: Accurate predictions on small data with a tab-ular foundation model. Nature 637 , 319–326 (2025). https://doi.org/10.1038/ s41586-024-08328-6 
+
+24. Huang, Z., Wu, Y.: A survey on explainable anomaly detection for industrial in-ternet of things. In: 2022 IEEE Conference on Dependable and Secure Computing (DSC). pp. 1–9 (2022). https://doi.org/10.1109/DSC54232.2022.9888874 
+
+25. Kartha, N.S., Gautrais, C., Vercruyssen, V.: Why are you weird? infusing inter-pretability in Isolation Forest for anomaly detection. In: Proceedings of the Ex-plainable Agency in AI Workshop (AAAI 2021). pp. 51–57 (2021) 22 S. Klüttermann et al. 26. Katzke, T., Yalçıner, M., Corazza, J., Ventura, A., Bündert, T.M., Müller, E.: Skin-Splain: An XAI framework for trust calibration in skin lesion analysis. In: Joint Proceedings of the xAI 2025 Late-Breaking Work, Demos and Doctoral Consor-tium. CEUR Workshop Proceedings, vol. 4017, pp. 305–312. CEUR-WS (2025) 27. Kieu, T., Yang, B., Guo, C., Jensen, C.S., Zhao, Y., Huang, F., Zheng, K.: Robust and explainable autoencoders for unsupervised time series outlier detection. In: 2022 IEEE 38th International Conference on Data Engineering (ICDE). pp. 3038– 3050 (2022). https://doi.org/10.1109/ICDE53745.2022.00273 
+
+28. Klüttermann, S., Balestra, C., Müller, E.: On the efficient explanation of out-lier detection ensembles through shapley values. In: Advances in Knowledge Dis-covery and Data Mining. pp. 43–55. Springer (2024). https://doi.org/10.1007/ 978-981-97-2259-4_4 
+
+29. Klüttermann, S., Katzke, T., Müller, E.: Unsupervised surrogate anomaly detec-tion. In: Joint European Conference on Machine Learning and Knowledge Discov-ery in Databases. pp. 71–88. Springer (2025) 30. Klüttermann, S., Peka, V., Doebler, P., Müller, E.: Towards highly efficient anomaly detection for predictive maintenance. In: 2024 International Confer-ence on Machine Learning and Applications (ICMLA). pp. 1691–1696 (2024). 
+
+https://doi.org/10.1109/ICMLA61862.2024.00261 
+
+31. Lazarevic, A., Kumar, V.: Feature bagging for outlier detection. In: Proceedings of the Eleventh ACM SIGKDD International Conference on Knowledge Discovery in Data Mining. pp. 157–166 (2005). https://doi.org/10.1145/1081870.1081891 
+
+32. Li, B., Jentsch, C., Müller, E.: Prototypes as explanation for time series anomaly detection (2023). https://doi.org/10.48550/arXiv.2307.01601 
+
+33. Li, Y., Chen, W., Chen, B., Wang, D., Tian, L., Zhou, M.: Prototype-oriented unsupervised anomaly detection for multivariate time series. In: Proceedings of the 40th International Conference on Machine Learning. Proceedings of Machine Learning Research, vol. 202, pp. 19407–19424. PMLR (2023) 34. Li, Z., Zhu, Y., van Leeuwen, M.: A survey on explainable anomaly detection. ACM Transactions on Knowledge Discovery from Data 18 (1), 23:1–23:54 (2024). 
+
+https://doi.org/10.1145/3609333 
+
+35. Liu, F.T., Ting, K.M., Zhou, Z.H.: Isolation Forest. In: 2008 Eighth IEEE Inter-national Conference on Data Mining. pp. 413–422 (2008). https://doi.org/10. 1109/ICDM.2008.17 
+
+36. Liu, S., Ye, H.J.: TabPFN unleashed: A scalable and effective solution to tabular classification problems. In: Proceedings of the 42nd International Conference on Machine Learning. Proceedings of Machine Learning Research, vol. 267, pp. 40043– 40068. PMLR (2025) 37. Livernoche, V., Jain, V., Hezaveh, Y., Ravanbakhsh, S.: On diffusion modeling for anomaly detection. In: The Twelfth International Conference on Learning Repre-sentations (2024) 38. Lochner, M., Bassett, B.A.: Astronomaly: Personalised active anomaly detection in astronomical data. Astronomy and Computing 36 , 100481 (2021). https://doi. org/10.1016/j.ascom.2021.100481 
+
+39. Maćkiewicz, A., Ratajczak, W.: Principal components analysis (PCA). Computers & Geosciences 19 (3), 303–342 (1993). https://doi.org/10.1016/0098-3004(93) 90090-R 
+
+40. McCarter, C.: What exactly has TabPFN learned to do? (2025). https://doi. org/10.48550/arXiv.2502.08978 FoMo-X: Modular Explainability for Outlier Foundation Models 23 41. Mikuni, V., Nachman, B., Shih, D.: Online-compatible unsupervised nonresonant anomaly detection. Physical Review D 105 (5), 055006 (2022). https://doi.org/ 10.1103/PhysRevD.105.055006 
+
+42. Miljković, D.: Fault detection methods: A literature survey. In: Proceedings of the 34th International Convention MIPRO. pp. 750–755 (2011) 43. Mueller, A., Siems, J., Nori, H., Salinas, D., Zela, A., Caruana, R., Hutter, F.: GAMformer: Bridging tabular foundation models and interpretable machine learn-ing (2024). https://doi.org/10.48550/arXiv.2410.04560 
+
+44. Müller, S., Hollmann, N., Arango, S.P., Grabocka, J., Hutter, F.: Transformers can do bayesian inference. In: The Tenth International Conference on Learning Representations (2022) 45. Nakano, M., Takahashi, A., Takahashi, S.: A return prediction-based investment with particle filtering and anomaly detection. CARF F-Series CARF-F-391, Center for Advanced Research in Finance, The University of Tokyo (2016) 46. Olteanu, M., Rossi, F., Yger, F.: Meta-survey on outlier and anomaly detection. Neurocomputing 555 , 126634 (2023). https://doi.org/10.1016/j.neucom.2023. 126634 
+
+47. Röchner, P., Klüttermann, S., Rothlauf, F., Schlör, D.: We need to rethink bench-marking in anomaly detection (2025). https://doi.org/10.48550/arXiv.2507. 15584 
+
+48. Rosenblatt, M.: Remarks on some nonparametric estimates of a density function. The Annals of Mathematical Statistics 27 (3), 832–837 (1956). https://doi.org/ 10.1214/aoms/1177728190 
+
+49. Ruff, L., Kauffmann, J.R., Vandermeulen, R.A., Montavon, G., Samek, W., Kloft, M., Dietterich, T.G., Müller, K.R.: A unifying review of deep and shallow anomaly detection. Proceedings of the IEEE 109 (5), 756–795 (2021). https://doi.org/10. 1109/JPROC.2021.3052449 
+
+50. Šabić, E., Keeley, D., Henderson, B., Nannemann, S.: Healthcare and anomaly detection: Using machine learning to predict anomalies in heart rate data. AI & Society 36 (1), 149–158 (2021). https://doi.org/10.1007/s00146-020-00985-1 
+
+51. Shen, Y., Wen, H., Akoglu, L.: FoMo-0D: A foundation model for zero-shot tabular outlier detection. Transactions on Machine Learning Research (2025), https:// openreview.net/forum?id=XCQzwpR9jE 
+
+52. Singh, S.K., Roy, P.K.: Detecting malicious DNS over HTTPS traffic using ma-chine learning. In: 2020 International Conference on Innovation and Intelligence for Informatics, Computing and Technologies (3ICT). pp. 1–6 (2020). https: //doi.org/10.1109/3ICT51146.2020.9312004 
+
+53. Vanschoren, J.: Meta-learning. In: Automated Machine Learning, pp. 35–61. Springer (2019). https://doi.org/10.1007/978-3-030-05318-5_2 
+
+54. Wang, Y., Guo, D., Li, S., Camps, O., Fu, Y.: Unveiling the unseen: A compre-hensive survey on explainable anomaly detection in images and videos (2023). 
+
+https://doi.org/10.48550/arXiv.2302.06670 
+
+55. Wiessner, P., Bezirganyan, G., Sellami, S., Chbeir, R., Bungartz, H.J.: Uncertainty-aware time series anomaly detection. Future Internet 16 (11), 403 (2024). https: //doi.org/10.3390/fi16110403 
+
+56. de Winter, J.C.F., Gosling, S.D., Potter, J.: Comparing the pearson and spear-man correlation coefficients across distributions and sample sizes: A tutorial us-ing simulations and empirical data. Psychological Methods 21 (3), 273–290 (2016). 
+
+https://doi.org/10.1037/met0000079 24 S. Klüttermann et al. 57. Xu, W., Jang-Jaccard, J., Liu, T., Sabrina, F., Kwak, J.: Improved bidirectional GAN-based approach for network intrusion detection using one-class classifier. Computers 11 (6), 85 (2022). https://doi.org/10.3390/computers11060085 
+
+58. Zavrtanik, V., Kristan, M., Skocaj, D.: Draem - a discriminatively trained re-construction embedding for surface anomaly detection. In: Proceedings of the IEEE/CVF International Conference on Computer Vision (ICCV). pp. 8330–8339 (2021) 59. Zhang, M., Alvarez, R.M., Levin, I.: Election forensics: Using machine learning and synthetic data for possible election anomaly detection. PLoS ONE 14 (10), e0223950 (2019). https://doi.org/10.1371/journal.pone.0223950 
+
+60. Zhang, Q., Tan, Y.S., Tian, Q., Li, P.: TabPFN: One model to rule them all? (2025). https://doi.org/10.48550/arXiv.2505.20003 
+
+61. Zhou, P., Tong, Q., Chen, S., Zhang, Y., Wu, X.: EACE: Explain anomaly via counterfactual explanations. Pattern Recognition 164 , 111532 (2025). https:// doi.org/10.1016/j.patcog.2025.111532
