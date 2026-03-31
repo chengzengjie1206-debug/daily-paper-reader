@@ -1,0 +1,1501 @@
+Title: Computationally lightweight classifiers with frequentist bounds on predictions
+
+URL Source: https://arxiv.org/pdf/2603.22128v1
+
+Published Time: Tue, 24 Mar 2026 02:35:00 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+# Computationally lightweight classifiers with frequentist bounds on predictions 
+
+Shreeram Murali Cristian R. Rojas Dominik Baumann 
+
+Cyber-physical Systems Group Aalto University Decision and Control Systems KTH Royal Institute of Technology Cyber-physical Systems Group Aalto University 
+
+# Abstract 
+
+While both classical and neural network clas-sifiers can achieve high accuracy, they fall short on offering uncertainty bounds on their predictions, making them unfit for safety-critical applications. Existing kernel-based classifiers that provide such bounds scale with O(n∼3) in time, making them com-putationally intractable for large datasets. To address this, we propose a novel, com-putationally efficient classification algorithm based on the Nadaraya-Watson estimator, for whose estimates we derive frequentist uncer-tainty intervals. We evaluate our classifier on synthetically generated data and on elec-trocardiographic heartbeat signals from the MIT-BIH Arrhythmia database. We show that the method achieves competitive ac-curacy >96% at O(n) and O(log n) opera-tions, while providing actionable uncertainty bounds. These bounds can, e.g., aid in flagging low-confidence predictions, making them suitable for real-time settings with re-source constraints, such as diagnostic moni-toring or implantable devices. 
+
+# 1 INTRODUCTION 
+
+Supervised classification is the basis for various cat-egorization and instance-counting problems. Several classes of methods exist that combine high accuracy and computational efficiency. Approaches in classical machine learning, such as Logistic Regression or Sup-port Vector Machines (SVMs) (Shalev-Shwartz and Ben-David, 2014; Sch¨ olkopf and Smola, 2001), offer 
+
+Proceedings of the 29 th International Conference on Arti-ficial Intelligence and Statistics (AISTATS) 2026, Tangier, Morocco. PMLR: Volume 300. Copyright 2026 by the au-thor(s). 
+
+high accuracy with low computational cost. Neverthe-less, deep learning methods are the de facto state-of-the-art for high accuracy; however, these models are often ‘black boxes’, providing point predictions with-out an explainable confidence measure (Longo et al., 2024). To be adopted in data-abundant and safety-critical applications, classifiers must jointly address (i) accuracy, (ii) computational efficiency, and (iii) relia-bility. In classical machine learning, most methods lack reli-able uncertainty quantification, preventing their adop-tion in high-stakes environments. Some classifiers, for example, SVMs, draw boundaries through data to de-lineate classes (Shalev-Shwartz and Ben-David, 2014; Sch¨ olkopf and Smola, 2001). However, this is insuffi-cient for uncertainty quantification; for instance, the classifier might be highly uncertain about a predic-tion near a boundary. Soft classifiers assign proba-bilities to each class (Shalev-Shwartz and Ben-David, 2014; Rasmussen and Williams, 2008; Baumann and Sch¨ on, 2024). Although the latter conveys more in-formation about certainty, the probabilities cannot be interpreted as true confidence levels sua sponte as they are often poorly calibrated (e.g., a model can be highly inaccurate while reporting high confidence). To address this, various uncertainty quantification tech-niques such as bootstrapping or deep ensembles have been employed, which train multiple models to esti-mate predictive variance (Hall, 1988; Gal and Ghahra-mani, 2016). While useful, these methods are often heuristic, computationally expensive, and typically do not provide formal guarantees on the prediction error. For a more theoretically motivated approach to uncer-tainty quantification, Bayesian non-parametric meth-ods, most notably Gaussian Process (GP) classifica-tion, are used (Rasmussen and Williams, 2008). GPs provide a full posterior distribution over the class prob-abilities; however, exact GP inference is intractable in the classification setting, and even the approxi-mate methods scale as O(n3) with the number of data points. Furthermore, there are other disadvantages as-
+
+> arXiv:2603.22128v1 [cs.LG] 23 Mar 2026 Computationally lightweight classifiers with frequentist bounds on predictions
+
+sociated with a Bayesian framework beyond computa-tional intractability; namely, a Bayesian model reflects its updated beliefs over a prior rather than a repeat-able frequentist error interval. To address the latter, Baumann and Sch¨ on (2024) de-rive frequentist uncertainty intervals using conditional kernel mean embeddings in a classification task. These embeddings are, however, computationally similar to GPs in that they are inefficient due to the need for ma-trix inversion; thus, the classifier from Baumann and Sch¨ on (2024) comes at the same cost as GP regression. 
+
+Contributions. To address the joint challenge of computational efficiency and rigorous frequentist un-certainty intervals, we propose a classifier that uses the Nadaraya-Watson (NW) estimator (Nadaraya, 1964; Watson, 1964). The NW estimator is a kernel density estimator whose typical use case is regression. In this paper, we reformulate the estimator as a classifier. We then derive frequentist bounds on its prediction errors and provide computationally lightweight implementa-tions that further enhance its superior linear complex-ity. Our main contributions are: 
+
+• A non-parametric classification algorithm based on the Nadaraya-Watson estimator that scales lin-early, O(n), with the size of the training set. 
+
+• The derivation of frequentist uncertainty bounds on the estimated class probabilities, valid for both overlapping data distributions and well-separated distributions. 
+
+• Computationally efficient variations on the naive implementation to improve from linear to sublin-ear and logarithmic computational complexity. 
+
+• Validation on both synthetic and real-world medi-cal data, demonstrating that our method achieves competitive accuracy while providing actionable uncertainty bounds at a fraction of the computa-tional cost of competing methods. 
+
+# 2 PROBLEM SETTING 
+
+We define the underlying probability space as (Ω, F, P) with random variables Y : Ω → Y and labels 
+
+C : Ω → C that take values in Y and C respectively. Here, Ω is the sample-space, F is a sigma-algebra on 
+
+Ω, and P is a measure that assigns probabilities to events in F.In this work, we estimate pc(y) := P(C = c | Y = y), the probability of observations y ∈ Y ⊆ Rd belonging to class c ∈ C ∈ N. We also derive high probability uncertainty bounds on the estimate of pc. That is, for each class c and a user-defined probability of at least 1 − δ, we show that the error between the true proba-bility pc and its estimate ˆ pc is bounded as a function of y, δ, and sample size n, as 
+
+|pc(y) − ˆpc(y)| ≤ ϵc(y, δ, n ). (1) Since the nature of the true probability function pc(y)is not known, we introduce assumptions about the underlying data distribution from which observations 
+
+y have been sampled. These assumptions cover two cases: one where the underlying data distribution is overlapping, and the other where it is separable. Here, we note that only one of the following two assumptions about the distribution must hold. 
+
+Overlapping distributions. For overlapping dis-tributions, we assume the underlying probability func-tion is Lipschitz continuous. This assumption cap-tures scenarios wherein different classes may share sim-ilar characteristics yet remain distinguishable through smooth transitions in the probability space. 
+
+Assumption 1. The true probability function pc(y) is Lipschitz continuous with a known Lipschitz constant 
+
+L < ∞. That is, for each c ∈ C , and any two samples 
+
+y and y′,
+
+|pc(y) − pc(y′)| ≤ L∥y − y′∥. (2) In this paper, we use ∥·∥ to denote the L2 norm. Thus, 
+
+∥y −y′∥ represents the Euclidean distance between the two samples y and y′.
+
+Remark 1. Assuming knowledge of the Lipschitz con-stant a priori is common in the control and safe learn-ing literature (Magureanu et al., 2014; Brunke et al., 2022). It can generally be approximated from data, to which end the majority of existing approaches use the classical estimator from Strongin (1973): 
+
+ˆL := r max 
+
+> i̸=j
+
+|f (xi) − f (xj )|∥xi − xj ∥ , (3) 
+
+where r ∈ R is a multiplicative factor, (xi, f (xi)) is a data sample, and f is the unknown function to be estimated. In our experiments, we use an approach similar to (3) 
+
+(see Appendix D) to approximate a Lipschitz constant. Nevertheless, various approaches have been built on Strongin (1973); for instance, Wood and Zhang (1996) fit an approximate distribution to the Lipschitz esti-mate in the one-dimensional case, and Sergeyev (1995) uses this approach to the multi-dimensional case by us-ing space-filling curves to solve a global optimization problem. Further, Novara et al. (2013) and Calliess et al. (2020) extend this estimator to handle bounded Shreeram Murali, Cristian R. Rojas, Dominik Baumann 
+
+observational noise, while Huang et al. (2023) provide finite-sample guarantees on the estimate with stronger assumptions on the target function. Yet, the common theme in these approaches is to in-voke a regularity assumption on the underlying un-known function. This is what we do through Assump-tion 1. 
+
+Separable distributions. For separable distribu-tions, we assume that samples from different classes are well-separated in the feature space, with a known minimum distance between them. 
+
+Assumption 2. Samples in Ω are separable with a known margin γ. That is, for any two samples (y, c )
+
+and (y′, c ′) drawn from D, where c̸ = c′,
+
+∥y − y′∥ ≥ γ, (4) 
+
+with probability 1. 
+
+In other words, the distribution D has a margin γ if the distance between points with differing labels is at least γ.
+
+Nature of measurements. Next, we require an assumption about the nature of sampling from our dataset. 
+
+Assumption 3. Samples (yi, c i) are independently drawn from the same distribution D.
+
+This independent and identical distribution (i.i.d.) as-sumption is often invoked in the literature to provide theoretical guarantees (Rao and Protopopescu, 1996). In our case, we introduce this assumption to derive data-dependent bounds on the sampling error. 
+
+# 3 CLASSIFIER 
+
+In this section, we first formulate the NW estimator as a classifier in Section 3.1, derive bounds on the esti-mate in Section 3.2, and propose improvements to an already efficient naive implementation in Section 3.3. 
+
+3.1 Nadaraya-Watson classifier 
+
+From the standard form of the Nadaraya-Watson es-timator (Nadaraya, 1964; Watson, 1964), we replace the real-valued observation with the indicator function 
+
+1ci := 1{ci = c}, a one-hot vectorized representation of the class label ci. In doing so, we reformulate the Nadaraya-Watson estimator to estimate the probabil-ities pc(y) as ˆpc(y) = 1
+
+κn(y)
+
+> n
+
+X
+
+> i=1
+
+Kλ(y, y i)1ci , (5) where 
+
+κn(y) := 
+
+> n
+
+X
+
+> i=1
+
+Kλ(y, y i),Kλ(y, y i) := 1
+
+ck
+
+K
+
+ ∥y − yi∥
+
+λ
+
+
+
+. (6) Here, K(·) is the kernel function that conveys the de-gree of similarity between a query sample y and train-ing sample yi, λ is the user-defined bandwidth parame-ter, ck is a normalization constant, and 1ci := 1{ci = c}
+
+is the one-hot vectorized representation of the class la-bel ci. We use pc(y) to denote the vector of assigned class probabilities across all classes, and pc(y) to de-scribe the scalar probability for a single class c.
+
+Assumption 4. The kernel K : Rd → R is non-negative and bounded such that for any v ∈ Rd and some ck < ∞, 0 ≤ K(v) ≤ ck, and K(v) = 0 for all 
+
+∥v∥ > 1.
+
+Since the kernel function is user-defined, we can sat-isfy this assumption by explicitly selecting a suitable kernel or formulating one in line with this assump-tion. For instance, many popular kernels, such as the boxcar or the Epanechnikov kernel, already meet this assumption; for those that do not, such as the Gaus-sian (Radial Basis Function; RBF) kernel, the outputs for ∥v∥ > 1 can be explicitly truncated. Furthermore, in Appendix A.3 we relax Assumption 4 to include non-bounded kernels in exchange for a new assumption on bounded inputs to extend the validity of our bounds to kernels with infinite support. The computational time of the NW estimator scales linearly with a naive implementation, but as we show in Section 3.3, this can be improved to sublinear com-putational complexity with some preprocessing. 
+
+3.2 Deriving bounds on the estimates 
+
+We provide theoretical worst-case bounds on the esti-mate produced in (5) by splitting the error into two sources: the uncertainty that is inherent in not obtain-ing samples of the true probability function pc(y) but only discrete labels, and the sampling error that arises when estimating a function from a finite number of samples. We refer to the former as the classifier’s bias 
+
+and the latter as its sampling error .In this section, we derive bounds on the error between the true probability function pc(y) and its estimate ˆpc(y) as depicted in (1). We start by deriving the estimator’s bias corresponding to the two cases in As-sumptions 1 and 2. To this end, we introduce a virtual estimate ¯ pc(y), a quantity that could hypothetically be determined if we Computationally lightweight classifiers with frequentist bounds on predictions 
+
+had true probability measurements instead of discrete labels. With this, we split (1) into two terms, one corresponding to the estimator’s bias and the other to its statistical error in sampling: 
+
+|pc(y) − ˆpc(y)| ≤ | pc(y) − ¯pc(y)|
+
+| {z }
+
+> bias
+
++ |¯pc(y) − ˆpc(y)|
+
+| {z }
+
+> sampling error
+
+.
+
+(7) We prove that these two terms are individually bounded. Then, by the triangle inequality, the term on the left side of (7) would also be bounded. 
+
+3.2.1 Bias 
+
+We first analyse the bias term under the two scenarios mentioned in Section 2: when the underlying proba-bility function is Lipschitz continuous, and when the data distributions are separable. 
+
+Lemma 1. Under Assumptions 1 and 4, we have, for all n ≥ 0 and y ∈ Y ,
+
+|pc(y) − ¯pc(y)| ≤ Lλ, (8) 
+
+where L is the known Lipschitz constant from (2) and 
+
+λ is the user-defined kernel bandwidth from (6) .
+
+The proofs of Lemma 1 and further technical results are collected in Appendix A and B. This lemma shows that for overlapping distributions, the bias of our es-timator is bounded by the product of the Lipschitz constant and the kernel bandwidth. Intuitively, this means that the bias increases linearly with both the rate of change of the probability function and the size of the local neighbourhood we consider for estimation. 
+
+Lemma 2. Under Assumptions 2 and 4, we have for almost every y ∈ Y |pc(y) − ¯pc(y)| ≤ λγ , (9) 
+
+where λ is the user-defined kernel bandwidth parameter as depicted in (6) and γ, in accordance with Assump-tion 2, is the known margin of the distribution D.
+
+For separable distributions, (9) demonstrates that the bias is bounded by the ratio of the kernel bandwidth to the margin between classes. This suggests that larger margins between classes allow for larger kernel band-widths while maintaining the same bias bound. Additionally, this result can be extended to positive-definite kernels with infinite support. To do this, we trade the compactness of the kernel in Assumption 4 for an assumption on bounded input space. 
+
+Assumption 5. There exists a finite diameter Φ such that for any sample yi and input y ∈ Y ,
+
+∥y − yi∥ ≤ Φ. (10) This assumption lets us bound the bias of the classifier with an extra term that represents the kernel-weighted sum of the number of samples outside a chosen band-width λ∗.
+
+Lemma 3. Under Assumptions 1, 2, 4 with the change that K(v) ≥ 0 for all ∥v∥ > 1, and 5 we have for almost every y ∈ Y |pc(y) − ¯pc(y)| ≤ βλ ∗ + βΦεt, (11) 
+
+where 
+
+εt := X
+
+> i∈I far
+
+Kλ(y, y i)
+
+κn(y) ∥y − yi∥
+
+is a term that represents the weighted sum correspond-ing to the samples in the tail of the kernel’s span (in-dices Ifar , where ∥y − yi∥ > λ ∗), Φ is the input space diameter from Assumption 5, and β = L or 1/γ de-pending on whether we assume an overlapping (see As-sumption 1) or a separable (see Assumption 2) distri-bution on D.
+
+We prove this Lemma in Appendix Section A.3. How-ever, since this is a more conservative bound, we use the bounds from Lemmas 1 and 2 in our experiments (Section 4). Since there is greater freedom in choosing a kernel than in choosing data, we consider Lemma 3 as a theoretically valid extension applicable to a few limited datasets. 
+
+3.2.2 Sampling error 
+
+Having bounded the bias term, we now analyse the sampling error, which captures the uncertainty due to finite sample estimation. 
+
+Lemma 4. Under Assumptions 3 and 4, we have, for all n ≥ 0, with probability at least 1 − δ,
+
+|¯pc(y) − ˆpc(y)| ≤ 2σ αn(y, δ )
+
+κn(y) , (12) 
+
+where 
+
+αn(y, n ) = 
+
+q
+
+κn(y) log( δ−1p1 + κn(y)) ,
+
+if κn(y) > 1,
+
+r
+
+log 
+
+√2/δ 
+
+
+
+,
+
+if 0 < κ n(y) ≤ 1.
+
+(13) This lemma provides a probabilistic bound on the sam-pling error that depends on the local density of samples through κn(y). The bound becomes tighter in regions with more samples (larger κn(y)), reflecting the intu-ition that predictions are more reliable in data-dense regions. The two cases in the definition of αn handle differently the scenarios of sparse and dense sampling. Shreeram Murali, Cristian R. Rojas, Dominik Baumann 
+
+3.2.3 Combined bounds 
+
+Correspondingly, we now formulate overall bounds on the prediction error by gathering the bounds from (8), (9), and (13). 
+
+Corollary 1. Under the same assumptions as Lemma 4 and either Lemma 1 or Lemma 2, we have, with a probability of at least 1 − δ,
+
+|pc(y) − ˆpc(y)| ≤ βλ + 2 σ αn(y, δ )
+
+κn(y) , (14) 
+
+where αn(y, δ ) is the data-dependent term from (13) 
+
+and β = L or 1/γ based on the nature of the data’s underlying probability distribution. Proof. This follows from applying the triangle inequal-ity and collecting the bias term from either Lemma 1 or 2, and the sampling error from Lemma 4. 
+
+3.3 Computational efficiency improvements 
+
+The naive implementation of the proposed classifier scales with O(n), which is a significant improvement over the closest competing alternative by Baumann and Sch¨ on (2024), which scales with O(n3). Never-theless, we can further improve its efficiency by taking inspiration from k-nearest neighbour-based methods (Nnyaba et al., 2024) and implement a localized vari-ant. To this end, we employ k-d trees to facilitate the lookup of k-nearest neighbours. Building a k-d tree takes O(n log n) time, and querying scales with 
+
+O(k+log n). Thus, for small k, we have approximately logarithmic scaling behaviour, while for increasing k,the outputs and the performance of the localized clas-sifier approach that of the regular implementation. As an alternative, we implement a hash table variant of the proposed classifier in (5) that performs lookup with O(log n) complexity. We refer to this implemen-tation in successive text as the dyadic classifier. The construction of the hash table scales with O(n). How-ever, this approach suffers from two crucial limitations. First, it does not allow for the efficient computation of bounds. This is because κn(y) is a query-dependent value: it is the sum of weights calculated from the distances between a new query sample and the train-ing samples. Range trees and hash tables are data structures built solely on training data; they cannot perform distance-based calculations relative to a new query sample y. Second, this approach suffers from the curse of dimensionality. For a user-defined resolution parameter m, the number of dyadic cells scales with increasing feature dimension d in the order of 2 md
+
+.We compare the theoretical time complexities of the proposed classifier, its variants, and baseline methods Table 1: Time complexity of different NWC implemen-tations compared with CMEs and Logistic Regression. Preprocessing Querying 
+
+Regular – O(n)
+
+Dyadic O(n) O(log n)
+
+Localized O(n log n) O(k + log n)
+
+CME – O(n3)
+
+LR O(nd ) O(d)Logistic Regression (Shalev-Shwartz and Ben-David, 2014) and CMEs (Baumann and Sch¨ on, 2024) in Ta-ble 1. 
+
+Remark 2. Rao and Protopopescu (1996) also present a variant of the NW estimator, improving from the naive O(n) to a faster O((log n)d) implementation us-ing range trees. With this data structure, the method enables the computation of the number of points within an arbitrary hyper-rectangle. However, this presents a misalignment with the objectives of classification; the estimation of any point within a cube is a pre-calculated aggregate of the training data that fell into said cube. Thus, the prediction problem is not one of searching in an arbitrary range; it is one of a direct lookup operation. These operations are better handled using hash tables. 
+
+Remark 3. Since K(v) := 0 for v ≥ 1 (Assumption 4), we can interpret the regular classifier as a local estima-tor whose locality is defined by the bandwidth parame-ter. The localized implementation is thus an alterna-tive framing of the regular classifier, wherein we look up the k-nearest neighbours and compute their weights rather than iterating through the entire dataset to com-pute kernel-weights for samples within the bandwidth. 
+
+# 4 EXPERIMENTS 
+
+We implement and evaluate our proposed classifier and its variants against baseline methods in two settings: synthetically generated data to validate our theoret-ical assumptions, and a real-world electrocardiogram (ECG) dataset to demonstrate its practical utility in a safety-critical application. Additionally, we compare the methods on the MNIST dataset in Appendix E.3. The code is available in the supplementary material. 
+
+Synthetic data. We create two datasets, one Lips-chitz continuous, and another separated by a margin. For the former, we define the true underlying probabil-ity function pc(y) using a logistic function with a direct relationship to L (see Appendix C). We sample points from the probability function such that it matches As-sumption 1. For the latter, We generate class centres spaced by a margin greater than γ and sample points Computationally lightweight classifiers with frequentist bounds on predictions 
+
+from a small cluster surrounding the centre. Figure 1 shows the two datasets used in our results. °7.5 °5.0 °2.5  
+
+> y1
+> °10
+> °5
+> 0
+> 5
+> 10
+> y2 Class 0
+> Class 1
+> °10 010
+> y1
+> °10
+> °5
+> 0
+> 5
+> 10
+> y2
+> Class 0
+> Class 1
+
+Figure 1: The two synthetic datasets used for evaluat-ing the classifier. One dataset with overlapping classes, adhering to Assumption 1 (left), and one with classes separated by a known margin, in accordance with As-sumption 2 (right). 
+
+Electrocardiographic data. We use the MIT-BIH Arrhythmia database, a widely-used benchmark in cardiology research (Moody and Mark, 2001). The dataset contains approximately 110 000 annotated heartbeats from 48 half-hour recordings. Each heart-beat sample is represented by a 187-dimensional vec-tor, which we truncated to contain the first 100 fea-tures to retain the most informative part of the QRS complex. We followed data preprocessing steps iden-tical to those in prior work (e.g., Nnyaba et al. (2024)). The dataset was split into 87 554 training and 21 892 testing samples. Heartbeats are categorized into five classes 1 as: Normal (N), Supraventricular ectopic (S), Ventricular ectopic (V), Fusion (F), and Unclas-sifiable (Q). The dataset exhibits a significant class imbalance, which reflects real-world clinical scenarios. 
+
+4.1 Results 
+
+For the synthetic overlapping dataset, we set L = 0 .15, and for the separable dataset, we set the margin as an equivalent γ = 6 .67. For the regular and localized 
+
+NWC variants, we use the Epanechnikov kernel, de-fined as 
+
+K(v) = 
+
+(
+
+1 − v2, if ∥v∥ ≤ 1,
+
+0, otherwise, (15) with bandwidth λ = 0 .2. In Appendix Section F we provide an ablation study to find the best kernel and 
+
+λ that maximizes our classifier’s accuracy and bounds. The results in Figure 2 depict the performance of the 
+
+> 1defined by the Association for the Advancement of Medical Instrumentation (AAMI) EC57 standard
+
+proposed and baseline methods. Here, we see that CMEs’ computational costs were prohibitively expen-sive; we run the classifier only up to a maximum of 10 000 samples. The top row of figures shows the su-perior computational efficiency of the regular , localized ,and dyadic variants over CMEs. From the second row of Figure 2, we see the uncertainty intervals tightening significantly with increasing n. Additionally, for accu-racy, we observe that the computational efficiency of the proposed classifiers does not come at the cost of requiring larger training sets. Next, we summarize results from electrocardiographic data. On the MIT-BIH dataset, we set the Lipschitz constant to L = 0 .05 and the kernel bandwidth to 
+
+λ = 0 .75 (see Appendix Section D) with the Epanech-nikov kernel. Figure 3 shows the performance of the 
+
+regular and localized classifier on this dataset, with illustrative examples of predictions, bounds, and the assigned class probabilities. When trained on the full dataset of over 87 554 samples, our regular classifier achieves an accuracy of 96 .2%, while the localized one had an even higher accuracy of 97 .8%. This compari-son, along with precision-recall scores and runtimes, is shown in Table 2 in a detailed evaluation of the clas-sifiers with varying training set sizes. While CMEs provide tighter bounds at smaller set sizes, their cubic complexity makes them intractable for the full dataset. The proposed classifier, even with a naive implemen-tation, was over 500 times faster to evaluate on the entire 87 554 sample strong dataset than CMEs were on just 10 000 samples. Crucially, the uncertainty bounds provided by the proposed classifiers are actionable. As seen in Fig-ure 3(c), incorrect predictions are typically associated with lower confidence (a lower probability estimate ˆ pc)or higher uncertainty. Correspondingly, in Figure 3(e) we show the cumulative recall curve; for instance, we observe that flagging the top 10% of the most uncer-tain predictions captures roughly 40% of the classifiers’ incorrect predictions. This allows for a system where uncertain predictions can be automatically flagged for manual review by a clinician, a critical feature for de-ployment in healthcare. The localized NWC emerges as the most accurate and computationally efficient method, while the regular NWC provides stronger the-oretical bounds. Both variants significantly outper-form the baselines in achieving a practical balance of accuracy, efficiency, and reliability. Each experiment in this section addresses a specific case: the synthetic data allows for the creation of datasets with known Lipschitz-continuity and mar-gins, and the ECG data highlights the NW classi-fiers’ core competence in balancing accuracy, relia-bility, and computational efficiency. The proposed Shreeram Murali, Cristian R. Rojas, Dominik Baumann 
+
+0 20000 40000 60000 
+
+10 −1
+
+10 2
+
+> t (s)
+
+0 20000 40000 60000 
+
+10 −2
+
+10 1
+
+10 4
+
+0 20000 40000 60000 
+
+10 −3
+
+10 −1
+
+0 20000 40000 60000 
+
+Samples 
+
+10 −1
+
+6 × 10 −2
+
+> ¯ϵc
+
+0 20000 40000 60000 
+
+Samples 
+
+70 
+
+80 
+
+90 
+
+> Accuracy (%)
+
+0 20000 40000 60000 
+
+Samples 
+
+98 
+
+99 
+
+100 Regular NWC Dyadic NWC Localized NWC Logistic Regression CME 
+
+Figure 2: Performance of the proposed classifiers on the synthetic datasets compared to baselines with varying sample sizes. We plot total runtime, prediction time, fit time (top row); average bounds ¯ϵc for δ = 0 .05 for all classes, accuracy on the overlapping and separable dataset (bottom row). We observe that our algorithm is significantly more sample-efficient than the CME-based classifier, while achieving high accuracy with minimal uncertainty.   
+
+> 010 20
+
+ECG Sample 
+
+> 0.0
+> 0.5
+> 1.0
+> max ˆ pc
+> Correct
+> Incorrect
+
+(a) Regular NWC: predicted probabili-ties and 95% bounds ( δ = 0 .05).   
+
+> 010 20
+
+ECG Sample 
+
+> 0.0
+> 0.5
+> 1.0
+> Correct
+> Incorrect
+
+(b) Localized NWC: predicted probabil-ities and 95% bounds ( δ = 0 .05).   
+
+> Overall Correct Incorrect
+> 0.0
+> 0.5
+> 1.0
+> ¯ϵc
+> Full
+> Localized
+
+(c) Mean bound width vs. predicted probability. 
+
+> N
+> S
+> V
+> F
+> Q
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Score
+> Precision (Regular)
+> Precision (Localized)
+> Recall (Regular)
+> Recall (Localized)
+
+(d) Precision-recall metrics for all classes and both proposed classifier variants: regular and lo-calized NWC.      
+
+> 0.00.20.40.60.81.0
+> Most Uncertain Samples
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> Incorrect Predictions
+> Regular NWC
+> Localized NWC
+
+(e) The cumulative recall curves. The curves show the proportion of total errors identified when samples are ranked by descending uncer-tainty. 
+
+Figure 3: Mean uncertainty intervals, precision-recall metrics for the proposed classifiers, and waveforms. Our classifier shows higher uncertainty in misclassified labels, as well as high precision and recall scores. Computationally lightweight classifiers with frequentist bounds on predictions 
+
+Table 2: Acccuracy and runtime comparison of the classifiers on the ECG dataset. We observe that both our approaches outperform logistic regression and the CME-based classifier in terms of accuracy, while being computationally orders of magnitude cheaper than the latter. 
+
+Size Classifier Accuracy Precision Recall Precompute (s) Query Time (s) 
+
+1 000 Regular NWC 86.4 0.881 0.864 – 0.140 
+
+Localized NWC 91.0 0.903 0.910 0.0008 0.085 
+
+Logistic Regression 88.8 0.859 0.888 0.0128 0.0002 CME 92.0 0.846 92.0 – 8.883 10 000 Regular NWC 93.4 0.938 0.934 – 1.573 
+
+Localized NWC 96.4 0.963 0.964 0.0145 0.395 
+
+Logistic Regression 91.6 0.894 0.916 0.161 0.0002 CME 92.0 0.846 0.920 – 8618.85 60 000 Regular NWC 95.6 0.958 0.956 – 11.607 
+
+Localized NWC 97.6 0.977 0.976 0.188 1.729 
+
+Logistic Regression 91.0 0.908 0.910 5.929 0.0003 CME – – – – –87 554 Regular NWC 96.2 0.965 0.962 – 16.905 
+
+Localized NWC 97.8 0.979 0.978 0.318 1.691 
+
+Logistic Regression 91.0 0.903 0.910 6.527 0.0002 CME – – – – –classifier successfully bridges the gap between effi-cient but non-guaranteed methods like Logistic Re-gression, and methods with formal guarantees like CMEs, which are computationally prohibitive (Bau-mann and Sch¨ on, 2024). Our proposed variants— 
+
+localized and dyadic implementations—further offer a tunable trade-off: they provide higher computational efficiency at the cost of more conservative bounds. In regulated industries like healthcare, where diagnosti-cians often manually review data, it is desirable to have methods that are accurate and also express un-certainty. Here, the role of bounds becomes clearer: measurements can thus be flagged for manual review based on the strength of their bounds. 
+
+# 5 RELATED WORK 
+
+In this section, we contextualize our contributions and position our work against the existing literature in un-certainty quantification, non-parametric methods, and previous work on ECG heartbeat classification. 
+
+Frequentist uncertainty quantification. Many contemporary uncertainty quantification techniques, particularly in deep learning, rely on empirical meth-ods like Monte-Carlo Dropout or deep ensembles (Gal and Ghahramani, 2016; Shahid et al., 2024). These approaches are empirical and lack the formal, high-probability error guarantees necessary for high-stakes decision-making. On the other hand, while Bayesian methods offer a more principled method for uncer-tainty quantification, they are non-frequentist, and are computationally and analytically intractable (Ras-mussen and Williams, 2008; Villacampa-Calvo et al., 2021). The most direct frequentist predecessor to our work, the CME-based classifier by Baumann and Sch¨ on (2024), provides the desired formal guarantees but suffers from the same prohibitive O(n3) complex-ity due to its reliance on matrix inversion. Our work directly addresses this limitation. 
+
+Non-parametric kernel regression. Our choice of the Nadaraya-Watson estimator is motivated by its history as a non-parametric regressor (Nadaraya, 1964; Watson, 1964). It has typically found its us-age in statistical applications (Schuster and Yakowitz, 1979; Nadaraya, 1989; Prakasa Rao, 1983). Moreover, the estimator has also been applied to system iden-tification problems in control theory (Schuster and Yakowitz, 1979; Juditsky et al., 1995; Ljung, 2006; Mzyk and Wachel, 2020). Nevertheless, the most rel-evant usage of the NW estimator to this paper’s con-tributions has been in the safe learning literature as a computationally efficient alternative to GPs (Bau-mann et al., 2023). It has been successfully used to provide safety and optimality guarantees in regression settings for reinforcement learning and control (Kowal-czyk et al., 2024; Baumann et al., 2025). Neverthe-less, we are not aware of any previous work that re-formulates the NW estimator as a multi-class classi-fier and derives frequentist uncertainty bounds on its Shreeram Murali, Cristian R. Rojas, Dominik Baumann 
+
+class probability estimates. In doing so, we inherit the computational efficiency of the estimator and couple it with the formal guarantees typically found in the domain of computationally expensive methods. 
+
+Approaches to arrhythmia detection. The im-plications of our work are most evident in the context of our ECG experiments. Classification in the context of arrhythmia detection spans a large class of prob-lems: some methods aim to classify strips of rhythms (Hed´ en et al., 1996), comprising multiple heartbeats, while others aim to classify individual beats themselves (Kachuee et al., 2018). Many classical and deep learn-ing approaches have been successful in yielding highly accurate predictions on the MIT-BIH dataset, ranging from 95 .9% to 99 .87% (Kumari and Sai, 2022; Zhou and Fang, 2024; Abdalla et al., 2020; Gao et al., 2019; Jha and Kolekar, 2020), but these approaches often disregard the uncertainty associated with predictions (see Appendix E.5). Some recent studies have at-tempted to quantify uncertainty through Monte Carlo dropout simulations (Zhang et al., 2022) and varia-tional encoders (Barandas et al., 2024). The most rel-evant contribution by Nnyaba et al. (2024) utilized a 
+
+k-nearest neighbours based GP classification method (Muyskens et al., 2021). While Nnyaba et al. (2024) demonstrate strong results on the ECG dataset, their bounds are less rigorous, non-frequentist, and the clas-sifier scales cubically with the number of neighbours k
+
+considered. 
+
+# 6 CONCLUSIONS 
+
+We have presented a novel classification algorithm that reformulates the Nadaraya-Watson estimator for multi-class classification tasks. Our work jointly ad-dresses three challenges in modern machine learning: computational efficiency, theoretical guarantees, and practical applicability in safety-critical domains. The classifier achieves linear time complexity, O(n), a sig-nificant improvement over the cubic scaling of existing methods that provide formal guarantees. This effi-ciency does not come at the cost of reliability; we de-rive rigorous frequentist bounds on prediction errors, providing guarantees for both overlapping and separa-ble data distributions. We complement the theoretical contributions with practical implementations that further enhance com-putational efficiency. Our localized variant, lever-aging k-d trees, achieves sublinear time complexity while maintaining high accuracy, reaching 97 .8% on real-world ECG data, though with more conservative bounds. The dyadic implementation offers even faster lookups at O(log n), however, without the ability to specify kernels or compute bounds. These variants provide practitioners with flexible options to balance computational resources against uncertainty quantifi-cation needs. 
+
+Future work. Despite promising results, our ap-proach has limitations suggesting directions for future research. A primary challenge is estimating the Lip-schitz constant from data, which can be non-trivial (Wood and Zhang, 1996; Tokmak et al., 2025). An-other challenge would be to overcome the expressivity of Euclidean distances in higher dimensions. Future work could also explore special cases—for instance, ordinal and sequential classification—to tighten the-oretical bounds, enhancing the classifier’s utility. 
+
+# Acknowledgements 
+
+This research was partially supported by the Research Council of Finland flagship programme: the Finnish Center for Artificial Intelligence (FCAI), the Tandem Industry Academia Seed funding from the Finnish Research Impact Foundation, the Swedish Research Council under contract number 2023-05170, the Wal-lenberg AI, Autonomous Systems and Software Pro-gram (WASP), and the Swedish Civil Defence and Resilience Agency (Project MAD-VAMCHS). We also acknowledge the computational resources provided by the Aalto Science–IT project. 
+
+References 
+
+Abbasi-Yadkori, Y., Pal, D., and Szepesvari, C. (2011). Online least squares estimation with self-normalized processes: An application to bandit problems. Abdalla, F. Y. O., Wu, L., Ullah, H., Ren, G., Noor, A., Mkindu, H., and Zhao, Y. (2020). Deep con-volutional neural network application to classify the ECG arrhythmia. Signal, Image and Video Process-ing , 14(7):1431–1439. Barandas, M., Famiglini, L., Campagner, A., Folgado, D., Sim˜ ao, R., Cabitza, F., and Gamboa, H. (2024). Evaluation of uncertainty quantification methods in multi-label classification: A case study with auto-matic diagnosis of electrocardiogram. Information Fusion , 101:101978. Baumann, D., Kowalczyk, K., Rojas, C. R., Tiels, K., and Wachel, P. (2025). Safety and optimality in learning-based control at low computational cost. 
+
+IEEE Transactions on Automatic Control , pages 1– 13. Baumann, D., Kowalczyk, K., Tiels, K., and Wachel, P. (2023). A computationally lightweight safe learn-ing algorithm. In IEEE Conference on Decision and Control , pages 1022–1027. Computationally lightweight classifiers with frequentist bounds on predictions 
+
+Baumann, D. and Sch¨ on, T. B. (2024). Safe reinforce-ment learning in uncertain contexts. IEEE Trans-actions on Robotics , 40:1828–1841. Brunke, L., Greeff, M., Hall, A. W., Yuan, Z., Zhou, S., Panerati, J., and Schoellig, A. P. (2022). Safe learn-ing in robotics: From learning-based control to safe reinforcement learning. Annual Review of Control, Robotics, and Autonomous Systems , 5(1):411–444. Buldygin, V. V. and Moskvichova, K. K. (2013). The sub-Gaussian norm of a binary random variable. 
+
+Theory of Probability and Mathematical Statistics ,86:33–49. Calliess, J.-P., Roberts, S. J., Rasmussen, C. E., and Maciejowski, J. (2020). Lazily adapted con-stant kinky inference for nonparametric regression and model-reference adaptive control. Automatica ,122:109216. Deng, L. (2012). The mnist database of handwritten digit images for machine learning research. IEEE Signal Processing Magazine , 29(6):141–142. Gal, Y. and Ghahramani, Z. (2016). Dropout as a Bayesian approximation: Representing model un-certainty in deep learning. In International Confer-ence on Machine Learning , pages 1050–1059. Gao, J., Zhang, H., Lu, P., and Wang, Z. (2019). An effective LSTM recurrent network to detect arrhyth-mia on imbalanced ECG dataset. Journal of Health-care Engineering , 2019:1–10. Guo, C., Pleiss, G., Sun, Y., and Weinberger, K. Q. (2017). On Calibration of Modern Neural Networks. In Proceedings of the 34th International Conference on Machine Learning , pages 1321–1330. PMLR. Hall, P. (1988). Theoretical comparison of boot-strap confidence intervals. The Annals of Statistics ,16(3):927–953. Hed´ en, B., Ohlsson, M., Holst, H., Mj¨ oman, M., Rit-tner, R., Pahlm, O., Peterson, C., and Edenbrandt, L. (1996). Detection of frequently overlooked elec-trocardiographic lead reversals using artificial neu-ral networks. The American Journal of Cardiology ,78(5):600–604. Huang, J. W., Roberts, S., and Calliess, J.-P. (2023). On the Sample Complexity of Lipschitz Constant Estimation. Transactions on Machine Learning Re-search .H¨ ardle, W. (2002). Applied Nonparametric Regres-sion . Number 19 in Econometric Society Mono-graphs. Cambridge Univ. Press, Cambridge, trans-ferred to digital printing edition. Jha, C. K. and Kolekar, M. H. (2020). Cardiac arrhythmia classification using tunable Q-wavelet transform based features and support vector ma-chine classifier. Biomedical Signal Processing and Control , 59:101875. Juditsky, A., Hjalmarsson, H., Benveniste, A., De-lyon, B., Ljung, L., Sj¨ oberg, J., and Zhang, Q. (1995). Nonlinear black-box models in system iden-tification: mathematical foundations. Automatica ,31(12):1725–1750. Kachuee, M., Fazeli, S., and Sarrafzadeh, M. (2018). ECG heartbeat classification: a deep transferable representation. In IEEE International Conference on Healthcare Informatics , pages 443–444. Kowalczyk, K., Wachel, P., and Rojas, C. R. (2024). Kernel-Based Learning with Guarantees for Multi-agent Applications. In Franco, L., De Mulatier, C., Paszynski, M., Krzhizhanovskaya, V. V., Dongarra, J. J., and Sloot, P. M. A., editors, Computational Science – ICCS 2024 , volume 14834, pages 479–487. Springer Nature Switzerland, Cham. Series Title: Lecture Notes in Computer Science. Kumari, L. V. R. and Sai, Y. P. (2022). Classifica-tion of ECG beats using optimized decision tree and adaptive boosted optimized decision tree. Signal, Image and Video Processing , 16(3):695–703. Ljung, L. (2006). Some aspects on nonlinear sys-tem identification. IFAC Proceedings Volumes ,39(1):110–121. Longo, L., Brcic, M., Cabitza, F., Choi, J., Con-falonieri, R., Ser, J. D., Guidotti, R., Hayashi, Y., Herrera, F., Holzinger, A., Jiang, R., Khosravi, H., Lecue, F., Malgieri, G., P´ aez, A., Samek, W., Schneider, J., Speith, T., and Stumpf, S. (2024). Ex-plainable Artificial Intelligence (XAI) 2.0: A man-ifesto of open challenges and interdisciplinary re-search directions. Information Fusion , 106:102301. Magureanu, S., Combes, R., and Proutiere, A. (2014). Lipschitz bandits: Regret lower bound and opti-mal algorithms. In Conference on Learning Theory ,pages 975–999. PMLR. Moody, G. and Mark, R. (2001). The impact of the MIT-BIH Arrhythmia Database. IEEE Engineering in Medicine and Biology Magazine , 20(3):45–50. Muyskens, A., Priest, B., Goumiri, I., and Schnei-der, M. (2021). MuyGPs: Scalable Gaussian pro-cess hyperparameter estimation using local cross-validation. arXiv:2104.14581 [stat]. Mzyk, G. and Wachel, P. (2020). Wiener system iden-tification by input injection method. International Journal of Adaptive Control and Signal Processing ,34(8):1105–1119. Nadaraya, E. A. (1964). On estimating regression. 
+
+Theory of Probability and Its Applications , 9(1):141– 142. Shreeram Murali, Cristian R. Rojas, Dominik Baumann 
+
+Nadaraya, E. A. (1989). Nonparametric Estima-tion of Probability Densities and Regression Curves .Springer Netherlands, Dordrecht. Nnyaba, U. V., Shemtaga, H. M., Collins, D. W., Muyskens, A. L., Priest, B. W., and Billor, N. (2024). Enhancing electrocardiography data classi-fication confidence: A robust Gaussian process ap-proach (MuyGPs). arXiv:2409.04642 [stat]. Novara, C., Fagiano, L., and Milanese, M. (2013). Di-rect feedback control design for nonlinear systems. 
+
+Automatica , 49(4):849–860. Powell, M. J. D. (1964). An efficient method for finding the minimum of a function of several variables with-out calculating derivatives. The Computer Journal ,7(2):155–162. Prakasa Rao, B. L. S., editor (1983). Nonparametric Functional Estimation . Probability and Mathemat-ical Statistics: A Series of Monographs and Text-books. Academic Press. Rao, N. and Protopopescu, V. (1996). On PAC learn-ing of functions with smoothness properties using feedforward sigmoidal networks. Proceedings of the IEEE , 84(10):1562–1569. Rasmussen, C. E. and Williams, C. K. I. (2008). Gaus-sian Processes for Machine Learning . Adaptive Computation and Machine Learning. MIT Press, Cambridge, Mass., 3. print edition. Sattar, S., Mumtaz, R., Qadir, M., Mumtaz, S., Khan, M. A., De Waele, T., De Poorter, E., Moerman, I., and Shahid, A. (2024). Cardiac arrhythmia classi-fication using advanced deep learning techniques on digitized ecg datasets. Sensors , 24(8). Schuster, E. and Yakowitz, S. (1979). Contributions to the theory of nonparametric regression, with ap-plication to system identification. The Annals of Statistics , 7(1). Sch¨ olkopf, B. and Smola, A. J. (2001). Learning with kernels: Support vector machines, regularization, optimization, and beyond . The MIT Press. Sergeyev, Y. D. (1995). An information global opti-mization algorithm with local tuning. SIAM Journal on Optimization , 5(4):858–870. Shahid, M. B., Robison, R., Shafer, T., Diloreto, V., Alexandrov, N. M., and Fleming, C. H. (2024). Un-certainty quantification using deep ensembles for de-cision making in cyber-physical systems. In AIAA SCITECH Forum , page 0108. Shalev-Shwartz, S. and Ben-David, S. (2014). Under-standing Machine Learning: From Theory to Algo-rithms . Cambridge University Press, Cambridge. Strongin, R. G. (1973). On the convergence of an al-gorithm for finding a global extremum. Engineering Cybernetics , 11:549–555. Tokmak, A., Krishnan, K. G., Sch¨ on, T. B., and Bau-mann, D. (2025). Safe exploration in reproducing kernel Hilbert spaces. In International Conference on Artificial Intelligence and Statistics .Villacampa-Calvo, C., Zald´ ıvar, B., Garrido-Merch´ an, E. C., and Hern´ andez-Lobato, D. (2021). Multi-class Gaussian process classification with noisy inputs. 
+
+Journal of Machine Learning Research , 22(36):1–52. Watson, G. S. (1964). Smooth regression analysis. 
+
+Sankhy¯ a: The Indian Journal of Statistics, Series A (1961-2002) , 26(4):359–372. Wood, G. R. and Zhang, B. P. (1996). Estimation of the Lipschitz constant of a function. Journal of Global Optimization , 8(1):91–103. Zhang, W., Di, X., Wei, G., Geng, S., Fu, Z., and Hong, S. (2022). A deep Bayesian neural network for cardiac arrhythmia classification with rejection from ECG recordings. arXiv:2203.00512 [eess]. Zhou, F. and Fang, D. (2024). Multimodal ECG heart-beat classification method based on a convolutional neural network embedded with FCA. Scientific Re-ports , 14(1):8804. Computationally lightweight classifiers with frequentist bounds on predictions 
+
+# Checklist 
+
+1. For all models and algorithms presented, check if you include: (a) A clear description of the mathematical set-ting, assumptions, algorithm, and/or model. [Yes] (b) An analysis of the properties and complexity (time, space, sample size) of any algorithm. [Yes] (c) (Optional) Anonymized source code, with specification of all dependencies, including external libraries. [Yes] 2. For any theoretical claim, check if you include: (a) Statements of the full set of assumptions of all theoretical results. [Yes] (b) Complete proofs of all theoretical results. [Yes] (c) Clear explanations of any assumptions. [Yes] 3. For all figures and tables that present empirical results, check if you include: (a) The code, data, and instructions needed to reproduce the main experimental results (ei-ther in the supplemental material or as a URL). [Yes] (b) All the training details (e.g., data splits, hy-perparameters, how they were chosen). [Yes] (c) A clear definition of the specific measure or statistics and error bars (e.g., with respect to the random seed after running experiments multiple times). [Yes] (d) A description of the computing infrastructure used. (e.g., type of GPUs, internal cluster, or cloud provider). [Not Applicable] 4. If you are using existing assets (e.g., code, data, models) or curating/releasing new assets, check if you include: (a) Citations of the creator If your work uses ex-isting assets. [Yes] (b) The license information of the assets, if ap-plicable. [Not Applicable] (c) New assets either in the supplemental mate-rial or as a URL, if applicable. [Yes] (d) Information about consent from data providers/curators. [Not Applicable] (e) Discussion of sensible content if applicable, e.g., personally identifiable information or of-fensive content. [Not Applicable] 5. If you used crowdsourcing or conducted research with human subjects, check if you include: (a) The full text of instructions given to partici-pants and screenshots. [Not Applicable] (b) Descriptions of potential participant risks, with links to Institutional Review Board (IRB) approvals if applicable. [Not Appli-cable] (c) The estimated hourly wage paid to partici-pants and the total amount spent on partic-ipant compensation. [Not Applicable] Computationally lightweight classifiers with frequentist bounds on prediction errors: Appendix 
+
+# Contents 
+
+A BOUNDS ON THE BIAS 14 
+
+A.1 Proof of Lemma 1 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14 A.2 Proof of Lemma 2 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15 A.3 Extension to positive definite kernels with infinite support . . . . . . . . . . . . . . . . . . . . . . 15 
+
+B BOUNDS ON THE SAMPLING ERROR 16 
+
+B.1 Concentration inequality for self-normalized sums with sub-Gaussian noise . . . . . . . . . . . . . 16 B.2 Proof of Lemma 4 . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16 
+
+C LIPSCHITZ-CONTINUOUS SYNTHETIC DATASET GENERATION 18 D ESTIMATING A LIPSCHITZ CONSTANT FROM DATA 18 E SUPPLEMENTARY RESULTS 19 
+
+E.1 Additional figures for dyadic classifier predictions . . . . . . . . . . . . . . . . . . . . . . . . . . . 19 E.2 Additional results from the ECG dataset . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 19 E.3 Results on the MNIST dataset . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20 E.4 Results on a simplified GTSRB dataset . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20 E.5 Comparison with other baselines . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20 
+
+F ABLATIONS 21 Computationally lightweight classifiers with frequentist bounds on predictions 
+
+# A BOUNDS ON THE BIAS 
+
+In this section, we restate and prove Lemmas 1, 2, and 3 from Section 3.2. 
+
+A.1 Proof of Lemma 1 Lemma 1. Under Assumptions 1 and 4, we have, for all n ≥ 0 and y ∈ Y ,
+
+|pc(y) − ¯pc(y)| ≤ Lλ, (8) 
+
+where L is the known Lipschitz constant from (2) and λ is the user-defined kernel bandwidth from (6) .Proof. For notational convenience, we denote the kernel weight of the estimator at each iteration, Kλ(y, y i)/κ n(y), from (5) by θi. Notably, these weights sum to 1. The virtual estimate ¯ pc(y) in the bias term can be represented as the weighted sum of the true probability at each observation: 
+
+|pc(y) − ¯pc(y)| = pc(y) −
+
+> n
+
+X
+
+> t=1
+
+θipc(yi) . (16) Furthermore, since the weights sum to 1, the term pc(y) can be introduced into a summation term without altering its value: 
+
+pc(y) = pc(y)
+
+> n
+
+X
+
+> i=1
+
+θi =
+
+> n
+
+X
+
+> i=1
+
+θipc(y). (17) Equation (17) can be used to rewrite and simplify (16) as 
+
+|pc(y) − ¯pc(y)| =
+
+> n
+
+X
+
+> i=1
+
+θipc(y) −
+
+> n
+
+X
+
+> i=1
+
+θipc(yi)
+
+=
+
+> n
+
+X
+
+> i=1
+
+θi(pc(y) − pc(yi)) .
+
+By the Cauchy-Schwarz inequality, 
+
+> n
+
+X
+
+> i=1
+
+θi(pc(y) − pc(yi)) ≤
+
+> n
+
+X
+
+> i=1
+
+θi |pc(y) − pc(yi)| . (18) However, under Assumption 1, the term |pc(y) − pc(yi)| is bounded by a known, finite Lipschitz constant L as 
+
+|pc(y) − pc(yi)| ≤ L∥y − yi∥. (19) Furthermore, due to Assumption 4, if K(y, y i) ≥ 0, then θi ≥ 0, and ∥y − yi∥ ≤ λ. Therefore, by combining (18) and (19), we obtain 
+
+|pc(y) − ¯pc(y)| ≤ 
+
+> n
+
+X
+
+> i=1
+
+θi |pc(y) − pc(yi)|≤
+
+> n
+
+X
+
+> i=1
+
+θiL∥y − yi∥ ≤ Lλ. (20) Shreeram Murali, Cristian R. Rojas, Dominik Baumann 
+
+A.2 Proof of Lemma 2 Lemma 2. Under Assumptions 2 and 4, we have for almost every y ∈ Y |pc(y) − ¯pc(y)| ≤ λγ , (9) 
+
+where λ is the user-defined kernel bandwidth parameter as depicted in (6) and γ, in accordance with Assumption 2, is the known margin of the distribution D.Proof. Due to Assumption 2, pc(y) is equivalent to a function f : Y → [0 , 1] with Lipschitz constant 1 /γ for almost all y ∈ Y . This would imply that 1ci = f (yi) with probability 1. For example, if we define a set RR := {y ∈ Y : pc(y) = 0 },
+
+we can choose f as 
+
+f (y) = min 
+
+
+
+1, 1
+
+γ inf    
+
+> y′in R
+
+∥y − y′∥
+
+
+
+.
+
+From here, the proof proceeds identically as that of Lemma 1 from Appendix Section A.1. The terms pc(y)from (19) could be replaced with f (y), following which the result from (20) would remain valid for almost all 
+
+y ∈ Y .
+
+A.3 Extension to positive definite kernels with infinite support 
+
+Assumption 4 limits kernel choice to those with support only in [ −1, 1]. While this can easily be accomplished for any kernel by truncating its outputs to zero outside the interval [ −1, 1], this aspect of Assumption 4 can be relaxed by assuming bounded inputs. In this case, we can extend our results to positive definite kernels with infinite support. Doing so would conservatively expand Lemmas 1 and 2 to accommodate positive definite kernels with infinite support. 
+
+Lemma 3. Under Assumptions 1, 2, 4 with the change that K(v) ≥ 0 for all ∥v∥ > 1, and 5 we have for almost every y ∈ Y |pc(y) − ¯pc(y)| ≤ βλ ∗ + βΦεt, (11) 
+
+where 
+
+εt := X
+
+> i∈I far
+
+Kλ(y, y i)
+
+κn(y) ∥y − yi∥
+
+is a term that represents the weighted sum corresponding to the samples in the tail of the kernel’s span (indices 
+
+Ifar , where ∥y − yi∥ > λ ∗), Φ is the input space diameter from Assumption 5, and β = L or 1/γ depending on whether we assume an overlapping (see Assumption 1) or a separable (see Assumption 2) distribution on D.Proof. We introduce a cut-off radius r∗ such that and use the Cauchy-Schwarz inequality (similar to (20)) to split |pc(y) − ¯pc(y)| into two terms, with indices in Inear for instances where ∥y − yi∥ ≤ λ∗, and Ifar corresponding to indices where ∥y − yi∥ > λ ∗, where r∗ = λ∗/λ . We can write that split as 
+
+|pc(y) − ¯pc(y)| ≤ β X
+
+> i∈I near
+
+θi∥y − yi∥ + β X
+
+> i∈I far
+
+θi∥y − yi∥. (21) Since the kernel weights sum to 1, samples in the near set Inear are bounded by λ∗ as 
+
+β X
+
+> i∈I near
+
+θi∥y − yi∥ ≤ βλ ∗ X
+
+> i∈I near
+
+θi ≤ βλ ∗. (22) Computationally lightweight classifiers with frequentist bounds on predictions 
+
+For samples in the Ifar set, the distances and weights can be large, but they are capped by Assumption 5: 
+
+X
+
+> i∈I far
+
+θi∥y − yi∥ ≤ Φ X
+
+> i∈I far
+
+θi. (23) We set εt := X
+
+> i∈I far
+
+θi, to obtain the bounds 
+
+|pc(y) − ¯pc(y)| ≤ βλ ∗ + βΦεt, (24) where β = L or 1 /γ .The choice of kernel heavily influences the practical utility of the bounds from (24). For a standard RBF kernel, setting r∗ := 3 captures 99 .7% of the kernel’s mass. Yet, in large datasets, the number of points in the Ifar set vastly outnumber those in the Inear set. This would cause the tail term βΦεt to blow up, resulting in the bounds being unreasonably conservative. 
+
+# B BOUNDS ON THE SAMPLING ERROR 
+
+In this section, we restate and prove Lemma 4 from Section 3.2.2. 
+
+B.1 Concentration inequality for self-normalized sums with sub-Gaussian noise 
+
+Here, we restate a result from Baumann et al. (2023, 2025) which we use to prove Lemma 4. This lemma introduces a concentration inequality for self-normalized sums with sub-Gaussian noise (Abbasi-Yadkori et al., 2011, Thm 3). 
+
+Lemma 5 (Baumann et al. (2023, 2025)) . Let {vt : t ∈ N} be a bounded stochastic process and {ωt : t ∈ N} be an i.i.d. sub-Gaussian stochastic process, i.e., there exists a σ > 0 such that, for any ρ ∈ R, and any t ∈ N,
+
+E[exp( ρω t)] ≤ exp 
+
+ ρ2σ2
+
+2
+
+
+
+.
+
+Further, let Sn := 
+
+> n
+
+X
+
+> t=1
+
+vtωt and Vn := 
+
+> n
+
+X
+
+> t=1
+
+v2 
+
+> t
+
+. Then for any n ∈ N and 0 < δ < 1, with probability at least 1 − δ,
+
+|Sn| ≤ 
+
+q
+
+2σ2 log( δ−1p1 + Vn)(1 + Vn). (25) Correspondingly, we derive bounds on the sampling error. In this section, we utilize Lemma 5 to prove Lemma 4. 
+
+B.2 Proof of Lemma 4 Lemma 4. Under Assumptions 3 and 4, we have, for all n ≥ 0, with probability at least 1 − δ,
+
+|¯pc(y) − ˆpc(y)| ≤ 2σ αn(y, δ )
+
+κn(y) , (12) 
+
+where 
+
+αn(y, n ) = 
+
+q
+
+κn(y) log( δ−1p1 + κn(y)) ,
+
+if κn(y) > 1,
+
+r
+
+log 
+
+√2/δ 
+
+
+
+,
+
+if 0 < κ n(y) ≤ 1.
+
+(13) Shreeram Murali, Cristian R. Rojas, Dominik Baumann 
+
+Proof. Using the same notation for normalized weights ( θi) as Appendix A.1, the difference between the virtual estimate ¯ pc(y) and the actual estimate ˆ pc(y) can be expressed as 
+
+|¯pc(y) − ˆpc(y)| =
+
+> n
+
+X
+
+> i=1
+
+θi(pc(y) − 1ci (c)) . (26) The first term 
+
+> n
+
+X
+
+> i=1
+
+θipc(y) is the virtual estimate the classifier in (5) would produce if it had true probability labels rather than discrete labels. Here, for one-hot vectorized class label representations 1ci := 1{ci = c}, 1ci (c)represents the indicator function value at class index c. For convenience in notations, we denote the error between true and discrete labels pc(y) − 1ci (c) as εi.Since c is a Bernoulli random variable with success probability qc, the random variable qc − c is σ-sub-Gaussian with σ ≤ 1/4 (Buldygin and Moskvichova, 2013, Thm 2.1 and Lemma 2.1). Expanding this scalar result into the 
+
+Rd problem setting, the context label c is derived from the indicator function 1ci (c) and the success probabilities 
+
+pc(y). Therefore, the term εi can be conceived of as an i.i.d. noise term that is σ-sub-Gaussian with σ ≤ 1/4. With this observation, we can frame θi as a stochastic process since its values are always lesser than 1, and εi
+
+can be conceptualized as an i.i.d. σ-sub-Gaussian stochastic process. Consequently, the term 
+
+> n
+
+X
+
+> i=1
+
+θiεi can be likened to Sn from Lemma 5 and 
+
+> n
+
+X
+
+> i=1
+
+θ2 
+
+> i
+
+to Vn.Expanding the θi notation out into its original form, we see that the term 
+
+> n
+
+X
+
+> i=1
+
+θiεi = 1
+
+κn(y)
+
+> n
+
+X
+
+> i=1
+
+K2
+
+> λ
+
+(y, y i)εi
+
+is upper bounded with probability at least 1 − δ by 
+
+σκn(y)
+
+vuuut2 log 
+
+ 1
+
+δ
+
+vuut1 + 
+
+> n
+
+X
+
+> i=1
+
+K2
+
+> λ
+
+(y, y i)
+
+ 1 + 
+
+> n
+
+X
+
+> i=1
+
+K2
+
+> λ
+
+(y, y i)
+
+!
+
+. (27) Furthermore, since Kλ(y, y i) ≤ 1 (see Assumption 4), it follows that K2
+
+> λ
+
+(y, y i) ≤ Kλ(y, y i). This allows us to upper bound the summation term as 
+
+> n
+
+X
+
+> i=1
+
+K2
+
+> λ
+
+(y, y i) ≤
+
+> n
+
+X
+
+> i=1
+
+Kλ(y, y i).
+
+The term on the right is, by definition, κn(y). Substituting this into the bound, we obtain 1
+
+κn(y)
+
+> n
+
+X
+
+> i=1
+
+K2
+
+> λ
+
+(y, y i)εi ≤ σ
+
+q
+
+2 log( δ−1p1 + κn(y)
+
+p1 + κn(y)
+
+κn(y) .
+
+Additionally, we can observe that if κn(y) > 1, then 
+
+p1 + κn(y)
+
+κn(y) <
+
+p2κn(y)
+
+κn(y) =
+
+√2
+
+pκn(y) .
+
+Therefore, with probability at least 1 − δ, for κn(y) > 1, 1
+
+κn(y)
+
+> n
+
+X
+
+> i=1
+
+K2
+
+> λ
+
+(y, y i)εi ≤ 2σκn(y)
+
+q
+
+κn(y) log( δ−1p1 + κn(y)) , (28) and for 0 < κ n(y) ≤ 1, 1
+
+κn(y)
+
+> n
+
+X
+
+> i=1
+
+K2
+
+> λ
+
+(y, y i)εi ≤ σ
+
+r
+
+2 log 
+
+
+
+δ−1p1 + κn(y)
+
+ p1 + κn(y)
+
+κn(y) . (29) Computationally lightweight classifiers with frequentist bounds on predictions 
+
+We can see here that if κn(y) ≤ 1, then the term p1 + κn(y) ≤ √2. By taking the worst-case bounds, we can thus simplify the term in (29) to 
+
+σ
+
+r
+
+2 log 
+
+
+
+δ−1p1 + κn(y)
+
+ p1 + κn(y)
+
+κn(y) ≤ 2σκn(y)
+
+vuutlog 
+
+√2
+
+δ
+
+!
+
+. (30) By collecting the terms from (28) and (30), we arrive at 
+
+|¯pc(y) − ˆpc(y)| ≤ 
+
+
+
+2σκn(y)
+
+q
+
+κn(y) log( δ−1p1 + κn(y)) if κn(y) > 1,
+
+2σκn(y)
+
+vuutlog 
+
+√2
+
+δ
+
+!
+
+if 0 < κ n(y) ≤ 1.
+
+(31) 
+
+# C LIPSCHITZ-CONTINUOUS SYNTHETIC DATASET GENERATION 
+
+In this section, we provide details on how we generated synthetic data (see Section 4) to match Assumption 1. We define an underlying probability function pc(y, L ) that is a function of a known Lipschitz constant L. Instead of generating hard-labelled measurements, we sample data points according to this function. This is easy to achieve in a case of binary classification, where the relationship between probabilities is exact. That is, for two classes, we have a single separating hyperplane. The probability for a sample y can be modelled using the logistic (sigmoid) function, which takes the signed distance to the hyperplane as input. The probability pc for class c = 1 would be 
+
+pc(y) = 11 + exp( −k(wy + b)) , (32) where w is the normal vector to the hyperplane with ∥w∥ = 1 and k is a scaling factor that controls the steepness of the probability function. The gradient of this function, 
+
+∇p1(y) = k · p1(y) · (1 − p1(y)) · w, (33) is maximized at p1(y) = 0 .5, which leads to a direct relationship that L = k/ 4. 
+
+# D ESTIMATING A LIPSCHITZ CONSTANT FROM DATA 
+
+The Lipschitz constant L in Assumption 1 and the equivalent margin in Assumption 2 are parameters that convey the underlying assumptions about the smoothness of the data. It influences the strength of the classifier’s bounds. However, since the underlying probability function pc(y) cannot be measured, we must estimate this constant from data. Correspondingly, it is also important to first determine if the dataset falls into the category of overlapping or separable distributions. To approximate the Lipschitz constant from data, the maximum pairwise distance forms a basis for an upper bound. Here, we assume that for two samples y and y′ with matching labels that are the closest to each other in the entire dataset, the true probability pc(y) and pc(y′) do not differ by more than a threshold probability Pt
+
+for any c ∈ C . Then, we can estimate the Lipschitz constant from (2) as 
+
+L ≥ Pt
+
+sup {∥ y − y′∥} . (34) Lastly, to determine the nature of the data distribution, we selected 1000 instances from the MNIST and MIT-BIH dataset with random stratified sampling. We computed the pairwise distances from each sample to all other samples in this set. We observed that the maximum pairwise distance within a class was comparable to the maximum pairwise distance observed globally. For both datasets, this implies that their distributions are overlapping, rather than being separated by a margin. Additionally, in Figure 10, we show K(v) for all pairs of a random selection of 100 samples from the MNIST dataset for its optimized bandwidth λ = 7 .5. Shreeram Murali, Cristian R. Rojas, Dominik Baumann 
+
+In Remark 1 (Section 2), we introduce various approaches in the literature that have been used to estimate Lipschitz constants from measurements. Most methods are heuristic, including the one we use based on Strongin (1973). Estimating an upper bound on the smoothness of a function with guarantees is intractable without invoking further regularity assumptions. This is done so in the form of assuming bounded higher-order derivatives (Huang et al., 2023), or by invoking sampling assumptions about the measurements Tokmak et al. (2025). The former is best suited for approaches where it is more reliable to know a limit on the second-order derivative: for example, a motor is bounded by its maximum torque. On the other hand, the latter approach is better in cases where we can independently sample from a family of functions in a probability space: for example, an experimentally determined noise oracle. In our case, pc(y) is entirely unknown; we neither have knowledge of a bounded higher-order derivative nor a reliable class of functions from a probability space to sample from. Therefore, in this paper, we approximate the Lipschitz constant from available data. 
+
+# E SUPPLEMENTARY RESULTS 
+
+In this section, we report further details from the experiments conducted in Section 4 and also provide further experimental results. 
+
+E.1 Additional figures for dyadic classifier predictions 
+
+In the dyadic approach, we construct a hash table that maps the grid index to the aggregated class count vector. Figure 4 shows two synthetic datasets corresponding to Assumptions 1 and 2, and their respective hash tables marked with majority predictions. 0.0 0.5 1.0      
+
+> y1
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> y2
+> 0.00.51.0
+> y1
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> y2
+> Class 0
+> Class 1
+> 0.00.51.0
+> y1
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> y2
+> 0.00.51.0
+> y1
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1.0
+> y2
+> Class 0
+> Class 1
+
+Figure 4: Two synthetic datasets and their corresponding dyadic cell prediction grids. The figures on the left correspond to the Lipschitz-continuous overlapping dataset; the figures on the right correspond to the dataset separated by a margin. 
+
+E.2 Additional results from the ECG dataset 
+
+In this section, we show additional results from the experiments conducted in Section 4 on the ECG dataset. Figure 5 shows randomly selected ECG waveforms from the testing set and their associated class prediction probabilities. In Figure 6 we show the alignment between prediction confidence (max ˆ pc) and accuracy. This can be used to compute the ECE (Guo et al., 2017), which in our case is 7 .5%. Next, following the conventions of Nnyaba et al. (2024), we define a Type I error as the instance where the classifier’s prediction, i.e., max ˆ pc, is incorrect, and a Type II error as an instance where the intervals are so wide that ˆ pc could be less than 0 .5. In Figure 7 we show the Type I and Type II error counts obtained from the 
+
+regular classifier’s predictions on the entire testing set. Here, we also see that the errors are overrepresented in the minority classes. If we count Type II errors as incorrect predictions, the accuracy of our classifier is reduced to 84%. Computationally lightweight classifiers with frequentist bounds on predictions  
+
+> 0100
+> t
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> Amplitude
+
+True: N (Normal) 
+
+Pred: N (Normal)      
+
+> NSVFQ
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> ˆpc
+> 0100
+> t
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+
+True: S (Supraventricular) 
+
+Pred: S (Supraventricular)      
+
+> NSVFQ
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> 0100
+> t
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+
+True: V (Ventricular) 
+
+Pred: V (Ventricular)      
+
+> NSVFQ
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+> 0100
+> t
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+
+True: F (Fusion) 
+
+Pred: F (Fusion)     
+
+> NSVFQ
+> 0.00
+> 0.25
+> 0.50
+> 0.75
+> 1.00
+
+Figure 5: Illustrative ECG waveforms (amplitude normalized from mV, t denotes time step) and associated class probabilities for each class from the MIT-BIH database; class Q (unclassifiable) has been excluded. 
+
+E.3 Results on the MNIST dataset 
+
+In addition to synthetic and ECG datasets, we implemented the proposed classifier on the MNIST handwritten digits dataset (Deng, 2012). The dataset contains 28 × 28 pixel black-and-white images of handwritten digits commonly used for training various image processing classifiers. The dataset contains 60 000 training samples split equally among classes and 10 000 training samples. Figure 8 shows predictions, accuracy trends, and bound trends for the regular classifier trained on the MNIST dataset with L = 0 .03 and λ = 7 .5. From the figure, we observe that the classifier demonstrates an accuracy of >92% on the dataset with strong bounds with just 10 000 samples. 
+
+E.4 Results on a simplified GTSRB dataset 
+
+The improved computational efficiency of the Nadaraya-Watson estimator is of significant advantage when ap-plied to higher-dimensional systems. While we overcome the computational bottleneck associated with GP-like methods, we are still limited by how expressive distances can be in higher dimensional spaces. These limits are best explored and tested in the context of high-dimensional RGB images. We evaluate our regular and localized 
+
+classifier on a subset of the German Traffic Sign Recognition Benchmark (GTSRB) dataset. We simplify to a binary classification problem including only the ‘stop’ sign and ‘end of speed limit’ sign. Figure 9 shows these results with L = 0 .05, λ = 7 .5, and k = 20 for the localized classifier. 
+
+E.5 Comparison with other baselines 
+
+Tasked with ECG heartbeat classification, various classical and deep learning methods have achieved highly accurate results on the MIT-BIH database. Our contribution lies not only in achieving high accuracy scores but also in providing actionable uncertainty quantification in relation to the classifier’s predictions. These theoretical guarantees are often entirely absent in such methods. Nevertheless, in this section, we summarize and review the accuracy obtained by such methods (those cited in Section 5) to contextualize our work’s performance with respect to existing methods. For a more extensive comparison, we refer the reader to Table 1 and Table 2 from Sattar et al. (2024). Shreeram Murali, Cristian R. Rojas, Dominik Baumann 
+
+> 0.0-0.1
+> 0.1-0.2
+> 0.2-0.3
+> 0.3-0.4
+> 0.4-0.5
+> 0.5-0.6
+> 0.6-0.7
+> 0.7-0.8
+> 0.8-0.9
+> 0.9-1.0
+
+max ˆ pc bins 
+
+> 0
+> 25
+> 50
+> 75
+> 100
+> Accuracy (%)
+
+Figure 6: Accuracy of the regular NWC grouped by max ˆ pc bins. The figure shows how the classifier’s prediction confidence correlate with its accuracy.     
+
+> NSVFQ
+
+Class  
+
+> 0
+> 500
+> 1000
+> 1500
+> 2000
+> Count
+> 0.2%
+> 12.0%
+> 45.7%
+> 8.1%
+> 20.2% 19.7%
+> 42.6% 10.5% 9.2% 6.8%
+> Type I Errors
+> Type II Errors
+
+Figure 7: Type I and Type II error counts for each class for the regular classifier’s predictions over the entire testing set. The inset text also shows the per-centage of the dataset these counts represent.                 
+
+> 0123456789
+> Digits
+> 0.0
+> 0.5
+> 1.0
+> max ˆ pc
+> 020000 40000 60000
+> Samples
+> 87 .5
+> 90 .0
+> 92 .5
+> Accuracy (%)
+> 020000 40000 60000
+> Samples
+> 10 1
+> 10 3
+> 10 5
+> ϵc
+> 0
+> 1
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> 8
+> 9
+> 05
+> 0.0
+> 0.5
+> 1.0
+
+T: 0, P: 0  
+
+> 05
+> 0.0
+> 0.5
+> 1.0
+
+T: 1, P: 1  
+
+> 05
+> 0.0
+> 0.5
+> 1.0
+
+T: 2, P: 2  
+
+> 05
+> 0.0
+> 0.5
+> 1.0
+
+T: 3, P: 3  
+
+> 05
+> 0.0
+> 0.5
+> 1.0
+
+T: 4, P: 4  
+
+> 05
+> 0.0
+> 0.5
+> 1.0
+
+T: 5, P: 5  
+
+> 05
+> 0.0
+> 0.5
+> 1.0
+
+T: 6, P: 6  
+
+> 05
+> 0.0
+> 0.5
+> 1.0
+
+T: 7, P: 7  
+
+> 05
+> 0.0
+> 0.5
+> 1.0
+
+T: 8, P: 8  
+
+> 05
+> 0.0
+> 0.5
+> 1.0
+
+T: 9, P: 9 
+
+Figure 8: Results of the regular classifier on the MNIST dataset. On the top row, we see predictions (left) and tightness of the bounds for 10 randomly selected samples of each digit from the dataset. Their corresponding all-class prediction probabilities are shown in the figure below, where true and predicted labels are marked with ‘T’ and ‘P’ respectively. Next on the top row, we show the accuracy (middle) and strength of the bounds (right) of the classifier with varying number of samples n.
+
+# F ABLATIONS 
+
+In this section, we perform ablation studies on kernel choice and bandwidth parameter λ. As the Nadaraya-Watson estimator is a non-parametric kernel regressor, we study the effect different kernel functions have on the nature of the estimate. Table 4 lists the different kernel functions we evaluate our classifier with. Correspondingly, for each kernel, we optimize to find the bandwidth λ that maximizes the classifier’s accuracy and bounds. To this end, we define a weighted objective function that tries to balance accuracy A and average uncertainty Computationally lightweight classifiers with frequentist bounds on predictions Go Stop       
+
+> 0101
+> 147 316 254
+> Regular NWC
+> 0101
+> 148 228 242
+> Localized NWC
+
+Figure 9: Results from the reduced GTSRB dataset. On the left are the two classes considered in our study. On the right are confusion matrices from the two proposed variants of our classifier. In the confusion matrices, the label 0 corresponds to the ‘go’ sign and 1 corresponds to the ‘stop’ sign. 
+
+Table 3: Summary of reported ECG classification results in the literature. 
+
+Literature Remark Accuracy Bounds 
+
+Kumari and Sai (2022) Optimized decision tree 98 .77% ✗
+
+Zhou and Fang (2024) CNN with frequency channel attention 99 .6% ✗
+
+Abdalla et al. (2020) CNN with 11 layers 99 .84% ✗
+
+Gao et al. (2019) Long short-term memory model with focal loss 99 .26% ✗
+
+Jha and Kolekar (2020) SVM with tunable Q-wavelet transform 99 .27% ✗
+
+Nnyaba et al. (2024) GP classification with bounds ≈ 98% ✓
+
+interval B as a function of a user-defined weight r:
+
+J(A, B ) = rA − (1 − r)B. (35) Here, we utilize a simple weighted-sum that awards a higher score if A is maximized and B is minimized. The weight r directly quantifies the trade-off between the two potentially competing measures. The optimization experiments were conducted on the MNIST dataset. We trained the regular NWC on 30 000 samples of the MNIST dataset with all the kernels from Table 4. We set the weight r in (35) as 0 .95. Since A and B are experimentally computed, there is no direct way to find derivatives of J with respect to λ;thus, we used Powell’s conjugate direction method to optimize for the score J (Powell, 1964). The results from Figure 10 show that the Epanechnikov kernel offered the best performance. Yet, as we see from the y-axis of the figure, the improvement difference was marginal. This aligns with previous research that have shown the limited effect of kernel choice on the Nadaraya-Watson estimator (H¨ ardle, 2002). Shreeram Murali, Cristian R. Rojas, Dominik Baumann 
+
+Table 4: Different kernel functions and their definitions. 
+
+Kernel Definition 
+
+Boxcar kernel K(v) = 
+
+(
+
+1 if ∥v∥ ≤ 10 otherwise Gaussian kernel (without truncation) K(v) = exp 
+
+
+
+− ∥v∥2
+
+2
+
+
+
+Epanechnikov kernel K(v) = 
+
+(
+
+1 − v2 if ∥v∥ ≤ 10 otherwise Quartic kernel K(v) = 
+
+(
+
+(1 − v2)2 if ∥v∥ ≤ 10 otherwise Triweight kernel K(v) = 
+
+(
+
+(1 − v2)3 if ∥v∥ ≤ 10 otherwise Tricube kernel K(v) = 
+
+(
+
+(1 − | v|3)3 if ∥v∥ < 10 otherwise Cosine kernel K(v) = 
+
+( π
+
+4 cos 
+
+ π
+
+2 v
+
+
+
+if ∥v∥ ≤ 10 otherwise      
+
+> Baseline Optimized
+> 0.69
+> 0.70
+> 0.71
+> 0.72
+> 0.73
+> 0.74
+> J(A, B )
+> Cosine
+> Epanechnikov
+> Triweight
+> Rbf
+> Quartic
+> Boxcar
+> Tricube 020 40 60 80
+> Sample Index
+> 020 40 60 80
+> Sample Index
+> 0.20.40.60.81.0
+> K(v)
+
+Figure 10: Hyperparameter optimization on the kernels. On the left, we show the baseline and optimized score 
+
+J(A, B ) on all kernels from Table 4. Here, the results show that the effect of hyperparameter optimization to find the optimal λ on each kernel is, at best, only moderately significant. On the right, we show the Epanechnikov kernel evaluated at all pairs of 100 randomly sampled MNIST images with optimized λ = 7 .5.
