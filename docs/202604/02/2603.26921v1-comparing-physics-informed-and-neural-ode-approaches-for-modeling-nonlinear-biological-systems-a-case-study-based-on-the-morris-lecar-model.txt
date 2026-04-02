@@ -1,0 +1,2586 @@
+Title: Comparing Physics-Informed and Neural ODE Approaches for Modeling Nonlinear Biological Systems: A Case Study Based on the Morris-Lecar Model
+
+URL Source: https://arxiv.org/pdf/2603.26921v1
+
+Published Time: Tue, 31 Mar 2026 00:11:43 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+## Comparing Physics-Informed and Neural ODE Approaches for Modeling Nonlinear Biological Systems: A Case Study Based on the Morris–Lecar Model 
+
+Nikolaos M. Matzakos ∗ Chrisovalantis Sfyrakis †
+
+Abstract 
+
+Physics-Informed Neural Networks (PINNs) and Neural Ordinary Differential Equa-tions (NODEs) represent two distinct machine learning frameworks for modeling nonlin-ear neuronal dynamics. This study systematically evaluates their performance on the two-dimensional Morris–Lecar model across three canonical bifurcation regimes: Hopf, Saddle-Node on Limit Cycle, and homoclinic orbit. Synthetic time-series data are generated via numerical integration under controlled conditions, and training is performed using colloca-tion points for PINNs and adaptive solvers for NODEs (Dormand–Prince method). PINNs incorporate the governing differential equations into the loss function using au-tomatic differentiation, which enforces physical consistency during training. In contrast, NODEs learn the system’s vector field directly from data, without prior structural assump-tions or inductive bias toward physical laws. Model performance is assessed using standard regression metrics, including Mean Squared Error (MSE), Mean Absolute Error (MAE), Mean Absolute Percentage Error (MAPE), and the coefficient of determination. Results indicate that PINNs tend to achieve higher accuracy and robustness in scenar-ios involving stiffness or sensitive bifurcations, owing to their embedded physical structure. NODEs, while more expressive and flexible, operate as black-box approximators without structural constraints, which can lead to reduced interpretability and stability in these regimes. Although advanced variants of NODEs (e.g., ANODEs, latent NODEs) aim to mitigate such limitations, their performance under stiff dynamics remains an open ques-tion. These findings emphasize the trade-offs between physics-informed models, which embed structure and interpretability, and purely data-driven approaches, which prioritize flexibility at the cost of physical consistency. 
+
+Keywords: Physics-Informed Neural Networks (PINNs), Neural Ordinary Differential Equa-tions (NODEs), Morris–Lecar model, Computational neuroscience 
+
+MSC Classification: 68T07, 65L05, 92B20, 34C23 
+
+1 Introduction 
+
+Mathematical modeling of biological neurons is essential for understanding how electrical sig-nals propagate in excitable cells. Among the foundational models in computational neuroscience Gasparinatou et al. [2023], the Morris–Lecar model Morris and Lecar [1981] is widely recognized for its balance between biophysical realism and mathematical tractability. It describes mem-brane voltage dynamics through a system of nonlinear ordinary differential equations and is frequently used to test machine learning–based solvers for time-dependent biological systems. 
+
+> ∗
+
+Department of Education, School of Pedagogical and Technological Education (ASPETE), 141 21 Athens, Greece. E-mail: nikmatz@aspete.gr . ORCID: 0000-0001-8647-6082 .
+
+> †
+
+Department of Mechanical Engineering Educators, School of Pedagogical and Technological Education (AS-PETE), 151 22 Athens, Greece. E-mail: hammer@aspete.gr .
+
+> 0
+
+This is a preprint version of a manuscript currently under review. 
+
+1
+
+> arXiv:2603.26921v1 [math.DS] 27 Mar 2026
+
+Recent advances in deep learning have introduced data-driven frameworks for solving differen-tial equations, with two notable approaches emerging: Neural Ordinary Differential Equations (NODEs) and Physics-Informed Neural Networks (PINNs). Both utilize neural networks, but with distinct philosophies. NODEs learn the underlying dynamics of a system by approximating the vector field directly from observed time-series data Chen et al. [2019], Dupont et al. [2019], Massaroli et al. [2021]. In contrast, PINNs encode prior knowledge of the governing differential equations and any initial or boundary conditions into the loss function, enabling solution learn-ing through automatic differentiation Raissi et al. [2019], Karniadakis et al. [2021], Lu et al. [2021]. Despite their widespread use, direct empirical comparisons between NODEs and PINNs on the same dynamical system remain limited. This study addresses that gap by systematically applying both methods to the Morris–Lecar model and evaluating their performance across five key dimensions: predictive accuracy, data efficiency, noise robustness, computational cost, and interpretability of the learned dynamics. The Morris–Lecar system provides an ideal benchmark for such a comparison. Its low dimensionality, analytically defined equations, and rich dynami-cal behavior—including oscillations, excitability, and bifurcations—enable a rigorous evaluation of modeling capabilities. By testing NODEs and PINNs under identical experimental condi-tions, we explore how each framework handles the complexities of biologically inspired nonlinear dynamics. Beyond this focused comparison, our findings contribute to the broader discussion around hybrid modeling approaches that combine data-driven learning with embedded physical constraints, such as latent PINNs or neural operators. As the field moves toward more gen-eralizable and robust solvers for dynamical systems, systematic benchmarking on biologically grounded models remains a critical step. 
+
+2 Background 
+
+2.1 The Morris–Lecar Model 
+
+We consider the standard two-dimensional version of the Morris–Lecar Morris and Lecar [1981] model, which, due to its low dimensionality and rich nonlinear behavior, has recently been explored as a benchmark for learning dynamical systems from data, especially in computational neuroscience. The Morris–Lecar model describes membrane voltage oscillations in barnacle muscle fibers and has become a canonical example of a two-dimensional neuronal oscillator. It is governed by the nonlinear system: 
+
+
+
+C dV dt = −gCa M∞(V )( V − VCa ) − gK N (V − VK ) − gL(V − VL) + I, dN dt = φ N∞(V ) − NτN (V )
+
+(1) where V (t) is the membrane potential, N (t) is the potassium gating variable, C is the membrane capacitance, gCa , g K , g L are maximal conductances, and VCa , V K , V L are the reversal potentials for calcium, potassium, and leak currents. The external current I acts as a bifurcation parameter. The voltage-dependent functions are defined as: 
+
+M∞(V ) = 12
+
+[
+
+1 + tanh 
+
+( V − V1
+
+V2
+
+)] 
+
+, (2) 
+
+N∞(V ) = 12
+
+[
+
+1 + tanh 
+
+( V − V3
+
+V4
+
+)] 
+
+, (3) 
+
+τN (V ) = 1cosh 
+
+( V −V3
+
+> 2V4
+
+) . (4) This model belongs to the class of fast–slow systems Fenichel [1979], Ermentrout and Terman [2010], Li et al. [2011], as the voltage V evolves much faster than N due to the small parameter 2φ ≪ 1. This time-scale separation enables bifurcation and singular perturbation analysis. Let us denote the system compactly as 
+
+ddt 
+
+(VN
+
+)
+
+= F (V, N ), (5) with F : R2 → R2 a smooth vector field. Steady states (V ∗, N ∗) satisfy F (V ∗, N ∗) = 0 , or equivalently: 
+
+{ 0 = −gCa M∞(V ∗)( V ∗ − VCa ) − gK N ∗(V ∗ − VK ) − gL(V ∗ − VL) + I, N ∗ = N∞(V ∗)
+
+To justify the subsequent stability and learning analysis, we first confirm the existence of an equilibrium point for the system. 
+
+Proposition 1. Consider the Morris–Lecar model as given in equation (1), with a fixed external input current I ∈ R and continuous functions M∞(V ), N∞(V ), and τN (V ). Then, the system admits at least one equilibrium point (V ∗, N ∗) ∈ R2.Sketch of proof. At equilibrium, the time derivatives in equation (1) vanish, yielding the alge-braic conditions 
+
+{
+
+0 = −gCa M∞(V )( V − VCa ) − gK N (V − VK ) − gL(V − VL) + I, N = N∞(V ).
+
+Substituting the second equation into the first gives a scalar nonlinear equation for V :
+
+f (V ) := gCa M∞(V )( V − VCa ) + gK N∞(V )( V − VK ) + gL(V − VL) = I. 
+
+The functions M∞(V ) and N∞(V ) are smooth sigmoidal maps, hence continuous and bounded on 
+
+R, so f (V ) is continuous. Moreover, due to the linear leak term, we have lim V →−∞ f (V ) = −∞ 
+
+and lim V →+∞ f (V ) = + ∞. By the Intermediate Value Theorem, there exists V ∗ ∈ R such that 
+
+f (V ∗) = I. Setting N ∗ := N∞(V ∗), we obtain an equilibrium point (V ∗, N ∗).See Izhikevich [2006], Ermentrout and Terman [2010], Azizi and Mugabi [2020], Li et al. [2011] for related discussions on equilibrium points and bifurcations in planar conductance-based neuron models. The behavior near equilibrium points is crucial for understanding the phase space geometry, which directly impacts the performance and learnability of PINNs and NODEs trained on such systems. To analyze the local stability of the Morris–Lecar system around a fixed point (V ∗, N ∗),we compute the Jacobian matrix of the vector field. Let f1(V, N ) and f2(V, N ) denote the right-hand sides of the system equations. The Jacobian matrix is defined as: 
+
+J =
+
+[ ∂f 1
+
+> ∂V ∂f 1
+> ∂N ∂f 2
+> ∂V ∂f 2
+> ∂N
+
+]
+
+. (6) The dynamical equations are given by: 
+
+f1(V, N ) = 1
+
+C (−gCa M∞(V )( V − VCa ) − gK N (V − VK ) − gL(V − VL) + I) ,f2(V, N ) = φ N∞(V ) − NτN (V ) .
+
+We now compute the partial derivatives and the Jacobian becomes: 
+
+J =
+
+
+
+1
+
+C
+
+(−gCa M ′∞(V )( V − VCa ) − gCa M∞(V ) − gK N − gL
+
+) −gK (V − VK )
+
+CφτN (V ) N ′∞(V ) − φτN (V )
+
+ . (7) 3Since the system is planar, the nature of the fixed point is determined by the eigenvalues of 
+
+J, which in turn depend on its trace and determinant. The fixed point is locally asymptotically stable if: 
+
+Tr( J) < 0 and det( J) > 0. (8) 
+
+Remark 1 (Remark on fast–slow structure.) . Although we do not explicitly employ geometric singular perturbation theory, it is worth noting that the Morris–Lecar model possesses an in-trinsic fast–slow structure due to the small parameter φ in the recovery variable equation. This timescale separation gives rise to geometric features such as slow manifolds and stiff transients, particularly near bifurcation boundaries. These properties, as studied in classical dynamical sys-tems literature Fenichel [1979], Azizi and Mugabi [2020], Paraskevov and Zemskova [2021], help explain qualitative behaviors such as long quiescent phases or sharp transitions, and partially account for the increased difficulty of learning dynamics in certain regimes using data-driven methods such as PINNs and NODEs. 
+
+2.2 Physics-Informed Neural Networks 
+
+A class of deep learning models integrates prior knowledge of physical systems directly into the neural network training process by embedding governing differential equations into the loss function—these models are known as PINNs. Introduced by Raissi et al. [2019], PINNs leverage the structure of the underlying physical laws—typically ordinary or partial differen-tial equations—as soft constraints by incorporating them into the optimization objective. This strategy transforms the learning task from a purely data-fitting problem into a constrained op-timization grounded in the governing physics. Formally, given a system of differential equations with a known structure but potentially unknown solution, a neural network is trained not only to fit observed data but also to minimize the residuals of the governing equations at selected points in the domain. The resulting composite loss function typically takes the form: 
+
+L (θ) = || uθ (ti) − u (ti)|| 2 + λ ||N [uθ (t)] || 2 (9) [data loss]+ [ physics loss] where N [·] denotes the differential operator representing the governing equations and λ is a scalar weighting hyperparameter balancing data fidelity against physical compliance. A key innovation of this framework lies in the evaluation of the physics loss via automatic differenti-ation Raissi et al. [2019], which enables the computation of derivatives of the neural network outputs with respect to their inputs. This mechanism allows PINNs to calculate ODE or PDE residuals even when no explicit data for derivatives is available, offering the ability to interpo-late and extrapolate in data-sparse regimes by enforcing physical structure. Beyond their use in forward problems (e.g., predicting system trajectories), PINNs have been applied to inverse problems, such as estimating unknown parameters embedded in the governing equations. For instance, Tartakovsky et al. [2020] demonstrated how physical parameters in subsurface flow could be treated as trainable variables within the network, facilitating simultaneous identifi-cation of hidden dynamics and parameters. Another crucial design element in PINNs is the selection of collocation points—discrete locations in the domain where the residuals of the gov-erning equations are enforced Raissi et al. [2019], Lu et al. [2021]. These can coincide with observed data points or be sampled independently, using strategies such as uniform sampling or Latin Hypercube Sampling. Poorly chosen collocation points can lead to slow convergence or inaccurate approximations, highlighting the importance of spatial and temporal coverage. To address challenges in training stability and convergence, recent work has proposed several improvements. For example, Wang et al. [2022] investigated gradient flow pathologies in PINNs and introduced adaptive weighting strategies and curriculum learning methods to better bal-ance data and physics terms throughout training. These approaches help mitigate issues such as 4stiffness and imbalanced losses that are common in multi-component loss functions. PINNs have also demonstrated success in biomedical applications. A notable example is the work of Kissas et al. [2020], where PINNs were used to reconstruct arterial blood pressure fields from 4D flow MRI velocity data in cardiovascular modeling. This application highlights the ability of PINNs to integrate sparse, noisy, or incomplete measurements with physically informed constraints to enable robust simulation of physiological systems. While PINNs offer promising accuracy, gen-eralization, and interpretability, recent comparisons with emerging operator learning methods have illuminated important trade-offs. Methods such as the Fourier Neural Operator Li et al. [2021] and DeepONet Lu et al. [2021] have shown superior generalization performance across diverse families of parametric PDEs, particularly in high-dimensional settings. However, these methods tend to forgo explicit physical structure in favor of learning mappings between function spaces, often sacrificing interpretability and physical consistency. This contrast emphasizes the ongoing tension between generalization capability and mechanistic fidelity in scientific machine learning. 
+
+2.3 Neural ODEs 
+
+Introduced by Chen in Chen et al. [2019], this framework constitutes a continuous-depth ex-tension of residual neural networks (ResNets), where the transformation of hidden states is governed by a parameterized ordinary differential equation. Instead of stacking discrete layers, NODEs model the evolution of a hidden state as the solution to an ordinary differential equation parameterized by a neural network. This formulation allows NODEs to represent continuous-time dynamics directly and adaptively. In mathematical terms, the hidden state h (t) evolves according to: dy dt = fθ (y (t) , t ) (10) where dy dt = f θ is a neural network with parameters θ, and the output h (t) obtained via numer-ical integration using methods such as Runge–Kutta or adaptive solvers. Training is performed by minimizing the mismatch between predicted trajectories and observed data, typically through the adjoint sensitivity method which allows memory-efficient backpropagation through the ODE solver. NODEs are particularly well-suited for modeling systems where the underlying vector field is unknown or analytically intractable. Their continuous formulation allows smooth inter-polation between observations and naturally accommodates irregularly sampled or non-uniform time series. One of the core strengths of NODEs lies in their flexibility: since the model makes no assumptions about the governing equations of the system, it can be trained entirely from data. This makes NODEs especially attractive for black-box modeling of dynamical systems. However, the lack of embedded physical structure can also be a limitation. NODEs may struggle with extrapolation beyond the training domain and often require dense, low-noise data to achieve accurate results. Several extensions have been proposed to improve the expressiveness and ro-bustness of NODEs. Augmented NODEs Dupont et al. [2019] expand the dimensionality of the hidden state to capture more complex dynamics, while Continuous Normalizing Flows (CNFs) adapt the NODE framework for density estimation and generative modeling. Another notable variant, ANODEV2 Gholami et al. [2021], introduces architectural refinements and coupling mechanisms to address stiffness and gradient instability during training. Despite these improve-ments, training NODEs remains computationally expensive due to the repeated need to solve differential equations during optimization. The adjoint method, although efficient in memory usage, can introduce numerical challenges, particularly in stiff regimes. Overall, NODEs offer a powerful and flexible framework for learning continuous-time dynamics directly from data, especially in domains where physical models are unknown or difficult to specify. Their modular structure and compatibility with modern deep learning tools have made them popular across a range of applications, including neuroscience, finance, and climate modeling. 53 Methodology 
+
+This section outlines the experimental design used to compare PINNs and NODEs on the Morris– Lecar neuronal model. We begin by motivating the selection of the Morris–Lecar system as a benchmark, followed by a description of the dynamical regimes explored in this study and the procedure for generating synthetic training data. We evaluate the predictive performance of the models using standard regression metrics, including the Mean Squared Error (MSE), Mean Absolute Error (MAE), Root Mean Squared Error (RMSE), the coefficient of determination (R2), and others. A detailed description and the mathematical definitions of these metrics are provided in Section 3.7. 
+
+3.1 Rationale for Model Selection 
+
+The Morris–Lecar model provides an ideal testbed for comparing data-driven and physics-informed neural modeling approaches due to its biophysical interpretability, well-established mathematical formulation, and capacity to exhibit a rich set of nonlinear behaviors. Table 1 summarizes the main characteristics of the model and their relevance to the PINN vs. NODE comparison. Table 1: Justification for using the Morris–Lecar model as a benchmark in the comparison of PINNs and NODEs. 
+
+Criterion Morris–Lecar Model Char-acteristics Relevance to PINNs &NODEs 
+
+Known physical equations Analytically defined ODE sys-tem Enables direct embedding of physics in PINNs; NODEs learn dynamics from data Nonlinear dynamics Exhibits excitability and oscil-lations Tests the models’ ability to cap-ture bifurcation behavior Ground truth availability Numerical integration feasible Allows quantitative perfor-mance evaluation (Subsec-tion 3.7) Low-dimensional yet rich Two-variable system with com-plex transitions Suitable for compact yet expres-sive architectures Biophysical interpretability Neurophysiologically meaning-ful parameters PINNs offer insight; NODEs as-sess black-box adaptability 
+
+3.2 Dynamical Regimes of the Morris–Lecar Model 
+
+In this study, we examine three distinct parameter configurations of the Morris–Lecar model, each representing a different type of neuronal excitability: Hopf Bifurcation, Snlc and Homoclinic Orbit. These configurations are drawn from the canonical formulations described in “Mathe-matical Foundations of Neuroscience” by Ermentrout and Terman in Ermentrout and Terman [2010] and Azzizi et. al Azizi and Mugabi [2020], where the Morris–Lecar model is used to explore bifurcation structures that give rise to different classes of neural responses. By using these three well-established regimes, we aim to assess how well PINNs and NODEs can learn or reconstruct the underlying system dynamics under qualitatively different behaviors—ranging from sharp all-or-none firing to subthreshold oscillations 63.3 Data Generation and Regime Characterization 
+
+To evaluate the modeling capabilities of PINNs and NODEs, we generated synthetic datasets based on numerical simulations of the Morris–Lecar system. The simulations were performed using a custom Python script ( synthetic_M_L_data.py ) that numerically integrates the sys-tem’s equations using the solve_ivp function from scipy.integrate . For each simulation, we collected trajectories of the membrane potential V (t) and the recovery variable N (t) over the time interval t ∈ [0 , 300] ms, using 3000 uniformly spaced time points. These trajectories form the ground truth used for training and evaluating the models. Simulations were conducted for the three bifurcation regimes, using parameter values listed in Table 2, adapted from Azizi and Mugabi [2020]. For each regime, we performed a current sweep over the interval Iext ∈ [0 , 120] μA/cm 2. The resulting peak-to-peak voltage amplitudes were used to construct bifurcation diagrams, shown in Figure 1, which guided the selection of representative current values for training and testing. Table 2: Parameter values for the Morris–Lecar model under three canonical bifurcation regimes (Azizi and Mugabi [2020]). 
+
+Parameter Hopf SNLC Homoclinic 
+
+φ 0.04 0.067 0.23 
+
+gCa 4.4 4 4
+
+V3 2 12 12 
+
+V4 30 17.4 17.4 
+
+ECa 120 120 120 
+
+EK -84 -84 -84 
+
+EL -60 -60 -60 
+
+gK 8 8 8
+
+gL 2 2 2
+
+V1 -1.2 -1.2 -1.2 
+
+V2 18 18 18 
+
+CM 20 20 20 Based on these diagrams, we selected representative current values within the bifurcation regions to highlight the qualitative transitions in the system’s dynamics. Specifically, we used 
+
+Iext = 90 μA/cm 2 for the Hopf regime, 42 μA/cm 2 for the SNLC regime, and 50 μA/cm 2 for the Homoclinic regime. These trajectories serve as the input data for downstream training. Figure 2 presents the corresponding phase portraits and equilibrium structures, while Table 3 summarizes the fixed points, Jacobians, and eigenvalues, offering additional insight into local stability. Table 3: Equilibrium properties of the Morris–Lecar system under representative currents. 
+
+Scenario Homoclinic SNLC Hopf 
+
+Equilibrium Point (V ∗, N ∗) (5.4540, 0.3203) (4.8622, 0.3057) (-26.5969, 0.1294) Jacobian 
+
+[ −35 .588 −35 .782 0.005655 −0.2341 
+
+] [ −35 .327 −35 .545 0.001601 −0.0684 
+
+] [ −22 .935 −22 .961 0.000269 −0.0446 
+
+]
+
+Eigenvalues −35 .583 , −0.240 −35 .326 , −0.070 −22 .935 , −0.045 
+
+Type Stable node/focus Stable node/focus Stable node/focus 70 20 40 60 80 100 120 External Current I (μ / 2 )
+
+0
+
+10 
+
+20 
+
+30 
+
+40 
+
+50 
+
+60 
+
+70 
+
+80 Oscillation  Amplitude  of   (mV)   
+
+> HOPF Bifur cation Diagram
+
+Amplitude 
+
+Bifur cation region: 60.0–100.0 (a) Hopf regime. 0 20 40 60 80 100 120 External Current I (μ / 2 )
+
+0.00 
+
+0.02 
+
+0.04 
+
+0.06 
+
+0.08 
+
+0.10 
+
+0.12 
+
+0.14 
+
+0.16 Oscillation  Amplitude  of   (mV)   
+
+> SNLC Bifur cation Diagram
+
+Amplitude 
+
+Bifur cation region: 30.4–69.7 (b) SNLC regime. 0 20 40 60 80 100 120 External Current I (μ / 2 )
+
+0
+
+10 
+
+20 
+
+30 
+
+40 
+
+50 
+
+60 
+
+70 
+
+80 Oscillation  Amplitude  of   (mV)   
+
+> HOMOCLINIC Bifur cation Diagram
+
+Amplitude 
+
+Bifur cation region: 60.0–100.0 
+
+(c) Homoclinic regime. 
+
+Figure 1: Bifurcation diagrams of the Morris–Lecar system under the three regimes defined in Table 2, obtained by sweeping Iext over the range [0 , 120] μA/cm 2.8− −      " 
+
+  
+
+  
+
+ 
+
+ 
+
+ 
+
+ "      
+
+> "#!
+> ! "" 
+
+(a) Hopf regime. − −     ! # 
+
+− 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ # !     
+
+> #  $"
+> " !#!#
+
+(b) SNLC regime. − −        " 
+
+  
+
+ 
+
+ 
+
+ 
+
+ 
+
+ "      
+
+> "#!
+> ! "" 
+
+(c) Homoclinic regime. 
+
+Figure 2: Equilibrium analysis and phase portraits for each bifurcation regime under selected representative currents. 93.4 Implementation of PINN 
+
+Building on the theoretical overview of PINNs presented in Section 2.2, we implemented the Morris–Lecar model using the framework proposed by Raissi et al. Raissi et al. [2019]. The model approximates the system’s dynamics by minimizing a composite loss that balances data fidelity and compliance with the governing differential equations. The approximation is carried out using a fully connected neural network in PyTorch Paszke et al. [2019]. The input is a scalar time variable t, and the outputs are predictions for the system’s state variables: ˆyθ(t) = 
+
+[ ˆVθ(t), ˆNθ(t)
+
+]
+
+. The network architecture consists of three hidden layers with 128 neurons and Tanh activations, followed by a linear output layer. This configuration provides sufficient capacity for learning smooth time-dependent functions Hornik et al. [1989]. The total number of trainable parameters is 33 , 538 , and a single forward pass requires approximately 33 , 152 floating points operations (FLOPs), estimated using the THOP 
+
+library. The key feature of the PINN approach is the incorporation of the system’s physics into the training process. The derivatives d ˆVdt and d ˆNdt are computed using automatic differentiation (torch.autograd.grad ) and are substituted into the differential equations to form the residual terms: 
+
+f1(t) = C d ˆVdt + gCa M∞( ˆV )( ˆV − VCa ) + gK ˆN ( ˆV − VK ) + gL( ˆV − VL) − I, f2(t) = d ˆNdt − φ · N∞( ˆV ) − ˆNτN ( ˆV ) ,
+
+(11) where M∞, N ∞, and τN are voltage-dependent nonlinear functions defined via hyperbolic ex-pressions. The loss function is defined as the unweighted sum of a data loss (mean squared error between predicted and reference trajectories) and a residual loss derived from the above equations. Gra-dients are computed with respect to uniformly sampled time values t with requires_grad=True ,enabling full backpropagation through the computational graph. The full implementation was developed in the pinn.py script, which contains the training, evaluation, and visualization rou-tines for the PINN model. 
+
+3.5 Implementation of NODE 
+
+To simulate the dynamics of the Morris–Lecar system using NODEs (2.2), we implemented a scenario-independent framework in PyTorch Paszke et al. [2019], utilizing the torchdiffeq 
+
+library Chen [2018]. This framework learns the vector field of the underlying dynamical sys-tem directly from time series data, without requiring any explicit knowledge of the governing equations. The same implementation is applied across all bifurcation regimes (Hopf, SNLC, Ho-moclinic), enabling consistent evaluation of the method’s ability to capture nonlinear behavior. At the core of the NODE model lies a parameterized function fθ(y), where y = [ V, N ]
+
+denotes the system’s state vector. The function fθ is approximated by a feedforward neural network comprising three hidden layers of 128 neurons each with Tanh activations and a final output layer of two neurons representing the learned derivatives dV dt and dN dt . This architecture was selected to balance expressiveness with computational efficiency Rackauckas et al. [2021]. Model integration is performed using the Dormand–Prince 5 th -order adaptive solver ( method='dopri5' )as provided by the odeint function in the torchdiffeq library. During training, the neural network is queried at the initial condition and integrated over the normalized time domain. The resulting trajectory is compared with ground truth data using the MSE loss function. In each experiment, inverse normalization is applied to restore predictions to their original scale, and post-training analysis includes the generation of V (t) and N (t) time series plots, phase portraits, and loss curves. The number of trainable parameters and the number of floating-point 10 operations (FLOPs) are also computed using the THOP library. All outputs, including trained model weights and performance metrics, are systematically saved in dedicated folders to ensure reproducibility. The full implementation was developed in the node.py script, which contains the training, evaluation, and visualization routines for the NODE model. 
+
+3.6 Model Architecture and Experimental Setup 
+
+To ensure a fair and systematic comparison, both the NODE and PINN models were trained on the same synthetic dataset generated from the 2D Morris–Lecar system. The dataset consists of 
+
+3000 time points over the interval t ∈ [0 , 300] ms, with a step size of approximately 1 ms. Each data point contains the membrane potential V (t) and the recovery variable N (t).Both models were implemented in PyTorch Paszke et al. [2019]. The NODE implementation uses the torchdiffeq library Chen [2018] to solve ODEs via numerical integration, while the PINN approach leverages automatic differentiation ( torch.autograd.grad ) to enforce physics-based constraints through residual terms derived from the governing equations. The models share a common architecture: fully connected feedforward networks with three hidden layers of 128 neurons and Tanh activation functions. The NODE model receives the initial condition [V0, N 0] and integrates over time, while the PINN model uses scalar time input 
+
+t to predict [ ˆV (t), ˆN (t)] directly. Normalization strategies differ. The NODE pipeline applies Min–Max normalization to V , N ,and t, with inverse transformation after prediction. The PINN framework omits normalization to preserve the physical consistency of the residual terms. Training is performed with the Adam optimizer and learning rate 10 −3, across five epoch settings: 1000 , 2000 , 5000 , 10000 , and 20000 . The optimal model for each scenario is selected based on the minimal value of MSE V + MSE N . Computations were executed on an Apple M4 CPU with 32-bit floating-point precision. To ensure reproducibility, both pipelines enforce fixed seeds and deterministic algorithms using torch.use_deterministic_algorithms .Evaluation metrics include MSE, RMSE, MAE, R2, RMSPE, MAPE, and Max Error, com-puted separately for V (t) and N (t). Results include time-series plots, phase portraits, training loss curves, parameter counts, and FLOPs (via THOP ). Outputs are organized into structured directories and stored in .pth , .csv , and formats. In Table 4, we present a summary of the methodological differences between PINNs and NODEs as implemented in this study. 
+
+Remark 2. In the NODE implementation, we apply Min–Max normalization to V , N , and 
+
+t before training, mapping all values to [0 , 1] . This improves numerical stability and gradient propagation. After training, inverse normalization restores predictions to their physical scale. In contrast, PINN models operate on raw (unscaled) data to preserve the structure of the residuals derived from the governing differential equations. Normalizing V would distort terms such as 
+
+M∞(V ) and τN (V ), compromising the model’s physical interpretability. 
+
+Remark 3. Following established practices in the literature, we use the hyperbolic tangent (Tanh) as the activation function in both PINN and Neural ODE architectures. Tanh has been widely adopted in PINNs due to its smoothness and ability to approximate continuous solutions effectively Jagtap et al. [2020]. Similarly, the original Neural ODE framework Chen et al. [2019] employed Tanh as its default choice. However, in the context of Neural ODEs, we also investigate the Sigmoid Linear Unit (SiLU or Swish), a smooth and non-monotonic activation that has demonstrated superior performance in deep learning models Ramachandran et al. [2017]. To ensure a consistent and interpretable comparison between the two modeling approaches, we adopt a standard suite of regression-based metrics. These metrics, defined in the following subsection, allow us to evaluate the accuracy and generalization ability of each model across different dynamical regimes. 11 Table 4: Summary of Methodological Differences between PINNs and NODEs 
+
+Aspect PINN Neural ODE 
+
+Input–Output Structure t → [V, N ] [V0, N 0] → [V (t), N (t)] via ODE integration Architecture FCNN (3 hidden layers × 128, Tanh) FCNN (3 hidden layers × 128, Tanh or SiLU (see Remark 3)) Physics Integration Explicit residuals via autograd None (data-driven only) Normalization No normalization Min–Max normalization with in-verse scaling (see Remark 2) Optimizer Adam (lr = 10 −3) Adam (lr = 10 −3)Numerical Precision float32 float32 
+
+ODE Solver Not applicable odeint (dopri5 integrator) Parameter Count 33,538 33,666 FLOPs per Inference ∼33,152 ∼33,280 Epochs Trained 1000 to 20000 1000 to 20000 Determinism Enabled Enabled Evaluation Metrics MSE, RMSE, MAE, R2, MAPE, RMSPE, Max Error Same 
+
+3.7 Evaluation Metrics 
+
+To systematically quantify model performance, we adopt standard regression-based metrics widely used in the evaluation of neural network surrogates for dynamical systems. These met-rics offer complementary views on model accuracy, scale sensitivity, and generalization ability. In the context of biophysical systems like the Morris–Lecar model, it is essential to distinguish between absolute and relative errors, as well as to assess both average and worst-case deviations. All metrics are computed between the predicted values ˆyi and the ground-truth targets yi.For clarity, we report each metric separately for the membrane voltage V (t) and the gating variable N (t), using subscripts: e.g., MSE V , MAPE N , etc. • Mean Squared Error (MSE): 
+
+MSE = 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+(yi − ˆyi)2
+
+Captures the average squared deviation; sensitive to large errors. • Root Mean Squared Error (RMSE): 
+
+RMSE = √MSE 
+
+Expresses the error in the same units as the signal, facilitating physical interpretation. • Mean Absolute Percentage Error (MAPE): 
+
+MAPE = 100% 
+
+n
+
+> n
+
+∑
+
+> i=1
+
+∣∣∣∣
+
+yi − ˆyi
+
+yi
+
+∣∣∣∣
+
+A relative metric that expresses average error as a percentage. It may become unstable when yi ≈ 0.• Coefficient of Determination ( R2): 
+
+R2 = 1 −
+
+∑ni=1 (yi − ˆyi)2
+
+∑ni=1 (yi − ¯y)2
+
+12 Indicates the proportion of variance in the reference signal explained by the model. Values close to 1 denote high fidelity. • Maximum Absolute Error (MaxErr): 
+
+MaxErr = max  
+
+> i
+
+|yi − ˆyi|
+
+Measures the worst-case absolute deviation across the predicted trajectory. • Root Mean Squared Percentage Error (RMSPE): 
+
+RMSPE = 
+
+√√√√ 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+( yi − ˆyi
+
+yi
+
+)2
+
+A scale-invariant metric that penalizes relative deviations; more robust than MAPE in certain regimes. 
+
+4 Results and Comparison 
+
+In this section, we present the comparative performance of the PINNs and NODEs architectures in capturing the dynamics of the Morris–Lecar model under varying bifurcation scenarios. The evaluation focuses on both qualitative reproduction of voltage traces and quantitative error metrics. 
+
+4.1 Qualitative Analysis of Model Predictions 
+
+To assess the ability of PINNs and NODEs to capture the dynamics of the Morris–Lecar model across different regimes, we evaluated the performance of both models on synthetic time series generated for representative values of external current I. In accordance with the existence of equilibria established in Proposition 1, the Morris–Lecar system admits at least one fixed point for any biologically relevant set of parameters and for all values of the external current I. This theoretical guarantee provides a foundation for evaluating how well the PINN and NODE models capture the system’s behavior across different dynamic regimes. In particular, the ability of each model to converge to a stable resting state in the subcritical regime (e.g., I = 50 μA/cm 2 for the Hopf scenario), or to reproduce limit cycle oscillations beyond the bifurcation threshold (e.g., 
+
+I = 90 μA/cm 2), serves as a direct indicator of their dynamic fidelity. The results are summarized in Figures 3-9, which illustrate the predicted membrane potential 
+
+V (t) and recovery variable N (t) compared to the ground truth solutions obtained via numerical integration. In regimes where no bifurcation is present—such as for I = 50 μA/cm 2 under the Hopf parameters (Figure 3)—both models rapidly converge to accurate approximations of the system’s dynamics. Even with a relatively small number of training epochs, PINNS and NODE successfully reproduce the stable fixed-point behavior of the model. In the Hoph bifurcating case of Iext = 90 μA/cm 2, both the PINN and NODE models are able to capture the sustained oscillations characteristic of the Hopf regime. The predictions align well with the true dynamics in both the time and phase space, indicating that—given sufficient training epochs—both models can internalize and generalize the underlying periodic behavior. In Figure 4 demonstrate that in the Hopf regime, the PINN model successfully captures the system’s dynamics. Figure 5 illustrates the training performance of the NODE model in the bifurcating Hopf dynamics scenario. The loss decreases steadily, suggesting that the model is not only learning the observed data but also incorporating the underlying physical laws embedded in the training objective. This reinforces the effectiveness of the PINN framework in scenarios where the dynamics are governed by known equations.PINN exhibits smooth convergence toward a low training error, effectively capturing the system’s oscillatory dynamics 13 0 0 00  0 00  0 00  
+
+  0
+
+  0
+
+ 0 
+
+0
+
+0 
+
+0# 
+
+> #
+
+!$ 
+
+    
+
+>  00000 " 0
+
+0 0 00  0 00  0 00  
+
+  0
+
+  0
+
+ 0 
+
+0
+
+0 
+
+0 $  V
+
+> V(t)
+
+True V
+
+PINN V 
+
+> HOPF_50/NODE/10000 Epochs/I=50
+
+Figure 3: Predicted vs ground truth voltage trajectories and phase portraits for the Hopf regime with Iext = 50 μA/cm 2, a current value that does not induce bifurcation. Both PINN and NODE models successfully reproduce the stable resting dynamics. 0 0 00  0 00  0 00 
+
+  0
+
+ 0 
+
+0
+
+0 
+
+0
+
+> $
+
+"% 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> $
+
+"% 
+
+ 
+
+  0  0 0 0 0
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+0  
+
+> # "$"$
+
+"% 
+
+ 
+
+0 00 00 00 00 000 !  
+
+00 
+
+00 
+
+00 
+
+00 
+
+00  ##      
+
+> " ##
+>  -PINN -1000 Epochs
+
+0 0 00  0 00  0 00 
+
+  0
+
+ 0 
+
+0
+
+0 
+
+0
+
+> #
+
+!$ 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> #
+
+!$ 
+
+ 
+
+  0  0 0 0 0
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> " !#!#
+
+!$ 
+
+ 
+
+0 000 000 000 000 000   
+
+0
+
+00 
+
+00 
+
+00 
+
+00 
+
+00 
+
+00 
+
+00 ""     
+
+> ! ""
+>  -PINN -5000 Epochs
+
+0 0 00  0 00  0 00 
+
+  0
+
+ 0 
+
+0
+
+0 
+
+0
+
+> $
+
+"% 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> $
+
+"% 
+
+ 
+
+  0  0 0 0 0
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+0  
+
+> # "$"$
+
+"% 
+
+ 
+
+0 000 000 000 000 0000 !  
+
+0
+
+00 
+
+00 
+
+00 
+
+00 
+
+00 
+
+00 
+
+00  ##      
+
+> " ##
+>  -PINN -10000 Epochs
+
+0 0 00  0 00  0 00 
+
+  0
+
+ 0 
+
+0
+
+0 
+
+0
+
+> #
+
+!$ 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> #
+
+!$ 
+
+ 
+
+  0  0 0 0 0
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> " !#!#
+
+!$ 
+
+ 
+
+0  00 000 00 0000  00  000  00 0000   
+
+0
+
+00 
+
+00 
+
+00 
+
+00 
+
+00 
+
+00 
+
+00 ""     
+
+> ! ""
+>  -PINN -20000 Epochs
+
+Figure 4: PINN predicted vs ground truth trajectories under the Hopf regime for with Iext =90 μA/cm 2 across different training epochs. 0 0 00  0 00  0 00 
+
+  0
+
+ 0 
+
+0
+
+0 
+
+0
+
+> $
+
+"% 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> $
+
+"% 
+
+ 
+
+  0  0 0 0 0
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+0  
+
+> # "$"$
+
+"% 
+
+ 
+
+0 00 00 00 00 000 !  
+
+00 0
+
+00 
+
+000 
+
+0 
+
+0 0
+
+0 
+
+000  ##      
+
+> " ##
+>  -NODE -1000 Epochs
+
+0 0 00  0 00  0 00 
+
+  0
+
+ 0 
+
+0
+
+0 
+
+0
+
+> "
+
+ #  
+
+  
+
+         
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+> "
+
+ # 
+
+  
+
+       
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+   
+
+> ! ""
+
+ # 
+
+ 
+
+       
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ !!      
+
+>  !!
+>  -NODE -5000 Epochs
+
+0 0 00  0 00  0 00 
+
+  0
+
+ 0 
+
+0
+
+0 
+
+0
+
+> $
+
+"% 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> $
+
+"% 
+
+ 
+
+  0  0 0 0 0
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+0  
+
+> # "$"$
+
+"% 
+
+ 
+
+0 000 000 000 000 0000 !  
+
+0000 
+
+00 
+
+00 0
+
+00 
+
+000 
+
+0 
+
+0 0
+
+0  ##      
+
+> " ##
+>  -NODE -10000 Epochs
+
+0 0 00  0 00  0 00 
+
+  0
+
+ 0 
+
+0
+
+0 
+
+0
+
+> "
+
+ #  
+
+  
+
+         
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+> "
+
+ # 
+
+  
+
+       
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+   
+
+> ! ""
+
+ # 
+
+ 
+
+              
+
+ 
+
+ 
+
+ 
+
+ 
+
+ !!      
+
+>  !!
+>  -NODE -20000 Epochs
+
+Figure 5: NODE predicted vs ground truth trajectories under the Hopf regime for Iext =90 μA/cm 2 across different training epochs. 14 A similar behavior is observed in the SNLC regime for input currents Iext = 42 μA/cm 2,which induce bifurcation. As illustrated in Figures 6 and 7, both the Neural ODE and PINN architectures successfully reproduce the system’s oscillatory dynamics under these conditions. 0 0 00  0 00  0 00 
+
+  0
+
+  0
+
+  0
+
+ 0 
+
+ 0 
+
+0
+
+0 
+
+0 
+
+0
+
+> "
+
+ #  
+
+ 
+
+         
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+> "
+
+ # 
+
+ 
+
+                
+
+ 
+
+ 
+
+ 
+
+ 
+
+   
+
+> ! ""
+
+ # 
+
+ 
+
+       
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ !!      
+
+>  !!
+>  -PINN -1000 Epochs
+
+0 0 00  0 00  0 00 
+
+  0
+
+  0
+
+  0
+
+ 0 
+
+ 0 
+
+0
+
+0 
+
+0 
+
+0
+
+> !
+
+" 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> !
+
+" 
+
+ 
+
+  0   0   0  0  0 0 0 0 0
+
+00 
+
+0 
+
+0 
+
+0 
+
+0  
+
+>   !!
+
+" 
+
+ 
+
+0 000 000 000 000 000  
+
+0
+
+00 
+
+00 
+
+00 
+
+00 
+
+00 
+
+00       
+
+>  
+>  -PINN -5000 Epochs
+
+0 0 00  0 00  0 00 
+
+  0
+
+  0
+
+  0
+
+ 0 
+
+ 0 
+
+0
+
+0 
+
+0 
+
+0
+
+> "
+
+ #  
+
+ 
+
+         
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+> "
+
+ # 
+
+ 
+
+                
+
+ 
+
+ 
+
+ 
+
+ 
+
+   
+
+> ! ""
+
+ # 
+
+ 
+
+       
+
+
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ !!      
+
+>  !!
+>  -PINN -10000 Epochs
+
+0 0 00  0 00  0 00 
+
+  0
+
+  0
+
+  0
+
+ 0 
+
+ 0 
+
+0
+
+0 
+
+0 
+
+0
+
+> "
+
+ #  
+
+ 
+
+         
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+> "
+
+ # 
+
+ 
+
+                
+
+ 
+
+ 
+
+ 
+
+ 
+
+   
+
+> ! ""
+
+ # 
+
+ 
+
+              
+
+
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ !!      
+
+>  !!
+>  -PINN -20000 Epochs
+
+Figure 6: PINN model under the SNLC regime with Iext = 42 μA/cm 2 .0 0 00  0 00  0 00 
+
+  0
+
+  0
+
+  0
+
+ 0 
+
+ 0 
+
+0
+
+0 
+
+0 
+
+0
+
+> %
+
+#& 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> %
+
+#& 
+
+ 
+
+  0   0   0  0  0 0 0 0 0
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> $ !#%#%
+
+#& 
+
+ 
+
+0 00 00 00 00 000 "! 
+
+00 
+
+00 
+
+00 
+
+00 
+
+00 
+
+0 !$$       
+
+> #  !$$
+>  -NODE -1000 Epochs
+
+0 0 00  0 00  0 00 
+
+  0
+
+  0
+
+  0
+
+ 0 
+
+ 0 
+
+0
+
+0 
+
+0 
+
+0
+
+> "
+
+ #  
+
+ 
+
+         
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+> "
+
+ # 
+
+ 
+
+                
+
+ 
+
+ 
+
+ 
+
+ 
+
+   
+
+> ! ""
+
+ # 
+
+ 
+
+       
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+ !!       
+
+>  !!
+>  -NODE -5000 Epochs
+
+0 0 00  0 00  0 00 
+
+  0
+
+  0
+
+  0
+
+ 0 
+
+ 0 
+
+0
+
+0 
+
+0 
+
+0
+
+> #
+
+!$ 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> #
+
+!$ 
+
+ 
+
+  0   0   0  0  0 0 0 0 0
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> " !#!#
+
+!$ 
+
+ 
+
+0 000 000 000 000 0000   
+
+000 
+
+00 
+
+00 
+
+00 
+
+00 
+
+00 
+
+0 ""     
+
+> ! ""
+>  -NODE -10000 Epochs
+
+0 0 00  0 00  0 00 
+
+  0
+
+  0
+
+  0
+
+ 0 
+
+ 0 
+
+0
+
+0 
+
+0 
+
+0
+
+> $
+
+"% 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> $
+
+"% 
+
+ 
+
+  0   0   0  0  0 0 0 0 0
+
+00 
+
+0 
+
+0 
+
+0 
+
+0  
+
+> # "$"$
+
+"% 
+
+ 
+
+0  00 000 00 0000  00  000  00 0000 !  
+
+000 
+
+00 
+
+00 
+
+00 
+
+00 
+
+00 
+
+0  ##      
+
+> " ##
+>  -NODE -20000 Epochs
+
+Figure 7: NODE model for SNLC regime with Iext = 42 μA/cm 2.For the Homoclinic regime the PINN model (Figure 8) is capable of accurately approximating the system’s dynamics following 5, 000 training epochs. Each subplot illustrates how increased training improves the model’s ability to reproduce the complex bifurcation-induced dynamics, including sharp voltage transitions and slow manifolds. In contrast, homoclinic regime Iext = 50 μA/cm 2 (Figure 9), the Neural ODE fails to repro-duce the system’s oscillatory behavior, highlighting a limitation of purely data-driven models in this highly sensitive bifurcation scenario. The results underscore both the challenges and the eventual convergence behavior of the NODE model in capturing homoclinic trajectories. As discussed in Remark 3, we employed the SiLU activation function, with the outcome illus-15 0 0 00  0 00  0 00 
+
+  
+
+ 0 
+
+ 
+
+0
+
+0 
+
+
+
+0 
+
+> $
+
+"% 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> $
+
+"% 
+
+ 
+
+   0   0 0  0 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0  
+
+> # "$"$
+
+"% 
+
+ 
+
+0 00 00 00 00 000 !  
+
+0
+
+0
+
+00 
+
+ 0
+
+00 
+
+ 0
+
+00 
+
+0 ##      
+
+> " ##
+>  -PINN -1000 Epochs
+
+0 0 00  0 00  0 00 
+
+  
+
+ 0 
+
+ 
+
+0
+
+0 
+
+
+
+0 
+
+> "
+
+ #  
+
+ 
+
+         
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+> "
+
+ # 
+
+ 
+
+          
+
+ 
+
+ 
+
+ 
+
+ 
+
+   
+
+> ! ""
+
+ # 
+
+ 
+
+       
+
+
+
+
+
+ 
+
+ 
+
+ 
+
+ 
+
+ 
+
+
+
+ !!        
+
+>  !!
+>   -PINN -5000 Epochs
+
+0 0 00  0 00  0 00 
+
+  
+
+ 0 
+
+ 
+
+0
+
+0 
+
+
+
+0 
+
+> $
+
+"% 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> $
+
+"% 
+
+ 
+
+   0   0 0  0 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0  
+
+> # "$"$
+
+"% 
+
+ 
+
+0 000 000 000 000 0000 !  
+
+0
+
+0 
+
+0
+
+0
+
+0
+
+00 
+
+0 
+
+ 0
+
+ 0 ##      
+
+> " ##
+>  -PINN -10000 Epochs
+
+0 0 00  0 00  0 00 
+
+  
+
+ 0 
+
+ 
+
+0
+
+0 
+
+
+
+0 
+
+> %
+
+#& 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> %
+
+#& 
+
+ 
+
+   0   0 0  0 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> $ !#%#%
+
+#& 
+
+ 
+
+0  00 000 00 0000  00  000  00 0000 "! 
+
+0
+
+0 
+
+0
+
+0
+
+0 
+
+00 
+
+0 
+
+ 0
+
+ 0!$$       
+
+> #  !$$
+>  -PINN -20000 Epochs
+
+Figure 8: PINN-based predictions for the Morris–Lecar model in the homoclinic regime with 
+
+Iext = 50 μA/cm 2 across different training epochs. 0 0 00  0 00  0 00 
+
+  
+
+ 0 
+
+ 
+
+0
+
+0 
+
+
+
+0 
+
+> &
+
+$' 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> &
+
+$' 
+
+ 
+
+   0   0 0  0 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0  
+
+> % "$&$ &
+
+$' 
+
+ 
+
+0 00 00 00 00 000 #" 
+
+00 
+
+00 0
+
+00 
+
+000 
+
+0 
+
+0 0
+
+0 
+
+000 "%%       
+
+> $ !! "%%
+>  -NODE -1000 Epochs
+
+0 0 00  0 00  0 00 
+
+  
+
+ 0 
+
+ 
+
+0
+
+0 
+
+
+
+0 
+
+> #
+
+!$ 
+
+  
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> #
+
+!$ 
+
+  
+
+   0   0 0  0 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> " !#!#
+
+!$ 
+
+ 
+
+0 000 000 000 000 000   
+
+00 
+
+00 
+
+0 
+
+00 
+
+0 
+
+0 0""       
+
+> ! ""
+>   -NODE -5000 Epochs
+
+0 0 00  0 00  0 00 
+
+  
+
+ 0 
+
+ 
+
+0
+
+0 
+
+
+
+0 
+
+> %
+
+#& 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> %
+
+#& 
+
+ 
+
+   0   0 0  0 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> $ !#%#%
+
+#& 
+
+ 
+
+0 000 000 000 000 0000 "! 
+
+00 
+
+00 
+
+0 
+
+00 
+
+0 !$$       
+
+> #  !$$
+>  -NODE -10000 Epochs
+
+0 0 00  0 00  0 00 
+
+  
+
+ 0 
+
+ 
+
+0
+
+0 
+
+
+
+0 
+
+> $
+
+"% 
+
+ 
+
+0 0 00  0 00  0 00 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+> $
+
+"% 
+
+ 
+
+   0   0 0  0 
+
+00 
+
+0 
+
+0 
+
+0 
+
+0  
+
+> # "$"$
+
+"% 
+
+ 
+
+0  00 000 00 0000  00  000  00 0000 !  
+
+00 
+
+0 
+
+0 
+
+0 
+
+0 
+
+0  ##        
+
+> " ##
+>   -NODE -20000 Epochs
+
+Figure 9: NODE model for the homoclinic regime with Iext = 50 μA/cm 2.16 trated in Figure 10. Notably, the NODE successfully reproduces the underlying dynamics of the Morris–Lecar system after 10 , 000 training epochs. 0 0 00  0 00  0 00                          
+
+>  
+>  0
+>  
+> 0
+> 0
+> 
+> 0
+> %
+> #&
+> 
+> 0000 000 000
+> 00
+> 0
+> 0
+> 0
+> 0
+> %
+> #&
+> 
+>    0  00 0
+> 00
+> 0
+> 0
+> 0
+> 0
+> $ !#%#%
+> #&
+> 
+> 0000 000 000 000 0000 "!
+> 000
+> 00
+> 00
+> 0
+> 00
+> 0 !$$
+> #  !$$
+>  -NODE -10000 Epochs
+
+Figure 10: NODE model predictions for the homoclinic regime using the SiLU activation function after 10 , 000 training epochs. The plots show the predicted membrane voltage V (t), gating variable N (t), phase portrait, and training loss. Compared to earlier results with Tanh (see Figure 9), the use of SiLU leads to visibly improved dynamics, particularly in the reproduction of the orbit structure. However, significant deviations remain in the later phase and voltage trajectory, especially near the saddle-node region, indicating that the NODE still struggles to fully capture the global geometry of the homoclinic orbit. In summary, the qualitative results across the three bifurcation regimes (Hopf, SNLC, and Homoclinic) demonstrate that both NODE and PINN architectures are capable of reproducing the dynamics of the Morris–Lecar system under varying levels of complexity—provided that a sufficient number of training epochs is allowed. In simpler bifurcation scenarios such as Hopf and SNLC, both models gradually align with the ground-truth trajectories. In the homoclinic regime, only the PINN—when extensively trained—initially manages to approximate the intri-cate dynamics, while the NODE model struggles to converge. However, as shown in Remark 3, the use of the SiLU activation function significantly improves the NODE’s performance, enabling it to capture the orbit structure with greater fidelity in this challenging regime. 
+
+4.2 Quantitative Evaluation 
+
+To systematically assess the predictive performance of both models, we conducted a quantitative evaluation across three representative dynamical regimes—Hopf, SNLC, and Homoclinic—using multiple training durations ranging from 1, 000 to 20 , 000 epochs. The comparison relied on a comprehensive set of metrics: MSE, RMSE, MAE, Maximum Error, MAPE, Root RMSPE, and the R2. Evaluation was performed separately for the two state variables V and N , with results aggregated in Tables 6 and 7. As shown in Table 6, the PINN achieved consistently superior accuracy across all scenarios and training durations. For instance, in the Hopf regime at 20 , 000 epochs, the PINN attained an RMSE of just 0.72 for V , and an R2 score of 0.9996 —indicative of near-perfect reconstruction of the system dynamics. Similarly, in the SNLC case, the RMSE remained below 1.0 for both variables across all training regimes, confirming robustness. Conversely, Table 7 reveals that the NODE model exhibited higher sensitivity to both sce-nario complexity and training duration. While NODE achieved acceptable accuracy in the Hopf regime (e.g., RMSE V = 1 .04 at 20 , 000 epochs), it consistently underperformed in the SNLC 17 and homoclinic cases. Notably, in the homoclinic scenario, NODE failed to reduce the RMSE below 6.0 even after 20 , 000 training epochs, and its R2 value dropped significantly, indicating poor alignment with the reference trajectory. Furthermore, across all scenarios, the maximum error and MAPE were markedly lower for the PINN, suggesting that the integration of physical constraints enhances generalization and reduces extreme deviations. These trends were particularly evident in stiff regimes such as the homoclinic bifurcation, where PINN’s inclusion of ODE residuals in the loss function preserved the temporal structure of spike events—a property that NODE struggled to replicate. In summary, the quantitative results provide compelling evidence that physics-informed ar-chitectures not only accelerate convergence but also improve predictive fidelity across a wide range of dynamical behaviors. This is especially critical in regimes where long-term accuracy and stability are essential. Figure 11 illustrates the evolution of MSE across training epochs for both the NODE and PINN architectures in all three dynamical regimes. The PINN demonstrates a smooth and monotonic decrease in error, reflecting strong convergence properties and improved general-ization as training progresses. In contrast, the NODE exhibits non-monotonic and unstable behavior—achieving temporary error reductions, followed by a marked deterioration, especially in the Homoclinic regime.              
+
+> 
+> 
+> 
+> 
+> 
+> 
+>   
+>     
+> 
+> 
+> 
+
+(a) Hopf regime.           
+
+> 
+> 
+> 
+> 
+> 
+> 
+> 
+>   
+>   
+> 
+> 
+
+(b) SNLC regime.           
+
+> 
+> 
+> 
+> 
+> 
+> 
+> 
+>   
+>    
+> 
+> 
+> 
+
+(c) Homoclinic regime. 
+
+Figure 11: Total MSE across epochs for NODE and PINN models in the Hopf, SNLC, and Homoclinic regimes. The total MSE is computed as the sum of the MSE values for V and N ;PINN achieves lower error in all cases, especially in the Homoclinic regime. 
+
+Interpretation of Metrics Across Architectures 
+
+Although both PINNs and NODEs—produce predictions of the same physical variables (V, N )
+
+in the Morris–Lecar system, their training procedures are fundamentally different and must be taken into account when interpreting the evaluation metrics. 18 Specifically, NODEs rely purely on data-driven learning: they learn a vector field fθ(y) such that the numerical solution ˆy(t) matches the observed trajectories, using supervised loss on scaled data. In contrast, PINNs approximate the solution yθ(t) directly by minimizing both the data loss and a physics-based residual loss derived from the governing differential equations, and they do so without any data normalization. To ensure a fair comparison, all evaluation MSE, RMSE, MA, R2, MAPE, and RMSPE—are computed in physical units (after inverse scaling in the case of NODEs). Nevertheless, due to the differences in objective functions, regularization effects, and numerical sensitivities, these met-rics reflect not only predictive accuracy but also the inherent biases of each learning paradigm. Therefore, performance differences must be interpreted in light of these methodological distinc-tions. Table 5 provides a comparative summary of the best-performing models for each regime, highlighting key performance metrics—including total MSE, RMSE, and training time—for both the PINN and NODE frameworks. This table encapsulates the optimal results achieved across all training settings, allowing for a direct evaluation of model effectiveness and computational cost. Table 5: Comparison of Best Performing Models (PINN vs NODE) per Scenario 
+
+Scenario Method Epochs Total MSE RMSE V RMSE N Training Time (s) 
+
+Hopf PINN 20000 3.0577e-01 0.5529 0.0069 145.74 NODE 10000 8.1303e+00 2.8514 0.0035 2857.54 SNLC PINN 5000 1.6022e+00 1.2656 0.0221 37.69 NODE 20000 1.9270e+01 4.3898 0.0101 6143.12 Homoclinic PINN 20000 4.6681e-01 0.6832 0.0091 146.94 NODE 1000 2.3236e+01 4.8199 0.0672 251.52 sec 
+
+5 Discussion and Conclusions 
+
+This study undertook a detailed comparison between two modern frameworks for learning dy-namical systems from data: PINNs Raissi et al. [2019], Karniadakis et al. [2021], Lu et al. [2021] and NODEs Chen et al. [2019], Dupont et al. [2019], Massaroli et al. [2021]. Using the Morris– Lecar model Gasparinatou et al. [2023], Morris and Lecar [1981], Fenichel [1979], Ermentrout and Terman [2010], Li et al. [2011] as a benchmark, we investigated their performance across three distinct dynamical regimes: Hopf bifurcation, SNLC, and Homoclinic orbit. The overall results indicate that the performance of each model is highly dependent on the complexity of the dynamics. In the relatively smooth Hopf regime, both PINNs and NODEs achieved good accuracy. The PINN model, however, demonstrated greater training efficiency and consistency. For instance, at 10 , 000 epochs, the PINN reached a total MSE of only 8.059 
+
+with a training time of 142 seconds, whereas the NODE achieved a lower MSE of 5.661 but required over 2800 seconds. Notably, the PINN attained an R2 
+
+> V
+
+of 0.998 , indicating an almost perfect reconstruction of voltage dynamics, with significantly smaller maximum errors. In the SNLC regime, the system becomes more nonlinear and sensitive to parameter changes. Here, the advantage of the PINN approach becomes more pronounced. At 20 , 000 epochs, the PINN achieved a total MSE of 4.044 , an RMSE of 1.573 , and an R2 
+
+> V
+
+of 0.980 . The NODE, despite reducing its total MSE to 3.745 , exhibited severe trajectory distortions, as evidenced by a large MAXERR V of 62 .218 , compared to only 1.656 for the PINN. Moreover, NODE training time increased drastically ( 6489 seconds), while the PINN remained below 40 seconds. These 19 results highlight that NODEs, though flexible, may fail to maintain trajectory fidelity without additional constraints. The most challenging scenario was the homoclinic regime, characterized by slow-fast dynam-ics and bifurcation sensitivity. In this case, the PINN consistently preserved qualitative features such as the prolonged approach to the saddle-node and the escape dynamics. Quantitatively, the PINN reached a total MSE of 0.467 at 20 , 000 epochs, with MAXERR V of just 1.715 and a strong R2 
+
+> V
+
+of 0.958 . In contrast, the NODE failed to converge meaningfully: even at 20 , 000 
+
+epochs with advanced activation functions (e.g., SiLU, remark 3), it remained at a high total MSE of 23 .236 and a MAXERR V of 5.665 . These shortcomings suggest that NODEs struggle in regimes where trajectory stability is crucial, possibly due to the absence of a physics-informed inductive bias. A closer look at the evolution of metrics across epoch settings (Appendix Tables 6 and 7) confirms that PINNs benefit from progressive refinement with training, particularly in smoother regimes. In stiff regimes like homoclinic, the PINN retains relative stability and physical con-sistency, whereas the NODE demonstrates erratic convergence, high sensitivity to initialization, and increased computational cost. In terms of efficiency, PINNs proved significantly more computationally economical. Across all scenarios and epochs, the training time for PINNs remained under 150 seconds, while NODEs often exceeded 1000 seconds and reached up to 6489 seconds in the SNLC regime at 20 , 000 
+
+epochs—despite no corresponding gain in accuracy. In conclusion, this study demonstrates that PINNs are particularly well-suited for modeling systems where the governing equations are known and the dynamics are stiff or complex. The embedded physical constraints guide the network toward plausible solutions, offering robustness, stability, and lower computational burden Karniadakis et al. [2021]. By contrast, NODEs maintain a key advantage: they can learn directly from data without prior knowledge of the system’s structure. This flexibility is valuable in scenarios where the physics is partially understood, highly noisy, or prohibitively complex Rackauckas et al. [2021], Kidger et al. [2020]. Nevertheless, their application to stiff biological models remains challenging, requiring careful normalization, architectural tuning, or external regularization. Overall, our results highlight the critical role of inductive bias in learning complex biological dynamics. When prior knowledge is available, PINNs provide robust and efficient solutions. NODEs, although more general, face challenges in stiff regimes without proper constraints. 
+
+6 Limitations and Future Work 
+
+While this study provides a focused comparison between PINNs and NODEs using the Morris– Lecar model, it is subject to several limitations. First, the evaluation is based on a low-dimensional (two-dimensional) neuronal system. Although this setting allows for analytical tractability, it does not capture the complexity of higher-dimensional or spatially distributed biological models. Second, both methods were implemented with fixed hyperparameters and standard fully connected architectures. The use of more advanced neural designs—such as residual connections, recurrent units, or attention mechanisms—could significantly affect model performance. Third, the NODE models were trained on noise-free, uniformly sampled data. Such idealized conditions simplify the learning task compared to real-world scenarios, where data may be noisy, incomplete, or sampled at irregular intervals. Although training time and floating-point operation counts were reported, a detailed analy-sis of computational scalability and solver efficiency lies beyond the scope of this study. These limitations suggest several directions for future research, including evaluations on more complex systems, incorporation of noisy or sparse data, and the exploration of adaptive or hybrid mod-eling strategies. The development of hybrid approaches that combine the respective strengths of PINNs and NODEs represents a particularly promising avenue for future investigation. 20 Appendix A 
+
+> Table 6: Detailed PINN Performance Across All Epochs and Scenarios
+> Scenario  Epochs  Total MSE  MAPE V MAPE N MAE V MAE N R2
+> V R2
+> N MAXERR V MAXERR N Time (s)
+> hopf  1000  465.644  88695577.180  993439.777  16.260  0.098  0.300  -0.210  56.598  0.371  6.890 hopf  2000  366.243  14151248.974  896333.463  12.922  0.077  0.449  0.149  57.480  0.375  15.134 hopf  5000  34.774  2402399.507  42864.153  3.744  0.032  0.948  0.828  17.441  0.231  36.431 hopf  10000  7.202  705903.823  33737.237  1.616  0.014  0.989  0.977  9.834  0.080  73.688 hopf  20000  0.306  241962.693  47727.391  0.271  0.004  1.000  0.997  3.303  0.036  145.744 snlc  1000  217.796  823407.161  27580.982  8.915  0.042  0.405  0.355  55.646  0.397  8.091 snlc  2000  123.560  5283144.839  215580.793  6.967  0.047  0.662  0.460  45.254  0.331  15.284 snlc  5000  1.602  1133676.703  62993.930  0.437  0.010  0.996  0.962  10.693  0.180  37.686 snlc  10000  2.206  312527.248  48876.481  0.570  0.008  0.994  0.961  10.935  0.167  76.209 snlc  20000  2.100  572976.069  17269.348  0.525  0.006  0.994  0.980  12.023  0.125  162.772 homoclinic  1000  13.218  32313362.091  662893.201  2.080  0.028  0.507  0.453  16.871  0.204  8.152 homoclinic  2000  11.769  3834142.861  600851.690  2.167  0.035  0.561  0.410  14.528  0.181  14.604 homoclinic  5000  5.827  592331.496  150909.513  1.337  0.018  0.783  0.764  9.545  0.125  38.434 homoclinic  10000  2.269  852403.136  131646.454  0.859  0.013  0.915  0.896  6.932  0.087  76.320 homoclinic  20000  0.467  76218.942  36291.641  0.404  0.006  0.983  0.981  2.932  0.035  146.939
+
+21 Table 7: Detailed NODE Performance Across All Epochs and Scenarios 
+
+> Scenario  Epochs  Total MSE  MAPE V MAPE N MAE V MAE N R2
+> V R2
+> N MAXERR V MAXERR N Time (s)
+> hopf  1000  428.841  214.801  48.470  15.299  0.090  0.355  0.310  53.275  0.276  232.181 hopf  2000  28.105  65.192  5.342  2.984  0.010  0.958  0.993  31.270  0.028  488.823 hopf  5000  13.974  36.552  2.637  1.852  0.004  0.979  0.998  25.789  0.015  1293.660 hopf  10000  8.130  38.001  1.636  1.143  0.003  0.988  0.999  22.397  0.013  2857.542 hopf  20000  21.052  40.509  4.739  2.991  0.010  0.968  0.991  22.901  0.048  5833.402 snlc  1000  281.210  143.535  527.669  11.403  0.079  0.231  -0.061  58.137  0.387  249.012 snlc  2000  78.934  61.774  130.922  6.530  0.021  0.784  0.921  27.010  0.144  542.979 snlc  5000  250.626  124.842  412.268  10.407  0.071  0.315  0.105  58.191  0.371  1302.418 snlc  10000  28.500  25.000  38.475  3.524  0.007  0.922  0.990  22.275  0.042  2904.200 snlc  20000  19.270  22.964  52.490  2.957  0.007  0.947  0.992  19.262  0.047  6143.116 homoclinic  1000  23.236  83.023  16.846  2.633  0.035  0.134  -0.058  23.078  0.347  251.524 homoclinic  2000  23.586  81.253  16.294  2.663  0.033  0.121  0.146  22.201  0.260  566.709 homoclinic  5000  23.893  79.025  16.108  2.671  0.032  0.109  0.224  21.820  0.225  1708.793 homoclinic  10000  24.140  80.213  16.471  2.684  0.032  0.100  0.224  21.934  0.220  3142.986 homoclinic  20000  25.399  80.567  17.618  2.936  0.034  0.053  0.153  19.920  0.228  5201.115
+
+22 Declarations 
+
+Availability of data and materials All data and source code used in this study are available on GitHub: https://github.com/nikmatz/Morris-lecar_NODE_vs_PINNS .
+
+Competing interests The authors declare that they have no known competing financial interests or personal relationships that could have appeared to influence the work reported in this paper. 
+
+Funding Not applicable. 
+
+Authors’ contributions NM designed and performed all experiments, analyzed the results, and wrote the manuscript. SF contributed to early discussions and reviewed the final version. All authors read and approved the final manuscript. 
+
+References 
+
+Tahmineh Azizi and Robert Mugabi. The phenomenon of neural bursting and spiking in neurons: Morris–lecar model. Applied Mathematics , 11:203–226, 2020. doi: 10.4236/am.2020.113017. URL https://doi.org/10.4236/am.2020.113017 .Ricky T. Q. Chen. torchdiffeq. https://github.com/rtqichen/torchdiffeq , 2018. Computer software. Ricky T. Q. Chen, Yulia Rubanova, Jesse Bettencourt, and David Duvenaud. Neural ordinary differential equations, 2019. URL https://arxiv.org/abs/1806.07366 .Emilien Dupont, Arnaud Doucet, and Yee Whye Teh. Augmented neural odes, 2019. URL 
+
+https://arxiv.org/abs/1904.01681 .G. Bard Ermentrout and David H. Terman. Mathematical Foundations of Neuroscience , vol-ume 35 of Interdisciplinary Applied Mathematics . Springer, New York, 2010. ISBN 978-0387877075. doi: 10.1007/978-0-387-87708-2. Neil Fenichel. Geometric singular perturbation theory for ordinary differential equations. Journal of Differential Equations , 31(1):53–98, 1979. M.M. Gasparinatou, N. Matzakos, and P. Vlamos. Spiking neural networks and mathematical models. In P. Vlamos, editor, GeNeDis 2022. Advances in Experimental Medicine and Biology ,volume 1424, pages 97–110. Springer, Cham, 2023. doi: 10.1007/978-3-031-31982-2_8. Amir Gholami, Zhen Shen, and Kurt Keutzer. Anodev2: A coupled neural ode framework. In 
+
+Proceedings of the AAAI Conference on Artificial Intelligence , volume 35, pages 9377–9385, 2021. doi: 10.1609/aaai.v35i12.17372. Kurt Hornik, Maxwell Stinchcombe, and Halbert White. Multilayer feedforward networks are universal approximators. Neural Networks , 2(5):359–366, 1989. doi: 10.1016/0893-6080(89) 90020-8. Eugene M. Izhikevich. Dynamical Systems in Neuroscience: The Geometry of Excitability and Bursting . Computational Neuroscience Series. The MIT Press, Cambridge, MA, 2006. ISBN 9780262276078. doi: 10.7551/mitpress/2526.001.0001. 23 Ameya D. Jagtap, Kenji Kawaguchi, and George Em Karniadakis. Adaptive activation functions accelerate convergence in deep and physics-informed neural networks. Journal of Computa-tional Physics , 404:109136, March 2020. ISSN 0021-9991. doi: 10.1016/j.jcp.2019.109136. URL http://dx.doi.org/10.1016/j.jcp.2019.109136 .George Em Karniadakis, Ioannis G. Kevrekidis, Lu Lu, Paris Perdikaris, Sifan Wang, and Liu Yang. Physics-informed machine learning. Nature Reviews Physics , 3(6):422–440, 2021. doi: 10.1038/s42254-021-00314-5. Patrick Kidger, James Morrill, James Foster, and Terry Lyons. Neural controlled differential equations for irregular time series. 2020. URL https://arxiv.org/abs/2005.08926 .Georgios Kissas, Yibo Yang, E. Hwuang, Walter R. Witschey, John A. Detre, and Paris Perdikaris. Machine learning in cardiovascular flows modeling: Predicting arterial blood pressure from non-invasive 4d flow mri data using physics-informed neural networks. Com-puter Methods in Applied Mechanics and Engineering , 358:112623, 2020. doi: 10.1016/j.cma. 2019.112623. H.Y. Li, Y.K. Wong, and W.L. Chan. The asymptotic structure of the morris–lecar model. Neurocomputing , 74(12):2108–2113, 2011. ISSN 0925-2312. doi: https://doi.org/ 10.1016/j.neucom.2010.12.023. URL https://www.sciencedirect.com/science/article/ pii/S092523121100107X .Zongyi Li, Nikola Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhattacharya, Andrew Stuart, and Anima Anandkumar. Fourier neural operator for parametric partial differential equations, 2021. URL https://arxiv.org/abs/2010.08895 .Lu Lu, Pengzhan Jin, and George Em Karniadakis. Learning nonlinear operators via deeponet based on the universal approximation theorem of operators. Nature Machine Intelligence , 3: 218–229, 2021. doi: 10.1038/s42256-021-00302-5. Stefano Massaroli, Michael Poli, Jinkyoo Park, Atsushi Yamashita, and Hajime Asama. Dis-secting neural odes, 2021. URL https://arxiv.org/abs/2002.08071 .Catherine Morris and Harold Lecar. Voltage oscillations in the barnacle giant muscle fiber. 
+
+Biophysical Journal , 35(1):193–213, 1981. doi: 10.1016/S0006-3495(81)84782-0. Andrey V. Paraskevov and Tatiana S. Zemskova. Analytical solution of linearized equa-tions of the morris–lecar neuron model at large constant stimulation. arXiv preprint arXiv:1912.04083v4 , 2021. URL https://arxiv.org/abs/1912.04083v4 . Version 4, April 2021. Adam Paszke, Sam Gross, Francisco Massa, Adam Lerer, James Bradbury, Gregory Chanan, Trevor Killeen, Zeming Lin, Natalia Gimelshein, Luca Antiga, Alban Desmaison, Andreas Köpf, Edward Yang, Zach DeVito, Martin Raison, Alykhan Tejani, Sasank Chilamkurthy, Benoit Steiner, Lu Fang, Junjie Bai, and Soumith Chintala. Pytorch: An imperative style, high-performance deep learning library. arXiv preprint arXiv:1912.01703 , 2019. doi: 10. 48550/arXiv.1912.01703. URL https://arxiv.org/abs/1912.01703 .Chris Rackauckas, Yingbo Ma, Jan Martensen, et al. Universal differential equations for scientific machine learning. arXiv preprint , 2021. URL https://arxiv.org/abs/2001.04385 .Maziar Raissi, Paris Perdikaris, and George Em Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Computational Physics , 378:686–707, 2019. doi: 10.1016/j. jcp.2018.10.045. 24 Prajit Ramachandran, Barret Zoph, and Quoc V. Le. Searching for activation functions, 2017. URL https://arxiv.org/abs/1710.05941 .Alexandre M. Tartakovsky, Carlos O. Marrero, Paris Perdikaris, Daniel M. Tartakovsky, and David Barajas-Solano. Physics-informed deep neural networks for learning parameters and constitutive relationships in subsurface flow problems. Water Resources Research , 56(5), 2020. doi: 10.1029/2019WR026731. Sifan Wang, Xiaowei Yu, and Paris Perdikaris. When and why pinns fail to train: A neural tangent kernel perspective. Journal of Computational Physics , 449:110768, 2022. doi: 10. 1016/j.jcp.2021.110768. 25

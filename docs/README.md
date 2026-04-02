@@ -6,77 +6,73 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-01
-- 运行时间：2026-04-01 21:17:09 UTC
+- 最新运行日期：2026-04-02
+- 运行时间：2026-04-02 20:29:26 UTC
 - 运行状态：成功
-- 本次总论文数：18
-- 精读区：7
+- 本次总论文数：17
+- 精读区：6
 - 速读区：11
 
 ### 今日简报（AI）
-- 今日共生成 18 篇推荐（精读 7 篇，速读 11 篇）
-- 精读：《Indian Peak Power demand Forecasting : Transformer Based Implementation of Temporal Architecture》（10.0/10）, 《IMPACT: Influence Modeling for Open-Set Time Series Anomaly Detection》（10.0/10）
-- 速读：《WaveSFNet: A Wavelet-Based Codec and Spatial--Frequency Dual-Domain Gating Network for Spatiotemporal Prediction》（8.0/10）, 《Mixed Time Series Quasi-Likelihood Models for Uncovering Covid-19 Viral Load and Mortality Dynamics》（8.0/10）, 《Forecastability as an Information-Theoretic Limit on Prediction》（8.0/10）
-- 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
-- 详情：[/202604/01/README](/202604/01/README)
+聚焦 AI 气象预报前沿，今日深度解析了从流匹配高效预测到神经缩放法则的 17 篇跨领域研究。
+重点关注 Marchuk 模型利用流匹配实现跨尺度全球预报，以及持续训练下气象模拟的神经缩放规律。
+建议关注 AI 在中长期天气预报中的效率突破，相关技术正从理论模拟加速走向实际观测应用。
+- 详情：[/202604/02/README](/202604/02/README)
 
 ### 精读区论文标签
-1. [Indian Peak Power demand Forecasting : Transformer Based Implementation of Temporal Architecture](/202604/01/2603.29179v1-indian-peak-power-demand-forecasting--transformer-based-implementation-of-temporal-architecture)  
-   标签：评分：10.0/10、query:ts
-   evidence：基于时间融合 Transformer 的深度学习长程预测方法
-2. [IMPACT: Influence Modeling for Open-Set Time Series Anomaly Detection](/202604/01/2603.29183v1-impact-influence-modeling-for-open-set-time-series-anomaly-detection)  
-   标签：评分：10.0/10、query:ts
-   evidence：开集时间序列异常检测框架
-3. [One-for-All: A Lightweight Stabilized and Parameter-Efficient Pre-trained LLM for Time Series Forecasting](/202604/01/2603.29756v1-one-for-all-a-lightweight-stabilized-and-parameter-efficient-pre-trained-llm-for-time-series-forecasting)  
-   标签：评分：10.0/10、query:ts
-   evidence：多变量时间序列预测的参数高效微调
-4. [DSO: Dual-Scale Neural Operators for Stable Long-term Fluid Dynamics Forecasting](/202604/01/2603.26800v1-dso-dual-scale-neural-operators-for-stable-long-term-fluid-dynamics-forecasting)  
+1. [Marchuk: Efficient Global Weather Forecasting from Mid-Range to Sub-Seasonal Scales via Flow Matching](/202604/02/2603.24428v1-marchuk-efficient-global-weather-forecasting-from-mid-range-to-sub-seasonal-scales-via-flow-matching)  
    标签：评分：9.0/10、query:ts
-   evidence：稳定的长期流体动力学预测
-5. [StretchCast: Global-Regional AI Weather Forecasting on Stretched Cubed-Sphere Mesh](/202604/01/2603.27288v1-stretchcast-global-regional-ai-weather-forecasting-on-stretched-cubed-sphere-mesh)  
+   evidence：长达30天的次季节天气预报
+2. [On Neural Scaling Laws for Weather Emulation through Continual Training](/202604/02/2603.25687v1-on-neural-scaling-laws-for-weather-emulation-through-continual-training)  
    标签：评分：9.0/10、query:ts
-   evidence：AI天气预报的多步预测模型
-6. [Deep Learning-Based Anomaly Detection in Spacecraft Telemetry on Edge Devices](/202604/01/2603.29375v1-deep-learning-based-anomaly-detection-in-spacecraft-telemetry-on-edge-devices)  
+   evidence：天气预测模型的神经缩放法则
+3. [Forecast collapse of transformer-based models under squared loss in financial time series](/202604/02/2604.00064v1-forecast-collapse-of-transformer-based-models-under-squared-loss-in-financial-time-series)  
    标签：评分：9.0/10、query:ts
-   evidence：研究了用于航天器遥测异常检测的预测与阈值方法
-7. [Meteorology-Driven GPT4AP: A Multi-Task Forecasting LLM for Atmospheric Air Pollution in Data-Scarce Settings](/202604/01/2603.29974v1-meteorology-driven-gpt4ap-a-multi-task-forecasting-llm-for-atmospheric-air-pollution-in-data-scarce-settings)  
+   evidence：金融时间序列轨迹预测中基于Transformer模型的研究
+4. [NeuroDDAF: Neural Dynamic Diffusion-Advection Fields with Evidential Fusion for Air Quality Forecasting](/202604/02/2604.01175v1-neuroddaf-neural-dynamic-diffusion-advection-fields-with-evidential-fusion-for-air-quality-forecasting)  
    标签：评分：9.0/10、query:ts
-   evidence：利用大语言模型进行空气污染长期预测
+   evidence：用于空气质量预测的物理信息神经表示
+5. [LAtent Phase Inference from Short time sequences using SHallow REcurrent Decoders (LAPIS-SHRED)](/202604/02/2604.01216v1-latent-phase-inference-from-short-time-sequences-using-shallow-recurrent-decoders-lapis-shred)  
+   标签：评分：9.0/10、query:ts
+   evidence：从短序列中重建并预测时空动力学
+6. [MemGuard-Alpha: Detecting and Filtering Memorization-Contaminated Signals in LLM-Based Financial Forecasting via Membership Inference and Cross-Model Disagreement](/202604/02/2603.26797v1-memguard-alpha-detecting-and-filtering-memorization-contaminated-signals-in-llm-based-financial-forecasting-via-membership-inference-and-cross-model-disagreement)  
+   标签：评分：8.0/10、query:ts
+   evidence：过滤金融预测中受记忆污染的信号
 
 ### 速读区论文标签
-1. [WaveSFNet: A Wavelet-Based Codec and Spatial--Frequency Dual-Domain Gating Network for Spatiotemporal Prediction](/202604/01/2603.23284v1-wavesfnet-a-wavelet-based-codec-and-spatial--frequency-dual-domain-gating-network-for-spatiotemporal-prediction)  
+1. [Bayesian-Symbolic Integration for Uncertainty-Aware Parking Prediction](/202604/02/2603.27119v1-bayesian-symbolic-integration-for-uncertainty-aware-parking-prediction)  
    标签：评分：8.0/10、query:ts
-   evidence：基于小波的编解码器和空频双域门控预测
-2. [Mixed Time Series Quasi-Likelihood Models for Uncovering Covid-19 Viral Load and Mortality Dynamics](/202604/01/2603.26358v1-mixed-time-series-quasi-likelihood-models-for-uncovering-covid-19-viral-load-and-mortality-dynamics)  
+   evidence：使用神经符号框架进行不确定性感知的停车位预测
+2. [Deep-Learned Observation Operators for Artificial Intelligence Weather Forecasting Models](/202604/02/2604.00082v1-deep-learned-observation-operators-for-artificial-intelligence-weather-forecasting-models)  
    标签：评分：8.0/10、query:ts
-   evidence：对连续型和计数型时间序列数据进行联合建模
-3. [Forecastability as an Information-Theoretic Limit on Prediction](/202604/01/2603.27074v1-forecastability-as-an-information-theoretic-limit-on-prediction)  
+   evidence：AI天气预报模型与观测算子
+3. [Forecasting duration in high-frequency financial data using a self-exciting flexible residual point process](/202604/02/2604.00346v1-forecasting-duration-in-high-frequency-financial-data-using-a-self-exciting-flexible-residual-point-process)  
    标签：评分：8.0/10、query:ts
-   evidence：预测时界的时序信息论限制
-4. [Self-Organizing Score-based Data Assimilation](/202604/01/2603.28048v1-self-organizing-score-based-data-assimilation)  
+   evidence：预测高频金融数据中的持续时间
+4. [Embedded Variational Neural Stochastic Differential Equations for Learning Heterogeneous Dynamics](/202604/02/2604.00669v1-embedded-variational-neural-stochastic-differential-equations-for-learning-heterogeneous-dynamics)  
    标签：评分：8.0/10、query:ts
-   evidence：利用扩散模型进行高维时间序列推理的高级状态空间建模方法
-5. [Hybrid Quantum-Classical Spatiotemporal Forecasting for 3D Cloud Fields](/202604/01/2603.29407v1-hybrid-quantum-classical-spatiotemporal-forecasting-for-3d-cloud-fields)  
-   标签：评分：8.0/10、query:ts
-   evidence：混合量子启发式时空预测框架
-6. [mtslearn: Machine Learning in Python for Medical Time Series](/202604/01/2603.29432v1-mtslearn-machine-learning-in-python-for-medical-time-series)  
-   标签：评分：8.0/10、query:ts
-   evidence：医疗时间序列机器学习集成工具包
-7. [CDMT-EHR: A Continuous-Time Diffusion Framework for Generating Mixed-Type Time-Series Electronic Health Records](/202604/01/2603.23719v1-cdmt-ehr-a-continuous-time-diffusion-framework-for-generating-mixed-type-time-series-electronic-health-records)  
+   evidence：用于学习异构动力学的神经随机微分方程
+5. [DyMRL: Dynamic Multispace Representation Learning for Multimodal Event Forecasting in Knowledge Graph](/202604/02/2603.24636v1-dymrl-dynamic-multispace-representation-learning-for-multimodal-event-forecasting-in-knowledge-graph)  
    标签：评分：7.0/10、query:ts
-   evidence：生成混合类型的时序电子健康记录
-8. [An Exponential-Polynomial Divergence-based Robust Information Criterion for Linear Panel Data Models and Neural Networks](/202604/01/2603.23963v1-an-exponential-polynomial-divergence-based-robust-information-criterion-for-linear-panel-data-models-and-neural-networks)  
+   evidence：动态环境下的多模态事件预测
+6. [Neuro-Symbolic Learning for Predictive Process Monitoring via Two-Stage Logic Tensor Networks with Rule Pruning](/202604/02/2603.26944v1-neuro-symbolic-learning-for-predictive-process-monitoring-via-two-stage-logic-tensor-networks-with-rule-pruning)  
    标签：评分：7.0/10、query:ts
-   evidence：针对异常观测值的鲁棒模型选择信息准则
-9. [Scaling Recurrence-aware Foundation Models for Clinical Records via Next-Visit Prediction](/202604/01/2603.24562v1-scaling-recurrence-aware-foundation-models-for-clinical-records-via-next-visit-prediction)  
+   evidence：具有时间约束的序列事件数据预测建模
+7. [Spectral-Aware Text-to-Time Series Generation with Billion-Scale Multimodal Meteorological Data](/202604/02/2603.27135v1-spectral-aware-text-to-time-series-generation-with-billion-scale-multimodal-meteorological-data)  
    标签：评分：7.0/10、query:ts
-   evidence：针对序列化临床事件预测的生成式预训练
-10. [Hyena Operator for Fast Sequential Recommendation](/202604/01/2603.25027v1-hyena-operator-for-fast-sequential-recommendation)  
+   evidence：气象数据的文本到时间序列生成
+8. [Self-Organizing Score-based Data Assimilation](/202604/02/2603.28048v2-self-organizing-score-based-data-assimilation)  
    标签：评分：7.0/10、query:ts
-   evidence：使用基于多项式的核参数化建模长期时间依赖关系
-11. [Context Tree Prior Distributions based on Node Weighting with exact Bayes Factors](/202604/01/2603.25806v1-context-tree-prior-distributions-based-on-node-weighting-with-exact-bayes-factors)  
+   evidence：从观测时间序列数据推断潜在状态的状态空间模型
+9. [Uncovering Memorization in Timeseries Imputation models: LBRM Membership Inference and its link to attribute Leakage](/202604/02/2603.24213v1-uncovering-memorization-in-timeseries-imputation-models-lbrm-membership-inference-and-its-link-to-attribute-leakage)  
    标签：评分：6.0/10、query:ts
-   evidence：马尔可夫模型中上下文树的贝叶斯框架
+   evidence：时间序列插补模型中的隐私和记忆问题
+10. [Adaptive Subspace Modeling With Functional Tucker Decomposition](/202604/02/2603.25530v1-adaptive-subspace-modeling-with-functional-tucker-decomposition)  
+   标签：评分：6.0/10、query:ts
+   evidence：用于连续多维数据的函数式Tucker分解
+11. [Comparing Physics-Informed and Neural ODE Approaches for Modeling Nonlinear Biological Systems: A Case Study Based on the Morris-Lecar Model](/202604/02/2603.26921v1-comparing-physics-informed-and-neural-ode-approaches-for-modeling-nonlinear-biological-systems-a-case-study-based-on-the-morris-lecar-model)  
+   标签：评分：6.0/10、query:ts
+   evidence：使用合成时间序列数据建模非线性生物系统
 
 
 <div class="dpr-home-promo-card">
