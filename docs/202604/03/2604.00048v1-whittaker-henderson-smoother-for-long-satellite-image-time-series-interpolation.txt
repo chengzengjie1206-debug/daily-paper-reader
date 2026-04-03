@@ -1,0 +1,253 @@
+Title: Whittaker-Henderson smoother for long satellite image time series interpolation
+
+URL Source: https://arxiv.org/pdf/2604.00048v1
+
+Published Time: Thu, 02 Apr 2026 00:04:31 GMT
+
+Number of Pages: 5
+
+Markdown Content:
+> 1
+
+# Whittaker-Henderson smoother for long satellite image time series interpolation 
+
+Mathieu Fauvel, Senior Member, IEEE 
+
+Abstract —Whittaker smoother is a widely adopted solution to pre-process satellite image time series. Yet, two key limitations remain: the smoothing parameter must be tuned individually for each pixel, and the standard formulation assumes homoscedastic noise, imposing uniform smoothing across the temporal di-mension. This paper addresses both limitations by casting the Whittaker smoother as a differentiable neural layer, in which the smoothing parameter is inferred by a neural network. The framework is further extended to handle heteroscedastic noise through a time-varying regularization, allowing the de-gree of smoothing to adapt locally along the time series. To enable large-scale processing, a sparse, memory-efficient, and fully differentiable implementation is proposed, exploiting the symmetric banded structure of the underlying linear system via Cholesky factorization. Benchmarks on GPU demonstrate that this implementation substantially outperforms standard dense linear solvers, both in speed and memory consumption. The approach is validated on SITS acquired over the French metropolitan territory between 2016 and 2024. Results confirm the feasibility of large-scale heteroscedastic Whittaker smoothing, though reconstruction differences with the homoscedastic base-line remain limited, suggesting that the transformer architecture used for smoothing parameter estimation may lack the temporal acuity needed to capture abrupt noise variations such as single-day cloud contamination. 
+
+Index Terms —Satellite image time series, Whittaker smoother, sparse Cholesky decomposition, Sentinel-2. 
+
+I. I NTRODUCTION 
+
+Since its introduction in the remote sensing community in 2011 by Atzberger and Eilers [1], Whittaker smoother [2] has been used in many remote sensing works to smooth or interpolate long satellite image time series (SITS). Among conventional signal processing techniques such as Fourrier fil-tering, local polynomial regression (e.g. Savitzky-Golay filter) or parametric models (e.g. assymetric Gaussian), Whittaker smoother, and extended versions, usually shows best results for different scenario: for instance in land cover mapping [3] or in gap filling of remote sensing products [4–9]. Across applications, the Whittaker smoother is valued be-cause of its simplicity and efficiency. The method uses a penalized least-squares formulation, eliminating the need for complex model fitting, and achieves good scalability with increasing data volumes through a sparse representation of the fitting problem [2, 10]. This approach naturally extends to multivariate time series with a limited increase in complexity. While the original formulation was proposed to regular time series, it has since been adapted to handle irregular and un-aligned SITS. In such case, observations are unevenly spaced in time, due to cloud cover or shadows, and may vary in size. Furthermore, it requires tuning of a single smoothing parameter which control the trade-off between fidelity to raw observations and smoothness of the result. Thanks to its flexibility, Whittaker smoother has been incorporated into operational remote sensing toolkits, such as the Copernicus Data Space Ecosystem 1.The choice of smoothing parameter critically affects perfor-mance in terms of interpolation error. A higher value increases smoothing but risks distorting the true phenological patterns, while a lower value may preserve those patterns but leave residual noise. Original strategy was to used leave-one-out cross-validation based grid search [2]. More sophisticated methods such as V-curve [11] or spectral entropy [12] have then been successively investigated. Recently, [13] has pro-posed a Bayesian view of the Whittaker smoother which allowed to select the smoothing parameters based on the maximization of a marginal likelihood. These methods perform for one pixel time series, but the smoothing parameter needs to be tuned for every sample. In the context of large scale processing, it might be too demanding to tune this parameter to all pixels. A conventional strategy is to use the same smoothing value for all pixels of a given location. However, for pixels with heterogeneous dynamics (e.g., with different land cover) this strategy might fail. Additionally, the original Whittaker smoother model is based on the assumption of homoscedastic noise in the time series—meaning the noise level remains constant throughout. As a result, the degree of smoothing applied is uniform across the series. This assumption is too strong for real remote sensing time series, since atmospheric conditions vary over time and unevenly affect the original signal. In this work, we address these two limitations by in-troducing a regularization neural network that dynamically infers the smoothing value for each pixel. We further adapt the regularization parameter to handle heteroscedastic noise, enabling the degree of smoothing to vary across the time dimension. Our approach leverages the analytical solution of the Whittaker smoother, integrating it as a neural layer that can be optimized through standard stochastic gradient descent and autodifferentiation. After training on large-scale datasets, the estimation of smoothing values becomes amortized—requiring only a single forward pass during inference. The next section recalls the Whittaker objective function, introduces heteroscedastic regularization and then how the neural layer is defined. Section III presents a memory efficient implementation of the sparse inverse problem. Experimental results on real long SITS over France are presented in IV. The paper concludes with Section V. 
+
+> 1https://marketplace-portal.dataspace.copernicus.eu/catalogue/app-details/8
+> arXiv:2604.00048v1 [eess.IV] 30 Mar 2026 2
+
+II. W HITTAKER SMOOTHER AS A NEURAL LAYER 
+
+Throughout this paper, x ∈ RT is a vector of size T
+
+containing the reflectance at times {t1, . . . , t T } = t of the sample, W ∈ RT ×T is a diagonal matrix where each diagonal entry wii equals 1 if the sample at time ti has been observed and is not flagged by its associated cloud mask, otherwise it is 0, Dk+1 ∈ R(T −k−1) ×T is the order k + 1 discrete difference operator and λ ∈ R>0 is the smoothing parameter. The variable W serves to handle unaligned time series by allowing padding in temporal dimension and to interpolated to unseen times. For the discrete difference operator on unevenly spaced time sample, the definition proposed in [14, Section 6] and implement in https://github.com/glmgen/dspline was used in this work. In what follows, the case of one pixel with only one spectral band is discussed for brevity, but the framework naturally extends to batched multivariate vectors. 
+
+A. Whittaker smoother for homoscedastic time series 
+
+Using notation above, the Whittaker smoother solves the following problem 
+
+arg min 
+
+> z,λ
+
+h
+
+(x − z)⊤W(x − z) + λ∥D(k+1) z∥2i
+
+. (1) The penalization is the L2 norm of the k+1 discrete derivative of the reconstructed time series: The smaller the norm value, the smoother the function. Assuming the smoothing parameter fixed, the solution can be found explicitly by setting the gradient w.r.t. z to zeros: 
+
+z =
+
+h
+
+W + λD(k+1) ⊤
+
+D(k+1) i−1
+
+Wx . (2) In eq. (1), having a scalar value for the penalization amounts to put equal penalization for each time sample of the derivative when calculating its norm. Therefore, the reconstructed time series maintains a uniform degree of smoothness throughout the time domain, which corresponds to assuming homoscedas-tic (constant-variance) noise in the original time series. 
+
+B. Extension to heteroscedastic time series 
+
+As highlighted in the introduction, this assumption is quite restrictive and frequently fails to hold in practical, real-world settings. To cope with this limitation, it is proposed to use a weighted norm for the penalization, defined as ∥v∥2 
+
+> Λ
+
+= v⊤Λv 
+
+with v⊤ the transpose of v, and Λ a diagonal matrix with strictly positive entries. With this setting, the weighted norm writes ∥v∥2 
+
+> Λ
+
+= PTt=1 Λtt v2 
+
+> t
+
+allowing each time sample of the derivative to have a specific smoothing value. The solution of the Whittaker smoother problem becomes 
+
+z =
+
+h
+
+W + D(k+1) ⊤
+
+ΛD (k+1) i−1
+
+Wx . (3) Figure 1 shows an illustration of smoothing obtained with homoscedastic and heteroscedastic models on a synthetic time series with heteroscedastic noise. The estimation of T values for each pixel would be infea-sible in practice in terms of computation time. The proposed solution in this work is to learn a neural network to estimate        
+
+> 0246810 12 14
+> -20
+> 0
+> 20
+> 40
+
+t   
+
+> x(t)
+> 0510 15
+> 10 −2
+> 10 −1
+> 10 0
+
+t 
+
+> Λtt
+> Fig. 1. Synthetic exemple of a time series with heteroscedastic noise. The dashed black curve is the true function, the light gray circles are the noisy observation and the blue/red curves are the reconstruction using the Whittaker smoother. The noise level is higher between time 6 and 10 and the Whittaker smoother with constant regularization value leads to noisy interpolation (blue curve), while the smoother with a time-varying regularization value leads to a smoother reconstruction (red curve). The right plot shows the regularization value a function of the time: for the heteroscedastic model, a piecewise constant function was used.
+
+the regularization values based on t and x for all the training pixels, and to amortize its estimation for inference time. This strategy is discussed in the next section. 
+
+C. Linear layer 
+
+Equation (3) can be cast as a linear layer f in a standard neural network setting z = fΛ(x|W, D) with Λ = gθ (x, t)
+
+and g is a neural network with parameters θ, to be optimized. As long as the derivative of f with respect to Λ or x is well-defined and computable, it becomes possible to optimize θ
+
+using stochastic gradient descent and automatic differentia-tion within a deep learning framework [15]. Fortunately, by applying standard results for matrix derivatives, the following results hold true for all t ∈ t [16]: 
+
+∂z
+
+∂λ t
+
+= −
+
+h
+
+W + D(k+1) ⊤
+
+ΛD (k+1) i−1
+
+d(k+1)  
+
+> t
+
+d(k+1) ⊤ 
+
+> t
+
+z (4) 
+
+∂z
+
+∂x = W
+
+h
+
+W + D(k+1) ⊤
+
+ΛD (k+1) i−1
+
+(5) with d(k+1)  
+
+> t
+
+is the tth row of D(k+1) .From eq. (3), eq. (4) and eq. (5), a naive implementation of forward-mode and reverse/backward-mode automatic dif-ferentiation would be computationally dominated by the need to solve linear systems: once during the forward pass and 
+
+T times during the backward pass. The computational cost would scale as O(T 3) and the memory requirements as O(T 2),for each sample or pixel, posing a significant challenge when processing large amount of pixels. While general sparse linear algebra solvers exist, they are either non-differentiable or rely on iterative solvers, which are computationally prohibitive for large-scale applications like processing millions of pixels. Below, we demonstrate how leveraging the symmetric banded structure of the linear system enables a sparse, efficient, and differentiable implementation of the layer f , fully compatible with GPU acceleration. III. E FFICIENT IMPLEMENTATION OF THE INVERSE PROBLEM 
+
+In the following, we denote Ω = W+D(k+1) ⊤
+
+ΛD (k+1) . It is known that Ω is a symmetric positive definite band matrix with bandwidth (k + 1) [13]. Following sections show how to implement a differentiable efficient solver based on this specific structure. 3                            
+
+> ω11 ω21 00
+> ω21 ω22 ω23 0
+> 0ω32 ω33 ω43
+> 00ω43 ω44
+> 
+> ω11 ω22 ω33 ω44 ω55
+> ω21 ω23 ω34 00
+> !
+> Full Storage
+> Lower Band Storage
+> Fig. 2. Illustration of the band storage for T= 4 and (k+1) = 1 for Ω. The left side of the figure illustrates the conventional full matrix storage, while the right side shows the band storage format, which stores only the diagonal and lower diagonal elements. As for triangular matrix, upper and lower format exists. In this work, the lower format was used.
+
+A. Band storage and Cholesky solver 
+
+Band storage [17] allows a compact storage of the data val-ues reducing the amount of data to store from by considering only non zero values below the main diagonal, as illustrated in Fig. 2. Since (k + 1) ≪ T this approach significantly reduces memory usage from O(T 2) to O (T (k + 1)) .The positive-definite property enables an efficient numeri-cal solution of the linear system via Cholesky factorization, followed by forward and backward substitution [18, Chap. 4.3.5] 2. Using band storage, the Cholesky decomposition can be computed in O  T (k + 1) 2 rather than O(T 3) and the triangular system can be solved using back-substitution in 
+
+O(T (k + 1)) instead of O(T 2) [18, Chap. 4.3.6]. A pseudo code for Cholesky decomposition is given in Algorithm 1. The two for loops over T and (k + 1) elements exhibit the reduced complexity in O  T (k + 1) 2.
+
+Algorithm 1: In place Cholesky factorization of a sym-metric banded matrix using band storage. Indices notation are given in NumPy indexing syntax.                                  
+
+> Input: Ωin a lower band storage shown in 2
+> 1for t= 0 to Tdo
+> 2ω=Ω[0 , t ]
+> 3v=Ω[1: , t ]
+> 4Ω[0 , t ] = √ω
+> 5Ω[1: , t ] = v/√ω
+> 6for u= 0 to min  k+ 1 , T −t−1do
+> 7Ω[: k+1 −u, t +1+ u]−=v[u:u+k+1] v[u]/ω
+
+B. Implementation 
+
+Band storage and Cholesky solver have been implemented in plain Pytorch [19] using its facility to extend autograd operator 3. It allows to benefit from high CPU/GPU computing efficiency and to optimize the parameters of gθ using all the available stochastic gradient machinery. The code is available here https://src.koda.cnrs.fr/mathieu.fauvel.4/hp-filter. The proposed implementation of Whittaker smoother has been compared with a standard implementation using Torch solver 4. Batch of multi-variate time series of length T = 350                                          
+
+> 2A conjugate gradient solver was also investigated using the band storage and an efficient dot product. Although a good pre-conditioner was found it was less efficient in terms of processing time than the Cholesky factorisation.
+> 3https://docs.pytorch.org/tutorials/beginner/examples autograd/ polynomial custom function.html
+> 4https://docs.pytorch.org/docs/stable/generated/torch.linalg.solve.html TABLE I PROCESSING TIME (IN SECOND )TO SOLVE EQ . (3) FOR DIFFERENT BATCH SIZE . A ∅INDICATES THAT THE ALGORITHM RUN OUT OF MEMORY .
+> Solver Order Batch size
+> 4096 8192 12288 16384 20480 24576 28672 Cholesky 20.14 0.14 0.14 0.13 0.14 0.13 0.14 30.17 0.15 0.16 0.15 0.19 0.19 0.20 40.18 0.18 0.20 0.18 0.21 0.24 0.27 Full 0.49 1.07 ∅∅∅∅∅
+
+and number of feature C = 10 were generated using Sentinel-2 pixels (full data description is given in section IV-A). Several batch sizes were generated and the computation were done on a GPU Tesla V100 32 Go . For the band storage, different order for the discrete derivative were investigated since the complexity of the Cholesky decomposition and the forward/backward substitution are related to this parameter. Five runs were done and averaged results are reported in Table I. The layer was set in train mode, i.e., the computational graph for the forward and backward pass were computed. From the table, it can be seen that the full storage solver does not beyond 8192 pixels because of memory issue. Hence, even for small batch size, the proposed implementation pro-vides substantial speed-up. Additionally, it scales effectively to larger batch sizes, as expected, due to the efficient band storage format. For large batch sizes, the order of the band matrix significantly impacts processing time, doubling the computation time when increasing the order from 2 to 4. Yet, the processing time for a batch size of 28672 for order 4 is still more than 3 times lower than the conventional solver on a batch size of 4096. This implementation enables application of both homoscedastic and heteroscedastic Whittaker smoothers to long and large-scale SITS, with results presented in the following section. IV. E XPERIMENTAL RESULTS 
+
+A. Dataset 
+
+Data were downloaded from the Theia Data Center 5. 19 tiles over the French metropolitan territory have been selected. Surface reflectance time-series were produced using the MAJA processing chain, which corrects atmospheric, adjacency, and slope effects, and provides cloud and shadow masks [20]. These masks was used to define valid and non valid temporal acquisitions. All spectral bands at a spatial resolution of 10 and 20 m/pixel were used. Bands at 20 m/pixel were spatially upsampled to 10m/pixel using sensorio python library (https://github.com/CNES/sensorsio). For each tile 60 random spatial patches of size 64 × 64 pixels have been randomly generated, from which all available acquisitions between 2016-01-02 and 2024-10-02 have been extracted. The number of extracted SITS is approximately 4.7 mil-lions, they have a median size of 280 temporal acquisitions, with a maximum and minimum size of 643 and 39 respec-tively. With time-varying SITS, the objective is to assess the ability of the regularization neural network in homoscedastic and heteroscedastic Whittaker smoothers in such situation.  
+
+> 5Theia Data Center 4
+> Fig. 3. Location of the 19 tiles over the French territory. Background map ©OpenStreetMap contributors. List of tiles: 31TDJ, 31UDR, 31TCH, 31TGL, 31TGK, 31TCL, 31TDN, 31TFL, 30TYP, 31TGJ, 31TDH, 31UFP, 31UEQ, 31TEN, 31TEK, 31UEP, 30UVU, 30TYT, 30UXU.
+
+B. Smoothing parameter 
+
+As discuss in Section (II-C), the heteroscedastic smoothing formulation needs to train a function parameterized by a neural network gθ . Such neural network should be able to deal with multivariate irregular sequences. To date, the Transformer 
+
+architecture has shown to perform very well with SITS [21] and it was used in this work. However, any architecture satisfying this constraint could have been used. In these experiments a transformer with sinusoidal position encoding for the time information was used: it takes as input raw SITS and output the smoothing diagonal matrix. To ensure strict positivity, a last sigmoid layer was added ensuring the output of g ranges between a predefined minimal and maximal value (typically 1e −6 and 1e10 ). For the homoscedastic case, a scalar value is learned using the same parametrization to ensure positivity and min/max values. 
+
+C. Experimental setup 
+
+A masking strategy was used to optimize θ using the original SITS. The mean square error was used as the loss function. Times were masked randomly for each input SITS of the batch: in practice, this means setting the value of 
+
+Wtt to zero. For cloud- or edge-induced gaps, the nearest available value (by day) served as the reference. Spectral values were standardized to zero mean and unit variance. The homoscedastic and heteroscedastic models have been trained for 10 epochs, with a learning rate of 0.0001 and a batch size of 4096 SITS. It should be noted that for the training or the inference, the cloud mask is not provided to the Whittaker smoother. The ob-jective is to let the regularization network learning the amount of regularization needed for an accurate reconstruction. 
+
+D. Results 
+
+Reconstruction accuracy were estimated using the mean square error (MSE) and the maximum error (MaxE) computed as MSE (z, x) = T −1 PTt=1 Wtt (zt − xt)2 and MaxE (z, x) = max t{W11 |z1 − x1|, . . . , WT T |zT − xT |} , respectively.                     
+
+> TABLE II RECONSTRUCTION ACCURACY . R EPORTED RESULTS ARE AVERAGED OVER
+> 5RUNS . B EST RESULTS ARE BOLDFACED .
+> MSE MaxE Model Order 234234Homoscedastic 0.30 0.37 0.32 3.82 5.14 3.09 Heteroscedastic 0.31 0.39 0.29 3.13 3.05 3.86
+
+Results are given in Table II. From the table, both ap-proaches provide similar accuracy in terms of MSE and MaxE. Increasing the order of the smoother decreases the accuracy for the homoscedastic model, both in terms of MSE and MaxE. Worst results were obtained for order equal to 3. For the heteroscedastic model, best results were obtained for order equal to 4 for the MSE, but with an increased of the MaxE. Training the homoscedastic model took on average 1 hour and 30 minutes while the heteroscedastic model took 3 hours and 20 minutes. The additional complexity comes from the transformer module as well as the higher number of derivatives required. Also, the heteroscedastic model is more demanding in terms of memory consumption for the same reasons: for the same batch, the heteroscedastic model consumes around 25Gb of GPU RAM while the homoscedastic model consumes only around 1Gb. In experiments not included here for brevity, the homoscedastic model was optimized in just 20 minutes by increasing the batch size to 49152 SITS. The figure 4 shows the reconstruction of a SITS with a stepsize of 5 days for the whole temporal period for the two models as well as their smoothing parameter estimates. To ease analyse, the normalized difference vegetation index (NDVI) was computed from the raw and the smooth SITS. From the plot below, it can be seen that the heteroscedastic model learn a varying smoothing parameter along the time. Yet, the resulting smoothing SITS matchs almost all the time the one obtained with homoscedastic model. Differences are more noticeable in regions with higher smoothing parameter values and lower temporal data acquisition frequency, such as between 2018 or 2019. Elsewhere, both model produces very similar reconstruction. V. D ISCUSSION AND CONCLUSION 
+
+This paper introduced the Whittaker smoother as a neural network layer, enabling the optimization of the smoothing pa-rameter via stochastic gradient descent. A sparse, efficient, and differentiable implementation of the associated inverse prob-lem was developed to handle large-scale datasets. Experimen-tal results demonstrated that this implementation substantially outperforms standard linear solvers in terms of processing time and memory consumption. Large-scale satellite image time series (SITS) were processed using both homoscedastic and heteroscedastic formulations of the proposed method — marking the first application of a heteroscedastic Whittaker filter at such scale. While results confirmed the feasibility of the heteroscedastic approach, the performance gap in terms of reconstruction error with the homoscedastic model remained limited. This may be attributed to the transformer network used 5         
+
+> 0
+> 0.2
+> 0.4
+> 0.6
+> 0.8
+> 1
+> ndvi( t)
+> 2016 2017 2018 2019 2020 2021 2022 2023 2024
+> 10 4
+> 10 5
+> Λtt
+> Fig. 4. Reconstruction of NDVI SITS. In the upper plot, colored dots and triangles represent the raw acquisitions between 2016 and 2024, dot are valid dates and triangle are non valid dates. The black continuous curve represents the reconstruction obtained with the heteroscedastic model, while the shaded area indicates the credibility intervals calculated using equation (2.2) from [13]. The dashed teal curve is the reconstruction using the homoscedastic model. In the lower plot, red and black curves represent the smoothing parameters for homoscedastic and heteroscedastic models, respectively.
+
+to estimate the smoothing parameter in the heteroscedastic set-ting, whose predictions appear insufficiently sensitive to rapid noise variations along a SITS — such as cloud cover that can appear and vanish within a single day. A promising direction for future work would be to explore neural architectures better suited to capturing sharp temporal features, such as the SIREN architecture [22]. ACKNOWLEDGEMENT 
+
+The author wishes to express its gratitude to J. Inglada and J. Michel (CESBIO lab) for their valuable insights regarding the implementation and experimental design, and to B. Char-lier (MIA Toulouse) for enriching discussions on the conjugate gradient method. REFERENCES 
+
+[1] C. Atzberger and P. H. C. Eilers, “Evaluating the effectiveness of smoothing algorithms in the absence of ground reference measurements,” International Journal of Remote Sensing ,vol. 32, no. 13, pp. 3689–3709, 2011. [2] P. H. C. Eilers, “A perfect smoother,” Analytical Chemistry ,vol. 75, no. 14, pp. 3631–3636, Jul. 2003. [3] Y. Shao, R. S. Lunetta, B. Wheeler, J. S. Iiames, and J. B. Campbell, “An evaluation of time-series smoothing algorithms for land-cover classifications using MODIS-NDVI multi-temporal data,” Remote Sensing of Environment , vol. 174, pp. 258–265, 2016. [4] S. Kandasamy, F. Baret, A. Verger, P. Neveux, and M. Weiss, “A comparison of methods for smoothing and gap filling time series of remote sensing observations: Application to MODIS LAI products,” Biogeosciences , vol. 10, no. 6, pp. 4055–4071, 2013. [5] D. Kong, Y. Zhang, X. Gu, and D. Wang, “A robust method for reconstructing global MODIS EVI time series on the google earth engine,” ISPRS Journal of Photogrammetry and Remote Sensing , vol. 155, pp. 13–24, 2019. [6] J. Liang et al., “Using enhanced gap-filling and whittaker smoothing to reconstruct high spatiotemporal resolution NDVI time series based on landsat 8, sentinel-2, and modis imagery,” 
+
+ISPRS International Journal of Geo-Information , vol. 12, no. 6, 2023. [7] P. M. Atkinson, C. Jeganathan, J. Dash, and C. Atzberger, “Inter-comparison of four models for smoothing satellite sen-sor time-series data to estimate vegetation phenology,” Remote Sensing of Environment , vol. 123, pp. 400–417, 2012. [8] N. Li, P. Zhan, Y. Pan, X. Zhu, M. Li, and D. Zhang, “Com-parison of remote sensing time-series smoothing methods for grassland spring phenology extraction on the qinghai–tibetan plateau,” Remote Sensing , vol. 12, no. 20, 2020. [9] C. Atzberger and P. H. Eilers, “A time series for monitoring vegetation activity and phenology at 10-daily time steps covering large parts of south america,” International Journal of Digital Earth , vol. 4, no. 5, pp. 365–386, 2011. [10] H. Weinert, “Efficient computation for whittaker-henderson smoothing,” Computational Statistics & Data Analysis ,vol. 52, pp. 959–974, Oct. 2007. [11] P. H. Eilers, V. Pesendorfer, and R. Bonifacio, “Automatic smoothing of remote sensing data,” in 2017 9th International Workshop on the Analysis of Multitemporal Remote Sensing Images (MultiTemp) , 2017, pp. 1–3. [12] R. Bernal-Arencibia, K. G. Medina, E. Estevez-Rams, and B. Aragon-Fernandez, Optimal smoothing parameter in eilers-wittaker smoother , 2025. [13] G. Biessy, “Whittaker–Henderson smoothing revisited: Amodern statistical framework for practical use,” ASTIN Bul-letin , Jun. 2023. [14] R. J. Tibshirani, “Divided differences, falling factorials, and discrete splines,” Foundations and Trends in Machine Learn-ing , vol. 15, no. 6, pp. 694–846, Jul. 2022. [15] M. Blondel and V. Roulet, The elements of differentiable programming , 2025. [16] K. B. Petersen and M. S. Pedersen, The matrix cookbook ,Nov. 2012. [17] E. Anderson et al., LAPACK Users’ Guide: Third Edition 
+
+(Software, Environments, and Tools). Society for Industrial and Applied Mathematics, 1999. [18] G. H. Golub and C. F. Van Loan, Matrix Computations - 4th Edition . Philadelphia, PA: Johns Hopkins University Press, 2013. [19] A. Paszke et al., “Pytorch: An imperative style, high-performance deep learning library,” in Proceedings of the 33rd International Conference on Neural Information Processing Systems . Red Hook, NY, USA: Curran Associates Inc., 2019. [20] L. Baetens, C. Desjardins, and O. Hagolle, “Validation of Copernicus Sentinel-2 Cloud Masks Obtained from MAJA, Sen2Cor, and FMask Processors Using Reference Cloud Masks Generated with a Supervised Active Learning Proce-dure,” en, Remote Sensing , vol. 11, no. 4, p. 433, Feb. 2019. [21] J. Michel and J. Inglada, “Temporal attention multi-resolution fusion of satellite image time-series, applied to landsat-8/9 and sentinel-2: All bands, any time, at best spatial resolution,” 
+
+Remote Sensing of Environment , vol. 334, p. 115 159, 2026. [22] V. Sitzmann, J. N. P. Martel, A. W. Bergman, D. B. Lindell, and G. Wetzstein, “Implicit neural representations with peri-odic activation functions,” CoRR , 2020.
