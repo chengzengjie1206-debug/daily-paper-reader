@@ -6,37 +6,34 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-04
-- 运行时间：2026-04-04 20:11:00 UTC
+- 最新运行日期：2026-04-05
+- 运行时间：2026-04-05 19:44:33 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：2
+- 本次总论文数：4
+- 精读区：1
 - 速读区：3
 
 ### 今日简报（AI）
-今日聚焦时间序列的动态泛化与医疗预测，深度解析 Koopman 算子与语义对齐的前沿应用。
-重点推荐 KOMET 框架对参数轨迹的精准识别，以及 MATA-Former 在 ICU 高保真风险预警中的语义对齐突破。
-建议关注物理启发式算子与深度学习的结合，探索时序模型在复杂多变场景下的泛化潜力。
-- 详情：[/202604/04/README](/202604/04/README)
+今日聚焦状态空间模型（SSM）在网络安全检测与复杂系统状态估计中的深度应用。
+重点推荐 PARD-SSM 框架，其利用变分切换状态空间模型实现了对网络攻击模式的高效概率检测。
+建议关注 SSM 与 Koopman 算子及不确定性量化的结合，这是提升动态系统鲁棒性的关键方向。
+- 详情：[/202604/05/README](/202604/05/README)
 
 ### 精读区论文标签
-1. [Koopman Operator Identification of Model Parameter Trajectories for Temporal Domain Generalization (KOMET)](/202604/04/2603.26923v1-koopman-operator-identification-of-model-parameter-trajectories-for-temporal-domain-generalization-komet)  
+1. [PARD-SSM: Probabilistic Cyber-Attack Regime Detection via Variational Switching State-Space Models](/202604/05/2604.02299v1-pard-ssm-probabilistic-cyber-attack-regime-detection-via-variational-switching-state-space-models)  
    标签：评分：8.0/10、query:ts
-   evidence：非平稳时间序列的时间域泛化
-2. [MATA-Former & SIICU: Semantic Aware Temporal Alignment for High-Fidelity ICU Risk Prediction](/202604/04/2604.01727v1-mata-former--siicu-semantic-aware-temporal-alignment-for-high-fidelity-icu-risk-prediction)  
-   标签：评分：8.0/10、query:ts
-   evidence：用于临床风险预测的语义感知时间对齐
+   evidence：非平稳动态中的状态检测与异常评分
 
 ### 速读区论文标签
-1. [Copula-Based Time Series for Non-Gaussian and Non-Markovian Stationary Processes](/202604/04/2604.01500v1-copula-based-time-series-for-non-gaussian-and-non-markovian-stationary-processes)  
+1. [Energy Score-Guided Neural Gaussian Mixture Model for Predictive Uncertainty Quantification](/202604/05/2603.27672v1-energy-score-guided-neural-gaussian-mixture-model-for-predictive-uncertainty-quantification)  
    标签：评分：7.0/10、query:ts
-   evidence：基于Copula的单变量时序建模，具有长期自回归效应
-2. [Time Series Correlations and Kolmogorov Complexity: A Hausdorff Dimension Perspective](/202604/04/2603.28375v2-time-series-correlations-and-kolmogorov-complexity-a-hausdorff-dimension-perspective)  
+   evidence：通过神经高斯混合模型实现可解释预测
+2. [Selective State-Space Models for Koopman-based Data-driven Distribution System State Estimation](/202604/05/2604.02273v1-selective-state-space-models-for-koopman-based-data-driven-distribution-system-state-estimation)  
+   标签：评分：7.0/10、query:ts
+   evidence：用于时变行为推断的选择性状态空间模型
+3. [A Robbins-Monro algorithm for non-parametric estimation of NAR process with Markov-Switching: asymptotic normality](/202604/05/2603.29440v1-a-robbins-monro-algorithm-for-non-parametric-estimation-of-nar-process-with-markov-switching-asymptotic-normality)  
    标签：评分：6.0/10、query:ts
-   evidence：时序分析中的柯氏复杂性与多元分数布朗运动
-3. [Tracking Equivalent Mechanistic Interpretations Across Neural Networks](/202604/04/2603.30002v1-tracking-equivalent-mechanistic-interpretations-across-neural-networks)  
-   标签：评分：6.0/10、query:ts
-   evidence：神经网络的机械可解释性框架
+   evidence：非线性自回归过程的非参数估计
 
 
 <div class="dpr-home-promo-card">
