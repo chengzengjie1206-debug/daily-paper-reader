@@ -1,0 +1,1756 @@
+Title: Generative Modeling under Non-Monotonic MAR Missingness via Approximate Wasserstein Gradient Flows
+
+URL Source: https://arxiv.org/pdf/2604.04567v1
+
+Published Time: Tue, 07 Apr 2026 01:56:29 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# Generative Modeling under Non-Monotonic MAR Missingness via Approximate Wasserstein Gradient Flows 
+
+## Gitte Kremling 
+
+Department of Mathematics University of Hamburg 
+
+gitte.kremling@uni-hamburg.de 
+
+## Jeffrey N¨ af 
+
+Research Institute for Statistics and Information Science University of Geneva 
+
+jeffrey.naf@unige.ch 
+
+## Johannes Lederer 
+
+Department of Mathematics University of Hamburg 
+
+johannes.lederer@uni-hamburg.de 
+
+Abstract 
+
+The prevalence of missing values in data science poses a substantial risk to any further analyses. Despite a wealth of research, principled nonparametric methods to deal with general non-monotone missingness are still scarce. Instead, ad-hoc imputation methods are often used, for which it remains unclear whether the correct distribution can be recovered. In this paper, we propose FLOWGEM, a principled iterative method for generating a complete dataset from a dataset with values Missing at Random (MAR). Motivated by convergence results of the ig-noring maximum likelihood estimator, our approach minimizes the expected Kullback–Leibler (KL) divergence between the observed data distribution and the distribution of the generated sample over different missingness patterns. To minimize the KL divergence, we employ a dis-cretized particle evolution of the corresponding Wasserstein Gradient Flow, where the velocity field is approximated using a local linear estimator of the density ratio. This construction yields a data generation scheme that iteratively transports an initial particle ensemble toward the tar-get distribution. Simulation studies and real-data benchmarks demonstrate that FLOWGEM achieves state-of-the-art performance across a range of settings, including the challenging case of non-monotonic MAR mechanisms. Together, these results position FLOWGEM as a prin-cipled and practical alternative to existing imputation methods, and a decisive step towards closing the gap between theoretical rigor and empirical performance. 
+
+# 1 Introduction 
+
+Increasing volumes of data have made missing values an almost ubiquitous challenge across disci-plines. Despite the steep upturn of research on the topic, there is still a substantial gap between theory and practice. This is particularly true in the challenging case of general non-monotonic missingness illustrated in Figure 1: Instead of observing independently and identically distributed data directly, observations are masked according to an unknown missingness mechanism. While this missingness can be monotone, such as in the left example in Figure 1, complex non-monotone patterns of missingness are possible. Following Rubin’s classical categorization (Rubin, 1976; Mealli and Rubin, 2015), the missing value mechanism can be divided into three categories of increasing complexity: Missing Completely 1
+
+> arXiv:2604.04567v1 [stat.ML] 6 Apr 2026
+
+
+
+x1,1 x1,2 x1,3
+
+NA x2,2 x2,3
+
+NA NA x3,3
+
+
+
+
+
+x1,1 x1,2 x1,3
+
+NA x1,2 x2,3
+
+x3,1 NA x3,3
+
+
+
+
+
+x1,1 x1,2 x1,3
+
+x1,2 NA x2,3
+
+NA x3,2 NA 
+
+
+
+Figure 1: Three data matrices with missing values, each with three different patterns. The matrix on the left shows monotone missingness, while the middle and right show cases with non-monotone missingness. The middle matrix is the one used in the Example of Section 4. at Random (MCAR), Missing at Random (MAR) and Missing Not at Random (MNAR). In this categorization, MCAR is generally understood to be too weak, while MNAR does not allow for identification in general (Molenberghs et al., 2008). As such MAR is of special interest and has taken a prominent role in the applied and methodological literature on missing data. At the same time, MAR is a target of frequent misunderstandings, as evidenced by the number of papers simply discussing the condition (Seaman et al., 2013; Mealli and Rubin, 2015; N¨ af et al., 2026). This, in addition to the scattered literature, might explain why there has been limited theoretical develop-ment for the case of non-monotone MAR. In particular, while Rubin (1976) introduced MAR to justify a parametric maximum likelihood approach that allows to model only the data distribution and not the missingness mechanism (thus “ignoring” the missingness), consistency and asymptotic normality of this approach was only shown as recently as Takai and Kano (2013). Inspecting their approach and also later papers such as Frahm et al. (2020) reveals that these consistency results in the complex case of non-monotonic general MAR are deeply connected with the minimization of the Kullback-Leibler (KL) divergence between observed and proposed distributions. In partic-ular, consistency does not hold for general M-estimation under MAR. Using this connection in a Bayesian framework, Ch´ erief-Abdellatif and N¨ af (2026) derived a minimax rate estimation result for nonparametric density estimation under non-monotonic MAR missingness. Based on this, they developed a generative method that takes a dataset contaminated with missing values and returns a sample from the uncontaminated distribution. The generated sample then allows to calculate consistent estimates of any continuous functional of the density. However, as the method is based on Gaussian mixtures, its performance on complex real data is less than ideal, as the authors note themselves. On the other hand, there is a wealth of empirically well-performing imputation methods that tackle (non-monotonic) MAR missingness. Leaving the observed variables unchanged, these meth-ods try to “fill in” the missing values. This has lead to a believe that the goal of imputation is to find the best prediction of the missing values. However, as argued in van Buuren (2018); N¨ af et al. (2026) and others, the goal is really to obtain a generative method that recreates the original uncontaminated distribution, to be able to achieve unbiased estimates of functionals of interest in a second step. As such, both the generative method of Ch´ erief-Abdellatif and N¨ af (2026) and the wealth of imputation methods arguably share the same goal of recreating the uncontaminated distribution. While there is interesting theory on parametric imputation (Wang and Robins, 1998; Liu et al., 2014; Zhu and Raghunathan, 2015; Guan and Yang, 2024), practitioners often resort to nonparametric imputation such as versions of MICE (van Buuren and Groothuis-Oudshoorn, 2011) and modern neural net and machine learning methods such as MIWAE (Mattei and Frellsen, 2019), GAIN (Yoon et al., 2018), or MIRI (Yu et al., 2025). However, these nonparametric imputation methods lack theoretical grounding. In particular, it is not even clear whether they identify the right distribution under MAR in a population setting, that is, under perfect estimation, although important progress was made recently in (Yu et al., 2025) as outlined in Section 2.3. We attempt to close the gap between the imputation methods that perform empirically well but lack a theoretical underpinning and the generative method of Ch´ erief-Abdellatif and N¨ af (2026) 2that is theoretically sound but empirically underperforming. For this, we follow the idea of the ignoring maximum likelihood estimator. Our main contributions are as follows: 
+
+• We show that, under MAR and a positivity condition, the true distribution emerges as the minimizer of the KL divergence on observed values averaged over all patterns. 
+
+• We adapt the Wasserstein gradient flow approach of Liu et al. (2024) to develop a non-parametric sampling method, which we call FLOWGEM, that generates a new sample from the uncontaminated distribution by minimizing the average KL divergence between the new distribution and the observed data. 
+
+• We demonstrate that FLOWGEM is both theoretically sensible—the gradient approxima-tion error vanishes asymptotically—and empirically competitive, matching and exceeding the performance of state-of-the-art methods. The new algorithm simply uses a local linear approximation and is thus fast to fit, while the gradient flow approach allows for great flexibility. All of this is possible with a minimal set of tuning parameters that can be chosen with heuristics that tend to work well for a wide range of datasets. In fact, our empirical section shows that our method matches or exceeds state-of-the-art methods on data ranging from simulated data with d = 3 to real data with widely varying variances and d = 272, all using the same setting. Just as in Li et al. (2019); Ouyang et al. (2023); Ch´ erief-Abdellatif and N¨ af (2026), our approach is motivated by the fact that data analysts are typically interested in aspects of the data distribution rather than the data themselves. Consequently, both a completed version of the original dataset, as targeted in imputation methods, as well as a newly generated complete dataset following the same distribution, as targeted in generative methods, serve the purpose of the subsequent analysis. Additionally, a new sample does not reveal the original data points and, therefore, is very useful in privacy-sensitive applications. The paper proceeds as follows: We first dive into the background of the maximum likelihood es-timator under MAR and an approximated Wasserstein gradient flow for complete data, including a further literature comparison, in Section 2. In Section 3, we derive our methodology, FLOWGEM, adapting the Wasserstein gradient flow framework to the missing data setting and establishing consistency of the velocity field approximation. Section 4 shows the impressive empirical perfor-mance of FLOWGEM in a challenging simulated example, designed to test imputation methods for their ability to deal with MAR, as well as a broad range of real datasets. Finally, in Section 5, we summarize our findings and outline directions for future research. Proofs and further technical details are provided in the Appendix. The code to replicate all experiments can be found on 
+
+https://github.com/gkremling/FLOWGEM .
+
+# 2 Background 
+
+This section establishes background on missing values, the ignoring maximum likelihood estimator, as well as the Wasserstein gradient flow approximation of Liu et al. (2024) with complete data. We start by introducing the notation used throughout the paper. Let X ∈ Rd denote a random vector with distribution PX and density π, representing a complete observation of all feature variables, and M ∈ { 0, 1}d denote a missingness pattern with (discrete) distribution PM and support M. Given an independently and identically distributed sample ( Xi, M i)ni=1 of the joint distribution PX,M , in practice, we only observe the masked observations 
+
+X∗ 
+
+> i
+
+=
+
+
+
+Xi for Mi = 0 ; NA for Mi = 1 .
+
+3For example, if the complete observation X1 = ( X1,1, X 1,2, X 1,3) is associated to the missingness pattern M1 = (0 , 1, 0), then we observe X∗ 
+
+> 1
+
+= ( X1,1, NA , X 1,3). For m ∈ { 0, 1}d, let X(m) =(Xj | mj = 0 , j ∈ { 1, . . . , d }) denote the sub-vector of X corresponding to the observed values according to m. In the previous example, we have X(M1)1 = ( X1,1, X 1,3). The distributions of X(m)
+
+and X(m) | M = m are denoted by P(m) 
+
+> X
+
+and P(m)  
+
+> X|M=m
+
+and their densities by π(m) and π(m) 
+
+> m
+
+,respectively. The goal of this paper is to generate a new sample { ˜Xi}˜ni=1 of fully observed data points that (approximately) follow the true distribution PX .Different assumptions can be made about the dependence between X and M . The missingness mechanism is called Missing Completely at Random (MCAR) if PX,M = PX ⊗ PM , that is, if 
+
+X and M are independent, and, on the other extreme, Missing Not at Random (MNAR) if the dependence structure between M and X can be arbitrary. If, on the other hand, it holds that 
+
+P(M = m | X = x) = P(M = m | X(m) = x(m)), the mechanism is called Missing at Random (MAR). We note that, here, m occurs on both sides of the probability statement, making the condition more complex than it may first seem. In particular, MAR does not mean that M is conditionally independent of X given X(m). We refer to the discussion in Mealli and Rubin (2015); N¨ af et al. (2026). 
+
+## 2.1 The ignoring maximum likelihood estimator 
+
+Under missing values, we essentially observe draws from P(m)  
+
+> X|M=m
+
+for different patterns m. MAR does not prohibit distribution shifts between patterns and can lead to arbitrary complex non-monotonic patterns. This is one of the key reasons why results under general MAR are difficult to obtain. Nonetheless, if a parametric model Pθ is used to approximate the distribution PX , the parameter 
+
+θ can be estimated via maximum likelihood under MAR. As shown in Golden et al. (2019) and discussed in Ch´ erief-Abdellatif and N¨ af (2025, Theorem 2.2), the maximum likelihood estimator (MLE) θML  
+
+> n
+
+ignoring the missingness value mechanism converges PX,M -a.s. to 
+
+θML  
+
+> ∞
+
+= arg min 
+
+> θ∈Θ
+
+EM ∼PM
+
+h
+
+KL 
+
+
+
+P(M ) 
+
+> X|M
+
+|| P(M )
+
+> θ
+
+i 
+
+(1) as the sample size n goes to infinity, assuming that appropriate regularity conditions are satisfied. In other words, the estimator converges to a minimizer of the expected Kullback-Leibler (KL) divergence over all possible missingness patterns. Remarkably, when the model is well-specified, that is PX = Pθ∗ for some θ∗ ∈ Θ, and the missingness mechanism is MAR, we recover θML  
+
+> ∞
+
+= θ∗.It turns out that this is deeply related to the KL divergence and does not hold for general M-estimators. 
+
+## 2.2 Approximated Wasserstein gradient flow without missing values 
+
+In this subsection, we summarize the method proposed in Liu et al. (2024) using full data. Suppose we are given an independently and identically distributed sample of complete observations {Xi}ni=1 
+
+from the distribution PX with density π and want to create a new sample { ˜Xi}˜ni=1 following a distribution P ˜X with density ρ, that minimizes the f -divergence 
+
+Df [π, ρ ] = 
+
+Z
+
+ρ(x)f (r(x)) d x with r(x) = π(x)
+
+ρ(x) .
+
+Note that, as a special case, KL ( π || ρ) = Df [π, ρ ] with f (r) = r log( r). Liu et al. (2024) propose an iterative method to generate such a new sample ˜X. More specifically, they use a Wasserstein Gradient Flow (WGF) for the functional F[ρ] = Df [π, ρ ] with an approximated velocity field. Notably, the Xi’s are assumed to be fully observed here. Consequently, the corresponding method 4is not designed to handle missingness and thus needs to be modified to be applicable in the missing value setup, that we are interested in, as discussed in Section 3. The WGF iteratively modifies the particles { ˜Xt,i }˜ni=1 , starting with { ˜X0,i }˜ni=1 drawn from some initial distribution ρ0. Let ρt denote the distribution of ˜Xt. Then, according to Liu et al. (2024, Theorem 2.1), briefly explained at the beginning of Section 3, the WGF of F[ρ] = Df [π, ρ ]characterizes the particle evolution via the ordinary differential equation (ODE) d ˜Xt
+
+dt = ∇(h ◦ rt)( ˜Xt) with h(r) = rf ′(r) − f (r) and rt(x) = π(x)
+
+ρt(x) . (2) For the KL divergence, specifically, we have h(r) = r. The above ODE moves the density ρt of ˜Xt
+
+along a curve where increasing t results in decreasing Df [π, ρ t], as desired. In practice, the ODE above is discretized using the forward Euler method, yielding ˜Xt+1 = ˜Xt + η∇(h ◦ rt)( ˜Xt) with t ∈ { 0, 1, . . . , T − 1} ,
+
+where, by a slight abuse of notation, we use the index t for the discrete time steps as well. T and 
+
+η denote the final time and step size, which both need to be chosen by the user. As we do not have access to the densities π and ρt and thus also their ratio rt, the velocity field 
+
+∇(h ◦ rt) needs to be estimated based on the samples {Xi}ni=1 ∼ π and { ˜Xt,i }˜ni=1 ∼ ρt that we do have access to. For that, Liu et al. (2024) exploit the key observation that 
+
+h ◦ rt = arg max 
+
+> g:Rd→R
+
+Ex∼π [g(x)] − Ext∼ρt [ψ∗(g(xt))] , (3) where ψ is chosen such that ψ′(r) = rf ′(r) − f (r) and ψ∗ is the convex conjugate of ψ. For the KL divergence, specifically, we have ψ(r) = r2/2 and ψ∗(g) = g2/2. 
+
+Remark 1 (Choice of ψ). Note that Liu et al. (2024) state that ψ is chosen such that ψ′(r) is equal to rf ′(r) − f (r) up to some constant . Accordingly, they use ψ(r) = ( r − 1) 2/2 and ψ∗(g) = g2/2 + g
+
+for the KL divergence. We want to emphasize that this is not a valid choice, since equation (3) 
+
+only holds if h(r) = ψ′(r).
+
+Based on (3), the function h◦rt is approximated via a local linear estimator. For w ∈ Rd and b ∈ R,let gw,b (x) = wT x + b be a linear approximation of g. Further, let kσ : Rd × Rd → R be a given kernel function. Then, locally, for x close to x∗, ( h ◦ rt)( x) is approximated by gwt(x∗),b t(x∗)(x), where (wt(x∗), b t(x∗)) = arg max 
+
+> w∈Rd, b ∈R
+
+1
+
+n
+
+> n
+
+X
+
+> i=1
+
+kσ (Xi, x ∗)gw,b (Xi) − 1˜n
+
+> ˜n
+
+X
+
+> i=1
+
+kσ ( ˜Xt,i , x ∗)ψ∗(gw,b ( ˜Xt,i )) . (4) Note the three differences compared to the optimization target in (3): (i) The feasible set for g, con-sisting of all functions from Rd to R, is restricted to the space of linear functions {gw,b | w ∈ Rd, b ∈
+
+R}, (ii) the expected values are replaced by their empirical counterparts based on the given samples from π and ρt, and (iii) the individual data points in the empirical means are weighted according to the kernel function kσ localizing the approximation. Finally, ∇(h ◦ rt)( x∗) is approximated by 
+
+∇gwt(x∗),b t(x∗)(x∗) = wt(x∗), and the approximated (discretized) particle evolution becomes ˜Xt+1 = ˜Xt + ηw t( ˜Xt) with t ∈ { 0, 1, . . . , T − 1}
+
+and wt( ˜Xt) computed via the optimization in (4). In the next section, we describe how the method can be modified to be applicable when the data points Xi are not fully observed but contaminated with missing values. 52.3 Further related literature 
+
+The idea of generating new values from observation with missing values itself is not entirely new. Besides Ch´ erief-Abdellatif and N¨ af (2026), there are several recent papers developing this idea, including Li et al. (2019) and Ouyang et al. (2023). However, they use GAN and diffusion-based approaches, respectively. Their approaches are thus different form our WGF approach, and in particular, both make use of neural networks for their computation, while our algorithm only uses a tuning-lean local linear approach. As mentioned above, there is a wealth of imputation methods, which may also be seen as a way of generating complete data. Of particular interest are Chen et al. (2024) and Yu et al. (2025). The former uses a WGF for imputation, and thus appears very close to our method at first glance. However, while we are able to use the elegant local linear approach of Liu et al. (2024) averaged over patterns, they are using a neural network and Denoising Score Matching, making their algorithm considerably more complex and prone to tuning parameters. Similarly, while Yu et al. (2025) also recognize the importance of minimizing the KL divergence through rectified flows, they need to iteratively decrease and then re-estimate the KL divergence between P ˜X,M at time t and P ˜X ⊗ PM
+
+at time t − 1 and also use neural networks. We instead use the idea of the ignoring MLE to directly minimize the KL divergence between our generated data and the observed part of the real data. One major motivation to for data generation instead of imputation is to be able to obtain (identification) results under MAR, motivated by parametric theory. While there are interesting results in Yu et al. (2025) in this direction, they are also somewhat incomplete. In particular, it is unclear whether their optimization target, namely minimizing the mutual information between 
+
+X and M , yields the true distribution under perfect estimation. In contrast, our approach is theoretically motivated by the parametric case, allowing us to more easily obtain theoretical results. For instance, we are able to show that our method can recover the true distribution under perfect estimation, under MAR and an additional positivity condition (see Proposition 2). Although this positivity condition is not discussed in Yu et al. (2025), it can be shown that it is necessary. The distribution recovered when it does not hold might still be one respecting MAR, but there is no guarantee that it is the correct one, even under perfect estimation. This is similarly true for the interesting results presented in Ouyang et al. (2023). While they do not mention MAR, they show that under mild conditions on the missing value mechanism, their objective upper bounds the true likelihood for a given pattern. However, this again does not guarantee any identification, even under perfect estimation. Finally, as noted above, we directly employ tools introduced in Liu et al. (2024) adapted to missing values. In fact, Liu et al. (2024) include an application example for missing values using the WGF to minimize KL( P ˜X,M || P ˜X ⊗ PM ). However, as pointed out in Yu et al. (2025), the WGF is not applicable for such a target as the optimization variable ˜X appears in both densities, π and 
+
+ρ. In a WGF, however, the distribution π is assumed to be fixed. Moreover, it is not clear whether this objective is reasonable under MAR. 
+
+# 3 FLOWGEM 
+
+We now extend the approximate WGF framework of Liu et al. (2024) to the missing data setting. For that, we turn back to the missing value problem, where we observe the contaminated dataset (X∗ 
+
+> i
+
+, M i)ni=1 with missing values X∗ 
+
+> i,j
+
+= NA whenever Mi,j = 1. As motivated by the parametric case, described in Section 2.1, we want to generate a new complete sample { ˜Xi}˜ni=1 in a way that the corresponding distribution P ˜X minimizes the expected KL divergence. We start by providing the following population result, generalizing the case of the parametric MLE. 6Proposition 2 (Population consistency of the KL minimizer) . Assume that MAR holds and 
+
+P(M = 0 | X = x) > 0 for almost all x. Then PX is the unique solution to 
+
+arg min 
+
+> PX
+
+EM ∼PM
+
+h
+
+KL 
+
+
+
+P(M ) 
+
+> X|M
+
+|| P (M )
+
+> X
+
+i 
+
+. (5) We note that if either of the two conditions does not hold, i.e. if either P(M = 0 | X = x) = 0 on a set of nonzero probability or the missingness mechanism is not MAR, (5) no longer holds. Both might thus be seen as necessary conditions. Motivated by Proposition 2 and the consistency of the MLE, we now derive a WGF approach to approximately sample from PX . Let P2(Rd) denote the space of probability measures on Rd
+
+with finite second moment, and let F : P2(Rd) → R be a functional to be minimized. When ρt
+
+follows the WGF of F, the corresponding probability flow ODE for particles Xt ∼ ρt takes the form dXt
+
+dt = vt(Xt) with vt(x) = −∇ δF[ρ]
+
+δρ (x) .
+
+Here, δF[ρ]/δρ denotes the first L2-variation of F, i.e. the function that satisfies ddε ε=0 
+
+F[ρε] = 
+
+Z
+
+> Rd
+
+δF[ρ]
+
+δρ (x) ∂ρ ε(x)
+
+∂ε ε=0 
+
+dx
+
+for any smooth ρε : ( −ε0, ε 0) → P 2(Rd) with ρ0 = ρ. In case F[ρ] = Df [π, ρ ] is an f -divergence, it can easily be verified that 
+
+δF[ρ]
+
+δρ (x) = f
+
+ π(x)
+
+ρ(x)
+
+
+
+− f ′
+
+ π(x)
+
+ρ(x)
+
+ π(x)
+
+ρ(x) = ( h ◦ r)( x) ,
+
+which gives rise to the particle ODE (2). For our objective, we get the following result. 
+
+Lemma 3 (First variation of the objective) . For F[ρ] = EM ∼PM
+
+h
+
+Df (π(M ) 
+
+> M
+
+, ρ (M ))
+
+i
+
+, it holds that 
+
+δF[ρ]
+
+δρ (x) = −EM ∼PM
+
+h
+
+(h ◦ r(M ))( x(M ))
+
+i
+
+with r(M ) = π(M )
+
+> M
+
+ρ(M ) .
+
+The proof can be found in Appendix A.3. It follows that, in the missing value setup, the particle ODE is given by dXt
+
+dt = ∇EM ∼PM
+
+h
+
+(h ◦ r(M ) 
+
+> t
+
+)( X(M ) 
+
+> t
+
+)
+
+i
+
+(6) with h(r) = r in the special case of the KL divergence. Next, we derive a result similar to the key observation (3) of Liu et al. (2024), that builds the backbone of our method. 
+
+Lemma 4 (Variational form for h ◦ r). For each missingness pattern m ∈ M , it holds that 
+
+h ◦ r(m) = arg max   
+
+> gm:Rdm →R
+
+n
+
+Ex(m)∼π(m)
+
+> m
+
+h
+
+gm(x(m))
+
+i
+
+− Ex(m)∼ρ(m)
+
+h
+
+ψ∗(gm(x(m))) 
+
+io 
+
+, (7) 
+
+where dm = d − Pdj=1 mj denotes the number of observed values under missingness pattern m.
+
+The proof is again deferred to the appendix. Similar to Liu et al. (2024), we estimate the maximizer in (7) by using a local linear approximation for gm, replacing the expectations by their empirical counterparts and weighting the individual summands with a kernel function. In our specific case, we let Mn = {m ∈ M | ∃ i ∈ { 1, . . . , n } s.t. Mi = m} denote the set of observed patterns. For each 
+
+m ∈ M n, we define {X(m) 
+
+> m,i
+
+}nm 
+
+> i=1
+
+= {X∗(m) 
+
+> i
+
+| Mi = m, i ∈ { 1, . . . , n }} to be the subset of observations with missingness pattern m. This can be interpreted as a sample from the conditional distribution 
+
+P(m)  
+
+> X|M=m
+
+with density π(m) 
+
+> m
+
+. Note that the sample size nm might differ for each missingness pattern 
+
+m, summing up to n in total. Moreover, for each m ∈ M , { ˜X(m) 
+
+> t,i
+
+}˜ni=1 is a sample from P(m)˜Xt
+
+with 7density ρ(m) 
+
+> t
+
+. A local linear approximation of the maximizer ( h ◦ r(m) 
+
+> t
+
+)( x) for x close to x∗ is then given by gw,b (x) = wT x + b with the optimal choice of ( w, b ) defined as (w(m) 
+
+> t,m
+
+(x∗), b t,m (x∗)) = arg max  
+
+> w∈Rdm ,b ∈R
+
+1
+
+nmnmX
+
+> i=1
+
+kσ (X(m) 
+
+> m,i
+
+, x ∗(m))gw,b (X(m) 
+
+> m,i
+
+)
+
+− 1˜n
+
+> ˜n
+
+X
+
+> i=1
+
+kσ ( ˜X(m) 
+
+> t,i
+
+, x ∗(m))ψ∗(gw,b ( ˜X(m) 
+
+> t,i
+
+)) . (8) For the KL divergence, we use ψ∗(g) = g2/2, as explained in Remark 1 and right before. Con-sequently, the gradient ∇(h ◦ r(m) 
+
+> t
+
+)( x∗) can be estimated by ∇gwt,m (x∗),b t,m (x∗)(x∗) = wt,m (x∗), whereby wt,m (x∗) is the same as w(m) 
+
+> t,m
+
+(x∗) for any index j with mj = 0 and zero otherwise. Using this approximation in (6) and replacing the expectation over M by its empirical counterpart, we finally get the approximated discretized WGF particle ODE ˜Xt+1 = ˜Xt + η X
+
+> m∈M n
+
+nm
+
+n wt,m ( ˜Xt) with t ∈ { 0, 1, . . . , T − 1} , (9) starting with ˜X0 drawn from some initial distribution ρ0, which, together with the step size η and the number of iterations T , needs to be chosen by the user. The following upper bound for the estimation error of wt,m (·) justifies the local linear approx-imation. 
+
+Proposition 5 (Velocity field approximation error) . Under the assumptions of Liu et al. (2024, Theorem 4.8), it holds that, for all t ∈ { 0, 1, . . . , T − 1} and x∗ ∈ X ,
+
+X
+
+> m∈M
+
+nm
+
+n wt,m (x∗) − EM
+
+h
+
+∇(h ◦ r(M ) 
+
+> t
+
+)( x∗)
+
+i
+
+> 2
+
+≤ O 
+
+ 1
+
+√nσ d + σ2
+
+
+
+. (10) Consequently, the estimation error vanishes as the sample size n tends to infinity and the bandwidth 
+
+σ goes to zero with nσ d converging to infinity. The proof is deferred to the appendix, and we refer to Liu et al. (2024) for the precise assumptions and constants hidden in the O-notation. Although the result holds for all points x∗ and time steps t, the coefficients in the upper bound on the right-hand side of (10) may well depend on their values. Establishing a uniform bound remains an interesting direction for future work. We also note that, thanks to the MAR assumption and Lemma 3, it is possible to focus only on the observed part of a given pattern m. This is what makes the approximation result possible, even under complex non-monotone missingness, where each X | M = m may follow a different distribution. Liu et al. (2024) propose to use gradient descent for the optimization in (4). However, since we are specifically interested in the KL divergence, where ψ∗(g) = g2/2 has a linear derivative (ψ∗)′(d) = d, the optimization problem reduces to a system of linear equations that can be solved directly. The advantage of using a direct numerical solver for this system of linear equations instead of a gradient descent is threefold: (i) It results in a higher accuracy of the solution, (ii) it is computationally more efficient and (iii) it reduces the number of hyperparameters, as, for gradient descent, the user needs to choose the step size and the number of steps (or another termination condition). Derivations of the linear approach, as well as further details on the implementation are given in Appendix A.1. This appendix also includes pseudo-code in Algorithm 1. Finally, we note that our method has only three hyperparameters: the time step size η, the number of time steps T , and the bandwidth σ. Importantly, the choice of T and η does not involve a trade-off. In principle, smaller values of η and larger values of T should always improve performance, with the only practical limitation being the available computational resources. By contrast, the bandwidth σ must be selected more carefully, as both excessively large and excessively small values can degrade the results. Nevertheless, as shown in the empirical section, a simple heuristic choice of σ already yields strong performance. 84 Empirical results 
+
+In this section, we demonstrate that FLOWGEM can match or even succeed state-of-the-art impu-tation methods in MAR examples, both for simulated and empirical datasets. As competitors we include MICE (van Buuren and Groothuis-Oudshoorn, 2011), GAIN (Yoon et al., 2018), Hyper-impute (Jarrett et al., 2022), MIRI (Yu et al., 2025), the Bayesian approach of Ch´ erief-Abdellatif and N¨ af (2026), MissDiff (Ouyang et al., 2023) and NewImp (Chen et al., 2024). We compare these methods on a simulated example, originally devised to test imputations under MAR, as well as ten real datasets. In all experiments, we use the RBF kernel as kσ , take T = 1000, η = 0 .01, and 
+
+σ following the median heuristic of Gretton et al. 2012. 
+
+## 4.1 Simulation study 
+
+The following example, inspired by N¨ af et al. (2026, Example 6), is designed to test imputation methods for their handling of MAR. For d = 3, we take X to have uniform marginals on [0 , 1]. Using a copula, we induce a correlation of 0.7 between X1, X 2, and no correlation with X3. We then define the following missingness mechanism: For ( m1, m 2, m 3) = ((0 , 0, 0) , (0 , 1, 0) , (1 , 0, 0)), let 
+
+P(M = m1 | X = x) = ( x1 + x2)/3 ; 
+
+P(M = m2 | X = x) = (2 − x1)/3 ; 
+
+P(M = m3 | X = x) = (1 − x2)/3 .
+
+This mechanism clearly meets MAR and, moreover, P(M = 0 | X = x) > 0 for all x, as required by Proposition 2. Nonetheless, as outlined in N¨ af et al. (2026), this is a rather complex non-monotone mechanism, designed to be difficult for imputation and estimation. The challenge formulated in N¨ af et al. (2026); N¨ af (2026) was to estimate the 0 .1 quantile of X1. We note that any other base distribution PX could be used for this experiment. In Appendix A.2, we perform the same experiment using a multivariate Gaussian distribution instead. We simulate the above data generating process for a sample size of n = 2000 and B = 20 repli-cations and attempt to generate a sample from PX with our FLOWGEM and the aforementioned imputation methods. For our method and MIRI, we initialize the particle evolution at ˜X0 = X∗
+
+with missing values replaced by samples from the observed values in the same column. Figure 3 shows the result for both the quantile estimation of X1 (right) as well as the energy distance (Sz´ ekely, 2003) between an independent sample and the recreated distribution (left). We can see that FLOWGEM meets the challenge remarkably well in both metrics, far surpassing GAIN, Hy-perimpute, MIRI, the Bayesian approach, MissDiff and NewImp. The only method coming close is MICE, which tends to empirically work exceptionally well in continuous MAR settings, but it is still less accurate than FLOWGEM. In particular, our approach is arguably the method that estimates the true quantile most accurately, a rather impressive feat given the difficulty of the MAR mechanism and the strength of the competitors. Figure 4 in the Appendix also confirms this visually, showing that FLOWGEM recreates the distribution most accurately. Though this is merely a toy example, one would be hard-pressed to find a method that performs this well. 
+
+## 4.2 Real examples 
+
+In this section, we consider ten real datasets of varying size and dimension with simulated miss-ingness. The datasets are taken from various sources, such as the UCI machine learning repository Lichman (2013). Table 2 in Appendix A.2 gives a detailed account of the source of each dataset. We randomly split each dataset in two parts and generate MAR missing values for the first part, 9Figure 2: Standardized Energy distance in log-scale (left) and quantile estimate (right) for the simulated example with uniform distribution and n = 2000, repeated over B = 20 times. The solid blue line on the right indicates the true quantile value of the uncontaminated distribution, while the dashed line shows the population quantile when missing values are ignored. Our method, FLOWGEM, clearly outperforms its competitors, minimizing the energy distance and estimating the quantile most accurately. We note that MICE also performs well, but unlike FLOWGEM, it lacks theoretical justification. Some values are cut off for readability: the energy distance for MIRI ranges from 6 to 4 · 10 148 with a median of 2 · 10 46 , and its quantile estimates reach as low as −2.95. Table 1: Standardized energy distance between generated and held-out samples across ten real-world datasets (lower is better). NA indicates the method exceeded the runtime limit. Values larger than 10 3 are truncated and displayed as > 10 3. For each dataset, the best result is marked in bold ,while the second best result is in italic . Our method is consistently either best or second best.                                                                                                             
+
+> Dataset Ours MICE GAIN Hyperimp. MIRI Bayes MissDiff NewImp scm1d 26.26 25.53 >10 331.17 >10 3–457.23 >10 3
+> scm20d 17.65 21.40 >10 331.45 >10 3–226.51 >10 3
+> pumadyn32nm 11.41 11.20 >10 3116.12 >10 3–230.36 >10 3
+> parkinsons 22.98 29.21 >10 331.53 >10 3–44.99 >10 3
+> allergens 34.29 209.30 205.81 30.05 125.09 –89.17 >10 3
+> concrete 5.84 22.28 29.84 12.79 20.09 >10 320.21 >10 3
+> stock 4.70 4.30 421.85 7.81 67.41 >10 37.28 >10 3
+> forest 3.99 4.68 4.55 4.00 9.36 7.32 4.33 >10 3
+> housing 7.80 8.10 190.55 23.39 19.78 33.22 13.31 >10 3
+> windspeed 2.03 2.10 2.31 1.95 15.34 46.29 2.77 >10 3
+
+using random patterns and the ampute function from the R package mice . This has become a standard way of introducing MAR and leads to around 40–50% of missing values. For details we refer to Appendix A.2. Given this dataset with missing values, we approximately generate the full data either using FLOWGEM or one of the competing methods and then compare the result to the second (independent) sample using the standardized energy distance described in Appendix A.2. Table 1 shows the result. Crucially, in all ten datasets, our method displays the lowest or second lowest energy value, sometimes by a large margin compared to the other methods. This is despite the large range in number of observations and dimensions, ranging from very small ( n = 215, 
+
+d = 6) to very large ( n = 4901, d = 272). Unfortunately, the method of Ch´ erief-Abdellatif and N¨ af (2026) displayed infeasible runtime for the larger datasets, as we detail in Appendix A.2. 
+
+# 5 Conclusion 
+
+In this paper, we introduced FLOWGEM, a principled sample generator under MAR based on an approximate Wasserstein gradient flow. The method is grounded in a deep theoretical justification: 10 the target functional, minimizing the average KL divergence over patterns, recovers the true dis-tribution at the population level under MAR (Proposition 2). Further, the approximation error of the local linear velocity field estimator vanishes asymptotically (Proposition 5), an important first step in ensuring theoretical validity in the finite-sample regime. Empirically, FLOWGEM achieves impressive performance in MAR examples, that rivals and often far surpasses modern imputation methods (Figure 2 and Table 1), without relying on computationally expensive or difficult-to-tune neural networks. Notably, for all experiments, ranging from simulated data with d = 3 to real data with widely varying scales and d = 272, the same values of η and T , with a simple heuristic for the bandwidth σ, were used. In summary, FLOWGEM shows that theoretical rigor and strong empiri-cal performance can go hand in hand, a combination that remains rare among existing imputation methods. This work opens several interesting directions of further research. First, while our principled approach already admits some theoretical analysis, establishing consistency of the distributional estimate in terms of a distributional distance is an important next step. Second, our algorithm is already fast for dimensions d < 100 but might require further improvements for higher dimen-sions. Third, extending FLOWGEM to categorical or mixed-type data is a natural and practically important next step. 
+
+# References 
+
+Z. Chen, H. Li, F. Wang, O. Zhang, H. Xu, X. Jiang, Z. Song, and H. Wang. Rethinking the diffusion models for missing data imputation: A gradient flow perspective. In A. Globerson, L. Mackey, D. Belgrave, A. Fan, U. Paquet, J. Tomczak, and C. Zhang, editors, Advances in Neural Information Processing Systems , volume 37, pages 112050–112103, 2024. B.-E. Ch´ erief-Abdellatif and J. N¨ af. Parametric MMD estimation with missing values: Robustness to missingness and data model misspecification. arXiv preprint arXiv:2503.00448 , 2025. B.-E. Ch´ erief-Abdellatif and J. N¨ af. Asymptotics of nonparametric estimation under general non-monotone MAR missingness: A bayesian approach. arXiv preprint arXiv:2603.23449 , 2026. G. Frahm, K. Nordhausen, and H. Oja. M-estimation with incomplete and dependent multivariate data. Journal of Multivariate Analysis , 176:104569, 2020. R. M. Golden, S. S. Henley, H. White, and T. M. Kashner. Consequences of model misspecification for maximum likelihood estimation with missing data. Econometrics , 7(3), 2019. A. Gretton, D. Sejdinovic, H. Strathmann, S. Balakrishnan, M. Pontil, K. Fukumizu, and B. K. Sriperumbudur. Optimal kernel choice for large-scale two-sample tests. In Advances in neural information processing systems , pages 1205–1213, 2012. K. Grzesiak, C. Muller, J. Josse, and J. N¨ af. Do we need dozens of methods for real world missing value imputation? arXiv preprint arXiv:2511.04833 , 2025. Q. Guan and S. Yang. A unified inference framework for multiple imputation using martingales. 
+
+Statistica Sinica , 34:1649–1673, 2024. D. Jarrett, B. C. Cebere, T. Liu, A. Curth, and M. van der Schaar. Hyperimpute: Generalized iter-ative imputation with automatic model selection. In 39th International Conference on Machine Learning , pages 9916–9937. PMLR, 2022. S. C.-X. Li, B. Jiang, and B. M. Marlin. MisGAN: Learning from incomplete data with generative adversarial networks. In International Conference on Learning Representations , 2019. 11 M. Lichman. UCI machine learning repository, 2013. URL https://archive.ics.uci.edu/ .J. Liu, A. Gelman, J. Hill, Y.-S. Su, and J. Kropko. On the stationary distribution of iterative imputations. Biometrika , 101(1):155–173, 2014. S. Liu, J. Yu, J. Simons, M. Yi, and M. Beaumont. Minimizing f -divergences by interpolating velocity fields. In International Conference on Machine Learning , pages 32308–32331. PMLR, 2024. P.-A. Mattei and J. Frellsen. MIWAE: Deep generative modelling and imputation of incomplete data sets. In Proceedings of the 36th International Conference on Machine Learning , volume 97, pages 4413–4423, 2019. F. Mealli and D. B. Rubin. Clarifying missing at random and related definitions, and implications when coupled with exchangeability. Biometrika , 102(4):995–1000, 2015. G. Molenberghs, C. Beunckens, C. Sotto, and M. G. Kenward. Every missingness not at random model has a missingness at random counterpart with equal fit. Journal of the Royal Statistical Society. Series B (Statistical Methodology) , 70(2):371–388, 2008. J. N¨ af. A practical guide to modern imputation. arXiv preprint arXiv:2601.14796 , 2026. J. N¨ af, E. Scornet, and J. Josse. What is a good imputation under MAR missingness? arXiv preprint arXiv:2403.19196 , 2026. Y. Ouyang, L. Xie, C. Li, and G. Cheng. MissDiff: Training diffusion models on tabular data with missing values. In ICML 2023 Workshop on Structured Probabilistic Inference & Generative Modeling , 2023. D. B. Rubin. Inference and missing data. Biometrika , 63(3):581–592, 1976. S. Seaman, J. Galati, D. Jackson, and J. Carlin. What is meant by “Missing at Random”? Statistical Science , 28(2):257–268, 2013. Soci´ et´ e Fran¸ caise d’Allergologie and AllergoBioNet. Allergen chip challenge database, 2024. URL 
+
+https://www.data.gouv.fr/fr/datasets/allergen-chip-challenge/ .G. J. Sz´ ekely. E-statistics: the energy of statistical samples. Technical Report 05, Bowling Green State University, Department of Mathematics and Statistics, 2003. URL http://pages.stat. wisc.edu/~wahba/stat860public/pdf4/Energy/JSPI5102.pdf .K. Takai and Y. Kano. Asymptotic inference with incomplete data. Communications in Statistics - Theory and Methods , 42(17):3174–3190, 2013. S. van Buuren. Flexible Imputation of Missing Data. Second Edition . Chapman & Hall/CRC Press, 2018. S. van Buuren and K. Groothuis-Oudshoorn. mice: Multivariate imputation by chained equations in R. Journal of Statistical Software , 45(3):1–67, 2011. S. van Buuren, K. Groothuis-Oudshoorn, G. Vink, R. Schouten, A. Robitzsch, P. Rockenschaub, L. Doove, S. Jolani, M. Moreno-Betancur, I. White, P. Gaffert, F. Meinfelder, B. Gray, V. Arel-Bundock, M. Cai, T. Volker, E. Costantini, C. van Lissa, H. Oberman, and S. Wade. mice: Multivariate Imputation by Chained Equations , 2023. R package version 3.16.0. vanderschaarlab. HyperImpute: Software package, 2022. URL https://github.com/ vanderschaarlab/hyperimpute .12 J. Vanschoren, J. N. van Rijn, B. Bischl, and L. Torgo. Openml: networked science in machine learning. SIGKDD Explorations , 15(2):49–60, 2013. doi: 10.1145/2641190.2641198. URL http: //doi.acm.org/10.1145/2641190.264119 .N. Wang and J. M. Robins. Large-sample theory for parametric multiple imputation procedures. 
+
+Biometrika , 85(4):935–948, 1998. I.-C. Yeh. Concrete Compressive Strength. UCI Machine Learning Repository, 1998. DOI: https://doi.org/10.24432/C5PK67. J. Yoon, J. Jordon, and M. van der Schaar. GAIN: Missing data imputation using generative adversarial nets. In Proceedings of the 35th International Conference on Machine Learning ,pages 5689–5698, 2018. J. Yu, Q. Ying, L. Wang, Z. Jiang, and S. Liu. Missing data imputation by reducing mutual information with rectified flows. In Proceedings of the 39th Conference on Neural Information Processing Systems , 2025. J. Zhu and T. E. Raghunathan. Convergence properties of a sequential regression multiple impu-tation algorithm. Journal of the American Statistical Association , 110(511):1112–1124, 2015. 
+
+# A Appendix 
+
+## A.1 Algorithm and additional details 
+
+In this section, we first discuss the system of linear equations that is crucial to our algorithm and then present pseudo-code for our procedure in Algorithm 1. In addition, we provide extensive details on the implementation. 
+
+Linear System of Equations Liu et al. (2024) propose to use gradient descent for the optimiza-tion in (4). Of course, we could use the same technique to approximate the solution of (8). However, since we are specifically interested in the KL divergence and, in that case, ψ∗(g) = g2/2 has a linear derivative ( ψ∗)′(d) = d, the optimization problem reduces to a system of linear equations that can be solved directly. Specifically, the objective function for a fixed x∗ and m is given by 
+
+L(w, b ) = 1
+
+nmnmX
+
+> i=1
+
+k(m) 
+
+> σ
+
+(Xm,i )
+
+
+
+(X(m) 
+
+> m,i
+
+)T w + b
+
+
+
+− 1˜n
+
+> ˜n
+
+X
+
+> i=1
+
+k(m) 
+
+> σ
+
+( ˜Xt,i )ψ∗
+
+( ˜X(m) 
+
+> t,i
+
+)T w + b
+
+
+
+,
+
+where we use the abbreviation k(m) 
+
+> σ
+
+(x) := kσ (x(m), x ∗(m)). To find the maximum, we solve 
+
+∇L(w, b ) = 
+
+
+
+> 1
+> nm
+
+Pnm 
+
+> i=1
+
+k(m) 
+
+> σ
+
+(Xm,i )X(m) 
+
+> m,i
+
+− 1˜n
+
+P˜ni=1 k(m) 
+
+> σ
+
+( ˜Xt,i )
+
+
+
+( ˜X(m) 
+
+> t,i
+
+)T w + b
+
+ ˜X(m)
+
+> t,i
+> 1
+> nm
+
+Pnm 
+
+> i=1
+
+k(m) 
+
+> σ
+
+(Xm,i ) − 1˜n
+
+P˜ni=1 k(m) 
+
+> σ
+
+( ˜Xt,i )
+
+
+
+( ˜X(m) 
+
+> t,i
+
+)T w + b
+
+ = 0 ,
+
+which can be rewritten as a system of linear equations A(w, b )T = c with 
+
+A =
+
+
+
+A11 AT
+
+> 21
+
+A21 A22 
+
+ and c =
+
+
+
+c1
+
+c2
+
+ ,
+
+13 where 
+
+A11 =
+
+
+
+> 1˜n
+
+P˜ni=1 k(m) 
+
+> σ
+
+( ˜Xt,i ) ˜X(m) 
+
+> t,i, 1
+
+˜X(m) 
+
+> t,i, 1
+
+· · · 1˜n
+
+P˜ni=1 k(m) 
+
+> σ
+
+( ˜Xt,i ) ˜X(m) 
+
+> t,i, 1
+
+˜X(m)
+
+> t,i,d m
+
+... . . . ...
+
+> 1˜n
+
+P˜ni=1 k(m) 
+
+> σ
+
+( ˜Xt,i ) ˜X(m)
+
+> t,i,d m
+
+˜X(m) 
+
+> t,i, 1
+
+· · · 1˜n
+
+P˜ni=1 k(m) 
+
+> σ
+
+( ˜Xt,i ) ˜X(m)
+
+> t,i,d m
+
+˜X(m)
+
+> t,i,d m
+
+
+
+,A21 =
+
+
+
+> 1˜n
+
+P˜ni=1 k(m) 
+
+> σ
+
+( ˜Xt,i ) ˜X(m) 
+
+> t,i, 1
+
+. . . 1˜n
+
+P˜ni=1 k(m) 
+
+> σ
+
+( ˜Xt,i ) ˜X(m)
+
+> t,i,d m
+
+
+
+,A22 = 1˜n
+
+> ˜n
+
+X
+
+> i=1
+
+k(m) 
+
+> σ
+
+( ˜Xt,i ) , (11) and 
+
+c1 =
+
+
+
+> 1
+> nm
+
+Pnm 
+
+> i=1
+
+k(m) 
+
+> σ
+
+(Xm,i )X(m) 
+
+> m,i, 1
+
+. . . 1
+
+> nm
+
+Pnm 
+
+> i=1
+
+k(m) 
+
+> σ
+
+(Xm,i )X(m)
+
+> m,i,d m
+
+T
+
+,c2 = 1
+
+nmnmX
+
+> i=1
+
+k(m) 
+
+> σ
+
+(Xm,i ) . (12) In practice, we apply Tikhonov regularization to A, replacing it with A + εI where ε = 10 −5, to ensure numerical stability during inversion. 
+
+Algorithm 1: FLOWGEM (FLOW-based GEneration for Missing data) 
+
+Data: Observations with missing values ( X, M) ∈ Rn×d × { 0, 1}n×d,Method to sample from ρ0 (initial sample ), Final time T , Step size η,Kernel function kσ , Bandwidth σ, New sample size ˜ n
+
+Result: New complete sample { ˜XT,i }˜ni=1 approximately distributed as PX 
+
+> 1
+
+˜X0 ← initial sample( X, M, ˜n) // ∈ R˜n×d 
+
+> 2
+
+for t ← 0 to T − 1 do  
+
+> 3
+
+for i ← 0 to ˜n − 1 do // can be parallelized or vectorized  
+
+> 4
+
+x∗ ← ˜Xt,i  
+
+> 5
+
+for m ∈ unique rows( M) do // can be parallelized  
+
+> 6
+
+Xm ← rows Xj with Mj = m 
+
+> 7
+
+A ← compute A (kσ , m, x ∗, ˜Xt) // according to (11)  
+
+> 8
+
+c ← compute c (kσ , m, x ∗, Xm) // according to (12)  
+
+> 9
+
+(wm, b m) ← solve (A, c) 
+
+> 10
+
+end  
+
+> 11
+
+˜Xt+1 ,i ← ˜Xt,i + η P 
+
+> mnm
+> n
+
+wm 
+
+> 12
+
+end  
+
+> 13
+
+end  
+
+> 14
+
+return ˜ XT
+
+Standardization Some datasets such as “scm20d” have widely different scales for different vari-ables. To minimize numerical issues, we standardize the columns by using a diagonal matrix Λ and an estimated mean μ. To motivate this approach, we are able to make use of the well-known fact that the KL divergence is invariant to affine transformations. For all m and all t, let Λm = (Λ i,j )i:mi=0 ,j :mi=0 be the dm-dimensional submatrix of Λ and similarly, μm = ( μj )j:mj =0 .Moreover, let 
+
+Y (m) = Λ −1/2 
+
+> m
+
+(X(m) − μm) and ˜Yt = Λ −1/2( ˜Xt − μ)14 be the standardized data, and define by ˜π(m) 
+
+> m
+
+(y(m)) = det(Λ m)−1/2π(m) 
+
+> m
+
+(Λ 1/2y(m) + μ),
+
+˜ρt(y) = det(Λ) −1/2ρt(Λ 1/2y + μ)the respective scaled densities. Then by a simple change-of-variable argument in the integration, it holds that 
+
+EM ∼PM
+
+h
+
+KL 
+
+
+
+P(M ) 
+
+> X|M
+
+|| P(M )˜Xt
+
+i 
+
+= X
+
+> m∈M
+
+P(M = m)
+
+Z
+
+log π(m) 
+
+> m
+
+(x(m))
+
+ρ(m) 
+
+> t
+
+(x(m))
+
+!
+
+π(m) 
+
+> m
+
+(x(m))dx (m)
+
+= X
+
+> m∈M
+
+P(M = m)
+
+Z
+
+log ˜π(m) 
+
+> m
+
+(y(m))˜ρ(m) 
+
+> t
+
+(y(m))
+
+!
+
+˜π(m) 
+
+> m
+
+(y(m))dy (m) .
+
+The last expression is simply the KL divergence between the scaled distributions. Combined with Proposition 2, this shows that minimizing the KL divergence between the scaled distribution will recover PX after rescaling. Thus, we may standardize X and Xt using any μ, Λ. In our case, they are obtained by calculating standard deviations and means separately for each column only on the observed data. 
+
+Early Stopping In the real data experiments, we employ an early stopping mechanism. In particular, we measure the relative change of the particles in (9) at each t and stop if 
+
+> 1˜n
+
+P˜ni=1 || P 
+
+> m∈M n
+> nm
+> n
+
+wt,m ( ˜Xt,i )|| 21˜n
+
+P˜ni=1 || ˜Xt,i || 2
+
+< ε , 
+
+using ε = 0 .01. This not only makes the algorithm faster, but also impedes the algorithm from overshooting in case η was chosen too large. Finally, if the norm of the gradient increases in an iteration, we halve η for all subsequent iterations. 
+
+## A.2 Details on experiments and additional results 
+
+Table 2 contains more details on the datasets and their sources. We note that the values of n and 
+
+d are different than the total number of rows and columns in each dataset, because (1) columns with less than 10% of unique values were removed for the final dataset and (2) we split the dataset in two for training and test set. All computations were performed using Google Colaboratory Pro with a TPU v6e-1 accelerator. The host runtime used Python 3.11. Experiments were run between March 2026 and April 2026. Average computation times per method for the simulated datasets are reported in Table 3. 
+
+Missing Value Generation We use the ampute function of the mice R package, as follows: We randomly generate a set of patterns, including a fully observed pattern, and generate MAR missingness with the ampute function according to those patterns, such that every pattern is ob-served with equal probability. We note that this results in about 40–50% missing values, calculated as total number of missing entries divided by n × d, as in Grzesiak et al. (2025). We note that it is often left ambiguous in other papers how “x% of missing values” is defined. In our way of measuring, 40% of missing values is substantial, in fact the recent benchmark by Grzesiak et al. (2025) only considers up to 30%. 
+
+Standardized Energy Distance We assess the performance of imputation methods by mea-suring the distributional distance between the generated dataset and a set of independent complete data. To this end, we use the energy distance from Sz´ ekely (2003), defined as 
+
+e2(X, Y ) = 2 E|| X − Y || 2 − E|| X − X′|| 2 − E|| Y − Y ′|| 2 ,
+
+15 Table 2: Real data examples considered in Section 4.2. For each dataset, we report the number of rows, the number of columns, the actual number of observations n and dimensions d used in the analysis, as well as their source. UCI refers to Lichman (2013) and was downloaded from 
+
+https://github.com/treforevans/uci_datasets/tree/master .Name Rows Cols n d Source scm1d 9803 296 4901 272 Vanschoren et al. (2013) scm20d 8966 77 4482 58 Vanschoren et al. (2013) pumadyn32nm 8192 33 4095 33 UCI parkinsons 5875 21 2937 18 UCI allergens 2351 112 1175 49 Soci´ et´ e Fran¸ caise d’Allergologie and AllergoBioNet (2024) concrete 1030 9 514 8 Yeh (1998) stock 536 12 267 9 UCI forest 517 13 257 7 UCI housing 506 14 252 10 UCI windspeed 433 6 215 6 van Buuren et al. (2023) Table 3: Average computation time (in seconds) per method for the simulation study of Section 4.1 with n = 2000, d = 3, and uniform distribution. Mean and standard deviation over B = 20 replications are reported.                   
+
+> Method Mean Std. Dev. FLOWGEM 22.85 1.36 MICE 0.56 0.00 GAIN 2.80 0.64 Hyperimpute 8.68 5.63 MIRI 1611.91 2588.70 Bayes 2038.28 520.23 MissDiff 19.22 1.03 NewImp 18.16 0.56
+
+16 where X and Y are random variables (here observed and generated). Before computing the energy distance, we standardized all variables in both imputed and fully observed datasets using the column-wise means and standard deviations estimated from the fully observed dataset prior to imposing missingness . This ensures that the distance measure is not dominated by variables with large natural variance and is comparable across datasets. 
+
+Continuous Features As our method intrinsically assumes the distribution PX to be continuous (with density π), it was designed to handle continuous features. To respect that in our experiments, we filtered out columns in the datasets that had less than 10% of unique values for our application. 
+
+Initialization For real data, we generate ˜X0 by imputing the dataset using the MICE imple-mentation in the Python hyperimpute package with 10 iterations (the full MICE implementation uses 100 iterations). This gives a reasonable and quick-to-calculate data-adaptive starting value for our algorithm. 
+
+Competitors We compare our method against MICE (van Buuren and Groothuis-Oudshoorn, 2011), GAIN (Yoon et al., 2018), Hyperimpute (Jarrett et al., 2022), MIRI (Yu et al., 2025), the Bayesian density estimation of Ch´ erief-Abdellatif and N¨ af (2026), MissDiff (Ouyang et al., 2023) and NewImp (Chen et al., 2024). For GAIN, Hyperimpute and MICE, we use the hyperimpute 
+
+Python package (vanderschaarlab, 2022) with default hyperparameter settings. For MIRI, MissDiff and NewImp, we use the implementation available at https://github.com/yujhml/MIRI-Imputation 
+
+(last accessed in March 2026). As the original implementation only supports float32, we adapted the code to float64 to ensure a fair comparison with the remaining methods. For MIRI, we use the hyper-parameters specified in Yu et al. (2025), namely max rounds=15 , batchsize=500 , maxepochs=900 ,
+
+odesteps=100 , while for MissDiff and NewImp, we use the default settings. We note that, for essentially all competing methods, performance may be improved through more extensive hy-perparameter tuning. In particular, Yu et al. (2025) mention a different specification with higher number of rounds. However, our current setting was already straining our computational resources. While computation times of the current MIRI code are remarkably resistant to higher d, complet-ing in about 70 minutes on the “scm1d” dataset, the code was excruciatingly slow on the smaller datasets. This can be seen for instance in the simulation with d = 3 in Table 3. Moreover, we saw no obvious convergent behavior and instead the code usually started producing nan s for too many iterations. Finally, we present the Gaussian version of the simulated example in Section 4.1. For d = 3, we take X ∼ N (0 , Σ), where N (μ, Σ) denotes the Gaussian distribution with mean μ and covariance matrix Σ. Here, Σ is chosen to have diagonal one and a correlation of 0.7 between X1, X 2, with no correlation between X1, X 2 and X3. We then define the following missingness mechanism: For (m1, m 2, m 3) = ((0 , 0, 0) , (0 , 1, 0) , (1 , 0, 0)), let 
+
+P(M = m1 | X = x) = (Φ( x1) + Φ( x2)) /3 ; 
+
+P(M = m2 | X = x) = (2 − Φ( x1)) /3 ; 
+
+P(M = m3 | X = x) = (1 − Φ( x2)) /3 ,
+
+where Φ is the standard Gaussian distribution function. Figure 3 presents the result. Again, we are far better than GAIN, Hyperimpute, MissDIff, NewImp and MIRI, only narrowly beaten by MICE and Bayes. However, we note that both MICE and the Bayes method essentially use Gaussian regression and Gaussian approximations respectively, giving them a somewhat unfair edge in this example. Despite this edge, it turns out that increasing T to 1500 further boosts FLOWGEM and closes the gap between our method and MICE or Bayes, but we did not include this result here. 17 Figure 3: Standardized Energy distance in log-scale (left) and quantile estimate (right) for the simulated example with Gaussian distribution, n = 2000, and repeated over B = 20 times. The blue line on the right indicates the true quantile value of the uncontaminated distribution. Our method, FLOWGEM, belongs to one of the best methods, minimizing the energy distance and estimating the quantile most accurately. We note that both MICE and the Bayes method essentially use Gaussian regression and Gaussian approximations respectively, giving them a somewhat unfair edge in this example. Despite this edge, it turns out that increasing T to 1500 further boosts FLOWGEM and closes the gap between our method and MICE or Bayes, but we did not include this result here. Figures 4 and 5 show scatter plots of the first two dimensions of the generated samples for the uniform and Gaussian simulation, respectively, visually confirming the results in Figures 2 and 3. 
+
+## A.3 Proofs 
+
+Next, we provide the proofs of the results in the main text. 
+
+Proof of Proposition 2. Recall that P(M ) 
+
+> X
+
+has density π(M ), while P(M ) 
+
+> X|M
+
+has density π(M ) 
+
+> M
+
+. For an arbitrary distribution PX with density p, we may write 
+
+EM ∼PM
+
+h
+
+KL 
+
+
+
+P(M ) 
+
+> X|M
+
+|| P (M )
+
+> X
+
+i 
+
+= X
+
+> m∈M
+
+P(M = m)
+
+Z
+
+log π(m) 
+
+> m
+
+(x(m))
+
+p(m)(x(m))
+
+!
+
+π(m) 
+
+> m
+
+(x(m))dx (m)
+
+= X
+
+> m∈M
+
+P(M = m)
+
+Z
+
+log 
+
+ π(m)(x(m))
+
+p(m)(x(m))
+
+P(M = m | x(m))
+
+P(M = m)
+
+
+
+π(m) 
+
+> m
+
+(x(m))dx (m)
+
+= X
+
+> m∈M
+
+P(M = m)
+
+Z
+
+log 
+
+ π(m)(x(m))
+
+p(m)(x(m))
+
+
+
+π(m) 
+
+> m
+
+(x(m))dx (m)
+
++ X
+
+> m∈M
+
+P(M = m)
+
+Z
+
+log 
+
+ P(M = m | x(m))
+
+P(M = m)
+
+
+
+π(m) 
+
+> m
+
+(x(m))dx (m) .
+
+The second term above is not influenced by the choice of PX , so we might ignore it for the arg min and focus on the first term: 
+
+X
+
+> m∈M
+
+P(M = m)
+
+Z
+
+log 
+
+ π(m)(x(m))
+
+p(m)(x(m))
+
+
+
+π(m) 
+
+> m
+
+(x(m))dx (m)
+
+= X
+
+> m∈M
+
+Z
+
+log 
+
+ π(m)(x(m))
+
+p(m)(x(m))
+
+
+
+π(m)(x(m))P(M = m | x(m))dx (m) .
+
+Following the same proof as in (Ch´ erief-Abdellatif and N¨ af, 2026, Proposition 3.1), we obtain that under MAR, 
+
+X
+
+> m∈M
+
+Z
+
+log 
+
+ π(m)(x(m))
+
+p(m)(x(m))
+
+
+
+π(m)(x(m))P(M = m | x(m))dx (m) ≥ 0 ,
+
+18 Figure 4: Scatter plots of the first two dimensions of the generated samples for each method, for a single replication of the simulation study in Section 4.1 with n = 2000, d = 3, and uniform distribution. The black square indicates the support [0 , 1] 2 of the true distribution. while zero is clearly attained for p(m) = π(m). This shows that PX is one solution to (5). Moreover, as shown in (Ch´ erief-Abdellatif and N¨ af, 2026, Proposition 3.2), under MAR, P(M = 0 | x) > 0for almost all x implies that, 
+
+X
+
+> m∈M
+
+Z
+
+log 
+
+ π(m)(x(m))
+
+p(m)(x(m))
+
+
+
+π(m)(x(m))P(M = m | x(m))dx (m) = 0 ⇐⇒ PX = PX ,
+
+showing that PX is the unique solution to (5). On the other hand, if P(M = 0 | x) = 0 for x ∈ A
+
+with PX (A) > 0, we can construct a density PX that is equal to PX on Ac and has the same 
+
+k ≤ d − 1 dimensional marginals, but such that PX̸ = PX on A. This difference in turn will be masked by P(M = 0 | x) = 0. 19 Figure 5: Scatter plots of the first two dimensions of the generated samples for each method, for a single replication of the simulation study in Section 4.1 with n = 2000, d = 3, and Gaussian distribution. We note that both MICE and the Bayes method essentially use Gaussian regression and Gaussian approximations respectively, giving them a somewhat unfair edge in this example. 
+
+Proof of Lemma 3. Using the chain rule and the law of total probability, we have ddε |ε=0 F[ρε] = X
+
+> m
+
+P(M = m)
+
+Z ddε |ε=0 f μ(m) 
+
+> m
+
+(x(m))
+
+ρ(m) 
+
+> ε
+
+(x(m))
+
+!
+
+ρ(m) 
+
+> ε
+
+(x(m)) d x(m)
+
+= X
+
+> m
+
+P(M = m)
+
+Z
+
+f μ(m) 
+
+> m
+
+(x(m))
+
+ρ(m)(x(m))
+
+!
+
+− f ′ μ(m) 
+
+> m
+
+(x(m))
+
+ρ(m)(x(m))
+
+!
+
+μ(m) 
+
+> m
+
+(x(m))
+
+ρ(m)(x(m))
+
+!
+
+· ddε |ε=0 ρ(m) 
+
+> ε
+
+(x(m)) d x(m)
+
+= − X
+
+> m
+
+P(M = m)
+
+Z 
+
+h ◦ r(m)
+
+(x(m)) ddε |ε=0 ρ(m) 
+
+> ε
+
+(x(m)) d x(m)
+
+= − X
+
+> m
+
+P(M = m)
+
+Z 
+
+h ◦ r(m)
+
+(x(m)) ddε |ε=0 
+
+Z
+
+ρε(x) d x(1 −m) dx(m)
+
+= −
+
+Z X
+
+> m
+
+P(M = m)
+
+
+
+h ◦ r(m)
+
+(x(m)) ddε |ε=0 ρε(x) d x . 
+
+The result follows from the definition of δF[ρ] 
+
+> δρ
+
+(x) being the first variation of F[ρ]. 20 Proof of Lemma 4. Assume ψ is convex and lower semi-continuous. Then, by duality, we have 
+
+ψ(u) = sup 
+
+> v∈dom( ψ∗)
+
+{vu − ψ∗(v)} .
+
+It follows that, for each m ∈ M ,
+
+Dψ
+
+
+
+π(m) 
+
+> m
+
+, ρ (m)
+
+=
+
+Z
+
+ρ(m)(x(m))ψ π(m) 
+
+> m
+
+(x(m))
+
+ρ(m)(x(m))
+
+!
+
+dx(m)
+
+=
+
+Z
+
+ρ(m)(x(m)) sup 
+
+> v∈dom( ψ∗)
+
+(
+
+v · π(m) 
+
+> m
+
+(x(m))
+
+ρ(m)(x(m)) − ψ∗(v)
+
+)
+
+dx(m)
+
+= sup   
+
+> gm:Rdm →R
+
+(Z
+
+ρ(m)(x(m)) gm(x(m)) π(m) 
+
+> m
+
+(x(m))
+
+ρ(m)(x(m)) − ψ∗
+
+gm(x(m))
+
+!
+
+dx(m)
+
+)
+
+= sup   
+
+> gm:Rdm →R
+
+Z 
+
+gm(x(m))π(m) 
+
+> m
+
+(x(m)) d x(m) −
+
+Z
+
+ψ∗
+
+gm(x(m))
+
+
+
+ρ(m)(x(m)) d x(m)
+
+
+
+.
+
+Since, by duality, ψ∗(ψ′(r)) = rψ ′(r) − ψ(r), the specific choice gm = ψ′ ◦ r(m) yields 
+
+Z
+
+gm(x(m))π(m) 
+
+> m
+
+(x(m)) d x(m) −
+
+Z
+
+ψ∗(gm(x(m))) ρ(m)(x(m)) d x(m)
+
+=
+
+Z
+
+ψ′(r(m)(x(m))) π(m) 
+
+> m
+
+(x(m)) d x(m) −
+
+Z
+
+ψ∗(ψ′(r(m)(x(m)))) ρ(m)(x(m)) d x(m)
+
+=
+
+Z
+
+ψ′(r(m)(x(m))) π(m) 
+
+> m
+
+(x(m)) d x(m)
+
+−
+
+Z 
+
+r(m)(x(m))ψ′(r(m)(x(m))) − ψ(r(m)(x(m))) 
+
+
+
+ρ(m)(x(m)) d x(m)
+
+=
+
+Z
+
+ψ(r(m)(x(m))) ρ(m)(x(m)) d x(m)
+
+= Dψ
+
+
+
+π(m) 
+
+> m
+
+, ρ (m)
+
+.
+
+The result follows from the observation that h(r) = rf ′(r) − f (r) = ψ′(r). 
+
+Proof of Proposition 5. For fixed time step t ∈ { 0, 1, . . . , T − 1}, missingness pattern m ∈ M and 
+
+x∗ ∈ X , Liu et al. (2024, Theorem 4.8) states that 
+
+wt,m (x∗) − ∇ (h ◦ r(m) 
+
+> t
+
+)( x∗) 2
+
+≤ C(1) 
+
+> t,m,x ∗
+
+1
+
+√nσ d + C(2)  
+
+> t,m,x ∗
+
+σ2 . (13) By the triangle inequality, we have 
+
+X
+
+> m∈M
+
+nm
+
+n wt,m (x∗) − EM
+
+h
+
+∇(h ◦ r(M ) 
+
+> t
+
+)( x∗)
+
+i
+
+> 2
+
+≤ X
+
+> m∈M
+
+nm
+
+n wt,m (x∗) − ∇ (h ◦ r(m) 
+
+> t
+
+)( x∗) 2
+
++ X
+
+> m∈M
+
+nm
+
+n ∇(h ◦ r(m) 
+
+> t
+
+)( x∗) − EM
+
+h
+
+∇(h ◦ r(M ) 
+
+> t
+
+)( x∗)
+
+i
+
+> 2
+
+.
+
+The second term is the standard Monte Carlo estimation error vanishing at a rate of O n−1/2,while the first term can be bounded by 
+
+X
+
+> m∈M
+
+nm
+
+n wt,m (x∗) − ∇ (h ◦ r(m) 
+
+> t
+
+)( x∗) 2
+
+≤ X
+
+> m∈M
+
+nm
+
+n
+
+
+
+C(1) 
+
+> t,m,x ∗
+
+1
+
+√nσ d + C(2)  
+
+> t,m,x ∗
+
+σ2
+
+
+
+≤ max  
+
+> m∈M
+
+C(1) 
+
+> t,m,x ∗
+
+1
+
+√nσ d + max  
+
+> m∈M
+
+C(2)  
+
+> t,m,x ∗
+
+σ2 ,
+
+where we have used (13) and the fact that P 
+
+> m
+
+nm = n.21
