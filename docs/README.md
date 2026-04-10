@@ -6,40 +6,46 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-09
-- 运行时间：2026-04-09 19:56:59 UTC
+- 最新运行日期：2026-04-10
+- 运行时间：2026-04-10 20:10:01 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：2
-- 速读区：4
+- 本次总论文数：8
+- 精读区：3
+- 速读区：5
 
 ### 今日简报（AI）
-今日深度探索时间序列前沿，重点攻克长序列预测效率与高质量数据生成两大难题。
-推荐关注 MICA 提出的无限压缩注意力机制，以及扩散模型（DDPM）在时序数据生成上的跨界应用。
-建议优先研读 MICA 的架构设计，并同步留意联邦学习在构建时序大模型中的落地潜力。
-- 详情：[/202604/09/README](/202604/09/README)
+今日精选 8 篇时序预测前沿，深度解析零样本多变量建模与物理增强的工业预测新范式。
+重点关注利用表格先验网络实现的零样本预测突破，以及结合物理规律提升工业预测可靠性的双流架构。
+建议关注气象大模型缩放定律与移动流量预测中的世界模型应用，把握跨领域时序建模新趋势。
+- 详情：[/202604/10/README](/202604/10/README)
 
 ### 精读区论文标签
-1. [MICA: Multivariate Infini Compressive Attention for Time Series Forecasting](/202604/09/2604.06473v1-mica-multivariate-infini-compressive-attention-for-time-series-forecasting)  
+1. [Zero-shot Multivariate Time Series Forecasting Using Tabular Prior Fitted Networks](/202604/10/2604.08400v1-zero-shot-multivariate-time-series-forecasting-using-tabular-prior-fitted-networks)  
    标签：评分：9.0/10、query:ts
-   evidence：使用Transformer进行多元预测
-2. [Extending Tabular Denoising Diffusion Probabilistic Models for Time-Series Data Generation](/202604/09/2604.05257v1-extending-tabular-denoising-diffusion-probabilistic-models-for-time-series-data-generation)  
+   evidence：使用TabPFN进行多变量时间序列预测和数据插补
+2. [DSPR: Dual-Stream Physics-Residual Networks for Trustworthy Industrial Time Series Forecasting](/202604/10/2604.07393v1-dspr-dual-stream-physics-residual-networks-for-trustworthy-industrial-time-series-forecasting)  
    标签：评分：8.0/10、query:ts
-   evidence：建模时间序列中的观测值和缺失值
+   evidence：解耦时间模式的先进工业时间序列预测框架
+3. [Auto-Configured Networks for Multi-Scale Multi-Output Time-Series Forecasting](/202604/10/2604.07610v1-auto-configured-networks-for-multi-scale-multi-output-time-series-forecasting)  
+   标签：评分：8.0/10、query:ts
+   evidence：多源异步信号和长期趋势
 
 ### 速读区论文标签
-1. [Bi-level Heterogeneous Learning for Time Series Foundation Models: A Federated Learning Approach](/202604/09/2604.06727v1-bi-level-heterogeneous-learning-for-time-series-foundation-models-a-federated-learning-approach)  
+1. [On options-driven realized volatility forecasting: Information gains via rough volatility model](/202604/10/2604.02743v2-on-options-driven-realized-volatility-forecasting-information-gains-via-rough-volatility-model)  
    标签：评分：7.0/10、query:ts
-   evidence：跨异构领域训练时间序列基础模型
-2. [Learning Nonlinear Regime Transitions via Semi-Parametric State-Space Models](/202604/09/2604.04963v1-learning-nonlinear-regime-transitions-via-semi-parametric-state-space-models)  
+   evidence：用于波动率预测的深度学习代理模型，支持长达一个月的预测周期
+2. [Towards Scaling Law Analysis For Spatiotemporal Weather Data](/202604/10/2604.05068v1-towards-scaling-law-analysis-for-spatiotemporal-weather-data)  
+   标签：评分：7.0/10、query:ts
+   evidence：气象数据中的长期预测和长时界误差增长
+3. [Beyond Static Forecasting: Unleashing the Power of World Models for Mobile Traffic Extrapolation](/202604/10/2604.08199v1-beyond-static-forecasting-unleashing-the-power-of-world-models-for-mobile-traffic-extrapolation)  
+   标签：评分：7.0/10、query:ts
+   evidence：长期时间模式和流量外推
+4. [How Does LLM Help Regional CPI Forecast: An LLM-powered Deep Panel Modeling Framework](/202604/10/2604.06894v1-how-does-llm-help-regional-cpi-forecast-an-llm-powered-deep-panel-modeling-framework)  
    标签：评分：6.0/10、query:ts
-   evidence：用于时间序列预测的半参数状态空间模型
-3. [Amortized Filtering and Smoothing with Conditional Normalizing Flows](/202604/09/2604.07169v1-amortized-filtering-and-smoothing-with-conditional-normalizing-flows)  
+   evidence：基于大语言模型的深度面板建模用于经济预测
+5. [Private Federated Learning for High-dimensional Time Series](/202604/10/2604.07135v1-private-federated-learning-for-high-dimensional-time-series)  
    标签：评分：6.0/10、query:ts
-   evidence：动力系统的摊销滤波与平滑
-4. [Conformal Prediction with Time-Series Data via Sequential Conformalized Density Regions](/202604/09/2604.07325v1-conformal-prediction-with-time-series-data-via-sequential-conformalized-density-regions)  
-   标签：评分：6.0/10、query:ts
-   evidence：具有保证覆盖率的时间序列数据符合性预测方法
+   evidence：高维向量自回归模型的联邦学习框架
 
 
 <div class="dpr-home-promo-card">
