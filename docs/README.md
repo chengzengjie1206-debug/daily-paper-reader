@@ -6,46 +6,29 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-10
-- 运行时间：2026-04-10 20:10:01 UTC
+- 最新运行日期：2026-04-11
+- 运行时间：2026-04-11 19:40:43 UTC
 - 运行状态：成功
-- 本次总论文数：8
-- 精读区：3
-- 速读区：5
+- 本次总论文数：2
+- 精读区：0
+- 速读区：2
 
 ### 今日简报（AI）
-今日精选 8 篇时序预测前沿，深度解析零样本多变量建模与物理增强的工业预测新范式。
-重点关注利用表格先验网络实现的零样本预测突破，以及结合物理规律提升工业预测可靠性的双流架构。
-建议关注气象大模型缩放定律与移动流量预测中的世界模型应用，把握跨领域时序建模新趋势。
-- 详情：[/202604/10/README](/202604/10/README)
+今日聚焦物理感知多模态融合的强降水预报及时间序列高斯链图模型研究。
+MAG-Net 通过融合卫星与雷达数据提升了强对流天气预报精度，展示了物理规律在深度学习中的关键作用。
+建议关注气象预测中的跨模态建模技术，以及复杂时间序列的结构化统计分析方法。
+- 详情：[/202604/11/README](/202604/11/README)
 
 ### 精读区论文标签
-1. [Zero-shot Multivariate Time Series Forecasting Using Tabular Prior Fitted Networks](/202604/10/2604.08400v1-zero-shot-multivariate-time-series-forecasting-using-tabular-prior-fitted-networks)  
-   标签：评分：9.0/10、query:ts
-   evidence：使用TabPFN进行多变量时间序列预测和数据插补
-2. [DSPR: Dual-Stream Physics-Residual Networks for Trustworthy Industrial Time Series Forecasting](/202604/10/2604.07393v1-dspr-dual-stream-physics-residual-networks-for-trustworthy-industrial-time-series-forecasting)  
-   标签：评分：8.0/10、query:ts
-   evidence：解耦时间模式的先进工业时间序列预测框架
-3. [Auto-Configured Networks for Multi-Scale Multi-Output Time-Series Forecasting](/202604/10/2604.07610v1-auto-configured-networks-for-multi-scale-multi-output-time-series-forecasting)  
-   标签：评分：8.0/10、query:ts
-   evidence：多源异步信号和长期趋势
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [On options-driven realized volatility forecasting: Information gains via rough volatility model](/202604/10/2604.02743v2-on-options-driven-realized-volatility-forecasting-information-gains-via-rough-volatility-model)  
-   标签：评分：7.0/10、query:ts
-   evidence：用于波动率预测的深度学习代理模型，支持长达一个月的预测周期
-2. [Towards Scaling Law Analysis For Spatiotemporal Weather Data](/202604/10/2604.05068v1-towards-scaling-law-analysis-for-spatiotemporal-weather-data)  
-   标签：评分：7.0/10、query:ts
-   evidence：气象数据中的长期预测和长时界误差增长
-3. [Beyond Static Forecasting: Unleashing the Power of World Models for Mobile Traffic Extrapolation](/202604/10/2604.08199v1-beyond-static-forecasting-unleashing-the-power-of-world-models-for-mobile-traffic-extrapolation)  
-   标签：评分：7.0/10、query:ts
-   evidence：长期时间模式和流量外推
-4. [How Does LLM Help Regional CPI Forecast: An LLM-powered Deep Panel Modeling Framework](/202604/10/2604.06894v1-how-does-llm-help-regional-cpi-forecast-an-llm-powered-deep-panel-modeling-framework)  
+1. [MAG-Net: Physics-Aware Multi-Modal Fusion of Geostationary Satellite and Radar for Severe Convective Precipitation Nowcasting](/202604/11/2604.02818v1-mag-net-physics-aware-multi-modal-fusion-of-geostationary-satellite-and-radar-for-severe-convective-precipitation-nowcasting)  
    标签：评分：6.0/10、query:ts
-   evidence：基于大语言模型的深度面板建模用于经济预测
-5. [Private Federated Learning for High-dimensional Time Series](/202604/10/2604.07135v1-private-federated-learning-for-high-dimensional-time-series)  
+   evidence：缺失热力学变量的临近预报
+2. [Time Series Gaussian Chain Graph Models](/202604/11/2604.07018v1-time-series-gaussian-chain-graph-models)  
    标签：评分：6.0/10、query:ts
-   evidence：高维向量自回归模型的联邦学习框架
+   evidence：多变量时间序列中的依赖结构
 
 
 <div class="dpr-home-promo-card">
