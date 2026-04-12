@@ -1,6 +1,9 @@
 * <a class="dpr-sidebar-root-link" href="#/">首页</a>
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 * Daily Papers
+  * 2026-04-12 <!--dpr-date:20260412-->
+    * 速读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202604/12/2604.06520v1-database-querying-under-missing-values-governed-by-missingness-mechanisms" data-sidebar-item="{&quot;title&quot;: &quot;Database Querying under Missing Values Governed by Missingness Mechanisms&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2604.06520v1-database-querying-under-missing-values-governed-by-missingness-mechanisms&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;ts&quot;}], &quot;evidence&quot;: &quot;缺失值的隐式填补&quot;}">Database Querying under Missing Values Governed by Missingness Mechanisms</a>
   * 2026-04-11 <!--dpr-date:20260411-->
     * 速读区
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202604/11/2604.02818v1-mag-net-physics-aware-multi-modal-fusion-of-geostationary-satellite-and-radar-for-severe-convective-precipitation-nowcasting" data-sidebar-item="{&quot;title&quot;: &quot;MAG-Net: Physics-Aware Multi-Modal Fusion of Geostationary Satellite and Radar for Severe Convective Precipitation Nowcasting&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2604.02818v1-mag-net-physics-aware-multi-modal-fusion-of-geostationary-satellite-and-radar-for-severe-convective-precipitation-nowcasting&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;ts&quot;}], &quot;evidence&quot;: &quot;缺失热力学变量的临近预报&quot;}">MAG-Net: Physics-Aware Multi-Modal Fusion of Geostationary Satellite and Radar for Severe Convective Precipitation Nowcasting</a>

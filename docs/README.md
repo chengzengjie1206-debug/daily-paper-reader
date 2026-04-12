@@ -6,29 +6,26 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-11
-- 运行时间：2026-04-11 19:40:43 UTC
+- 最新运行日期：2026-04-12
+- 运行时间：2026-04-12 20:06:18 UTC
 - 运行状态：成功
-- 本次总论文数：2
+- 本次总论文数：1
 - 精读区：0
-- 速读区：2
+- 速读区：1
 
 ### 今日简报（AI）
-今日聚焦物理感知多模态融合的强降水预报及时间序列高斯链图模型研究。
-MAG-Net 通过融合卫星与雷达数据提升了强对流天气预报精度，展示了物理规律在深度学习中的关键作用。
-建议关注气象预测中的跨模态建模技术，以及复杂时间序列的结构化统计分析方法。
-- 详情：[/202604/11/README](/202604/11/README)
+今日聚焦数据库在缺失值机制下的查询处理，探索不完整数据的高效检索。
+研究深入分析了不同缺失模式对查询结果的影响，为提升数据库鲁棒性提供理论支持。
+建议关注数据缺失背后的生成机制，以优化复杂环境下的数据
+- 详情：[/202604/12/README](/202604/12/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [MAG-Net: Physics-Aware Multi-Modal Fusion of Geostationary Satellite and Radar for Severe Convective Precipitation Nowcasting](/202604/11/2604.02818v1-mag-net-physics-aware-multi-modal-fusion-of-geostationary-satellite-and-radar-for-severe-convective-precipitation-nowcasting)  
+1. [Database Querying under Missing Values Governed by Missingness Mechanisms](/202604/12/2604.06520v1-database-querying-under-missing-values-governed-by-missingness-mechanisms)  
    标签：评分：6.0/10、query:ts
-   evidence：缺失热力学变量的临近预报
-2. [Time Series Gaussian Chain Graph Models](/202604/11/2604.07018v1-time-series-gaussian-chain-graph-models)  
-   标签：评分：6.0/10、query:ts
-   evidence：多变量时间序列中的依赖结构
+   evidence：缺失值的隐式填补
 
 
 <div class="dpr-home-promo-card">
