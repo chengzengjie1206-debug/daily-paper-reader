@@ -6,26 +6,37 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-12
-- 运行时间：2026-04-12 20:06:18 UTC
+- 最新运行日期：2026-04-13
+- 运行时间：2026-04-13 20:38:57 UTC
 - 运行状态：成功
-- 本次总论文数：1
-- 精读区：0
-- 速读区：1
+- 本次总论文数：5
+- 精读区：2
+- 速读区：3
 
 ### 今日简报（AI）
-今日聚焦数据库在缺失值机制下的查询处理，探索不完整数据的高效检索。
-研究深入分析了不同缺失模式对查询结果的影响，为提升数据库鲁棒性提供理论支持。
-建议关注数据缺失背后的生成机制，以优化复杂环境下的数据
-- 详情：[/202604/12/README](/202604/12/README)
+今日聚焦物理增强的扩散模型与高效天气预报，深度解析 5 篇时序预测前沿进展。
+重点推荐 PDE 正则化下的长程动力学模拟，以及凭借极简架构实现高性能气象预测的 U-Cast。
+建议关注物理约束与不确定性过滤技术，这是提升 AI 模型在复杂工业及自然场景下鲁棒性的关键。
+- 详情：[/202604/13/README](/202604/13/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [PDE-regularized Dynamics-informed Diffusion with Uncertainty-aware Filtering for Long-Horizon Dynamics](/202604/13/2604.09058v1-pde-regularized-dynamics-informed-diffusion-with-uncertainty-aware-filtering-for-long-horizon-dynamics)  
+   标签：评分：9.0/10、query:ts
+   evidence：稳定的长期预测和长时程动力学
+2. [U-Cast: A Surprisingly Simple and Efficient Frontier Probabilistic AI Weather Forecaster](/202604/13/2604.09041v1-u-cast-a-surprisingly-simple-and-efficient-frontier-probabilistic-ai-weather-forecaster)  
+   标签：评分：8.0/10、query:ts
+   evidence：达到SOTA水平的前沿概率AI天气预报模型
 
 ### 速读区论文标签
-1. [Database Querying under Missing Values Governed by Missingness Mechanisms](/202604/12/2604.06520v1-database-querying-under-missing-values-governed-by-missingness-mechanisms)  
+1. [PRAGMA: Revolut Foundation Model](/202604/13/2604.08649v1-pragma-revolut-foundation-model)  
+   标签：评分：7.0/10、query:ts
+   evidence：针对变长事件序列的掩码建模
+2. [Drift-Aware Online Dynamic Learning for Nonstationary Multivariate Time Series: Application to Sintering Quality Prediction](/202604/13/2604.09358v1-drift-aware-online-dynamic-learning-for-nonstationary-multivariate-time-series-application-to-sintering-quality-prediction)  
+   标签：评分：7.0/10、query:ts
+   evidence：复杂工业系统中的多元时间序列预测
+3. [Temporal Patch Shuffle (TPS): Leveraging Patch-Level Shuffling to Boost Generalization and Robustness in Time Series Forecasting](/202604/13/2604.09067v1-temporal-patch-shuffle-tps-leveraging-patch-level-shuffling-to-boost-generalization-and-robustness-in-time-series-forecasting)  
    标签：评分：6.0/10、query:ts
-   evidence：缺失值的隐式填补
+   evidence：时间序列预测的数据增强
 
 
 <div class="dpr-home-promo-card">
