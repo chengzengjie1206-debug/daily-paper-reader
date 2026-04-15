@@ -6,40 +6,46 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-14
-- 运行时间：2026-04-14 20:11:40 UTC
+- 最新运行日期：2026-04-15
+- 运行时间：2026-04-15 19:59:38 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：2
+- 本次总论文数：8
+- 精读区：4
 - 速读区：4
 
 ### 今日简报（AI）
-今日深挖 6 篇时空预测前沿论文，重点攻克气象预报与复杂时间序列建模难题。
-扩散对比图神经网络与神经随机过程表现亮眼，显著提升了无观测区风速及卫星降水数据的反演精度。
-建议关注 AI 与地球科学的深度融合，特别是针对稀疏观测数据的生成式建模方案。
-- 详情：[/202604/14/README](/202604/14/README)
+今日聚焦 8 篇时序预测前沿，深度解析 LLM 语义融合与不规则医疗数据建模。
+重点推荐 9.0 分的 TimeSAF 框架，其通过大模型引导异步融合显著提升了复杂场景下的预测精度。
+建议从跨模态融合与图学习视角切入，探索时序模型在气象、医疗及金融领域的垂直应用潜力。
+- 详情：[/202604/15/README](/202604/15/README)
 
 ### 精读区论文标签
-1. [A Diffusion-Contrastive Graph Neural Network with Virtual Nodes for Wind Nowcasting in Unobserved Regions](/202604/14/2604.10328v1-a-diffusion-contrastive-graph-neural-network-with-virtual-nodes-for-wind-nowcasting-in-unobserved-regions)  
+1. [TimeSAF: Towards LLM-Guided Semantic Asynchronous Fusion for Time Series Forecasting](/202604/15/2604.12648v1-timesaf-towards-llm-guided-semantic-asynchronous-fusion-for-time-series-forecasting)  
+   标签：评分：9.0/10、query:ts
+   evidence：最先进的大模型引导时间序列预测
+2. [DBGL: Decay-aware Bipartite Graph Learning for Irregular Medical Time Series Classification](/202604/15/2604.11842v1-dbgl-decay-aware-bipartite-graph-learning-for-irregular-medical-time-series-classification)  
    标签：评分：8.0/10、query:ts
-   evidence：在无传感器的未观测区域进行临近预报
-2. [Neural Stochastic Processes for Satellite Precipitation Refinement](/202604/14/2604.10414v1-neural-stochastic-processes-for-satellite-precipitation-refinement)  
+   evidence：具有缺失模式的不规则医学时间序列
+3. [Stable Fine-Time-Step Long-Horizon Turbulence Prediction with a Multi-Stepsize Mixture-of-Experts Neural Operator](/202604/15/2604.12794v1-stable-fine-time-step-long-horizon-turbulence-prediction-with-a-multi-stepsize-mixture-of-experts-neural-operator)  
    标签：评分：8.0/10、query:ts
-   evidence：以任意稀疏观测集为条件进行建模
+   evidence：湍流的稳定长周期自回归预测
+4. [Manifold Data Imputation](/202604/15/2604.12871v1-manifold-data-imputation)  
+   标签：评分：8.0/10、query:ts
+   evidence：在光滑流形上重建缺失数据
 
 ### 速读区论文标签
-1. [WaveMoE: A Wavelet-Enhanced Mixture-of-Experts Foundation Model for Time Series Forecasting](/202604/14/2604.10544v1-wavemoe-a-wavelet-enhanced-mixture-of-experts-foundation-model-for-time-series-forecasting)  
+1. [CycloneMAE: A Scalable Multi-Task Learning Model for Global Tropical Cyclone Probabilistic Forecasting](/202604/15/2604.12180v1-cyclonemae-a-scalable-multi-task-learning-model-for-global-tropical-cyclone-probabilistic-forecasting)  
    标签：评分：7.0/10、query:ts
-   evidence：小波增强的时间序列预测基础模型
-2. [Multiple Imputation Diagnostics when using Electronic Health Record Data in Observational Studies: A Case Study](/202604/14/2604.10706v1-multiple-imputation-diagnostics-when-using-electronic-health-record-data-in-observational-studies-a-case-study)  
+   evidence：全球热带气旋预测的多任务学习模型
+2. [Forecasting Oil Prices Across the Distribution: A Quantile VAR Approach](/202604/15/2604.12927v1-forecasting-oil-prices-across-the-distribution-a-quantile-var-approach)  
    标签：评分：7.0/10、query:ts
-   evidence：电子健康记录数据中缺失值的多重插补诊断
-3. [Sheaf Diffusion with Adaptive Local Structure for Spatio-Temporal Forecasting](/202604/14/2604.11275v1-sheaf-diffusion-with-adaptive-local-structure-for-spatio-temporal-forecasting)  
-   标签：评分：7.0/10、query:ts
-   evidence：具有自适应局部结构的时空预测
-4. [TempusBench: An Evaluation Framework for Time-Series Forecasting](/202604/14/2604.11529v1-tempusbench-an-evaluation-framework-for-time-series-forecasting)  
-   标签：评分：7.0/10、query:ts
-   evidence：最先进时间序列预测模型的评估框架
+   evidence：用于石油价格预测的分位数向量自回归模型
+3. [Towards Situation-aware State Modeling for Air Traffic Flow Prediction](/202604/15/2604.11198v2-towards-situation-aware-state-modeling-for-air-traffic-flow-prediction)  
+   标签：评分：6.0/10、query:ts
+   evidence：基于状态建模的航空交通流预测
+4. [Latent community paths in VAR-type models via dynamic directed spectral co-clustering](/202604/15/2604.12563v1-latent-community-paths-in-var-type-models-via-dynamic-directed-spectral-co-clustering)  
+   标签：评分：6.0/10、query:ts
+   evidence：高维VAR模型中的定向依赖关系建模
 
 
 <div class="dpr-home-promo-card">
