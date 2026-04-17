@@ -6,34 +6,38 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-16
-- 运行时间：2026-04-16 20:43:32 UTC
+- 最新运行日期：2026-04-17
+- 运行时间：2026-04-17 19:59:20 UTC
 - 运行状态：成功
-- 本次总论文数：4
-- 精读区：1
-- 速读区：3
+- 本次总论文数：5
+- 精读区：0
+- 速读区：5
 
 ### 今日简报（AI）
-今日深挖多变量时间序列预测，重点攻克预测异质性难题并探索物理引导的混合架构。
-验证驱动的聚类框架有效提升了异质数据建模精度，而物理先验与状态空间模型的结合在光伏及交通预测中展现出超越纯注意力机制的潜力。
-建议优先关注如何利用聚类手段处理复杂时空关联，并尝试引入物理约束或偏差修正技术来增强预测的鲁棒性。
-- 详情：[/202604/16/README](/202604/16/README)
+今日深挖 5 篇时间序列前沿论文，重点涵盖评估框架、建筑负荷预测及分类预训练等核心领域。
+TempusBench 评估体系与结合 Patch 融合网络的建筑能耗预测方案是今日亮点，显著提升了模型标准化与预测精度。
+建议关注时序模型基准测试或能源管理优化的读者优先研读相关技术细节。
+- 详情：[/202604/17/README](/202604/17/README)
 
 ### 精读区论文标签
-1. [Forecasting Multivariate Time Series under Predictive Heterogeneity: A Validation-Driven Clustering Framework](/202604/16/2604.13748v1-forecasting-multivariate-time-series-under-predictive-heterogeneity-a-validation-driven-clustering-framework)  
-   标签：评分：8.0/10、query:ts
-   evidence：具有自适应池化的高维多元时间序列预测
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Bias-Corrected Adaptive Conformal Inference for Multi-Horizon Time Series Forecasting](/202604/16/2604.13253v1-bias-corrected-adaptive-conformal-inference-for-multi-horizon-time-series-forecasting)  
+1. [TempusBench: An Evaluation Framework for Time-Series Forecasting](/202604/17/2604.11529v2-tempusbench-an-evaluation-framework-for-time-series-forecasting)  
    标签：评分：7.0/10、query:ts
-   evidence：具有偏差修正自适应符合性推理的多步时间序列预测
-2. [FAST: A Synergistic Framework of Attention and State-space Models for Spatiotemporal Traffic Prediction](/202604/16/2604.13453v1-fast-a-synergistic-framework-of-attention-and-state-space-models-for-spatiotemporal-traffic-prediction)  
+   evidence：全面的模型评估框架
+2. [An End-to-end Building Load Forecasting Framework with Patch-based Information Fusion Network and Error-weighted Adaptive Loss](/202604/17/2604.13714v1-an-end-to-end-building-load-forecasting-framework-with-patch-based-information-fusion-network-and-error-weighted-adaptive-loss)  
    标签：评分：7.0/10、query:ts
-   evidence：在时空预测中建模长期时间动态
-3. [Outperforming Self-Attention Mechanisms in Solar Irradiance Forecasting via Physics-Guided Neural Networks](/202604/16/2604.13455v1-outperforming-self-attention-mechanisms-in-solar-irradiance-forecasting-via-physics-guided-neural-networks)  
-   标签：评分：7.0/10、query:ts
-   evidence：物理引导的神经网络用于太阳辐照度预测
+   evidence：具有异常校正功能的端到端建筑负荷预测框架
+3. [ADAPTive Input Training for Many-to-One Pre-Training on Time-Series Classification](/202604/17/2604.08398v1-adaptive-input-training-for-many-to-one-pre-training-on-time-series-classification)  
+   标签：评分：6.0/10、query:ts
+   evidence：时间序列基础模型的预训练范式
+4. [Beyond Weather Correlation: A Comparative Study of Static and Temporal Neural Architectures for Fine-Grained Residential Energy Consumption Forecasting in Melbourne, Australia](/202604/17/2604.12304v1-beyond-weather-correlation-a-comparative-study-of-static-and-temporal-neural-architectures-for-fine-grained-residential-energy-consumption-forecasting-in-melbourne-australia)  
+   标签：评分：6.0/10、query:ts
+   evidence：能源消耗预测神经架构的比较研究
+5. [Assessing the Performance-Efficiency Trade-off of Foundation Models in Probabilistic Electricity Price Forecasting](/202604/17/2604.14739v1-assessing-the-performance-efficiency-trade-off-of-foundation-models-in-probabilistic-electricity-price-forecasting)  
+   标签：评分：6.0/10、query:ts
+   evidence：基础模型在概率预测中的性能
 
 
 <div class="dpr-home-promo-card">
