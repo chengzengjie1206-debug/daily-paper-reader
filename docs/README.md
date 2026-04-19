@@ -6,41 +6,32 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-18
-- 运行时间：2026-04-18 19:53:14 UTC
+- 最新运行日期：2026-04-19
+- 运行时间：2026-04-19 19:27:55 UTC
 - 运行状态：成功
-- 本次总论文数：6
+- 本次总论文数：3
 - 精读区：0
-- 速读区：6
+- 速读区：3
 
 ### 今日简报（AI）
-今日聚焦物理增强与情境感知技术，利用状态空间模型重塑能源与交通领域的关键时序预测。
-核心突破在于将物理约束引入离网太阳能辐照预测，并结合情境建模显著提升空中交通流量的分析精度。
-建议关注如何通过融合领域先验知识，提升 AI 模型在复杂基础设施预测中的可靠性与鲁棒性。
-- 详情：[/202604/18/README](/202604/18/README)
+今日聚焦工业预测性维护与离网光伏预测，探索物理约束与注意力机制在复杂工况下的深度融合。
+重点推荐多头注意力融合网络提升工业寿命预测精度，以及物理信息状态空间模型在离网微电网中的可靠应用。
+建议关注物理规律如何为深度学习模型提供边界约束，从而解决能源与制造领域的长效预测难题。
+- 详情：[/202604/19/README](/202604/19/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Physics-Informed State Space Models for Reliable Solar Irradiance Forecasting in Off-Grid Systems](/202604/18/2604.11807v2-physics-informed-state-space-models-for-reliable-solar-irradiance-forecasting-in-off-grid-systems)  
-   标签：评分：7.0/10、query:ts
-   evidence：用于太阳辐照度预测的状态空间模型
-2. [Towards Situation-aware State Modeling for Air Traffic Flow Prediction](/202604/18/2604.11198v1-towards-situation-aware-state-modeling-for-air-traffic-flow-prediction)  
+1. [A Multi-head Attention Fusion Network for Industrial Prognostics under Discrete Operational Conditions](/202604/19/2604.10248v1-a-multi-head-attention-fusion-network-for-industrial-prognostics-under-discrete-operational-conditions)  
    标签：评分：6.0/10、query:ts
-   evidence：空中交通预测的状态到流量建模
-3. [From Time Series to State: Situation-Aware Modeling for Air Traffic Flow Prediction](/202604/18/2604.11198v3-from-time-series-to-state-situation-aware-modeling-for-air-traffic-flow-prediction)  
+   evidence：用于工业预测建模的多头注意力融合网络
+2. [Physics-Informed State Space Models for Reliable Solar Irradiance Forecasting in Off-Grid Systems](/202604/19/2604.11807v1-physics-informed-state-space-models-for-reliable-solar-irradiance-forecasting-in-off-grid-systems)  
    标签：评分：6.0/10、query:ts
-   evidence：用于航空交通预测的状态到流量建模
-4. [INTARG: Informed Real-Time Adversarial Attack Generation for Time-Series Regression](/202604/18/2604.11928v1-intarg-informed-real-time-adversarial-attack-generation-for-time-series-regression)  
+   evidence：用于太阳辐照度预测的物理告知状态空间模型
+3. [Thermodynamic Liquid Manifold Networks: Physics-Bounded Deep Learning for Solar Forecasting in Autonomous Off-Grid Microgrids](/202604/19/2604.11909v1-thermodynamic-liquid-manifold-networks-physics-bounded-deep-learning-for-solar-forecasting-in-autonomous-off-grid-microgrids)  
    标签：评分：6.0/10、query:ts
-   evidence：时间序列回归的对抗攻击生成
-5. [Doubly Outlier-Robust Online Infinite Hidden Markov Model](/202604/18/2604.14322v1-doubly-outlier-robust-online-infinite-hidden-markov-model)  
-   标签：评分：6.0/10、query:ts
-   evidence：用于预测的鲁棒在线隐马尔可夫模型
-6. [Generalized Autoregressive Multivariate Models: From Binary to Poisson](/202604/18/2604.14394v1-generalized-autoregressive-multivariate-models-from-binary-to-poisson)  
-   标签：评分：6.0/10、query:ts
-   evidence：离散时间序列的多变量自回归模型
+   evidence：包含22个气象变量的太阳能深度学习预测
 
 
 <div class="dpr-home-promo-card">
