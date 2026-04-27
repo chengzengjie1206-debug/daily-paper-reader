@@ -6,49 +6,40 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-26
-- 运行时间：2026-04-26 19:47:21 UTC
+- 最新运行日期：2026-04-27
+- 运行时间：2026-04-27 20:32:02 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：2
-- 速读区：7
+- 本次总论文数：6
+- 精读区：5
+- 速读区：1
 
 ### 今日简报（AI）
-今日聚焦 9 篇时空预测前沿，深度解析 SHARELIFE 填补技术与高稳定性神经时间积分器。
-重点推荐 9.0 分的 SHARELIFE 填补方案，以及利用混合架构解决自回归预测不稳定性问题的最新突破。
-建议关注 GNN 与扩散模型在风暴潮预警及超分辨率数据同化中的实战表现。
-- 详情：[/202604/26/README](/202604/26/README)
+今日深度解析 6 篇论文，重点攻克纵向数据建模与电力系统预测两大高分领域。
+研究证实时间序列大模型在电力预测中极具潜力，且分层概率主成分分析显著提升了复杂数据的处理效能。
+建议优先关注通用大模型在垂直工业场景下的落地表现。
+- 详情：[/202604/27/README](/202604/27/README)
 
 ### 精读区论文标签
-1. [SHARELIFE Imputations](/202604/26/2604.20416v1-sharelife-imputations)  
+1. [Hierarchical Probabilistic Principal Component Analysis of Longitudinal Data](/202604/27/2604.22015v1-hierarchical-probabilistic-principal-component-analysis-of-longitudinal-data)  
    标签：评分：9.0/10、query:ts
-   evidence：生命历程数据中缺失值的填补模型
-2. [A Hybridizable Neural Time Integrator for Stable Autoregressive Forecasting](/202604/26/2604.21101v1-a-hybridizable-neural-time-integrator-for-stable-autoregressive-forecasting)  
+   evidence：处理高维纵向数据中的大量缺失数据
+2. [Empirical Assessment of Time-Series Foundation Models For Power System Forecasting Applications](/202604/27/2604.22077v1-empirical-assessment-of-time-series-foundation-models-for-power-system-forecasting-applications)  
+   标签：评分：9.0/10、query:ts
+   evidence：对最先进时间序列基础模型的评估
+3. [FeatEHR-LLM: Leveraging Large Language Models for Feature Engineering in Electronic Health Records](/202604/27/2604.22534v1-featehr-llm-leveraging-large-language-models-for-feature-engineering-in-electronic-health-records)  
+   标签：评分：9.0/10、query:ts
+   evidence：不规则采样临床时间序列的特征工程
+4. [CLVAE: A Variational Autoencoder for Long-Term Customer Revenue Forecasting](/202604/27/2604.22636v1-clvae-a-variational-autoencoder-for-long-term-customer-revenue-forecasting)  
+   标签：评分：9.0/10、query:ts
+   evidence：基于稀疏和不规则交易数据的长期预测
+5. [FETS Benchmark: Foundation Models Outperform Dataset-specific Machine Learning in Energy Time Series Forecasting](/202604/27/2604.22328v1-fets-benchmark-foundation-models-outperform-dataset-specific-machine-learning-in-energy-time-series-forecasting)  
    标签：评分：8.0/10、query:ts
-   evidence：长跨度自回归预测
+   evidence：能源时间序列预测的基础模型
 
 ### 速读区论文标签
-1. [StormNet: Improving storm surge predictions with a GNN-based spatio-temporal offset forecasting model](/202604/26/2604.20688v2-stormnet-improving-storm-surge-predictions-with-a-gnn-based-spatio-temporal-offset-forecasting-model)  
-   标签：评分：7.0/10、query:ts
-   evidence：基于GNN的时空风暴潮预测模型
-2. [Uncertainty-Aware Spatiotemporal Super-Resolution Data Assimilation with Diffusion Models](/202604/26/2604.21180v1-uncertainty-aware-spatiotemporal-super-resolution-data-assimilation-with-diffusion-models)  
-   标签：评分：7.0/10、query:ts
-   evidence：基于稀疏观测和低分辨率帧进行条件化生成
-3. [Beyond Coefficients: Forecast-Necessity Testing for Interpretable Causal Discovery in Nonlinear Time-Series Models](/202604/26/2604.18751v1-beyond-coefficients-forecast-necessity-testing-for-interpretable-causal-discovery-in-nonlinear-time-series-models)  
+1. [Spectral-Domain Local Statistics with Missing-Data Support for Cartesian and Polar Grids](/202604/27/2604.22721v1-spectral-domain-local-statistics-with-missing-data-support-for-cartesian-and-polar-grids)  
    标签：评分：6.0/10、query:ts
-   evidence：非线性时序预测模型的可解释性评估
-4. [Attention-based Multi-modal Deep Learning Model of Spatio-temporal Crop Yield Prediction with Satellite, Soil and Climate Data](/202604/26/2604.19217v1-attention-based-multi-modal-deep-learning-model-of-spatio-temporal-crop-yield-prediction-with-satellite-soil-and-climate-data)  
-   标签：评分：6.0/10、query:ts
-   evidence：用于时空预测的多模态深度学习
-5. [Adaptive Conformal Anomaly Detection with Time Series Foundation Models for Signal Monitoring](/202604/26/2604.20122v1-adaptive-conformal-anomaly-detection-with-time-series-foundation-models-for-signal-monitoring)  
-   标签：评分：6.0/10、query:ts
-   evidence：用于信号监测和预测的时序基础模型
-6. [A temporal deep learning framework for calibration of low-cost air quality sensors](/202604/26/2604.21527v1-a-temporal-deep-learning-framework-for-calibration-of-low-cost-air-quality-sensors)  
-   标签：评分：6.0/10、query:ts
-   evidence：用于传感器校准和时序建模的时间深度学习
-7. [Modeling dependency between operational risk losses and macroeconomic variables using Hidden Markov Models](/202604/26/2604.21734v1-modeling-dependency-between-operational-risk-losses-and-macroeconomic-variables-using-hidden-markov-models)  
-   标签：评分：6.0/10、query:ts
-   evidence：用于多变量时间序列数据的隐马尔可夫模型
+   evidence：计算不完整网格数据的统计数据
 
 
 <div class="dpr-home-promo-card">
