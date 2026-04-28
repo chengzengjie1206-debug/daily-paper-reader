@@ -1,0 +1,565 @@
+Title: Conditional Imputation for Within-Modality Missingness in Multi-Modal Federated Learning
+
+URL Source: https://arxiv.org/pdf/2604.23112v1
+
+Published Time: Tue, 28 Apr 2026 00:25:08 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# Conditional Imputation for Within-Modality Missingness in Multi-Modal Federated Learning 
+
+# Wugeng Zheng *
+
+# University of Central Florida 
+
+# wgzheng@ucf.edu 
+
+# Ziwen Kan *
+
+# University of Central Florida 
+
+# zi605672@ucf.edu 
+
+# Katie Wang Independent Researcher 
+
+# katiewang23@outlook.com 
+
+# Chen Chen University of Central Florida 
+
+# chen.chen@crcv.ucf.edu 
+
+# Song Wang †
+
+# University of Central Florida 
+
+# song.wang@ucf.edu 
+
+# Abstract 
+
+Multimodal Federated Learning (MMFL) enables privacy-preserving collaborative training, but real-world clinical applications often suffer from within-modality miss-ingness caused by sensor intermittency or irregular sampling. Existing methods implicitly represent unobserved data via architectural alignment or missing embeddings, often failing to recover the true distribution and yielding sub-optimal per-formance. We propose CondI, a federated framework explic-itly addressing this missingness using conditional diffusion models. CondI employs a two-phase training pipeline: first, imputing unobserved temporal components using available multimodal context and conditional embeddings; second, optimizing modality-specific extractors and joint embedding spaces. During inference, imputed raw data pass through trained extractors to generate robust features, providing a holistic representation for downstream tasks. Explicit data imputation ensures models operate on complete se-mantic structures, significantly enhancing resilience against severe data incompleteness. Experiments on three clinical datasets (PTB-XL, SLEEP-EDF, MIMIC-IV) demonstrate CondI achieves comparable results to state-of-the-art base-lines. Code: https://github.com/ZhengWugeng/CondI 
+
+# 1. Introduction 
+
+Real-world data are inherently multimodal and often dis-tributed across different clients, making multimodal feder-
+
+> *Equal contribution.
+> †Corresponding author.
+
+ated learning (MMFL) an important paradigm [ 5, 16 , 42 ]for collaboratively learning from heterogeneous multimodal data while preserving data privacy. Existing MMFL studies typically assume that all clients share the same set of modal-ities. However, this assumption rarely holds in real-world scenarios. For example, in clinical settings such as MIMIC-IV [ 17 ], data missingness is ubiquitous. While extensive research has addressed the absence of entire examinations (i.e., modality missing) [7, 25], real-world deployments fre-quently face an additional, finer-grained layer of complexity: within-modality missingness [ 23 , 39 ]. Even when monitor-ing sensors are successfully deployed, irregular sampling in-tervals or intermittent sensor detachments inevitably fracture the temporal dependencies of physiological signals. Such fragmented observations introduce significant challenges for effective multimodal representation learning in federated settings. Missing data in multimodal systems, whether at the modality or within-modality level, often lead to degraded representations if not properly aligned [ 5]. When critical tem-poral segments are fractured, models struggle to maintain se-mantic continuity, inevitably leading to degraded expressive power. Handling missingness is further complicated by the privacy-preserving nature of federated data sources. Impor-tantly, existing solutions for recovering missing modalities, including data imputation [ 8, 32 , 36 , 43 ] and generation us-ing pre-trained multimodal foundation models [ 3, 10 , 13 , 27 ], typically assume centralized data access or comprehensive modality coverage, which conflicts with federated learning settings [22]. To mitigate modality absence in federated settings, early methods focused on learning universal representations               
+
+> arXiv:2604.23112v1 [cs.LG] 25 Apr 2026 Table 1. Comparison of state-of-the-art multimodal federated learn-ing frameworks. CondI uniquely addresses within-modality miss-ingness by explicitly conditional imputation.
+> Method Modality-Level Within-Modality Mechanism
+> FedMSplit [7] ✓×
+> MIFL [25] ✓×
+> FedInMM [39] ✓Implicit (Feature Alignment) FedMAC [23] ✓Implicit (Alignment / Contrastive Reg.) PEPSY [22] ✓Implicit (Missing Embedding)
+> CondI (Ours) ✓Explicit (Conditional Imputation)
+
+[ 6, 24 , 26 , 34 , 38 ], yet they heavily relied on the unreal-istic assumption of uniform modality configurations across all clients. More recent FL-specific approaches attempt to address data missingness, but they generally fall into two sub-optimal paradigms. First, several frameworks [ 7, 25 ]address only modality-level missingness. Second, methods that consider within-modality missingness, such as PEPSY [22 ] and others [ 23 , 39 ], typically resort to implicit modeling. They rely on passive architectural alignments or learnable “missing embeddings” that merely flag the unobserved data. This passive approach is fundamentally inadequate for clini-cal applications. For example, a sudden blood pressure (BP) drop typically triggers a compensatory heart rate (HR) rise [ 41 ]. Implicit methods merely ‘flag’ missing BP via em-beddings, failing to capture critical signal correlations. As noted in [ 19 ], missing data may interrupt the multimodal fusion space and the model may overfit on the remaining ob-served data, introducing semantic ambiguity and degrading expressive power. To break this expressive bottleneck, we propose to ex-plicitly generate missing observations conditioned on avail-able information. Implicit latent-space methods suffer from representation degradation and fail to maintain semantic co-herence under severe missingness. In contrast, explicitly restoring raw data preserves the underlying physiological distribution and ensures the generated signals remain clini-cally verifiable. Therefore, our framework operates in two phases. During Phase A, the diffusion generation is explicitly guided by available cross-modal context and a dynamically learned conditional embedding ( Wcond ) that encodes com-plex missing patterns, enabling the explicit generation of imputed raw data. In Phase B, the framework focuses on downstream task optimization by training dedicated feature extractors to capture instance-level features ( Wins ), learning structural modality embeddings ( Wmod ), and systematically fusing them with the conditional embeddings ( Wcond ) prior to classification. Importantly, during the inference stage, the explicitly imputed raw data are leveraged by these trained ex-tractors to derive continuous instance-level semantics ( Wins ). Ultimately, as contrasted in Table 1, our approach distin-guishes itself by shifting from passive alignment to explicit data imputation , which rigorously preserves semantic consis-tency, enables richer modeling of missing-data distributions, and achieves superior multimodal alignment in federated environments. Our contributions are summarized as follows: • We study the critical problem of within-modality missing-ness in the multimodal federated learning setting. • We propose a new conditional generative diffusion frame-work to address within-modality missingness issues in multimodal federated learning. • Extensive experiments on PTB-XL [ 30 ], SLEEP-EDF [18 ], and MIMIC-IV [ 17 ] dataset demonstrate that our ap-proach yields highly competitive performance compared to existing MMFL baselines. 
+
+# 2. Related Work 
+
+Multimodal Learning with Missing Modalities. Multi-modal learning has shown strong potential by integrating complementary information from multiple sources. How-ever, most multimodal methods assume that all modalities are fully observed, which rarely holds in real-world applica-tions. To address incomplete observations, prior studies have explored heuristic or statistical imputation, neural reconstruc-tion models, and generative approaches that recover missing modalities from available ones [ 8, 32 , 36 , 43 ]. More recently, pretrained models have also been leveraged to improve in-complete multimodal learning [ 3, 10 , 27 , 35 ]. Despite their success, most of these methods are developed in centralized settings and usually assume access to all data or sufficiently complete multimodal observations during training, which conflicts with the privacy constraints of federated learning [22]. 
+
+Multimodal Federated Learning. Federated learning en-ables multiple clients to jointly optimize a shared model with-out exchanging raw data, making it particularly attractive for privacy-sensitive domains such as healthcare [ 5, 16 , 42 ]. Recent MMFL methods mainly focus on modality fusion, shared representation learning [6, 24, 26], and disentangled feature construction [ 34 , 38 ]. While these methods improve collaborative learning across distributed clients, many of them still assume relatively homogeneous modality configu-rations or do not explicitly address severe and fine-grained missingness in multimodal data. 
+
+Missingness in Multimodal Federated Learning. A cen-tral challenge in MMFL is that missingness may arise at two levels: modality-level missingness [ 7, 25 ] and within-modality missingness [ 23 , 39 ]. Recent frameworks like PEPSY [ 22 ] and FlexMoE [ 40 ] attempt to adapt to these patterns through reconfigurable embeddings or expert rout-ing. However, these ”implicit” methods, along with those relying on deterministic imputation like FuseMoE [ 14 ], of-ten fail to recover the underlying data distribution. Such passive approaches are fundamentally inadequate for clinical applications where missing data carry high uncertainty and strong cross-modal correlations (e.g., the link between blood pressure and heart rate [ 41 ]). As noted in [ 19 ], failing to ex-plicitly ground these gaps can introduce semantic ambiguity and degrade expressive power. 
+
+Time-series Imputation and Diffusion-based Generation. 
+
+Missing values are a long-standing challenge in multivariate time-series analysis [ 17 , 31 ]. Early predictive approaches, in-cluding CNN-based [ 33 ], RNN-based [ 37 ], and Transformer-based models [ 2 ], exploit temporal dependencies for recon-struction. Generative models like GP-VAE [ 12 ] and GRUI-GAN [ 21 ] offered more flexible distributions, leading to the recent success of diffusion-based frameworks. Mod-els such as CSDI [ 29 ], SSSD [ 1], and LSCD [ 11 ] treat missing values as latent variables for conditional genera-tion. Additionally, masked-modeling approaches like Timer [20 ] and MOMENT [ 13 ] further demonstrate the power of self-supervised reconstruction. Unlike unimodal diffusion or signal-level models [ 4, 9 ], our method incorporates cross-modal conditional diffusion to explicitly generate missing temporal observations from available multimodal context. 
+
+# 3. Methodology 
+
+3.1. Problem Statement 
+
+Federated System Setup. We consider a Federated Multi-modal Learning (MMFL) system consisting of one central server and K isolated clients, indexed by k ∈ { 1, 2, . . . , K }.Let Dk denote the private local dataset held by the k-th client, with a local sample size of nk = |D k|. In real-world medi-cal scenarios, data distributions across different clients are not strictly mutually exclusive (e.g., the same patient might have records in multiple institutions). Therefore, the global dataset is formally defined as the union of all local datasets, 
+
+Dglobal = SKk=1 Dk. The total number of unique samples across the entire federated system is Ntotal = |D global |, where 
+
+PKk=1 nk ≥ Ntotal due to potential overlapping records. Fol-lowing the standard privacy protocols of federated learning, raw data Dk is strictly kept local and cannot be shared across clients or uploaded to the server for explicit deduplication. 
+
+Modality Data Missing. Suppose the system involves a total of M distinct modalities. For the b-th sample in a local dataset, we denote the input sequence of the m-th modal-ity as x(m) 
+
+> b
+
+∈ RLts ×Lf , where Lts and Lf represent the temporal length and feature dimensionality, respectively. In real-world federated scenarios, clients often suffer from se-vere modality heterogeneity and instance-level missingness (e.g., due to different sensor configurations across hospi-tals). To mathematically formulate this, we define a binary observability indicator r(m) 
+
+> b
+
+∈ { 0, 1} for the b-th sample. Specifically: r(m) 
+
+> b
+
+= 1 indicates that the m-th modality is strictly observable for this sample and r(m) 
+
+> b
+
+= 0 indicates that the m-th modality is missing. Consequently, the ac-tually observed data for the b-th sample can be denoted as a set Xb = {x(m) 
+
+> b
+
+| r(m) 
+
+> b
+
+= 1, m ∈ {1, . . . , M }} .The observable modality indicator set for this sample is 
+
+Ob = {i | r(i) 
+
+> b
+
+= 1 }.
+
+Within modality missing. Beyond the absence of entire modalities, individual modalities may also exhibit partial missingness (e.g., missing specific time steps or feature dimensions). First we resample all modalities into the same length. To characterize this fine-grained missingness, we introduce a modality-specific binary observation mask 
+
+R(m) ∈ { 0, 1}Lts ×Lf . Consequently, the observed and unobserved components of the representation for modal-ity m can be formally expressed as: x(m, O) 
+
+> b
+
+= R(m) ⊙ x(m)
+
+> b
+
+and x(m, U) 
+
+> b
+
+= ( 1 − R(m)) ⊙ x(m) 
+
+> b
+
+, where ⊙ denotes the Hadamard product. To facilitate joint multimodal processing in subsequent generative modules, these modality-specific components are concatenated along the feature dimension to form the unified sample-level observed and unobserved representations: 
+
+xO 
+
+> b
+
+= Concat Mm=1 
+
+ x(m, O)
+
+> b
+
+, x U 
+
+> b
+
+= Concat Mm=1 
+
+ x(m, U)
+
+> b
+
+.(1) 
+
+Learning Objective. Our framework collaboratively opti-mizes a global model Θ across K clients while addressing severe modality and intra-modality missingness. This is for-mulated via two synergistic objectives: a global federated goal and a local intermediate estimation goal. (1) Global Federated Objective. The central system aims to find the optimal global parameters Θ by minimizing a federated em-pirical risk L, which is defined as the weighted average of local losses across all participating clients: 
+
+min  
+
+> Θ
+
+L(Θ) = 
+
+> K
+
+X
+
+> k=1
+
+nk
+
+Ntotal 
+
+Lk(Θ; Dk), (2) where nk is the local sample size and Ntotal is the total num-ber of unique samples. For each client k, the local loss Lk
+
+is evaluated using conditionally completed representations to ensure the global model captures robust cross-modal de-pendencies. (2) Local Intermediate Estimation Objective. 
+
+To mitigate the impact of data sparsity, each client indepen-dently optimizes an intermediate imputation objective prior to or during the global training process. Specifically, For a Figure 1. Overview of the proposed CondI framework. (a) Global Federated Workflow. The server coordinates the distribution and aggregation of global model parameters Θ and prompt embeddings W across clients via FedAvg. (b) Local Two-Phase Pipeline & Inference. Inside each client, the process is structurally decoupled. In Phase A, the missing pattern ( Wcond ) is extracted to explicitly guide the diffusion model in imputing missing data. In Phase B, the model optimizes the modality profile ( Wmod ) and trains the instance encoder. During the inference stage (dotted line), the explicitly imputed data is fed back into the encoder to extract refined instance features ( Wins ), which are then concatenated with Wmod and Wcond for downstream task prediction. 
+
+sample xb, the client aims to model the conditional distribu-tion pθ (xU 
+
+> b
+
+| xO 
+
+> b
+
+, c cond ) of unobserved components xU 
+
+> b
+
+given the missing pattern context ccond .
+
+3.2. Overview Workflow 
+
+We propose a federated learning framework that decouples local estimation from global task fusion. The process is structured as a coordinated cycle: • Step 1: Global Broadcast. At the start of round t, the server distributes the global parameters Θ(t) and embed-ding matrices W(t) to a selected subset of clients. • Step 2: Local Multi-Phase Training. Each client k up-dates the model using its private data Dk through two sequential phases: (i) Phase A (Conditional Estima-tion) , which focuses on the intermediate goal of imputing missing data using available observed modalities; and (ii) Phase B (Task Optimization) , which optimizes the instance-specific encoder, modality-specific embedding spaces, and the classification module using available local data. Note that the explicitly imputed raw data generated by the diffusion model are subsequently fed into these trained extractors during the inference stage. • Step 3: Parameter Upload. Clients pack their updated local weights Θ(t+1)  
+
+> k
+
+and embeddings W for transmission back to the server. • Step 4: Global Aggregation. The server applies Feder-ated Averaging (FedAvg) to both the parameters Θ(t+1) 
+
+and embeddings W∗(t+1) to produce the global state for the next round: 
+
+Θ(t+1) =
+
+> K
+
+X
+
+> k=1
+
+nk
+
+Ntotal 
+
+Θ(t+1)  
+
+> k
+
+, W(t+1)  
+
+> ∗
+
+=
+
+> K
+
+X
+
+> k=1
+
+nk
+
+Ntotal 
+
+W(t+1)  
+
+> ∗,k
+
+.(3) 
+
+Definitions of Learnable Embeddings. To effectively or-chestrate this multi-phase pipeline and decouple the complex missing scenarios, we introduce a set of learnable prompt em-beddings: W = {W mod , Wins , Wcond } ∈ RM ×M ×D , where 
+
+D denotes a custom-defined embedding dimension. In Phase A, the focus is on the missing pattern: Wcond is learned to serve as the explicit condition guiding the diffusion genera-tion. Subsequently, in Phase B, task optimization engages the full embedding set: Wmod is optimized as a structural fea-ture to maintain a stable modality profile, Wins is extracted by instance encoder to encode fine-grained instance-level semantics, and Wcond is continually utilized to align with the downstream task. Finally, during the inference stage, Wins 
+
+is re-extracted from the explicitly imputed data to ensure strict semantic consistency. Ultimately, these embeddings are concatenated for robust downstream classification. 
+
+3.3. Phase A: Conditional Estimation 
+
+Cross-Modal Conditional Embedding. Building on its role as a structural prior, the global embedding Wcond ∈
+
+RM ×M ×D explicitly models the correlation rules between sensors. Formally, the element Wcond [i, m ] ∈ RD is a pa-rameterized vector representing the specific conditional con-tribution from a source modality i to a target modality m.Figure 2. Detailed architecture of the Conditional Diffusion mod-ule. The module performs fine-grained data imputation by in-tegrating observed context and missing conditions. Specifically, available data xO 
+
+> b
+
+is processed via an MoE Gating block to ex-tract observed contextual feature c(b) 
+
+> O
+
+. The cross-modal embedding 
+
+W(m) 
+
+> cond
+
+provides structural priors regarding missing patterns. These two streams are concated to form the unified condition c(b), which guides the Denoising Network in imputing unobserved components from Gaussian noise. 
+
+By parameterizing these relationships rather than relying on sample-level retrieval, Wcond is naturally suited for federated aggregation and end-to-end optimization. For a specific sample b, let Ob = {i | r(i) 
+
+> b
+
+= 1 } denote the set of its currently observable modalities. The core of our design is to provide a unified condition routing mechanism regardless of the missing severity. We formulate the sample-level condition vector ω(b,m ) 
+
+> cond
+
+as follows: 
+
+ω(b,m ) 
+
+> cond
+
+=
+
+(Wcond [m, m ], if r(m) 
+
+> b
+
+= 1 ,
+
+> 1
+> |O b|
+
+P 
+
+> i∈O b
+
+Wcond [i, m ], if r(m) 
+
+> b
+
+= 0 . (4) This design guarantees a strict and adaptive conditional logic: if a modality is completely absent r(m) 
+
+> b
+
+= 0 , it aggregates cross-modal knowledge from surviving modalities to main-tain a structural placeholder; crucially, if the modality is par-tially observable r(m) 
+
+> b
+
+= 1 , it utilizes its robust self-condition to explicitly guide the fine-grained diffusion imputation of its intra-modality missing values xU 
+
+> b
+
+.
+
+Conditional Diffusion. As shown in Figure 2, we inject the cross-modal condition as crucial side information into the diffusion process. For a given sample b, rather than relying on a single target modality, we concatenate the con-ditional vectors across all available modalities m ∈ M 
+
+to form a comprehensive sample-level condition ω(b) 
+
+> cond
+
+=
+
+Concat m∈M 
+
+ ω(b,m )
+
+> cond
+
+. This aggregated condition is then broadcast along the temporal dimension to form the condi-tion sequence c(b)
+
+> cond
+
+. Simultaneously, the available observed data xO 
+
+> b
+
+is processed by a feature encoder equipped with a Mixture-of-Experts (MoE) module [ 28 ]. This MoE struc-ture dynamically selects and routes useful information to generate the robust observed contextual feature c(b) 
+
+> O
+
+. Finally, these two representation streams are concatenated to form the complete multimodal condition c(b):
+
+c(b) = [ c(b) 
+
+> O
+
+⊕ c(b)
+
+> cond
+
+]. (5) We implement the estimation via a conditional denois-ing diffusion model. To distinguish diffusion latents from instance notation, we use z(b) 
+
+> t
+
+to denote the noisy latent for sample b at step t, defined only over the unobserved components x(b) 
+
+> U
+
+while keeping observed entries fixed. The generative reverse process recover z0 conditioned on the multimodal context c(b) :
+
+pθ (z(b)0: T | c(b)) = p(z(b) 
+
+> T
+
+)
+
+> T
+
+Y
+
+> t=1
+
+pθ (z(b) 
+
+> t−1
+
+| z(b) 
+
+> t
+
+, c (b)), (6) where transitions pθ (z(b) 
+
+> t−1
+
+| z(b) 
+
+> t
+
+, c (b)) are parameterized by a conditional denoising network ϵθ (z(b) 
+
+> t
+
+, t | c(b)) to estimate the added noise. 
+
+Training Strategy for Phase A. Following the noise-prediction parameterization, the local intermediate objec-tive for client k is achieved by minimizing the conditional diffusion loss over its private dataset Dk:
+
+L(k) 
+
+> diff
+
+= Exb∈D k ,ϵ,t 
+
+
+
+ϵ − ϵθ (z(b) 
+
+> t
+
+, t | c(b)) 22
+
+
+
+, (7) where ϵ ∼ N (0 , I ) and z(b) 
+
+> t
+
+= √¯αt z(b)0 + √1 − ¯αt ϵ is obtained via the standard DDPM [15] reparameterization. As ground-truth missing values are unavailable during training, we adopt the self-supervised masking strategy pro-posed in CSDI [ 29 ]. Specifically, a subset of the observed values is randomly masked and treated as pseudo-imputation targets, while the remaining observations serve as condition-ing signals. The model is trained to denoise these masked targets under the diffusion process. Crucially, unlike the unimodal baseline, our approach explicitly conditions the denoising process on the missing-aware multimodal context 
+
+c(b), thereby enabling a richer, cross-modal conditional esti-mation. Ultimately, the trained conditional diffusion model is utilized to recover the unobserved components from the final denoised latent z(b)0 . These generated components are then merged with the observed data xO 
+
+> b
+
+to construct the im-puted sample ˆxb, which serves as the holistic input for the subsequent inference stage. 
+
+3.4. Phase B: Task Optimization 
+
+During the federated Phase B training, the downstream fea-ture extractors and the classifier are optimized directly on the available local observations x(O) 
+
+> b
+
+to ensure robust alignment. During the inference stage, the fully imputed data ˆxb gener-ated from Phase A is seamlessly leveraged as the definitive input to extract enriched feature representations. Modality-Specific Embedding. Following PEPSY[ 22 ], we introduce a learnable modality-specific embedding that encodes the structural origin of each feature. Formally, the profile feature for sample b is directly retrieved from the learnable embedding Wmod :
+
+ω(b,m ) 
+
+> mod
+
+= Wmod [m] ∈ RD , (8) which captures the intrinsic characteristics and static domain knowledge of the observed modality m, independently of the specific instance content. 
+
+Instance-Specific Embedding. In addition to modality profiles, a fundamental challenge lies in characterizing the latent structural expectations—essentially, defining what the data distribution should look like for a given sample. During this task optimization phase, we employ an instance encoder to extract fine-grained semantic representations from the available observations: 
+
+ω(b,m ) 
+
+> ins
+
+= fins 
+
+ xO
+
+> b
+
+ ∈ RD , (9) where fins is the instance feature encoder. While the encoder is optimized on xO 
+
+> b
+
+during Phase B to align with the down-stream task, this formulation is deliberately designed to over-come the limitations of conservative methods like PEPSY [22]. PEPSY permanently restricts instance representations to fragmented partial data, hindering cross-modality align-ment. In contrast, our Phase B training prepares the encoder for a crucial architectural shift: during the subsequent infer-ence stage, this same encoder will seamlessly process the explicitly imputed data ˆxb. By ensuring the trained encoder can ultimately integrate these synthesized cues, we guarantee that the downstream network receives a holistic and coherent input, effectively bridging the gap between partial training observations and complete semantic understanding. 
+
+Feature Fusion and Downstream Task. To guide the final diagnostic prediction, the representation for modality m of sample b is formed by concatenating the instance context, the observed profile, and the cross-modal condition: 
+
+ω(b,m ) = ω(b,m ) 
+
+> ins
+
+∥ ω(b,m ) 
+
+> mod
+
+∥ ω(b,m )
+
+> cond
+
+ ∈ R3D . (10) By doing so, the classifier makes decisions while being fully aware of both the inherent modality traits and the explicitly injected missing-pattern conditions. Finally, the individ-ual representations ω(b,m ) across all available modalities 
+
+m ∈ M are concatenated to form a comprehensive sample embedding, which is subsequently fed into the classification head. During this phase, the parameters of the feature ex-tractors and the classifier are jointly optimized to maximize discriminative power. 
+
+3.5. Federated Optimization of Embeddings 
+
+Wmod and Wcond are globally shared, learnable parameter spaces. During the local two-phase training on each client, they receive gradients and are updated by both the imputation loss and the classification loss. On the server side, Wj is aggregated using the standard FedAvg algorithm: 
+
+W(t+1)  
+
+> ∗
+
+=
+
+> K
+
+X
+
+> k=1
+
+nk
+
+PKi=1 ni
+
+W(t+1)  
+
+> ∗,k
+
+, (11) where W∗ ∈ {W mod , Wins , Wcond } represents any of the shared embedding spaces, and nk denotes the number of samples on client k.This mechanism is exceptionally powerful in handling within-modality missingness, which is empirically validated by our feature reconstruction analysis in Section 4.4. If cer-tain conditional relationships are unobservable on one client (due to specific sensor absence), they can be learned by other clients and supplemented during the server aggregation. This achieves robust cross-client conditional knowledge transfer without the overhead of synchronizing complex missing pro-files. 
+
+# 4. Experiments 
+
+4.1. Experimental Settings 
+
+Datasets and Missing-data Simulation. We evaluate the proposed framework on three publicly available multimodal datasets: PTB-XL [ 30 ] and SLEEP-EDF [ 18 ] for physiolog-ical signal classification, and MIMIC-IV [ 17 ] for clinical time-series prediction. PTB-XL is a large-scale clinical dataset with 21,799 ECG samples, 12-lead records from more than 18,000 patients. In our setup, each of the 12 ECG leads is treated as an individual modality, resulting in a 12-modality diagnostic classification task. SLEEP-EDF con-tains 197 whole-night polysomnographic (PSG) recordings. We utilize five continuous physiological two EEG channels (Fpz-Cz and Pz-Oz), EOG, respiratory (Resp), and EMG as distinct modalities. These signals are segmented into 30-second epochs for a standard 5-class sleep stage scoring task (Wake, N1, N2, N3, and REM). Finally, MIMIC-IV is a comprehensive electronic health record (EHR) dataset containing rich clinical information from over 35,000 ICU patients. We adopt two benchmark tasks based on the clini-cal observations from the first 48 hours of ICU admission. The first is 48-hour in-hospital mortality (48-IHM), a binary classification task that predicts whether the patient will die before discharge. The second is 48-hour length-of-stay (48-LOS), a binary classification task that predicts whether the patient’s ICU stay will exceed 3 days. Both tasks use only the data collected within the initial 48-hour window, which is a common setup in clinical prediction benchmarks. To simulate incomplete multimodal observations, we fol-low the commonly used missing-statistics protocol. Focus-ing on a cross-silo federated learning scenario, where institu-tions are a few to be trusted or involved in collaborations, the datasets are partitioned across K = 6 clients with 3 clients randomly selected for each training round under a non-IID setting. We vary two key parameters: the sample-level miss-ing ratio ps ∈ { 0.2, 0.8}, which controls the distribution of samples with at least one missing modality, and the within-modality missing probability pw ∈ { 0.2, 0.8}, which is the distribution of features absent within each sample in affected modality. This setting yields four experimental configura-tions per dataset, spanning from slightly ( ps=0 .2, p w=0 .2)to severe ( ps=0 .8, p w=0 .8) missing-data scenarios. The model is trained for T = 70 communication rounds for PTB-XL and SLEEP-EDF dataset, T = 30 communication rounds for the MIMIC-IV dataset. Both with a client partici-pation ratio of 0.5 per round. All experiments are conducted with a fixed training seed to ensure reproducibility, and clas-sification accuracy is used as the evaluation metric for both tasks. 
+
+4.2. Experimental Results 
+
+PTBXL and SLEEP-EDF Datasets. Table 2 shows the classification accuracy on the PTBXL and SLEEP-EDF datasets. On PTBXL, CondI achieves the best results un-der all four missing-data settings, maintaining an accuracy around 77% regardless of missing level. Even under the most severe condition of ps=0 .8, pw=0 .8, CondI still reaches 77.23%, while FedMM drops to only 22.08% and FedAvg stays at 67.99%. Compared to PEPSY, which is the strongest baseline, CondI outperforms it by about 2–3% in most cases. This shows that explicitly imputing missing data through conditional diffusion is more effective than implicitly han-dling it with missing embeddings. On SLEEP-EDF, CondI shows a similar advantage under high sample-level missing-ness ( ps=0 .8), where it outperforms all baselines including PEPSY by about 2–4%. When ps=0 .2, PEPSY obtains higher accuracy than CondI. A possible reason is that when only a small fraction of samples have missing data, the diffu-sion model has fewer imputation targets to learn from, which limits its benefit. However, CondI shows better consistency as within-modality missingness grows: the accuracy gap between pw=0 .2 and pw=0 .8 for CondI is less than 1%, while for PEPSY this gap reaches about 1.5–1.7%. Overall, CondI demonstrates stronger stability and resilience than the baselines, especially when data missingness becomes more serious. 
+
+MIMIC-IV Dataset. Table 3 reports the results on the MIMIC-IV dataset for two clinical tasks: 48-hour in-hospital mortality (48-IHM) and length-of-stay (LOS) prediction. On the 48-IHM task, CondI achieves the best F1 score in all four                                               
+
+> Table 2. Classification accuracy for PTBXL and EDF datasets under varying missing-data configurations.
+> PTBXL EDF
+> psMethod pw=0 .2pw=0 .8pw=0 .2pw=0 .8
+> 0.2 FedMM 49.84 38.07 44.25 41.51 FedAvg 73.41 71.50 41.53 40.50 PEPSY 74.85 73.30 54.19 52.71
+> CondI 77.38 77.07 50.14 49.18 0.8 FedMM 40.85 22.08 41.05 41.05 FedAvg 63.22 67.99 39.70 40.22 PEPSY 74.76 74.10 47.18 45.46 CondI 77.38 77.23 49.27 49.95
+
+settings. This is important because F1 balances precision and recall, which matters in clinical scenarios where both false positives and false negatives have real consequences. For AUROC, CondI also leads in most cases. In the setting where ps=0 .2 and pw=0 .8, FedAvg reaches a slightly higher AUROC of 73.35% compared to 73.24% for CondI, but CondI provides a noticeably better F1 score (49.33% vs. 46.18%). Under the most severe setting of ps=0 .8, pw=0 .8,CondI outperforms PEPSY by about 2.5% in AUROC and 0.6% in F1, showing that our approach remains effective even with heavy data loss. On the LOS task, CondI obtains the highest AUROC in all settings, reaching 78.32% in three out of four cases. While FedMM achieves good F1 scores when within-modality missingness is low ( pw=0 .2), its F1 drops sharply from 67.02% to 34.50% as pw increases to 0.8 at ps=0 .8. In con-trast, CondI keeps its F1 stable at around 71% even under severe missingness. Compared to PEPSY, CondI leads in AUROC by about 3% to 4% across all settings. These results confirm that the conditional diffusion strategy in CondI can effectively preserve useful clinical information and produce reliable predictions in challenging federated settings with incomplete data. 
+
+4.3. Ablation Study 
+
+To verify the effectiveness of our proposed approach, we conduct an ablation study. Our goal is to test if the CondI 
+
+and imputation modules are truly necessary for handling missing data. The experimental setup consists of 6 clients, trained over 25 rounds, with 3 clients randomly selected for each training round. Table 4 shows the experimental results. By removing these modules one by one, we can clearly see that both the CondI and Imputation modules are essential. The full method, shown in the CondI row, consistently achieves the highest test accuracy under all missing data conditions. If we remove only the Imputation module, only the CondI module, or both modules together, the model accuracy always drops. This proves that these two modules play a key role and Table 3. Classification performance for the MIMIC-IV dataset across different tasks under varying missing-data configurations.                                                                            
+
+> 48-IHM LOS
+> pspwMethod AUROC ↑F1 ↑AUROC ↑F1 ↑
+> 0.2 0.2 FedMM 74.02 54.43 76.08 69.91
+> FedAvg 65.44 60.52 74.23 66.82 PEPSY 62.67 46.65 78.16 66.33 CondI 74.37 60.82 78.32 68.75 0.8 FedMM 67.36 46.18 74.45 68.41 FedAvg 73.35 46.18 73.90 66.47 PEPSY 65.42 47.79 73.86 67.30 CondI 73.24 49.33 77.68 71.35
+> 0.8 0.2 FedMM 72.02 46.18 73.51 67.02
+> FedAvg 70.38 52.71 71.81 65.58 PEPSY 61.47 51.57 74.48 60.84 CondI 73.51 61.11 78.32 64.14 0.8 FedMM 63.77 46.18 71.90 34.50 FedAvg 52.70 46.18 71.77 65.71 PEPSY 67.34 56.81 73.86 67.30 CondI 69.83 57.39 77.68 71.35
+
+Table 4. Classification test accuracy on the PTBXL dataset under varying missing-data configurations (higher is better).                      
+
+> psMethod pw=0 .2pw=0 .8
+> 0.2 No Imputation & No CondI 72.45 72.45
+> No Imputation 72.29 72.13 No CondI 72.29 72.13 CondI 72.61 72.45
+> 0.8 No Imputation & No CondI 72.29 71.66 No Imputation 72.13 71.97 No CondI 72.61 72.29 CondI 72.77 72.61
+
+are indispensable for maintaining high performance with incomplete data. 
+
+4.4. Feature Reconstruction Analysis 
+
+Beyond classification accuracy, we also examine whether our imputation method can reconstruct features that are close to the ground truth. We conduct this analysis on 628 test samples from the PTB-XL dataset. For each sample, 20% of the time steps are randomly masked to simulate sample-level missing. We extract the classifier input features under three conditions: clean data with no missing values, missing data filled with zeros and no imputation, and missing data processed through our full Imputation and Wcond pipeline. The features are extracted from the input of the classifier, resulting in a 4608-dimensional vector for each sample. We then measure the gap between the imputed features and the clean features using two metrics. L2 distance measures the overall magnitude deviation of the reconstructed feature vector from the ground truth. Cosine distance measures the directional deviation, reflecting whether the imputed features 
+
+Figure 3. Per-sample feature reconstruction quality. Each point corresponds to one test sample under the within-modality missing. The x-axis measures the distance between the zero-filled feature and the ground-truth from complete data; the y-axis measures the distance after applying our conditional diffusion imputation with 
+
+Wcond . Blue points fall below the diagonal y = x, indicating that our method produces features closer to the ground truth; red points fall above, indicating degradation. Left: L2 (Euclidean) distance. Right: Cosine distance. 
+
+still point toward the correct diagnostic category. As shown in Figure 3, most points fall below the diagonal line, meaning our method produces features closer to the ground truth than simple zero-filling. In terms of L2 distance, over 99% of samples are improved after imputation. The co-sine distance results also show a clear advantage, with about 76% of samples benefiting from our pipeline. This confirms that the Imputation module combined with Wcond does not merely help classification indirectly, but actively reconstructs features that resemble those obtained from complete data. 
+
+# 5. Conclusion 
+
+In this paper, we study the problem of within-modality miss-ingness in multimodal federated learning. Existing methods handle this issue implicitly by using missing embeddings or feature alignment, which may fail to recover the true data distribution. To address this, we propose CondI, a two-phase federated framework that uses conditional diffusion models to impute missing data explicitly. In Phase A, a cross-modal conditional embedding Wcond guides the diffusion model to generate the unobserved parts based on available multi-modal context. In Phase B, modality-specific encoders and a classifier are trained for the downstream task. During in-ference, the imputed data is fed into the trained encoders to produce complete representations. We evaluate CondI on three clinical datasets: PTB-XL, SLEEP-EDF, and MIMIC-IV. Results show that CondI achieves competitive or better performance than existing baselines, especially under se-vere missingness. The feature reconstruction analysis further shows that our method produces features closer to those from complete data, confirming the effectiveness of the Wcond and imputation modules. References 
+
+[1] Juan Miguel Lopez Alcaraz and Nils Strodthoff. Diffusion-based time series imputation and forecasting with structured state space models. arXiv preprint arXiv:2208.09399 , 2022. 3[2] Parikshit Bansal, Prathamesh Deshpande, and Sunita Sarawagi. Missing value imputation on multidimensional time series. arXiv preprint arXiv:2103.01600 , 2021. 3 [3] Defu Cao, Furong Jia, Sercan O Arik, Tomas Pfister, Yixiang Zheng, Wen Ye, and Yan Liu. Tempo: Prompt-based genera-tive pre-trained transformer for time series forecasting. arXiv preprint arXiv:2310.04948 , 2023. 1, 2 [4] Defu Cao, Wen Ye, Yizhou Zhang, and Yan Liu. Timedit: General-purpose diffusion transformers for time series foun-dation model. arXiv preprint arXiv:2409.02322 , 2024. 3 [5] Liwei Che, Jiaqi Wang, Yao Zhou, and Fenglong Ma. Mul-timodal federated learning: A survey. Sensors , 23(15):6986, 2023. 1, 2 [6] Haokun Chen, Yao Zhang, Denis Krompass, Jindong Gu, and Volker Tresp. Feddat: An approach for foundation model fine-tuning in multi-modal heterogeneous federated learning. In 
+
+Proceedings of the AAAI Conference on Artificial Intelligence ,pages 11285–11293, 2024. 2 [7] Jiayi Chen and Aidong Zhang. Fedmsplit: Correlation-adaptive federated multi-task learning across multimodal split networks. In Proceedings of the 28th ACM SIGKDD confer-ence on knowledge discovery and data mining , pages 87–96, 2022. 1, 2 [8] Mengxi Chen, Fei Zhang, Zihua Zhao, Jiangchao Yao, Ya Zhang, and Yanfeng Wang. Probabilistic conformal distilla-tion for enhancing missing modality robustness. Advances in Neural Information Processing Systems , 37:36218–36242, 2024. 1, 2 [9] Luke Darlow, Qiwen Deng, Ahmed Hassan, Martin Asenov, Rajkarn Singh, Artjom Joosen, Adam Barker, and Amos Storkey. Dam: Towards a foundation model for time se-ries forecasting. In The Twelfth International Conference on Learning Representations , 2024. 3 [10] Abhimanyu Das, Weihao Kong, Rajat Sen, and Yichen Zhou. A decoder-only foundation model for time-series forecasting. In Forty-first international conference on machine learning ,2024. 1, 2 [11] Elizabeth Fons, Alejandro Sztrajman, Yousef El-Laham, Lu-ciana Ferrer, Svitlana Vyetrenko, and Manuela Veloso. Lscd: Lomb-scargle conditioned diffusion for time series imputa-tion. arXiv preprint arXiv:2506.17039 , 2025. 3 [12] Vincent Fortuin, Dmitry Baranchuk, Gunnar R ¨atsch, and Stephan Mandt. Gp-vae: Deep probabilistic time series impu-tation. In International conference on artificial intelligence and statistics , pages 1651–1661. PMLR, 2020. 3 [13] Mononito Goswami, Konrad Szafer, Arjun Choudhry, Yifu Cai, Shuo Li, and Artur Dubrawski. Moment: A fam-ily of open time-series foundation models. arXiv preprint arXiv:2402.03885 , 2024. 1, 3 [14] Xing Han, Huy Nguyen, Carl Harris, Nhat Ho, and Suchi Saria. Fusemoe: Mixture-of-experts transformers for flexi-modal fusion. Advances in Neural Information Processing Systems , 37:67850–67900, 2024. 3 [15] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffu-sion probabilistic models. Advances in neural information processing systems , 33:6840–6851, 2020. 5 [16] Wei Huang, Dexian Wang, Xiaocao Ouyang, Jihong Wan, Jia Liu, and Tianrui Li. Multimodal federated learning: Concept, methods, applications and future directions. Information Fusion , 112:102576, 2024. 1, 2 [17] Alistair Johnson, Lucas Bulgarelli, Tom Pollard, Steven Horng, Leo Anthony Celi, and Roger Mark. MIMIC-IV. 
+
+PhysioNet , pages 49–55, 2020. Accessed: 2021-08-23. 1, 2, 3, 6 [18] Bob Kemp. Sleep-edf database expanded (version 1.0.0), 2013. 2, 6 [19] Ronghao Lin, Qiaolin He, Sijie Mai, Ying Zeng, Aolin Xiong, Li Huang, Yap-Peng Tan, and Haifeng Hu. Cyin: Cyclic informative latent space for bridging complete and incomplete multimodal learning. In The Thirty-ninth Annual Conference on Neural Information Processing Systems . 2, 3 [20] Yong Liu, Haoran Zhang, Chenyu Li, Xiangdong Huang, Jianmin Wang, and Mingsheng Long. Timer: Generative pre-trained transformers are large time series models. arXiv preprint arXiv:2402.02368 , 2024. 3 [21] Yonghong Luo, Xiangrui Cai, Ying Zhang, Jun Xu, et al. Mul-tivariate time series imputation with generative adversarial networks. Advances in neural information processing systems ,31, 2018. 3 [22] Duong M. Nguyen, Trong Nghia Hoang, Thanh Trung Huynh, Quoc Viet Hung Nguyen, and Phi Le Nguyen. Learning recon-figurable representations for multimodal federated learning with missing data. In The Thirty-Ninth Annual Conference on Neural Information Processing Systems (NeurIPS) , 2025. 1, 2, 6 [23] Manh Duong Nguyen, Trung Thanh Nguyen, Huy Hieu Pham, Trong Nghia Hoang, Phi Le Nguyen, and Thanh Trung Huynh. Fedmac: Tackling partial-modality missing in federated learn-ing with cross-modal aggregation and contrastive regulariza-tion. In 2024 22nd International Symposium on Network Computing and Applications (NCA) , pages 278–285. IEEE, 2024. 1, 2 [24] Yuanzhe Peng, Jieming Bian, and Jie Xu. Fedmm: Feder-ated multi-modal learning with modality heterogeneity in computational pathology. In ICASSP 2024-2024 IEEE Inter-national Conference on Acoustics, Speech and Signal Pro-cessing (ICASSP) , pages 1696–1700. IEEE, 2024. 2 [25] Thu Hang Phung, Binh P Nguyen, Thanh Hung Nguyen, Quoc Viet Hung Nguyen, Phi Le Nguyen, and Thanh Trung Huynh. A contrastive learning and graph-based approach for missing modalities in multimodal federated learning. In 2024 International Joint Conference on Neural Networks (IJCNN) ,pages 1–8. IEEE, 2024. 1, 2 [26] Thu Hang Phung, Duong M Nguyen, Thanh Trung Huynh, Quoc Viet Hung Nguyen, Trong Nghia Hoang, and Phi Le Nguyen. Federated prompt-tuning with heterogeneous and incomplete multimodal client data. In Proceedings of the IEEE/CVF International Conference on Computer Vision ,pages 3936–3946, 2025. 2 [27] Kashif Rasul, Arjun Ashok, Andrew Robert Williams, Hena Ghonia, Rishika Bhagwatkar, Arian Khorasani, Mohammad Javad Darvishi Bayazi, George Adamopoulos, Roland Riachi, Nadhir Hassen, et al. Lag-llama: Towards foundation mod-els for probabilistic time series forecasting. arXiv preprint arXiv:2310.08278 , 2023. 1, 2 [28] Noam Shazeer, Azalia Mirhoseini, Krzysztof Maziarz, Andy Davis, Quoc Le, Geoffrey Hinton, and Jeff Dean. Outra-geously large neural networks: The sparsely-gated mixture-of-experts layer. arXiv preprint arXiv:1701.06538 , 2017. 5 [29] Yusuke Tashiro, Jiaming Song, Yang Song, and Stefano Er-mon. Csdi: Conditional score-based diffusion models for probabilistic time series imputation. Advances in neural in-formation processing systems , 34:24804–24816, 2021. 3, 5[30] Patrick Wagner, Nils Strodthoff, Ralf-Dieter Bousseljot, Di-eter Kreiseler, Fatima Isabel Lunze, Wojciech Samek, and Tobias Schaeffter. PTB-XL: A large publicly available elec-trocardiography dataset. Scientific Data , 2020. 2, 6 [31] Jun Wang, Wenjie Du, Yiyuan Yang, Linglong Qian, Wei Cao, Keli Zhang, Wenjia Wang, Yuxuan Liang, and Qingsong Wen. Deep learning for multivariate time series imputation: A survey. arXiv preprint arXiv:2402.04059 , 2024. 3 [32] Yuanzhi Wang, Zhen Cui, and Yong Li. Distribution-consistent modal recovering for incomplete multimodal learn-ing. In Proceedings of the IEEE/CVF International Con-ference on Computer Vision , pages 22025–22034, 2023. 1, 2[33] Haixu Wu, Tengge Hu, Yong Liu, Hang Zhou, Jianmin Wang, and Mingsheng Long. Timesnet: Temporal 2d-variation modeling for general time series analysis. arXiv preprint arXiv:2210.02186 , 2022. 3 [34] Baochen Xiong, Xiaoshan Yang, Fan Qi, and Changsheng Xu. A unified framework for multi-modal federated learning. 
+
+Neurocomputing , 480:110–118, 2022. 2 [35] Hao Xue and Flora D Salim. Promptcast: A new prompt-based learning paradigm for time series forecasting. IEEE Transactions on Knowledge and Data Engineering , 36(11): 6851–6864, 2023. 2 [36] Xinyu Yang, Yu Sun, Xiaojie Yuan, and Xinyang Chen. Frequency-aware generative models for multivariate time se-ries imputation. Advances in Neural Information Processing Systems , 37:52595–52623, 2024. 1, 2 [37] Jinsung Yoon, William R Zame, and Mihaela Van Der Schaar. Estimating missing data in temporal data streams using multi-directional recurrent neural networks. IEEE Transactions on Biomedical Engineering , 66(5):1477–1490, 2018. 3 [38] Qiying Yu, Yang Liu, Yimu Wang, Ke Xu, and Jingjing Liu. Multimodal federated learning via contrastive representation ensemble. arXiv preprint arXiv:2302.08888 , 2023. 2 [39] Songcan Yu, Junbo Wang, Walid Hussein, and Patrick CK Hung. Robust multimodal federated learning for incomplete modalities. Computer Communications , 214:234–243, 2024. 1, 2 [40] Sukwon Yun, Inyoung Choi, Jie Peng, Yangfan Wu, Jingxuan Bao, Qiyiwen Zhang, Jiayi Xin, Qi Long, and Tianlong Chen. Flex-moe: Modeling arbitrary modality combination via the flexible mixture-of-experts. Advances in Neural Information Processing Systems , 37:98782–98805, 2024. 2 [41] Rong Zhang, Khosrow Behbehani, Craig G Crandall, Julie H Zuckerman, and Benjamin D Levine. Dynamic regulation of heart rate during acute hypotension: new insight into barore-flex function. American Journal of Physiology-Heart and Circulatory Physiology , 280(1):H407–H419, 2001. 2, 3 [42] Yuchen Zhao, Payam Barnaghi, and Hamed Haddadi. Mul-timodal federated learning on iot data. In 2022 IEEE/ACM seventh international conference on internet-of-things design and implementation (ioTDI) , pages 43–54. IEEE, 2022. 1, 2 [43] Tongxue Zhou, Pierre Vera, St ´ephane Canu, and Su Ruan. Missing data imputation via conditional generator and cor-relation learning for multimodal brain tumor segmentation. 
+
+Pattern Recognition Letters , 158:125–132, 2022. 1, 2
