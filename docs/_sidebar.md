@@ -1,6 +1,9 @@
 * <a class="dpr-sidebar-root-link" href="#/">首页</a>
 * <a class="dpr-sidebar-root-link dpr-sidebar-noactive-link" href="javascript:void(0)" data-dpr-hash="#/tutorial/README">使用教程</a>
 * Daily Papers
+  * 2026-04-29 <!--dpr-date:20260429-->
+    * 速读区
+      * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202604/29/2604.25205v1-functional-autoregression-without-truncation-a-continuous-regularization-approach" data-sidebar-item="{&quot;title&quot;: &quot;Functional Autoregression Without Truncation: A Continuous-Regularization Approach&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2604.25205v1-functional-autoregression-without-truncation-a-continuous-regularization-approach&quot;, &quot;score&quot;: &quot;6.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;ts&quot;}], &quot;evidence&quot;: &quot;用于时间序列预测的高级函数自回归模型&quot;}">Functional Autoregression Without Truncation: A Continuous-Regularization Approach</a>
   * 2026-04-28 <!--dpr-date:20260428-->
     * 精读区
       * <a class="dpr-sidebar-item-link dpr-sidebar-item-structured" href="#/202604/28/2604.23239v1-adamamba-adaptive-frequency-gated-mamba-for-long-term-time-series-forecasting" data-sidebar-item="{&quot;title&quot;: &quot;AdaMamba: Adaptive Frequency-Gated Mamba for Long-Term Time Series Forecasting&quot;, &quot;link&quot;: &quot;https://arxiv.org/abs/2604.23239v1-adamamba-adaptive-frequency-gated-mamba-for-long-term-time-series-forecasting&quot;, &quot;score&quot;: &quot;10.0&quot;, &quot;tags&quot;: [{&quot;kind&quot;: &quot;query&quot;, &quot;label&quot;: &quot;ts&quot;}], &quot;evidence&quot;: &quot;用于长期时间序列预测的自适应 Mamba 模型&quot;}">AdaMamba: Adaptive Frequency-Gated Mamba for Long-Term Time Series Forecasting</a>
