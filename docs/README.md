@@ -6,55 +6,52 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-04-30
-- 运行时间：2026-04-30 20:06:29 UTC
+- 最新运行日期：2026-05-01
+- 运行时间：2026-05-01 20:31:13 UTC
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：2
-- 速读区：9
+- 本次总论文数：10
+- 精读区：4
+- 速读区：6
 
 ### 今日简报（AI）
-今日深挖 11 篇时序预测前沿，重点解析混合神经积分器与生成式扩散模型在稳定预测中的新突破。
-研究揭示了混合架构对自回归稳定性的显著提升，并展示了符合欧盟 AI 法案的合规预测工具。
-建议关注生成式 AI 与液体神经网络在医疗、能源等安全敏感领域的跨界融合应用。
-- 详情：[/202604/30/README](/202604/30/README)
+今日深度复盘 10 篇时序预测佳作，重点突破不规则多变量建模与临床医疗的可解释性瓶颈。
+两篇满分论文分别展示了概率电路与微分潜结构在处理复杂、非规则序列预测中的极致表现。
+建议优先研读高分文献，并关注 Agent 工作流与基础模型在电力负荷等垂直领域的落地应用。
+- 详情：[/202605/01/README](/202605/01/README)
 
 ### 精读区论文标签
-1. [A Hybridizable Neural Time Integrator for Stable Autoregressive Forecasting](/202604/30/2604.21101v2-a-hybridizable-neural-time-integrator-for-stable-autoregressive-forecasting)  
+1. [Probabilistic Circuits for Irregular Multivariate Time Series Forecasting](/202605/01/2604.27814v1-probabilistic-circuits-for-irregular-multivariate-time-series-forecasting)  
+   标签：评分：10.0/10、query:ts
+   evidence：不规则多变量时间序列预测
+2. [Differentiable latent structure discovery for interpretable forecasting in clinical time series](/202605/01/2604.27967v1-differentiable-latent-structure-discovery-for-interpretable-forecasting-in-clinical-time-series)  
+   标签：评分：10.0/10、query:ts
+   evidence：基于不规则电子健康档案的预测
+3. [ITS-Mina: A Harris Hawks Optimization-Based All-MLP Framework with Iterative Refinement and External Attention for Multivariate Time Series Forecasting](/202605/01/2604.27981v1-its-mina-a-harris-hawks-optimization-based-all-mlp-framework-with-iterative-refinement-and-external-attention-for-multivariate-time-series-forecasting)  
+   标签：评分：9.0/10、query:ts
+   evidence：多变量时间序列预测的全MLP框架
+4. [ABC: Any-Subset Autoregression via Non-Markovian Diffusion Bridges in Continuous Time and Space](/202605/01/2604.27443v1-abc-any-subset-autoregression-via-non-markovian-diffusion-bridges-in-continuous-time-and-space)  
    标签：评分：8.0/10、query:ts
-   evidence：长跨度下的稳定自回归预测
-2. [Generative diffusion models for spatiotemporal influenza forecasting](/202604/30/2604.24913v1-generative-diffusion-models-for-spatiotemporal-influenza-forecasting)  
-   标签：评分：8.0/10、query:ts
-   evidence：使用修复任务从部分观测值进行预测
+   evidence：以不规则采样时间步等任意状态子集为条件
 
 ### 速读区论文标签
-1. [Time-Series Forecasting in Safety-Critical Environments: An EU-AI-Act-Compliant Open-Source Package / Zeitreihenprognose in sicherheitskritischen Umgebungen: Ein KI-VO-konformes Open-Source-Paket](/202604/30/2604.23859v1-time-series-forecasting-in-safety-critical-environments-an-eu-ai-act-compliant-open-source-package--zeitreihenprognose-in-sicherheitskritischen-umgebungen-ein-ki-vo-konformes-open-source-paket)  
+1. [CastFlow: Learning Role-Specialized Agentic Workflows for Time Series Forecasting](/202605/01/2604.27840v1-castflow-learning-role-specialized-agentic-workflows-for-time-series-forecasting)  
    标签：评分：7.0/10、query:ts
-   evidence：时间序列点预测
-2. [Liquid Neural Network Models for Natural Gas Spot Price Time-Series Forecasting](/202604/30/2604.24788v1-liquid-neural-network-models-for-natural-gas-spot-price-time-series-forecasting)  
+   evidence：时间序列的动态代理预测框架
+2. [Explainable Load Forecasting with Covariate-Informed Time Series Foundation Models](/202605/01/2604.28149v1-explainable-load-forecasting-with-covariate-informed-time-series-foundation-models)  
    标签：评分：7.0/10、query:ts
-   evidence：用于非平稳环境时间序列预测的液态神经网络
-3. [STLGT: A Scalable Trace-Based Linear Graph Transformer for Tail Latency Prediction in Microservices](/202604/30/2604.26422v1-stlgt-a-scalable-trace-based-linear-graph-transformer-for-tail-latency-prediction-in-microservices)  
-   标签：评分：7.0/10、query:ts
-   evidence：针对长期依赖的多步尾部延迟预测
-4. [Electricity price forecasting across Norway's five bidding zones in the post-crisis era](/202604/30/2604.26634v1-electricity-price-forecasting-across-norways-five-bidding-zones-in-the-post-crisis-era)  
-   标签：评分：7.0/10、query:ts
-   evidence：评估用于电力预测的高级深度学习架构
-5. [Exploring the Potential of Probabilistic Transformer for Time Series Modeling: A Report on the ST-PT Framework](/202604/30/2604.26762v1-exploring-the-potential-of-probabilistic-transformer-for-time-series-modeling-a-report-on-the-st-pt-framework)  
-   标签：评分：7.0/10、query:ts
-   evidence：用于时间序列建模的概率Transformer框架
-6. [Hybrid Deep Learning Approach for Coupled Demand Forecasting and Supply Chain Optimization](/202604/30/2604.21567v1-hybrid-deep-learning-approach-for-coupled-demand-forecasting-and-supply-chain-optimization)  
+   evidence：用于预测的时间序列基础模型
+3. [On the Role of Time Series Clustering in Traffic Matrix Prediction](/202605/01/2604.26081v1-on-the-role-of-time-series-clustering-in-traffic-matrix-prediction)  
    标签：评分：6.0/10、query:ts
-   evidence：混合AI框架中基于LSTM的需求预测模块
-7. [Testing independence in the presence of missing data: high-dimensional case](/202604/30/2604.22980v1-testing-independence-in-the-presence-of-missing-data-high-dimensional-case)  
+   evidence：基于聚类的流量预测框架
+4. [Context-Aware Graph Attention for Unsupervised Telco Anomaly Detection](/202605/01/2604.27172v1-context-aware-graph-attention-for-unsupervised-telco-anomaly-detection)  
    标签：评分：6.0/10、query:ts
-   evidence：高维设置下缺失数据的独立性检验
-8. [Energy-Arena: A Dynamic Benchmark for Operational Energy Forecasting](/202604/30/2604.24705v1-energy-arena-a-dynamic-benchmark-for-operational-energy-forecasting)  
+   evidence：多变量时间序列的多步预测器
+5. [Preserving Temporal Dynamics in Time Series Generation](/202605/01/2604.27182v1-preserving-temporal-dynamics-in-time-series-generation)  
    标签：评分：6.0/10、query:ts
-   evidence：运行能源时间序列预测的动态基准
-9. [Nonlinear Probabilistic Forecast Reconciliation](/202604/30/2604.26668v1-nonlinear-probabilistic-forecast-reconciliation)  
+   evidence：在多变量时间序列生成中保留时间动态
+6. [FoReco and FoRecoML: A Unified Toolbox for Forecast Reconciliation in R](/202605/01/2604.27696v1-foreco-and-forecoml-a-unified-toolbox-for-forecast-reconciliation-in-r)  
    标签：评分：6.0/10、query:ts
-   evidence：具有非线性约束的概率预测协调
+   evidence：多时间序列预测协调工具箱
 
 
 <div class="dpr-home-promo-card">
