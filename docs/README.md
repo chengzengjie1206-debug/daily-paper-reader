@@ -6,29 +6,37 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-03
-- 运行时间：2026-05-03 20:09:26 UTC
+- 最新运行日期：2026-05-04
+- 运行时间：2026-05-04 20:20:17 UTC
 - 运行状态：成功
-- 本次总论文数：2
-- 精读区：0
-- 速读区：2
+- 本次总论文数：5
+- 精读区：2
+- 速读区：3
 
 ### 今日简报（AI）
-今日聚焦 AI 气象预报前沿，深入探讨了 ECMWF AIFS 系统的海洋表层建模及物理约束下的 PINN-Cast 模型。
-核心结论指出，通过集成海洋数据表征与神经常微分方程（NODE），可显著提升 AI 预报的物理一致性与短期精度。
-建议关注 AI 气象模型如何从纯数据驱动转向“海气耦合”与“物理增强”的深度融合。
-- 详情：[/202605/03/README](/202605/03/README)
+今日聚焦 5 篇时序前沿研究，深度解析扩散模型补全与非平稳预测中的相位振幅调制技术。
+重点推荐 SPLICE 利用 JEPA 嵌入实现的保形序列修复，以及 PAMod 解决周期性偏移的创新预测方案。
+建议优先研读高分精读论文，探索扩散模型与大模型推理在复杂时序场景下的落地潜力。
+- 详情：[/202605/04/README](/202605/04/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [SPLICE: Latent Diffusion over JEPA Embeddings for Conformal Time-Series Inpainting](/202605/04/2605.00126v1-splice-latent-diffusion-over-jepa-embeddings-for-conformal-time-series-inpainting)  
+   标签：评分：9.0/10、query:ts
+   evidence：用于时间序列修复和插补的潜扩散模型
+2. [PAMod: Modeling Cyclical Shifts via Phase-Amplitude Modulation for Non-stationary Time Series Forecasting](/202605/04/2605.00466v1-pamod-modeling-cyclical-shifts-via-phase-amplitude-modulation-for-non-stationary-time-series-forecasting)  
+   标签：评分：8.0/10、query:ts
+   evidence：通过相幅调制进行非平稳时间序列预测
 
 ### 速读区论文标签
-1. [Representing the Surface Ocean in ECMWF's data-driven forecasting system AIFS](/202605/03/2604.25559v1-representing-the-surface-ocean-in-ecmwfs-data-driven-forecasting-system-aifs)  
+1. [High-Dimensional Multivariate VAR Estimation with Spatio-Temporal Structure](/202605/04/2605.00806v1-high-dimensional-multivariate-var-estimation-with-spatio-temporal-structure)  
    标签：评分：7.0/10、query:ts
-   evidence：最先进的数据驱动天气预测
-2. [PINN-Cast: Exploring the Role of Continuous-Depth NODE in Transformers and Physics Informed Loss as Soft Physical Constraints in Short-term Weather Forecasting](/202605/03/2604.27313v1-pinn-cast-exploring-the-role-of-continuous-depth-node-in-transformers-and-physics-informed-loss-as-soft-physical-constraints-in-short-term-weather-forecasting)  
-   标签：评分：7.0/10、query:ts
-   evidence：基于Transformer的天气预测模型
+   evidence：时空系统的多变量VAR估计
+2. [LIMSSR: LLM-Driven Sequence-to-Score Reasoning under Training-Time Incomplete Multimodal Observations](/202605/04/2605.00434v1-limssr-llm-driven-sequence-to-score-reasoning-under-training-time-incomplete-multimodal-observations)  
+   标签：评分：6.0/10、query:ts
+   evidence：不完整多模态观测与序列推理
+3. [Deployment-Efficient Short-Term Load Forecasting in AI Data Centers via Sequence-to-Point Knowledge Distillation](/202605/04/2605.00681v1-deployment-efficient-short-term-load-forecasting-in-ai-data-centers-via-sequence-to-point-knowledge-distillation)  
+   标签：评分：6.0/10、query:ts
+   evidence：通过知识蒸馏进行短期负荷预测
 
 
 <div class="dpr-home-promo-card">
