@@ -1,0 +1,1736 @@
+Title: Missingness-aware Data Imputation via AI-powered Bayesian Generative Modeling
+
+URL Source: https://arxiv.org/pdf/2605.01676v1
+
+Published Time: Tue, 05 May 2026 01:05:37 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+# Missingness-aware Data Imputation via AI-powered Bayesian Generative Modeling 
+
+Qiao Liu 
+
+Department of Biostatistics Yale University 
+
+qiao.liu@yale.edu 
+
+## Abstract 
+
+Missing data imputation remains a fundamental challenge in modern data science, especially when uncertainty quantification is essential. In this work, we propose MissBGM, an AI-powered missing data imputation method via Bayesian gen-erative modeling that bridges the expressive flexibility of neural networks with the statistical rigor of Bayesian inference. Unlike existing methods that often focus on point estimates or treat the missingness mechanism implicitly, MissBGM explicitly and jointly models the data-generating and missingness mechanisms, providing principled posterior uncertainty over imputations rather than a single point estimate. We develop a stochastic optimization framework with alternat-ing updates among missing values, model parameters, and latent variables until convergence. Our theoretical analysis shows that estimates of missing values from MissBGM converge consistently under mild assumptions. Empirically, we demonstrate that MissBGM achieves superior performance over traditional im-puters and recent neural network-based methods across extensive experimental settings. These results establish MissBGM as a principled and scalable solution for modern missing data imputation. The code for MissBGM is open sourced at 
+
+https://github.com/liuq-lab/MissBGM .
+
+## 1 Introduction 
+
+Missing data is pervasive in modern machine learning and data science, arising in domains such as healthcare, social science, and industrial analytics [Rubin, 1976, Little and Rubin, 2019, Enders, 2022, Schafer and Graham, 2002, Allison, 2009]. It can substantially degrade downstream analyses and lead to misleading scientific conclusions if not handled properly. This challenge is particularly acute when the missingness pattern is complex, structured, or driven by the unobserved values themselves [Mitra et al., 2023]. Developing methods that can flexibly capture these complex dependencies while remaining statistically principled and computationally scalable is therefore a central problem for modern missing data analysis. Classic statistical methods, such as likelihood-based models [Schafer, 1997], expectation-maximization procedures [Dempster et al., 1977], and multiple imputation frameworks [Rubin, 1987, Van Buuren and Groothuis-Oudshoorn, 2011, Carpenter et al., 2023], offer a principled way of handling missing data. However, they rely heavily on restrictive parametric models or repeated condi-tional modeling, which limit the scalability in modern complex and non-linear high-dimensional data. By contrast, modern deep learning methods have greatly improved imputation accuracy by leveraging the flexibility of neural networks, especially the modern generative AI architectures [Yoon et al., 2018, Mattei and Frellsen, 2019, Ipsen et al., 2020, Tashiro et al., 2021, Jolicoeur-Martineau et al., 2024, Zheng and Charoenphakdee, 2022, Zhang et al., 2025]. However, those modern AI imputers primarily target point estimation and often rely on training-time masking distributions. They handle missingness mechanism implicitly or heuristically. Their multiple imputations are not automatically 
+
+> Preprint.
+> arXiv:2605.01676v1 [stat.ML] 3 May 2026
+
+a principled posterior for missing values. A principled way for uncertainty quantification is essential for reliable and trustworthy data analysis [Begoli et al., 2019, Abdar et al., 2021, Hossain and Milani, 2025]. To address these limitations, we propose MissBGM, a Miss ing data imputation framework based on Bayesian Generative Modeling that integrates the expressive power of deep neural nets with the statistical rigor of Bayesian inference. The central idea of MissBGM is to jointly model the data-generating process, and missingness mechanism within a unified framework, providing both point estimate and uncertainty quantification for missing values. By explicitly modeling the masking process, MissBGM accounts for complex and potentially non-ignorable missingness patterns that are common in real-world data. MissBGM is powered by the flexible generative architecture to capture nonlinear dependencies in high-dimensional settings while adhering to Bayesian principles. To make this framework practical at scale, we develop an alternating stochastic optimization algorithm that iteratively updates missing values, latent variables, and model parameters in a mini-batch manner until convergence. In this way, MissBGM closes the gap between the flexibility of modern AI models and the statistical rigor of Bayesian inference, offering a powerful and scalable solution for modern missing data imputation. We summarize the contributions of MissBGM as follows. • MissBGM bridges the gap between powerful deep learning models and statistically prin-cipled Bayesian inference for missing data imputation with uncertainty quantification by explicitly modeling potentially non-ignorable missingness mechanisms. • To enable MissBGM to learn the data-generating process and complex, potentially non-ignorable missingness patterns, we design an alternating stochastic optimization algorithm for efficient training and per-sample posterior inference, making the framework scalable for large-scale applications. • Our theoretical analysis shows that MissBGM is consistent for the pseudo-true tempered imputation target. Moreover, we demonstrate the superior performance of MissBGM on both synthetic and real-world benchmarks with varying sample sizes and dimensions. 
+
+## 2 Related work 
+
+2.1 Classical statistical imputation methods 
+
+The classical statistical imputation methods, including likelihood-based methods [Schafer, 1997], EM-type algorithms [Dempster et al., 1977], and multiple imputation methods [Rubin, 1987, Van Buuren and Groothuis-Oudshoorn, 2011, Carpenter et al., 2023], are grounded in explicit assumptions about the data-generating process and missingness mechanisms. These methods yield coherent inference when the assumptions are properly specified. Iterative chained-equation methods are especially influential in practice, where the conditional distribution of each missing feature is iteratively estimated from the other features. One example is miceforest [Wilson et al., 2023, Doove et al., 2014] which incorporates tree-based multiple imputation and often yields strong empirical performance on tabular data with nonlinear feature dependencies. Although these methods are relatively interpretable and can be competitive in practice, they generally rely on repeated conditional modeling heuristics rather than a fully generative modeling framework. More importantly, most classical statistical imputation approaches are well justified under simplified missingness assumptions and become less reliable when the masking mechanism is complex, structured, or is potentially non-ignorable [Rubin, 1976]. They may also become computationally burdensome in large-scale or high-dimensional settings. 
+
+2.2 Deep learning-based imputation methods 
+
+Recent advances in deep learning, especially the emergence of generative AI models, have led to the development of imputation methods that improve imputation accuracy by learning flexible conditional structure from incomplete data [Yoon et al., 2018, Mattei and Frellsen, 2019, Ipsen et al., 2020, Nazabal et al., 2020, Fortuin et al., 2020, Tashiro et al., 2021, Jolicoeur-Martineau et al., 2024, Zheng and Charoenphakdee, 2022, Zhang et al., 2025]. These include variational autoencoder (VAE)-based approaches [Mattei and Frellsen, 2019, Ivanov et al., 2018, Nazabal et al., 2020, Fortuin et al., 2020, Peis et al., 2022], generative adversarial network (GAN)-based methods [Yoon et al., 2018, Li et al., 2019], and diffusion-style methods [Tashiro et al., 2021, Zheng 2and Charoenphakdee, 2022, Jolicoeur-Martineau et al., 2024]. For example, GAIN [Yoon et al., 2018] formulates imputation as an adversarial learning problem, using a generator–discriminator architecture to produce plausible completions of incomplete data. ForestDiffusion [Jolicoeur-Martineau et al., 2024] combines diffusion-style generative modeling with tree-based learning, aiming to better adapt diffusion ideas to tabular data. TabCSDI [Zheng and Charoenphakdee, 2022] builds on conditional score-based diffusion models and performs imputation by iteratively denoising incomplete samples conditioned on observed entries. Although these methods can represent rich and complex conditional distributions and can generate multiple imputations, their uncertainty quantification is generally not statistically principled under non-ignorable missingness unless the observation process is modeled explicitly [Hossain and Milani, 2025]. In particular, many methods still emphasize accurate reconstruction and either assume ignorable missingness or treat the mask simply as conditioning information or an auxiliary input, rather than as part of an explicit probabilistic missingness model. As a result, these methods provide limited interpretability regarding why entries are missing, and they do not directly support coherent inference under a specified missingness mechanism. This limitation becomes especially important in real-world settings where missingness may be structured, complex, or potentially non-ignorable. A small but highly relevant line of work [Collier et al., 2020, Ipsen et al., 2020, Ma and Zhang, 2021] models the missingness process itself, and therefore is conceptually closer to MissBGM. For example, not-MIWAE [Ipsen et al., 2020] extends MIWAE [Mattei and Frellsen, 2019] to non-ignorable missingness settings by introducing a learned model for the mask conditional on the data, and related work [Collier et al., 2020] models missingness through an explicit corruption process so that latent-variable inference has principled access to mask indicators. These methods move beyond implicit mask conditioning toward explicit modeling of the observation process. However, they are typically based on variational frameworks, where posterior inference is from encoder-based approximations. In practice, such approximations can be restrictive and may yield under-estimated uncertainty. 
+
+Positioning of MissBGM MissBGM is designed at a complementary position for being both a scalable deep latent imputer and a statistically principled Bayesian model for missing data imputation. Unlike reconstruction-oriented deep imputers that condition on the mask implicitly, MissBGM explicitly models the data-generating process together with the missingness mechanism, which provides interpretation for missingness mechanisms. Unlike variational-based methods that use the same learned inference machinery for all test samples, MissBGM performs sample-specific posterior inference for latent variables and missing entries under the fitted global model. This makes inference less constrained by the chosen inference family, allows the posterior approximation to adapt to the particular observed values and mask pattern of each incomplete sample, and provides a more principled way to posterior-sampling-based uncertainty quantification. 
+
+## 3 Problem setup 
+
+We consider a dataset with n samples and p features, with complete data matrix X ∈ Rn×p and missingness indicator matrix R ∈ { 0, 1}n×p. An entry rij = 1 indicates that j-th feature of 
+
+i-th sample is observed while rij = 0 indicates a missing entry. We partition xi ∈ Rp into 
+
+xi = ( xi, obs , xi, mis ), where xi, obs and xi, mis are the observed and missing components of xi,respectively. Our objective is to infer the posterior distribution of the missing values given the observed data and missingness indicator matrix, which is given by 
+
+p(Xmis | Xobs , R) .
+
+The missingness mechanism is typically classified into three categories [Rubin, 1976, Little and Rubin, 2019]: - Missing Completely At Random (MCAR). The missingness is independent of the data, so 
+
+p(R | X) = p(R). In this case, the mask R carries no information about the values of X, and one can in principle ignore R when inferring Xmis .- Missing At Random (MAR). The missingness depends on the observed values but not on the missing ones, i.e. p(R | X) = p(R | Xobs ). Under MAR (and MCAR), the mask R is conditionally 3Neural network parameterization                                                                                         
+
+> Data mechanism ( 𝜃 )Missingness mechanism ( 𝜙 )
+> Latent representation Z
+> -1.2 0.8 -0.3 1.7
+> 0.6 0.4 -0.1 -2.2
+> -0.5 0.9 1.1 -2.7
+> Data matrix X
+> 1011
+> 1100
+> 0011
+> Missingness mask R
+> Data -generating model
+> 𝑝 !𝐗 |𝐙 Missingness model
+> 𝑝 "𝐑 |𝐗
+> 𝑃 𝐗 ,𝐑 ,𝐙 ,𝜃 ,𝜙 =𝜋 (𝜃 )𝜋 (𝜙 ).𝜋 (𝐳 𝒊 )
+> $
+> 𝑝 !𝐱 𝒊 |𝐳 $𝑝 "𝐫 $|𝒙 $
+> -1.2 ?-0.3 1.7
+> 0.6 0.4 ??
+> ??1.1 -2.7
+> Input: observed data
+> 1011
+> 1100
+> 0011
+> Infer mask
+> Alternating updates : infer unknown quantities
+> (𝐙 ,𝐗 %$&& ) and global parameters ( 𝜃 ,𝜙 ) together
+> Update global parameters (𝜃 ,𝜙 ):
+> Maximize log -posterior of 𝑝 !𝐗 |𝐙 and
+> 𝑝 "𝐑 |𝐗 given the current ( 𝐙 ,𝐗 #$%% ,𝐑 )
+> Update latent variable Z:
+> Conditional on the
+> current (𝐗 #$%% ,𝜃 )
+> Update missing values 𝐗 #$%% :
+> Missingness -aware imputation
+> given the current (𝐗 &'% ,𝐙 ,𝐑 ,𝜃 ,𝜙 )
+> -1.2 0.7 -0.3 1.7
+> 0.6 0.4 -0.1 -2.3
+> -0.4 0.9 1.1 -2.7
+> Output: posterior distribution
+> 𝑃 𝐗 %$&& ,𝐙 ,𝜃 ,𝜙 |𝐗 '(& ,𝐑
+> Both point estimate and
+> uncertainty quantification
+> MissBGM Model Overview
+> Data Imputation Workflow
+
+Figure 1: Overview of MissBGM. The model jointly represents a data-generating process pθ (X | Z)
+
+and a missingness mechanism pϕ(R | X). During inference, observed entries remain fixed while latent variables and missing values are updated alternately. Per-sample posterior inference then provides both point estimates and uncertainty quantification for missing values. independent of Xmis given Xobs , and hence 
+
+p(Xmis | Xobs , R) = p(Xmis | Xobs ) .
+
+In other words, under MAR or MCAR (also known as ignorable missingness), valid imputation can be performed by conditioning on the observed data only. - Missing Not At Random (MNAR). The missingness mechanism depends on both observed and missing values. In the MNAR regime (sometimes called non-ignorable missingness), the mask R
+
+carries additional information about the missing values, and we typically have p(Xmis | Xobs , R)̸ =
+
+p(Xmis | Xobs ). This is the most general case and requires a more flexible model to capture the complex missingness patterns and infer the right target posterior distribution p(Xmis | Xobs , R).In our setting, we allow for potentially non-ignorable (MNAR) patterns by explicitly modeling the missingness mechanism. Hence we aim to learn a joint generative model of both the data-generating process and the missingness mechanism that yields a faithful approximation to the posterior p(Xmis | Xobs , R). Our goal is not only to accurately reconstruct the missing values, but to recover the full conditional distribution of the missing entries, providing both point imputations (e.g. posterior means) and uncertainty estimates (e.g. credible intervals). 
+
+## 4 Method 
+
+MissBGM is a Bayesian latent-variable model that jointly models the data-generating process and the missingness mechanism. The data-generating process is built upon the Bayesian generative modeling (BGM) framework [Liu and Wong, 2026a], which has an established theoretical foundation and has been shown to be effective for modeling complex nonlinear dependencies in high-dimensional settings [Liu and Wong, 2026b, Liu et al., 2021]. MissBGM extends the BGM framework to missing data imputation by explicitly modeling the missingness mechanism together with the data-generating process. This allows the model to capture complex missingness patterns and infer the posterior distribution p(Xmis | Xobs , R).
+
+4.1 Data and missingness generative process 
+
+For each sample i ∈ { 1, . . . , n }, let xi = ( xi1, . . . , x ip )⊤ ∈ Rp denote the complete data vector and let ri = ( ri1, . . . , r ip )⊤ ∈ { 0, 1}p denote the corresponding observation mask. We introduce a latent 4variable zi ∈ Rd in the latent space and define the joint model 
+
+p(X, R, Z, θ, ϕ ) = π(θ)π(ϕ)
+
+> n
+
+Y
+
+> i=1
+
+π(zi) pθ (xi | zi) pϕ(ri | xi), (1) where π(zi) = N (0 , I d), π(θ) and π(ϕ) are prior distributions on the network parameters, pθ (xi | zi)
+
+is the data model, and pϕ(ri | xi) is the missingness model. d is the dimension of the latent variable. All the prior distributions are chosen to be multivariate normal distributions for simplicity. By default, the data model pθ (xi | zi) is set to be a multivariate normal distribution for continuous variables and a Bernoulli or Categorical distribution for discrete variables. In a typical continuous setting (e.g., tabular data), the data model is given by 
+
+xi | zi, θ ∼ N (μθ (zi), Σθ (zi)) , (2) where both mean and covariance matrix are learnable functions of latent variable zi parameterized by θ. In practice, we can further simplify the covariance matrix to be a diagonal matrix Σθ (zi) = diag( σ2
+
+> θ, 1
+
+(zi), . . . , σ 2
+
+> θ,p
+
+(zi)) . We represent (μθ (zi), Σθ (zi)) as a neural network gθ with two output heads, and the weights are shared across all samples. We use another neural network fϕ(xi) ∈ Rp to model the missingness mechanism and define 
+
+rij | xi, ϕ ∼ Bernoulli(sig( fϕ,j (xi))) , j = 1 , . . . , p, (3) where sig( x) = 1 /(1 + exp( −x)) . The probability of observing feature j may depend on the full completed data vector xi, and hence the model can capture the comprehensive missingness process in a flexible and data-driven way. To account for uncertainty in model parameter space, we can also adopt Bayesian neural net-works [Goan and Fookes, 2020] for gθ and fϕ to place priors on the network parameters. This gives a flexible nonparametric representation of both the data-generating mechanism and the missingness mechanism while preserving a coherent probabilistic model for uncertainty quantification. 
+
+4.2 Alternating stochastic optimization 
+
+We designed a stochastic optimization algorithm to update the model parameters, latent variables, and missing values iteratively until convergence. The joint posterior distribution is given by 
+
+p(Z, Xmis , θ, ϕ | Xobs , R) ∝ π(θ)π(ϕ)
+
+> n
+
+Y
+
+> i=1
+
+π(zi) pθ (xi | zi) pϕ(ri | xi), (4) where X = ( Xobs , Xmis ) is the complete data matrix. Since the true posterior joint distribution is not tractable, we approximate the target by the following iterative procedure. Specifically, we iteratively (i) update the latent variables Z from p(Z | X, R, θ, ϕ ), (ii) update the missing values 
+
+Xmis from p(Xmis | Z, Xobs , R, θ, ϕ ), and (iii) update the model parameters θ and ϕ from p(θ, ϕ |
+
+Z, Xmis , Xobs , R).
+
+Step (i): update latent variable . Up to an additive constant, the log-posterior is given by 
+
+log p(zi | xi, ri, θ, ϕ ) = log π(zi) + log pθ (xi | zi) + C1. (5) Under diagonal covariance structure, the objective function is given by 
+
+Lzi = 12 ∥zi∥22 +
+
+> p
+
+X
+
+> j=1
+
+"
+
+(xij − μθ,j (zi)) 2
+
+2σ2 
+
+> θ,j
+
+(zi) + 12 log σ2 
+
+> θ,j
+
+(zi)
+
+#
+
+, (6) where μθ,j (zi) and σ2 
+
+> θ,j
+
+(zi) are the j-th element of the mean and covariance vector, respectively. We update zi by minimizing the objective function using gradient descent in (6) in parallel for all samples. 
+
+Step (ii): update missing values . Up to an additive constant, the log-posterior is given by 
+
+log p(xi, mis | zi, xi, obs , ri, θ, ϕ ) = log pθ (xi | zi) + log pϕ(ri | xi) + C2. (7) 5Under the diagonal Gaussian data model in (2) and the Bernoulli missingness model in (3) , the objective function is given by 
+
+Lxi, mis =
+
+> p
+
+X
+
+> j=1
+
+(xij − μθ,j (zi)) 2
+
+2σ2 
+
+> θ,j
+
+(zi) − β
+
+> p
+
+X
+
+> j=1
+
+[rij log sig( fϕ,j (xi)) + (1 − rij ) log(1 − sig( fϕ,j (xi)))] ,
+
+(8) where β is a temperature coefficient to balance the data and missingness terms. We update xi, mis by minimizing the objective function using gradient descent in (8) in parallel for all samples. 
+
+Step (iii): update model parameters . Up to an additive constant, the log-posterior is given by 
+
+ log p(θ | Z, X) = log π(θ) + log pθ (X | Z) + C3,
+
+log p(ϕ | X, R) = log π(ϕ) + log pϕ(R | X) + C4. (9) To account for variation in model parameters with BNNs, which use variational inference (VI) [Blei et al., 2017] to approximate (9) , we can use the following evidence lower bounds (ELBOs) (see Appendix A): (Lθ = Eqλ(θ)[log pθ (X | Z)] − τ KL  qλ(θ) ∥ π(θ),
+
+Lϕ = Eqψ (ϕ)[log pϕ(R | X)] − τ KL  qψ (ϕ) ∥ π(ϕ), (10) where τ is the Kullback-Leibler divergence (KL) weight for both variational families. Two variational distributions qλ(θ) = N (θ | μλ, σ 2
+
+> λ
+
+) and qψ (ϕ) = N (ϕ | μψ , σ 2 
+
+> ψ
+
+) are used to approximate the posterior distributions of θ and ϕ, respectively. λ = ( μλ, σ 2
+
+> λ
+
+) and ψ = ( μψ , σ 2 
+
+> ψ
+
+) are the learnable variational parameters. Diagonal-covariance Gaussians are used for variantional distributions. We update θ and ϕ by first maximizing the ELBOs with respect to λ and ψ in (10) with stochastic gradients on mini-batches of samples, and then sampling θ and ϕ from the variational distributions 
+
+qλ(θ) and qψ (ϕ), respectively. After iterations of steps (i)-(iii) until convergence, we can obtain the point estimates of the missing values of the training dataset. The full alternating stochastic optimization algorithm is summarized in Algorithm 1. 
+
+4.3 Posterior inference and uncertainty quantification 
+
+Once the MissBGM model is trained, it performs posterior inference for incomplete samples without retraining the global network parameters. Given a (possibly new) test dataset with missingness pattern 
+
+R, our goal is to draw approximate samples from the full conditional posterior of the latent variables and missing values, 
+
+p(Z, Xmis | Xobs , R, θ, ϕ ) ∝
+
+> n
+
+Y
+
+> i=1
+
+π(zi) pθ (xi | zi) pϕ(ri | xi), (11) with the global parameters (θ, ϕ ) fixed (or drawn from fixed variational distributions qλ(θ) and qψ (ϕ)
+
+in the BNN setting). All inference is per-sample, so the posterior sampling from (11) can be done in parallel across samples to improve efficiency. 
+
+Warm-start by MAP. We initialize (Z, Xmis ) at a local maximum a posteriori (MAP) estimate by iterating only steps (i) and (ii) of Algorithm 1 for a number of iterations Twarm . We denote the resulting warm-start state by (Z⋆, X⋆
+
+> mis
+
+), which already provides a good point estimate of the latent variables and missing values. 
+
+HMC-within-Gibbs sampler. To sample from the full conditional posterior (11) , we use the Hamiltonian Monte Carlo (HMC) within Gibbs sampler [Tierney, 1994, Neal, 2011]. Starting from 
+
+(Z⋆, X⋆
+
+> mis
+
+), we draw posterior samples by alternating two HMC updates that share the same target (11): log p(zi | xi, θ ) = log π(zi) + log pθ (xi | zi) + C5,
+
+log p(xi, mis | xi, obs , ri, zi, θ, ϕ ) = log pθ (xi | zi) + log pϕ(ri | xi) + C6. (12) The two targets in (12) are exactly the negative per-sample objectives that drove the MAP warm-start in steps (i) and (ii), so the sampler can be viewed as a stochastic refinement of MAP that further 6explores posterior uncertainty rather than a point estimate. At each Gibbs sweep, we (a) run one HMC step on zi with xi held fixed, then (b) run one HMC step on xi, mis with the just-updated zi
+
+held fixed. Note that we use the same temperature coefficient β as training stage. Both HMC kernels use leapfrog integration with a small number of leapfrog steps and an adaptive step size controlled by a simple dual-averaging scheme targeting an acceptance rate of approximately 
+
+0.75 . Step-size adaptation is restricted to the first portion of the burn-in window and is then frozen, so that the post-burn-in draws form a valid Markov chain with respect to the fixed target. Since the targets in (12) are differentiable in both zi and xi, mis , gradient-based proposals mix substantially better than random-walk Metropolis, especially when p is moderately large. 
+
+Uncertainty quantification. After discarding burn-in iterations, we collect S joint draws 
+
+{(Z(s), X(s)mis )}Ss=1 and reconstruct the corresponding completed matrices eX(s) = R ⊙ Xobs +(1 − R) ⊙ X(s)mis . From these posterior samples, we compute a posterior mean as a point estimate, and an empirical prediction interval (PI) with a user-specified significance level α from the lower and upper quantiles. 
+
+bxij = 1
+
+S
+
+> S
+
+X
+
+> s=1
+
+x(s) 
+
+> ij
+
+, cPI 1−αij =
+
+h
+
+Qα/ 2
+
+ {x(s) 
+
+> ij
+
+}Ss=1 
+
+, Q 1−α/ 2
+
+ {x(s) 
+
+> ij
+
+}Ss=1 
+
+ i
+
+, (13) where Qq (·) denotes the q-quantile function. Unlike point-estimate imputers that only return bXmis ,MissBGM thus delivers a full posterior of the missing values, providing much richer information for downstream tasks. 
+
+## 5 Theoretical analysis 
+
+The alternating stochastic updates in MissBGM optimize a tempered missing-data objective in (8) with the coefficient β. For one observed pair (xobs , r), define 
+
+mβ (xobs , r; θ, ϕ ) := sup 
+
+> z,xmis
+
+n
+
+log π(z) + log pθ (x | z) + β log pϕ(r | x)
+
+o
+
+, x = ( xobs , xmis ),
+
+(14) and let Lβn(θ, ϕ ) = n−1 Pni=1 mβ (xi, obs , ri; θ, ϕ ) with population counterpart Lβ (θ, ϕ ) =
+
+EP0 [mβ (Xobs , R; θ, ϕ )] . For each (θ, ϕ ), let qβθ,ϕ denote the normalized completed-data law propor-tional to R π(z)pθ (x | z)pϕ(r | x)β dz, and let ˆpθ,ϕ (xmis | xobs , r) be its induced conditional law. This is the population analogue of the imputation distribution targeted by MissBGM. 
+
+Theorem 1 (Consistency). Assume the regularity conditions stated in Appendix B: i.i.d. sampling, continuity and uniform convergence of the profiled criterion, vanishing sieve and optimization errors, and a separation condition ensuring that Lβ identifies a unique completed-data law q∗ 
+
+> β
+
+on an evaluation set S. If (ˆθn, ˆϕn) approximately maximizes Lβn, then 
+
+djnt 
+
+ qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗
+
+> β
+
+ = op(1) , sup 
+
+> (xobs ,r)∈S
+
+ˆpˆθn, ˆϕn (· | xobs , r) − p∗ 
+
+> β
+
+(· | xobs , r) TV = op(1) , (15) where p∗ 
+
+> β
+
+is the conditional law induced by q∗ 
+
+> β
+
+and djnt is the completed-data law distribution difference defined in Appendix B. If, in addition, the support of Xmis is uniformly bounded on S,then the posterior-mean imputation rule ˆμn(xobs , r) = R xmis ˆpˆθn, ˆϕn (dxmis | xobs , r) satisfies 
+
+R∗ 
+
+> β
+
+(ˆ μn) − R ∗ 
+
+> β
+
+(μ∗ 
+
+> β
+
+) = op(1) , (16) where μ∗ 
+
+> β
+
+is the pseudo-true conditional mean and R∗ 
+
+> β
+
+is the corresponding risk function. The result shows that MissBGM is consistent for the pseudo-true imputation law determined by the temperature parameter β. With β = 1 and correct specification, p∗ 
+
+> β
+
+reduces to the true conditional distribution p(Xmis | Xobs , R). Both the learned conditional law and posterior mean imputation converge to the corresponding Bayes-optimal limit. The full proof is given in Appendix B. 7Table 1: RMSE on synthetic datasets with varying sample sizes and missing rates. We report both mean and standard deviation of RMSE across 10 runs. Best result in each row is bolded .                                                                  
+
+> Size Rate Mean OT Miceforest ICE GAIN ForestDiffusion TabCSDI MissBGM
+> 0.5k 0.3 1.849 1.664 (0.006) 1.656 (0.011) 1.652 (0.015) 1.792 (0.018) 1.617 (0.013) 1.665 (0.015) 1.620 (0.011) 0.5 1.817 1.640 (0.008) 1.630 (0.014) 1.611 (0.010) 1.877 (0.014) 1.641 (0.010) 1.626 (0.010) 1.585 (0.009)
+> 0.7 1.887 1.728 (0.008) 1.708 (0.012) 1.696 (0.014) 1.992 (0.015) 1.795 (0.011) 1.712 (0.013) 1.673 (0.012)
+> 1k 0.3 1.798 1.602 (0.007) 1.596 (0.011) 1.591 (0.011) 1.671 (0.017) 1.575 (0.009) 1.615 (0.010) 1.568 (0.009)
+> 0.5 1.765 1.574 (0.005) 1.570 (0.013) 1.556 (0.009) 1.649 (0.012) 1.567 (0.012) 1.589 (0.009) 1.538 (0.011)
+> 0.7 1.838 1.674 (0.009) 1.644 (0.014) 1.636 (0.012) 1.808 (0.015) 1.727 (0.009) 1.667 (0.012) 1.619 (0.011)
+> 5k 0.3 1.816 1.632 (0.005) 1.627 (0.010) 1.618 (0.012) 1.617 (0.013) 1.629 (0.008) 1.659 (0.010) 1.599 (0.010)
+> 0.5 1.793 1.603 (0.004) 1.595 (0.009) 1.586 (0.010) 1.650 (0.010) 1.599 (0.007) 1.616 (0.009) 1.574 (0.008)
+> 0.7 1.870 1.697 (0.006) 1.676 (0.011) 1.666 (0.009) 1.799 (0.012) 1.736 (0.009) 1.686 (0.010) 1.662 (0.009)
+> 10k 0.3 1.772 1.592 (0.008) 1.587 (0.008) 1.577 (0.010) 1.632 (0.011) 1.608 (0.009) 1.612 (0.007) 1.562 (0.006)
+> 0.5 1.750 1.566 (0.005) 1.558 (0.007) 1.548 (0.009) 1.536 (0.009) 1.575 (0.008) 1.575 (0.009) 1.539 (0.005) 0.7 1.824 1.661 (0.004) 1.636 (0.009) 1.625 (0.007) 1.999 (0.012) 1.728 (0.007) 1.665 (0.010) 1.624 (0.008)
+
+## 6 Experiments 
+
+6.1 Experimental setup Datasets. We evaluate MissBGM on a synthetic benchmark and four real-world tabular datasets that span a wide range of sample sizes and feature dimensions. The synthetic benchmark is designed such that the missing values follow a truncated Gaussian with a closed-form conditional distribution given the observed values, providing ground truth for both point imputation and uncertainty calibration. The real-data benchmark includes four commonly used datasets from the UCI Machine Learning Repository [Asuncion et al., 2007] with different sample sizes ( n = 178 to 13 , 500 ) and feature dimensions ( p = 13 to 5, 000 ). We add an MNAR missingness mechanism to each dataset with varying missing rates, where larger target coordinates are more likely to be missing. The full details of the datasets and missingness mechanism are given in Appendix C. 
+
+Evaluation metrics. For point imputation, we report the root mean squared error (RMSE) on missing entries. For uncertainty quantification, we report the RMSE between per-entry estimated posterior standard deviations (S.D.) and the oracle S.D.s, the average width of the predicted (1 − α) intervals, and the Pearson (PCC) and Spearman (SCC) correlations between predicted per-entry interval widths and oracle widths. Estimated posterior S.D.s are computed from 1,000 multiple imputations (or posterior samples) per missing entry. 
+
+Baseline methods. 
+
+We compare MissBGM against seven data imputation baselines, including classical and nonparametric baselines (Mean), optimal-transport imputation (OT) [Muzellec et al., 2020], iterative chained equations (ICE) [Van Buuren and Groothuis-Oudshoorn, 2011], the ensemble multiple-imputation method (miceforest) [Wilson et al., 2023], the tree-based diffusion generative imputation method (ForestDiffusion) [Jolicoeur-Martineau et al., 2024], and generative AI baselines (GAIN [Yoon et al., 2018] and TabCSDI [Zheng and Charoenphakdee, 2022]). The full details of baselines implemented are given in Appendix D. The implementation details of MissBGM are given in Appendix E. The detailed instructions for using MissBGM software are given in Appendix F. 
+
+6.2 Synthetic experiments 
+
+We first evaluate MissBGM on the synthetic benchmark by varying the sample size n ∈{0.5k , 1k , 5k , 10k } and the missing rate r ∈ { 0.3, 0.5, 0.7}. p = 50 for each configuration and the experiment is repeated for 10 runs. As shown in Table 1, MissBGM attains the lowest missing-entry RMSE in 10 of the 12 configurations. As expected, mean imputation is uniformly the weakest baseline across all settings. Classical conditional-modeling baselines (OT, miceforest, ICE) are com-petitive but consistently outperformed as they do not model the masking mechanism. The generative AI imputers, such as GAIN, ForestDiffusion, and TabCSDI, are competitive only in selected settings but still trailed by MissBGM in most settings. Overall, these results demonstrate that MissBGM provides robust and superior imputation accuracy across diverse settings. 8(a) (b)Figure 2: Robustness experiments on synthetic benchmark. (a) RMSE with varying dimensionality p
+
+at n = 5000 and missing rate 20% . (b) RMSE with varying missing rates at n = 5000 and p = 50 .Table 2: Uncertainty quantification results on a syn-thetic dataset ( p = 50 , n = 5000 , α = 0 .05 ). The average oracle width is 1.539. Best in each column is bolded .                        
+
+> Method RMSE (s.d.) Avg.len PCC SCC
+> Miceforest 0.380 2.052 0.820 0.831 GAIN 0.933 0.008 0.275 0.297 ForestDiffusion 0.314 2.354 0.858 0.851 TabCSDI 0.683 0.011 0.348 0.316 MissBGM 0.248 2.620 0.849 0.861
+
+Next, we evaluate the uncertainty quantifica-tion performance of MissBGM on a synthetic dataset against four baselines that provide mul-tiple imputations. We use 1000 posterior sam-ples for each missing value to compute the RMSE of standard deviation, interval width, and correlation between the predicted interval width and the oracle width for a user-specified confidence level α. As shown in Table 2, al-though MissBGM obtains more conservative intervals than Miceforest and ForestDiffusion, it decreases RMSE in estimating the variation of the imputed values by 20 .1% compared to the strongest baseline ForestDiffusion. The interval-width correlations are also comparable to the best baseline. In contrast, the generative AI imputers (GAIN, TabCSDI) collapse to near-degenerate predictive distributions, yielding vanishing interval widths. This reflects a well-known failure mode of likelihood-free generative imputers, whose sample-to-sample variability severely underestimates posterior uncertainty. 
+
+6.3 Real-world experiments 
+
+Table 3: RMSE on four real-world datasets with varying sample sizes and number of features. We report both mean and standard deviation of RMSE across 10 runs. Best result in each row is 
+
+bolded .                                    
+
+> Method Wine Breast Concrete Gisette
+> Mean 1.043 0.809 0.976 0.978 OT 0.697 (0.007) 0.583 (0.005) 0.538 (0.003) 0.605 (0.004) Miceforest 0.698 (0.011) 0.599 (0.008) 0.556 (0.009) -ICE 0.829 (0.014) 0.618 (0.009) 0.662 (0.012) -GAIN 0.849 (0.017) 0.651 (0.013) 0.715 (0.015) 0.696 (0.009) ForestDiffusion 0.779 (0.009) 0.672 (0.006) 0.655 (0.008) -TabCSDI 0.691 (0.008) 0.607 (0.006) 0.569 (0.007) 0.627 (0.004) MissBGM 0.682 (0.007) 0.511 (0.005) 0.529 (0.006) 0.543 (0.005)
+
+We benchmark MissBGM against seven baselines on four standard tabular datasets in Table 3, spanning a wide range of sample sizes and feature di-mensions, from Wine ( n = 178 ,
+
+p = 13 ) to Gisette ( n = 13 ,500 ,
+
+p = 5 ,000 ). MissBGM achieves the lowest mean RMSE across all four datasets. The advantage is substantial on the high-dimensional Gisette dataset, where MissBGM reduces RMSE by 10 .2% relative to the best competing method. Notably, three baselines, Miceforest, ICE, and ForestDiffusion fail to scale to Gisette (denoted by −). The results demonstrate that MissBGM scales well to high-dimensional data while maintaining superior imputation accuracy. 
+
+6.4 Robustness and scalability 
+
+We next assess the robustness of MissBGM regarding feature dimensionality and missingness severity (Figure 2 and Appendix G). In Figure 2(a), OT degrades sharply with increasing p, reflecting the well-known difficulty of optimal transport in higher-dimensional settings. MissBGM achieves the lowest RMSE across all dimensions, except for p = 300 , where it is slightly outperformed by ForestDiffusion. In Figure 2(b), MissBGM achieves the lowest RMSE across the entire range, where competitors such as GAIN diverge and tree-based methods like ForestDiffusion deteriorate noticeably. We explain the non-monotonic results of missing rate in Section C.1. These results suggest that MissBGM is robust to both dimensionality and missingness scale. 9We further examine scalability from a computational perspective by comparing running time across methods on a moderate synthetic benchmark (Section H). The results show that MissBGM remains computationally practical and substantially faster than computationally intensive baselines such as miceforest and diffusion-based imputers, supporting its applicability to larger-scale problems. 
+
+6.5 Ablation studies 
+
+Table 4: Ablation study of MissBGM on the tempering coefficient β. RMSE on four real-world datasets. Best result in each row is 
+
+bolded .                        
+
+> Dataset β= 0 β= 0 .01 β= 0 .1β= 1
+> Wine 0.699 0.682 0.690 0.703 Breast 0.518 0.511 0.505 0.531 Concrete 0.527 0.529 0.539 0.560 Gisette 0.557 0.543 0.553 0.564
+
+We study the role of the tempering coefficient β,which weights the missingness term in the tempered posterior of (8) . β = 0 corresponds to ignoring the mask entirely. As shown in Table 4, modeling the mask with a small but non-zero β is beneficial in most scenarios. At the same time, performance de-grades when β becomes too large ( β = 1 ), suggesting that the mask should inform, but not dominate the imputation. Overall, we adopt β = 0 .01 across all experiments as the default. We also study the effect of using Bayesian neural networks (BNNs) on MissBGM (Appendix I). 
+
+## 7 Conclusion 
+
+We presented MissBGM, a missingness-aware Bayesian generative modeling approach for data imputation. MissBGM bridges the expressive flexibility of modern AI with the statistical rigor of Bayesian inference, enabling flexible representation learning with statistically rigorous imputation and uncertainty quantification. As with any joint model of data and missingness, reliability depends on appropriate specification of both the generative mechanism and the observation process. Neural networks training and Markov chain Monte Carlo (MCMC) can also be computationally intensive relative to simpler imputers. Future work includes (a) investigating identifiability of latent variables by leveraging recent advances in nonlinear independent component analysis (ICA) theory [Khemakhem et al., 2020], and (b) exploring more advanced architectures for gθ and fϕ when the data dependence is more complex (e.g., non-stationary). 
+
+## References 
+
+Donald B Rubin. Inference and missing data. Biometrika , 63(3):581–592, 1976. Roderick J. A. Little and Donald B. Rubin. Statistical Analysis with Missing Data . John Wiley & Sons, Hoboken, NJ, 3 edition, 2019. Craig K Enders. Applied missing data analysis . Guilford Publications, 2022. Joseph L Schafer and John W Graham. Missing data: our view of the state of the art. Psychological methods , 7(2):147, 2002. Paul D Allison. Missing data. The SAGE handbook of quantitative methods in psychology , 23:72–89, 2009. Robin Mitra, Sarah F McGough, Tapabrata Chakraborti, Chris Holmes, Ryan Copping, Niels Hagen-buch, Stefanie Biedermann, Jack Noonan, Brieuc Lehmann, Aditi Shenvi, et al. Learning from data with structured missingness. Nature Machine Intelligence , 5(1):13–23, 2023. Joseph L Schafer. Analysis of incomplete multivariate data . chapman and hall/CRC, 1997. Arthur P Dempster, Nan M Laird, and Donald B Rubin. Maximum likelihood from incomplete data via the em algorithm. Journal of the royal statistical society: series B (methodological) , 39(1): 1–22, 1977. Donald B. Rubin. Multiple Imputation for Nonresponse in Surveys . Wiley Series in Probability and Statistics. John Wiley & Sons, Inc., 1987. ISBN 9780471087052. doi: 10.1002/9780470316696. URL https://doi.org/10.1002/9780470316696 .10 Stef Van Buuren and Karin Groothuis-Oudshoorn. mice: Multivariate imputation by chained equations in r. Journal of statistical software , 45:1–67, 2011. James R Carpenter, Jonathan W Bartlett, Tim P Morris, Angela M Wood, Matteo Quartagno, and Michael G Kenward. Multiple imputation and its application . John Wiley & Sons, 2023. Jinsung Yoon, James Jordon, and Mihaela Schaar. Gain: Missing data imputation using generative adversarial nets. In International conference on machine learning , pages 5689–5698. PMLR, 2018. Pierre-Alexandre Mattei and Jes Frellsen. Miwae: Deep generative modelling and imputation of incomplete data sets. In International conference on machine learning , pages 4413–4423. PMLR, 2019. Niels Bruun Ipsen, Pierre-Alexandre Mattei, and Jes Frellsen. not-miwae: Deep generative modelling with missing not at random data. arXiv preprint arXiv:2006.12871 , 2020. Yusuke Tashiro, Jiaming Song, Yang Song, and Stefano Ermon. Csdi: Conditional score-based diffu-sion models for probabilistic time series imputation. Advances in neural information processing systems , 34:24804–24816, 2021. Alexia Jolicoeur-Martineau, Kilian Fatras, and Tal Kachman. Generating and imputing tabular data via diffusion and flow-based gradient-boosted trees. In International conference on artificial intelligence and statistics , pages 1288–1296. PMLR, 2024. Shuhan Zheng and Nontawat Charoenphakdee. Diffusion models for missing value imputation in tabular data. arXiv preprint arXiv:2210.17128 , 2022. Zhaoyang Zhang, Ziqi Chen, Qiao Liu, Jinhan Xie, and Hongtu Zhu. Sampling-guided heterogeneous graph neural network with temporal smoothing for scalable longitudinal data imputation. In 
+
+Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 2, pages 3912–3920, 2025. Edmon Begoli, Tanmoy Bhattacharya, and Dimitri Kusnezov. The need for uncertainty quantification in machine-assisted medical decision making. Nature Machine Intelligence , 1(1):20–23, 2019. Moloud Abdar, Farhad Pourpanah, Sadiq Hussain, Dana Rezazadegan, Li Liu, Mohammad Ghavamzadeh, Paul Fieguth, Xiaochun Cao, Abbas Khosravi, U Rajendra Acharya, et al. Areview of uncertainty quantification in deep learning: Techniques, applications and challenges. 
+
+Information fusion , 76:243–297, 2021. Zarin Tahia Hossain and Mostafa Milani. Beyond accuracy: An empirical study of uncertainty estimation in imputation. arXiv preprint arXiv:2511.21607 , 2025. Samuel Von Wilson, Bogdan Cebere, James Myatt, and Samuel Wilson. miceforest, 2023. URL 
+
+https://github.com/AnotherSamWilson/miceforest/ .Lisa L Doove, Stef Van Buuren, and Elise Dusseldorp. Recursive partitioning for missing data imputation in the presence of interaction effects. Computational statistics & data analysis , 72: 92–104, 2014. Alfredo Nazabal, Pablo M Olmos, Zoubin Ghahramani, and Isabel Valera. Handling incomplete heterogeneous data using vaes. Pattern Recognition , 107:107501, 2020. Vincent Fortuin, Dmitry Baranchuk, Gunnar Rätsch, and Stephan Mandt. Gp-vae: Deep probabilistic time series imputation. In International conference on artificial intelligence and statistics , pages 1651–1661. PMLR, 2020. Oleg Ivanov, Michael Figurnov, and Dmitry Vetrov. Variational autoencoder with arbitrary condition-ing. arXiv preprint arXiv:1806.02382 , 2018. Ignacio Peis, Chao Ma, and José Miguel Hernández-Lobato. Missing data imputation and acquisition with deep hierarchical models and hamiltonian monte carlo. Advances in Neural Information Processing Systems , 35:35839–35851, 2022. 11 Steven Cheng-Xian Li, Bo Jiang, and Benjamin Marlin. Misgan: Learning from incomplete data with generative adversarial networks. arXiv preprint arXiv:1902.09599 , 2019. Mark Collier, Alfredo Nazabal, and Christopher KI Williams. Vaes in the presence of missing data. 
+
+arXiv preprint arXiv:2006.05301 , 2020. Chao Ma and Cheng Zhang. Identifiable generative models for missing not at random data imputation. 
+
+Advances in Neural Information Processing Systems , 34:27645–27658, 2021. Qiao Liu and Wing Hung Wong. A bayesian generative modeling approach for arbitrary conditional inference. arXiv preprint arXiv:2601.05355 , 2026a. Qiao Liu and Wing Hung Wong. An ai-powered bayesian generative modeling approach for causal inference in observational studies. Journal of the American Statistical Association , 0(ja):1–20, 2026b. doi: 10.1080/01621459.2026.2654227. Qiao Liu, Jiaze Xu, Rui Jiang, and Wing Hung Wong. Density estimation using deep generative neural networks. Proceedings of the National Academy of Sciences , 118(15):e2101344118, 2021. Ethan Goan and Clinton Fookes. Bayesian neural networks: An introduction and survey. In Case Studies in Applied Bayesian Data Science: CIRM Jean-Morlet Chair, Fall 2018 , pages 45–87. Springer, 2020. David M Blei, Alp Kucukelbir, and Jon D McAuliffe. Variational inference: A review for statisticians. 
+
+Journal of the American statistical Association , 112(518):859–877, 2017. Luke Tierney. Markov chains for exploring posterior distributions. the Annals of Statistics , pages 1701–1728, 1994. Radford M Neal. Mcmc using hamiltonian dynamics. Handbook of markov chain monte carlo , pages 47–95, 2011. Arthur Asuncion, David Newman, et al. Uci machine learning repository, 2007. Boris Muzellec, Julie Josse, Claire Boyer, and Marco Cuturi. Missing data imputation using optimal transport. In International Conference on Machine Learning , pages 7130–7140. PMLR, 2020. Ilyes Khemakhem, Diederik Kingma, Ricardo Monti, and Aapo Hyvarinen. Variational autoencoders and nonlinear ica: A unifying framework. In International conference on artificial intelligence and statistics , pages 2207–2217. PMLR, 2020. Qiao Liu, Zhongren Chen, and Wing Hung Wong. An encoding generative modeling approach to dimension reduction and covariate adjustment in causal inference with observational studies. 
+
+Proceedings of the National Academy of Sciences , 121(23):e2322376121, 2024. Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 , 2014. Joshua V Dillon, Ian Langmore, Dustin Tran, Eugene Brevdo, Srinivas Vasudevan, Dave Moore, Brian Patton, Alex Alemi, Matt Hoffman, and Rif A Saurous. Tensorflow distributions. arXiv preprint arXiv:1711.10604 , 2017. 12 A Derivation of ELBOs 
+
+This section derives the ELBO expressions in Eq. (10) from the conditional log-posteriors in Eq. (9) .Since the derivations for θ and ϕ are fully parallel, we present both in the same notation. 
+
+Step 1: conditional posteriors. From Eq. (9) , the conditional posteriors are, up to normalizing constants, 
+
+p(θ | Z, X) ∝ pθ (X | Z) π(θ), p(ϕ | X, R) ∝ pϕ(R | X) π(ϕ). (17) Equivalently, introducing the corresponding marginal likelihoods, 
+
+p(θ | Z, X) = pθ (X | Z) π(θ)
+
+p(X | Z) , p(ϕ | X, R) = pϕ(R | X) π(ϕ)
+
+p(R | X) , (18) where 
+
+p(X | Z) = 
+
+Z
+
+pθ (X | Z) π(θ) dθ, p(R | X) = 
+
+Z
+
+pϕ(R | X) π(ϕ) dϕ. (19) These marginal likelihoods are generally intractable because they require integrating over all network parameters. 
+
+Step 2: variational approximation for θ. Introduce a variational family qλ(θ) to approximate 
+
+p(θ | Z, X). Starting from the log evidence, we write 
+
+log p(X | Z) = log 
+
+Z
+
+qλ(θ) pθ (X | Z) π(θ)
+
+qλ(θ) dθ. (20) Applying Jensen’s inequality gives 
+
+log p(X | Z) ≥
+
+Z
+
+qλ(θ) log pθ (X | Z) π(θ)
+
+qλ(θ) dθ (21) 
+
+= Eqλ(θ)[log pθ (X | Z)] + Eqλ(θ)[log π(θ)] − Eqλ(θ)[log qλ(θ)] . (22) Using the definition of the KL divergence, 
+
+KL  qλ(θ) ∥ π(θ) = Eqλ(θ)[log qλ(θ) − log π(θ)] , (23) we obtain the standard ELBO 
+
+Lstd  
+
+> θ
+
+= Eqλ(θ)[log pθ (X | Z)] − KL  qλ(θ) ∥ π(θ), (24) with 
+
+log p(X | Z) ≥ L std  
+
+> θ
+
+. (25) An equivalent decomposition, useful for interpretation, is 
+
+log p(X | Z) = Lstd  
+
+> θ
+
++ KL  qλ(θ) ∥ p(θ | Z, X), (26) which shows that maximizing the ELBO is equivalent to minimizing the KL divergence between the variational approximation and the exact conditional posterior. 
+
+Step 3: variational approximation for ϕ. The same argument applies to the missingness-model parameters. Let qψ (ϕ) approximate p(ϕ | X, R). Then 
+
+log p(R | X) = log 
+
+Z
+
+qψ (ϕ) pϕ(R | X) π(ϕ)
+
+qψ (ϕ) dϕ, (27) so Jensen’s inequality yields 
+
+log p(R | X) ≥ Eqψ (ϕ)[log pϕ(R | X)] + Eqψ (ϕ)[log π(ϕ)] − Eqψ (ϕ)[log qψ (ϕ)] (28) 
+
+= Eqψ (ϕ)[log pϕ(R | X)] − KL  qψ (ϕ) ∥ π(ϕ). (29) Thus the standard ELBO for ϕ is 
+
+Lstd  
+
+> ϕ
+
+= Eqψ (ϕ)[log pϕ(R | X)] − KL  qψ (ϕ) ∥ π(ϕ), (30) with the analogous decomposition 
+
+log p(R | X) = Lstd  
+
+> ϕ
+
++ KL  qψ (ϕ) ∥ p(ϕ | X, R). (31) 13 Step 4: weighted ELBOs used in MissBGM. The expressions in Eq. (10) are the KL-weighted versions of the standard ELBOs above: 
+
+(Lθ = Eqλ(θ)[log pθ (X | Z)] − τ KL  qλ(θ) ∥ π(θ),
+
+Lϕ = Eqψ (ϕ)[log pϕ(R | X)] − τ KL  qψ (ϕ) ∥ π(ϕ). (32) When τ = 0 , these reduce to the standard stochastic gradient descent updates. We set τ = 0 .00005 
+
+as the default to control the strength of posterior regularization in Bayesian neural network training. 
+
+Step 5: Gaussian variational families. In MissBGM, we use Gaussian variational families 
+
+qλ(θ) = N (θ | μλ, σ 2
+
+> λ
+
+Idθ ), qψ (ϕ) = N (ϕ | μψ , σ 2 
+
+> ψ
+
+Idϕ ), (33) so the learnable quantities are the variational parameters λ = ( μλ, σ 2
+
+> λ
+
+) and ψ = ( μψ , σ 2 
+
+> ψ
+
+). Maximiz-ing the objectives in Eq. (10) with respect to λ and ψ gives tractable stochastic updates for Bayesian neural-network training while preserving the decomposition into a data-fit term and a regularization term induced by the prior. 
+
+## B Proof of theorem 
+
+This section provides a detailed proof of Theorem 1. The key point is that MissBGM should be analyzed as a profiled β-tempered procedure, because the missing-value update in (8) optimizes the data term and the missingness term with the same temperature parameter β that appears in the algorithm. For notational convenience, write O = ( Xobs , R) for a generic observed pair and let P0 denote its data-generating distribution. For one realization (xobs , r), define 
+
+mβ (xobs , r; θ, ϕ ) := sup 
+
+> z,xmis
+
+n
+
+log π(z) + log pθ (x | z) + β log pϕ(r | x)
+
+o
+
+, x = ( xobs , xmis ),
+
+(34) with empirical and population criteria 
+
+Lβn(θ, ϕ ) = 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+mβ (xi, obs , ri; θ, ϕ ), Lβ (θ, ϕ ) = EP0
+
+mβ (Xobs , R; θ, ϕ ). (35) To keep the asymptotic scaling standard, these criteria omit the O(n−1) global prior terms 
+
+n−1 log π(θ) and n−1 log π(ϕ). Adding them back does not affect any conclusion below. For each (θ, ϕ ), let qβθ,ϕ (xmis , xobs , r) denote the normalized completed-data law proportional to 
+
+Z
+
+π(z) pθ (x | z) pϕ(r | x)β dz. (36) Its induced conditional law is 
+
+ˆpθ,ϕ (xmis | xobs , r) = qβθ,ϕ (xmis , xobs , r)
+
+R qβθ,ϕ (u, xobs , r) du . (37) We now state the regularity conditions. 
+
+Assumption A1 (Sampling, measurability, and domination). The observed pairs O1, . . . , O n
+
+are i.i.d. from P0. For every (θ, ϕ ) ∈ Θ × Φ, the map O 7 → mβ (O; θ, ϕ ) is measurable and finite 
+
+P0-almost surely. There exists an integrable envelope Mβ such that 
+
+sup 
+
+> (θ,ϕ )∈Θ×Φ
+
+mβ (O; θ, ϕ ) ≤ Mβ (O) P0-a.s. , EP0
+
+Mβ (O) < ∞. (38) The normalizing constant in (36) is finite for every (θ, ϕ ).
+
+Assumption A2 (Compact sieves, continuity, and existence of a maximizer). There exist compact sieve sets Θn ⊂ Θ and Φn ⊂ Φ such that Θ1 ⊂ Θ2 ⊂ · · · , Φ1 ⊂ Φ2 ⊂ · · · , and ∪n≥1(Θ n × Φn) = Θ × Φ. For P0-almost every O, the map (θ, ϕ ) 7 → mβ (O; θ, ϕ ) is continuous on each Θn × Φn, and 
+
+Lβ extends continuously to a compactification on which its supremum is attained. 14 Assumption A3 (Uniform convergence of the profiled criterion). With 
+
+ωn := sup 
+
+> (θ,ϕ )∈Θn×Φn
+
+Lβn(θ, ϕ ) − Lβ (θ, ϕ ) , (39) we have ωn = Op(an) for some deterministic sequence an ↓ 0.
+
+Assumption A4 (Sieve approximation error). Define 
+
+rn := sup 
+
+> (θ,ϕ )∈Θ×Φ
+
+Lβ (θ, ϕ ) − sup 
+
+> (θ,ϕ )∈Θn×Φn
+
+Lβ (θ, ϕ ). (40) Then rn → 0.
+
+Assumption A5 (Vanishing optimization error). The fitted estimator (ˆθn, ˆϕn) ∈ Θn ×Φn satisfies 
+
+δn := sup 
+
+> (θ,ϕ )∈Θn×Φn
+
+Lβn(θ, ϕ ) − Lβn(ˆθn, ˆϕn) = Op(bn), bn ↓ 0. (41) 
+
+Assumption A6 (Pseudo-true target and law-level separation). The set 
+
+M∗ 
+
+> β
+
+:= arg max  
+
+> (θ,ϕ )∈Θ×Φ
+
+Lβ (θ, ϕ ) (42) is nonempty. All elements of M∗ 
+
+> β
+
+induce the same completed-data law on an evaluation set S ⊆ Xobs × { 0, 1}p; denote that law by q∗ 
+
+> β
+
+, and let p∗ 
+
+> β
+
+(xmis | xobs , r) be the corresponding conditional law. Define the metric 
+
+djnt (q1, q 2) := sup 
+
+> (xobs ,r)∈S
+
+Z
+
+q1(xmis , xobs , r) − q2(xmis , xobs , r) dxmis . (43) For every ε > 0,
+
+∆β (ε) := sup 
+
+> (θ,ϕ )∈Θ×Φ
+
+Lβ (θ, ϕ ) − sup   
+
+> {(θ,ϕ ): djnt (qβθ,ϕ ,q ∗
+> β)≥ε}
+
+Lβ (θ, ϕ ) > 0. (44) Write 
+
+∆← 
+
+> β
+
+(t) := inf ε > 0 : ∆ β (ε) ≤ t (45) for the generalized inverse of the separation margin. 
+
+Assumption A7 (Positivity of the observed-data margin). Let 
+
+q∗
+
+> β, obs
+
+(xobs , r) := 
+
+Z
+
+q∗ 
+
+> β
+
+(xmis , xobs , r) dxmis . (46) There exists c0 > 0 such that 
+
+inf  
+
+> (xobs ,r)∈S
+
+q∗
+
+> β, obs
+
+(xobs , r) ≥ c0. (47) Hence p∗ 
+
+> β
+
+(· | xobs , r) is well defined on S.
+
+Assumption A8 (Bounded support for posterior means). There exists B < ∞ such that, for every (xobs , r) ∈ S , the support of Xmis under both ˆpθ,ϕ (· | xobs , r) and p∗ 
+
+> β
+
+(· | xobs , r) is contained in a common Euclidean ball of radius B.The assumption holds automatically if complete data live in a compact set (or after a fixed truncation of Xmis to a large ball), and more generally encodes that, uniformly on S, the relevant conditional mass for missing coordinates is not driven by unbounded tails in the objects we compare. 15 Theorem 1. Under Assumptions A1–A8, 
+
+sup 
+
+> (θ,ϕ )∈Θ×Φ
+
+Lβ (θ, ϕ ) − Lβ (ˆθn, ˆϕn) ≤ 2ωn + rn + δn. (48) Consequently, 
+
+djnt 
+
+ qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗
+
+> β
+
+ = op(1) , djnt 
+
+ qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗
+
+> β
+
+ = Op
+
+
+
+∆← 
+
+> β
+
+(an + rn + bn)
+
+
+
+, (49) where the second statement uses the monotonicity of ∆← 
+
+> β
+
+and the fact that 2ωn + rn + δn =
+
+Op(an + rn + bn). Moreover, 
+
+sup 
+
+> (xobs ,r)∈S
+
+ˆpˆθn, ˆϕn (· | xobs , r) − p∗ 
+
+> β
+
+(· | xobs , r) TV ≤ 2
+
+c0
+
+djnt 
+
+ qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗
+
+> β
+
+ = op(1) , (50) and if 
+
+ˆμn(xobs , r) := 
+
+Z
+
+xmis ˆpˆθn, ˆϕn (dxmis | xobs , r), μ∗ 
+
+> β
+
+(xobs , r) := 
+
+Z
+
+xmis p∗ 
+
+> β
+
+(dxmis | xobs , r),
+
+(51) then the pseudo-true risk function 
+
+R∗ 
+
+> β
+
+(μ) := Eq∗
+
+> β
+
+∥Xmis − μ(Xobs , R)∥22
+
+ (52) satisfies 
+
+0 ≤ R ∗ 
+
+> β
+
+(ˆ μn) − R ∗ 
+
+> β
+
+(μ∗ 
+
+> β
+
+) ≤ 16 B2
+
+c20
+
+djnt 
+
+ qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗
+
+> β
+
+2 = op(1) . (53) Under correct specification and β = 1 , the pseudo-true target equals the true conditional law 
+
+p(Xmis | Xobs , R).
+
+Lemma A1 (Population near-optimality of the fitted estimator). Under Assumptions A3–A5, 
+
+sup 
+
+> (θ,ϕ )∈Θ×Φ
+
+Lβ (θ, ϕ ) − Lβ (ˆθn, ˆϕn) ≤ 2ωn + rn + δn. (54) 
+
+Proof. By the definition of rn,
+
+sup 
+
+> (θ,ϕ )∈Θ×Φ
+
+Lβ (θ, ϕ ) ≤ sup 
+
+> (θ,ϕ )∈Θn×Φn
+
+Lβ (θ, ϕ ) + rn.
+
+By the definition of ωn,
+
+sup 
+
+> (θ,ϕ )∈Θn×Φn
+
+Lβ (θ, ϕ ) ≤ sup 
+
+> (θ,ϕ )∈Θn×Φn
+
+Lβn(θ, ϕ ) + ωn.
+
+By the definition of δn,
+
+sup 
+
+> (θ,ϕ )∈Θn×Φn
+
+Lβn(θ, ϕ ) ≤ Lβn(ˆθn, ˆϕn) + δn.
+
+Applying the definition of ωn once more, 
+
+Lβn(ˆθn, ˆϕn) ≤ Lβ (ˆθn, ˆϕn) + ωn.
+
+Combining the four displays gives (54). 
+
+Lemma A2 (Joint-law consistency). Under Assumptions A3–A6, 
+
+djnt 
+
+ qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗
+
+> β
+
+ = op(1) , djnt 
+
+ qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗
+
+> β
+
+ = Op
+
+
+
+∆← 
+
+> β
+
+(2 ωn + rn + δn)
+
+
+
+. (55) 
+
+Proof. Fix ε > 0. On the event djnt (qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗ 
+
+> β
+
+) ≥ ε ,
+
+Assumption A6 implies 
+
+Lβ (ˆθn, ˆϕn) ≤ sup 
+
+> (θ,ϕ )∈Θ×Φ
+
+Lβ (θ, ϕ ) − ∆β (ε).
+
+16 Equivalently, 
+
+sup 
+
+> (θ,ϕ )∈Θ×Φ
+
+Lβ (θ, ϕ ) − Lβ (ˆθn, ˆϕn) ≥ ∆β (ε).
+
+Therefore, by Lemma A1, 
+
+P
+
+
+
+djnt (qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗ 
+
+> β
+
+) ≥ ε
+
+
+
+≤ P 2ωn + rn + δn ≥ ∆β (ε).
+
+Since ωn = Op(an), rn → 0, and δn = Op(bn), the right-hand side converges to zero for every fixed 
+
+ε > 0, proving the first claim. For the rate statement, let tn := 2 ωn + rn + δn. The previous argument yields 
+
+{djnt (qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗ 
+
+> β
+
+) > ε } ⊆ { tn ≥ ∆β (ε)}.
+
+By the definition of the generalized inverse in (45), this implies 
+
+djnt (qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗ 
+
+> β
+
+) ≤ ∆← 
+
+> β
+
+(tn)
+
+with probability tending to one, which is equivalent to the second claim in (55). 
+
+Lemma A3 (Conditional-law consistency from completed-data-law consistency). Under As-sumptions A6 and A7, 
+
+sup 
+
+> (xobs ,r)∈S
+
+ˆpˆθn, ˆϕn (· | xobs , r) − p∗ 
+
+> β
+
+(· | xobs , r) TV ≤ 2
+
+c0
+
+djnt 
+
+ qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗
+
+> β
+
+ (56) whenever djnt (qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗ 
+
+> β
+
+) ≤ c0/2.
+
+Proof. Fix (xobs , r) ∈ S and write 
+
+qn(u) := qβ 
+
+> ˆθn,ˆϕn
+
+(u, xobs , r), q∗(u) := q∗ 
+
+> β
+
+(u, xobs , r).
+
+Let 
+
+An := 
+
+Z
+
+qn(u) du, A∗ := 
+
+Z
+
+q∗(u) du = q∗
+
+> β, obs
+
+(xobs , r).
+
+By Assumption A7, A∗ ≥ c0. Moreover, 
+
+|An − A∗| ≤ 
+
+Z
+
+|qn(u) − q∗(u)| du ≤ djnt 
+
+ qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗
+
+> β
+
+.
+
+Hence if djnt (qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗ 
+
+> β
+
+) ≤ c0/2, then An ≥ c0/2.Now use 
+
+ˆpˆθn, ˆϕn (u | xobs , r) = qn(u)
+
+An
+
+, p∗ 
+
+> β
+
+(u | xobs , r) = q∗(u)
+
+A∗
+
+.
+
+Then qn
+
+An
+
+− q∗
+
+A∗ 1
+
+≤ ∥qn − q∗∥1
+
+An
+
++ 1
+
+An
+
+− 1
+
+A∗
+
+∥q∗∥1.
+
+Since ∥q∗∥1 = A∗,
+
+qn
+
+An
+
+− q∗
+
+A∗ 1
+
+≤ ∥qn − q∗∥1
+
+An
+
++ |An − A∗|
+
+An
+
+≤ 2∥qn − q∗∥1
+
+An
+
+≤ 4
+
+c0
+
+∥qn − q∗∥1.
+
+Dividing by 2 converts L1 distance to total variation distance, so 
+
+ˆpˆθn, ˆϕn (· | xobs , r) − p∗ 
+
+> β
+
+(· | xobs , r) TV ≤ 2
+
+c0
+
+∥qn − q∗∥1.
+
+Taking the supremum over (xobs , r) ∈ S proves (56). 17 Lemma A4 (Excess-risk bound for posterior-mean imputation). Under Assumption A8, 
+
+0 ≤ R ∗ 
+
+> β
+
+(ˆ μn) − R ∗ 
+
+> β
+
+(μ∗ 
+
+> β
+
+) ≤ 16 B2
+
+c20
+
+djnt 
+
+ qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗
+
+> β
+
+2. (57) 
+
+Proof. For every (xobs , r) ∈ S ,
+
+∥ˆμn(xobs , r) − μ∗ 
+
+> β
+
+(xobs , r)∥2 =
+
+Z
+
+u ˆpˆθn, ˆϕn (du | xobs , r) − p∗ 
+
+> β
+
+(du | xobs , r)
+
+> 2
+
+.
+
+Because the support of u is contained in a ball of radius B,
+
+∥ˆμn(xobs , r) − μ∗ 
+
+> β
+
+(xobs , r)∥2 ≤ B ˆpˆθn, ˆϕn (· | xobs , r) − p∗ 
+
+> β
+
+(· | xobs , r) 1.
+
+Applying Lemma A3 gives 
+
+∥ˆμn(xobs , r) − μ∗ 
+
+> β
+
+(xobs , r)∥2 ≤ 4Bc0
+
+djnt 
+
+ qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗
+
+> β
+
+.
+
+Squaring both sides yields the pointwise bound 
+
+∥ˆμn(xobs , r) − μ∗ 
+
+> β
+
+(xobs , r)∥22 ≤ 16 B2
+
+c20
+
+djnt 
+
+ qβ 
+
+> ˆθn,ˆϕn
+
+, q ∗
+
+> β
+
+2.
+
+Under q∗ 
+
+> β
+
+, the conditional expectation of Xmis given (Xobs , R) is μ∗ 
+
+> β
+
+(Xobs , R). Therefore the standard conditional-mean orthogonality identity implies 
+
+R∗ 
+
+> β
+
+(ˆ μn) − R ∗ 
+
+> β
+
+(μ∗ 
+
+> β
+
+) = Eq∗
+
+> β
+
+∥ˆμn(Xobs , R) − μ∗ 
+
+> β
+
+(Xobs , R)∥22
+
+.
+
+Taking expectations in the previous pointwise inequality proves (57) . Nonnegativity is immediate from the Bayes optimality of the conditional mean under squared loss. 
+
+Proof of Theorem 1. The near-optimality bound (48) is exactly Lemma A1. Lemma A2 then yields convergence of the completed-data law to the pseudo-true tempered target, establishing (49) . Lemma A3 converts that completed-data-law convergence into the total-variation bound (50) for the induced conditional imputation law. Finally, Lemma A4 gives the excess-risk bound (53) for the posterior-mean imputation rule. When the model is correctly specified and β = 1 , the profiled population criterion is maximized at the true completed-data law, so the pseudo-true target p∗ 
+
+> β
+
+coincides with the genuine conditional law p(Xmis | Xobs , R). In that case Theorem 1 reduces to consistency for both the full imputation distribution and the induced posterior-mean estimator. The current theorem is stated with deterministic fitted global parameters (ˆθn, ˆϕn). For Bayesian neural network variant, we can replace (θ, ϕ ) by the variational parameters and absorb the ELBO approximation error into the analogue of δn. The structural conclusion will remain the same: consistency is with respect to the pseudo-true target defined by the same tempered objective that MissBGM actually optimizes. 
+
+## C Datasets 
+
+We evaluate MissBGM on a synthetic benchmark and four real-world tabular datasets that span a wide range of sample sizes and feature dimensions. This appendix details the data-generating processes, the missingness mechanisms, and the preprocessing protocol shared across all methods. 
+
+C.1 Synthetic dataset 
+
+The synthetic benchmark is generated through a self-masked Gaussian model that yields closed-form ground-truth conditional means, variances, and prediction intervals for every missing entry, which makes it an ideal benchmark for both point imputation and uncertainty calibration. The synthetic benchmark is generated with the following process. 18 Anchor and target partition. Each sample xi ∈ Rp is partitioned into a fully observed anchor 
+
+block of size pa and a potentially missing target block of size pt = p − pa. We index the two blocks by the disjoint coordinate sets 
+
+Ja = {1, . . . , p a}, Jt = {pa + 1 , . . . , p }, (58) and write the corresponding subvectors as xi, Ja = ( xij )j∈J a ∈ Rpa and xi, Jt = ( xij )j∈J t ∈ Rpt .The full sample is then assembled by concatenation, 
+
+xi =  xi, Ja , xi, Jt
+
+ ∈ Rp. (59) Throughout the synthetic experiments we set pa = 5 , so that pt = p − 5.
+
+Global parameters. The model has three population-level parameters (B, b, σ) that are sampled 
+
+once per simulation replicate from a fixed seed and then shared across all n data points, 
+
+B ∈ Rpa×pt , Bkl 
+
+> iid
+
+∼ N (0 , 0.42); b ∈ Rpt , bl
+
+> iid
+
+∼ N (0 , 0.32); σl
+
+> iid
+
+∼ Uniform(0 .6, 1.2) ,
+
+(60) for k = 1 , . . . , p a and l = 1 , . . . , p t, with σ = ( σ1, . . . , σ pt )⊤. To match the per-target-coordinate notation used below, we define σ(j) ≡ σj−pa and b(j) ≡ bj−pa for any target index j ∈ J t, and let 
+
+B:,(j) ∈ Rpa denote the column of B corresponding to target coordinate j.
+
+Per-sample data generation. Conditional on (B, b, σ), each of the n samples is generated inde-pendently as 
+
+xi, Ja ∼ N (0, I pa ), xi, Jt | xi, Ja ∼ N  B⊤xi, Ja + b, diag( σ2) , (61) where diag( σ2) ∈ Rpt×pt is the diagonal matrix with entries σ21 , . . . , σ 2 
+
+> pt
+
+. Equivalently, defining 
+
+μj (xi, Ja ) = B⊤
+
+> :,(j)
+
+xi, Ja + b(j), j ∈ J t, (62) the marginal conditional law of each target coordinate is the heteroscedastic Gaussian 
+
+xij | xi, Ja ∼ N 
+
+
+
+μj (xi, Ja ), σ 2(j)
+
+
+
+, j ∈ J t. (63) 
+
+Self-masked MNAR rule. Anchor coordinates are always observed: rij = 1 for all j ∈ J a. For each target coordinate j ∈ J t, the entry is observed if and only if its realization falls below a quantile threshold of its own conditional distribution, 
+
+rij = Ixij ≤ μj (xi, Ja ) + σ(j)κ , κ = Φ −1(1 − r), (64) where Φ is the standard normal cumulative distribution function (CDF) and r ∈ (0 , 1) is the targeted per-column missing rate on the target block. Because the threshold depends on the value of xij itself, larger realizations of xij are systematically more likely to be missing, so the masking mechanism is non-ignorable (MNAR). 
+
+Effect of missing rate r. This self-masked construction also explains why the RMSE in Figure 2(b) is non-monotonic in r. When r is small, κ = Φ −1(1 − r) is large, so only the most extreme right-tail realizations of xij are masked; these atypical values lie far from the conditional mean μj (xi, Ja ) and are intrinsically hard to recover even when abundant observed entries are available for training. When 
+
+r is large, the threshold falls into the bulk of the conditional distribution and a large fraction of target entries are missing, leaving too few observations to fit the conditional model reliably. The hardest regimes therefore arise at both ends of the missing-rate spectrum, while moderate missing rates strike a balance between informativeness of the observed entries and severity of the tail truncation, which yields the lowest imputation RMSE in Figure 2(b). 
+
+Oracle posterior and prediction interval. Conditional on being missing, xij follows a Gaussian truncated from above at μj (xi, Ja ) + σ(j)κ, so its posterior quantiles are available in closed form. Letting μj = μj (xi, Ja ) and Φκ = Φ( κ), the oracle (1 − α) prediction interval (PI) for a missing entry (i, j ) with j ∈ J t is 
+
+PI 1−α, ⋆ ij =
+
+h
+
+μj + σ(j)Φ−1(plo ), μ j + σ(j)Φ−1(phi )
+
+i
+
+, (65) 19 with lower and upper quantile levels 
+
+plo = Φ κ + α
+
+> 2
+
+ 1 − Φκ
+
+, phi = Φ κ +  1 − α
+
+> 2
+
+  1 − Φκ
+
+. (66) The oracle point imputation is the truncated-Gaussian mean, and the oracle per-entry interval width used in the PCC and SCC metrics is simply the length of PI 1−α, ⋆ ij given a user-specified significance level α. We use α = 0 .05 as default in all synthetic experiments. 
+
+C.2 Real-world datasets 
+
+We use four publicly available tabular datasets from the UCI Machine Learning Repository ( https: //archive.ics.uci.edu/ ) as our real-world benchmark. They vary in sample size and feature dimension from small-n low-dimensional regression problems to a very high-dimensional dataset. A summary of the datasets is given in Table 5. Table 5: Summary of the four real-world tabular datasets used in our benchmark. All datasets are obtained from the UCI Machine Learning Repository. The reported #Samples and #Features are after dropping ID columns, target columns, and rows with native missing values where applicable.                     
+
+> Dataset UCI ID #Samples #Features Domain
+> Wine 109 178 13 Chemistry / agriculture Concrete 165 1,030 8Civil engineering Breast 15 683 9Biomedical Gisette 170 13,500 5,000 Computer vision (digits)
+
+Wine contains n = 178 chemical analyses of wines grown in the same region in Italy but derived from three different cultivars. We drop the class label column and use the remaining p = 13 continuous chemical attributes (alcohol, malic acid, flavanoids, color intensity, etc.) as the imputation target. 
+
+Concrete Compressive Strength contains n = 1 , 030 concrete mixture records with p = 8 contin-uous predictors describing the mixture composition (cement, slag, fly ash, water, superplasticizer, coarse and fine aggregates, age). We drop the target compressive strength column and treat the remaining columns as features. 
+
+Breast Cancer Wisconsin (Original) contains digitized cytology measurements with p = 9 ordinal features on a 1–10 scale (clump thickness, uniformity of cell size and shape, marginal adhesion, etc.). We drop the sample-code-number ID column, remove the 16 rows that contain native “ ?” values, and use the resulting n = 683 samples. 
+
+Gisette is a high-dimensional binary classification benchmark constructed from handwritten digit images. We stack the official train, validation, and unlabeled test splits to obtain n = 13 ,500 samples with p = 5 ,000 integer-valued pixel/aggregate features. Gisette serves as an ideal stress test for whether imputers remain accurate and scalable when the feature dimension is large. 
+
+Preprocessing. Before applying any imputation method, the datasets are normalized feature-wise using StandardScaler from scikit-learn . All RMSE numbers reported in the main paper are therefore on the standardized scale, which is comparable across features and across datasets. 
+
+MNAR mask generation. Real-world datasets do not come with ground-truth missing entries that allow us to evaluate imputation accuracy. We therefore inject controlled MNAR missingness on top of the full data matrix, so that the original observed values can serve as the ground truth for the masked entries. Specifically, for each dataset we form a self-masked logistic mechanism that depends on both each feature’s own value and on a nonlinear summary of the other features. For each row i
+
+and feature j, the score is 
+
+sij = 0 .6 exij + 0 .4 tanh  ex⊤ 
+
+> i
+
+W  
+
+> j
+
+, W ∈ Rp×p, Wkj ∼ N (0 , 0.32/p ), (67) where exi is the standardized row. The observation probability is P(rij = 1 | xi) = sig( sij + β0),with the intercept β0 calibrated by bisection so that the average per-entry observation rate matches the target (e.g., 80% for missing rate 0.2). To avoid degenerate corner cases we additionally enforce that every row has at least one observed entry and every column has at least one observed entry. 20 The resulting mask is non-ignorable (MNAR) because larger target coordinates, and combinations of values that activate the nonlinear coupling, are systematically more likely to be missing, so any imputer that conditions only on the observed entries (and ignores the mask) is likely to be biased. 
+
+## D Baseline methods 
+
+We compare MissBGM against seven imputation baselines that span classical statistical methods, optimal-transport-based methods, ensemble multiple imputation, and modern deep generative models. To ensure a fair comparison, every baseline operates on exactly the same standardized incomplete matrix described in Appendix C.2, sees exactly the same missingness mask as MissBGM, and uses the same random seed for shared randomness from the same data realization. All baselines are evaluated on the standardized scale, so that RMSE numbers are directly comparable across methods. 
+
+Mean. Mean imputation replaces each missing entry by the mean of the corresponding feature computed over its observed entries. It is parameter-free, computationally efficient, and serves as the simplest baseline for imputation. We use a numpy -based implementation that operates directly on the standardized matrix. 
+
+Optimal Transport (OT) OT-based imputation casts missing data completion as the problem of minimizing the entropy-regularized Sinkhorn divergence between random mini-batches of the (partially imputed) data, so that the imputed values produce a self-consistent empirical distribution. We use the OTimputer implementation from the ForestDiffusion benchmark codebase. The reg-ularization parameter ε is selected automatically using the authors’ pick_epsilon heuristic with quantile 0.5 and scale factor 0.05 . Each imputation runs the Sinkhorn loop for 3000 iterations with batch size 128 and Adam learning rate 10 −2. To produce K multiple imputations ( K = 5 as default unless otherwise specified), we re-run the procedure K times with independent random seeds and aggregate the results by averaging as the point estimate. 
+
+Iterative Conditional Equations (ICE) ICE (also known as MICE-PMM in its multiple-imputation form) repeatedly regresses each partially observed feature on all other features in a round-robin fashion, drawing imputed values from the posterior predictive distribution of the regressor. We use 
+
+IterativeImputer from scikit-learn library, a maximum of 10 outer round-robin iterations, and Bayesian Ridge regressors as the per-feature conditional models. Each of the K imputations uses an independent random seed; the imputed entries are clipped to the observed marginal range to suppress out-of-range posterior draws on heavy-tailed features. 
+
+Miceforest Miceforest implements multiple imputation by chained equations using LightGBM gradient-boosted trees as the per-feature conditional models, which makes it well suited to nonlinear feature dependencies in tabular data. We use the official miceforest.ImputationKernel as called from the ForestDiffusion driver: datasets=K parallel imputation chains seeded by a shared 
+
+random_state . The K completed datasets are then aggregated by averaging as the point estimate. 
+
+K = 5 in point estimate experiments and K = 1000 for uncertainty quantification on the synthetic benchmark. 
+
+GAIN GAIN formulates imputation as a conditional generative adversarial learning problem: a generator network completes the missing entries while a discriminator, given a hint mask, tries to identify which entries were imputed. We use the original GAIN implementation with the default hyperparameters: batch size 128 , hint rate 0.9, reconstruction-loss weight α = 100 , and 10 ,000 
+
+training iterations. The trained generator is then sampled K times based on different latent variables to produce K multiple imputations. K = 5 in point estimate experiments and K = 1000 for uncertainty quantification on the synthetic benchmark. 
+
+ForestDiffusion ForestDiffusion adapts score-based diffusion to tabular data by replacing the score neural network with a tree-based ensemble that learns to predict the noise injected at each diffusion step. Imputation is performed by running the reverse-time diffusion from Gaussian noise while clamping the observed entries to their true values at every denoising step. We use the default tabular configuration: an XGBoost backbone ( forest_model=xgboost ) under the variance-preserving SDE ( diffusion_type=vp ), with nt = 50 diffusion time steps for both training and sampling, 21 βmin = 0 .1, βmax = 8 .0, ε = 10 −3, max tree depth 7, 100 trees per step, learning rate 0.3, and a duplication factor of 100 for the noise/time pair augmentation that ForestDiffusion uses to stabilize training. Sampling produces K completed matrices that are then averaged. K = 5 in point estimate experiments and K = 1000 for uncertainty quantification on the synthetic benchmark. 
+
+TabCSDI TabCSDI is a conditional score-based diffusion model adapted to tabular data, in which the score network is a transformer trained to denoise the missing entries conditioned on the observed ones. Imputation is performed by running the conditional reverse diffusion to draw posterior samples of the missing entries. We use the official TabCSDI implementation, retaining the default network architecture, training schedule, and noise schedule, and configure the model with one numerical-feature group covering all standardized columns. K posterior completions are sampled per test matrix and averaged. K = 5 in point estimate experiments and K = 1000 for uncertainty quantification on the synthetic benchmark. 
+
+## E Experimental details 
+
+This appendix section provides additional experimental details regarding model training, testing, hyperparameters, and environment. To ensure a fair comparison across methods, we control the randomness in each dataset so that MissBGM and all baselines are trained and evaluated on exactly the same observed entries and missingness mask under the same random seed. 
+
+E.1 Model architecture Data-generating network gθ . The conditional distribution pθ (x | z) is parameterized by a fully connected network (FCN) that maps z ∈ Rd to a diagonal Gaussian over x ∈ Rp: it outputs a mean vector μθ (z) and a positive variance vector σ2 
+
+> θ
+
+(z) (softplus on the variance head plus a small floor). Hidden layers use LeakyReLU ( α = 0 .2) after each dense layer, batch normalization on the input to the first hidden block, and L2 weight decay ( 10 −4) on kernels and biases. gθ has five layers and each layer has 120 hidden units as default. 
+
+Missingness network fϕ. The Bernoulli logits for r | x are produced by a separate FCN with the same LeakyReLU/L2 structure as above. fϕ has two layers and each layer has 64 hidden units as default. 
+
+Bayesian neural network for gθ and fϕ. We provide an optional Bayesian neural network (BNN) implementation to explicitly account for model-parameter uncertainty for both gθ and fϕ. In this vari-ant, deterministic dense layers are replaced by DenseFlipout layers from TensorFlow Probability. 
+
+DenseFlipout performs variational Bayes with weight posteriors by sampling pseudo-independent sign-perturbations per example (Flipout), which yields an unbiased stochastic gradient estimator with substantially reduced gradient variance compared with naive shared-weight reparameterization. In practice, this variance reduction makes optimization more stable on mini-batches, improves training signal-to-noise, and provides better calibrated uncertainty in predictions when posterior weight samples are propagated through the imputation pipeline. 
+
+E.2 EGM initialization 
+
+Before the alternating stochastic optimization, we use an encoding generative modeling (EGM) stage [Liu et al., 2024] to obtain a stable warm start for both network parameters and latent repre-sentations. The key idea is to additionally introduce an encoder network for pretraining a coupled encoder-generator pair so that latent samples and reconstructed data are already approximately aligned in distribution, instead of starting from random weights and random latent spaces. Specifically, we first apply a simple KNN imputer with five nearest neighbors to fill the missing entries, then an auxiliary encoder network e(x) is introduced to map from the complete data space to the latent space, and a generator network g(z) is introduced to map the latent samples back to the data space x. The encoder and generator are trained jointly to minimize the adversarial loss and the cycle-consistency loss. Through adversarial matching, we desire that e(x) should match the prior distribution of the latent variables π(z), which is a standard normal distribution. The cycle-consistency loss encourages that g(e(x)) should be close to x.22 Conceptually, this EGM stage encourages the encoder and generator to learn a coherent inverse relationship, where the encoder can be seen as a shortcut function as opposed to Bayesian inference of latent variables. The EGM stage is only used to initialize the model parameters and latent variables, and the encoder e(x) will be discarded during the alternating stochastic optimization. We only run EGM initialization for 1,500 mini-batches as default, which can be typically done within 
+
+1 minute. Then we initialize each sample-specific latent variable with a forward encoder pass, 
+
+Z(0) = e(X), (68) and use these latents together with the pretrained generator as the starting point of Algorithm 1. Empirically, this warm start improves optimization stability, speeds up convergence of the alternating updates for (Z, Xmis , θ, ϕ ), and helps avoid poor local solutions that occur more often with purely random initialization. 
+
+E.3 Alternating stochastic optimization 
+
+MissBGM is trained by blockwise stochastic optimization on mini-batches. The procedure alternates between sample-specific updates, which refine the latent variables and the missing entries for the current batch, and global updates, which refine the parameters of the data model and the missingness model. This alternating structure mirrors the factorization of the joint posterior and avoids the need to optimize all unknowns simultaneously. More importantly, the alternating stochastic optimization only requires a single sample or a mini-batch of samples in each updating step, which makes it computationally efficient and scalable for large datasets. We begin by running the EGM warm-start stage described above, which provides the initial state for the alternating updates. For a given batch during training, we first perform several local refinement steps on the latent variables and missing entries while holding the global network parameters fixed. The latent update maximizes the conditional log-posterior likelihood of the latent variables, while the missing-data update maximizes the conditional log-posterior likelihood of the missing entries under the joint data and mask model. After each missing-data update, the observed coordinates are projected back to their original values so that only the unobserved entries are allowed to move. After the local refinement stage, we update the global parameters of gθ and fϕ using the current completed batch. All gradient-based updates of the latent variables, the missing entries, and the global model parameters are performed with the Adam optimizer [Kingma and Ba, 2014]. All batch losses are normalized by the feature dimension for numerical stability, and gradient clipping is used in the sample-specific steps to stabilize optimization. When Bayesian neural networks are used, the objective additionally includes the KL regularization terms associated with the variational weight posterior. Otherwise the updates reduce to stochastic gradient descent. In all cases, training proceeds by repeating this local-global alternation until the number of epochs is reached. The detailed algorithm is summarized in Algorithm 1. 
+
+E.4 Posterior inference and uncertainty quantification Inference on the training data. In our imputation setting, posterior inference is most often performed on the same incomplete dataset used for training. In this case, no additional optimization is required. The alternating stochastic optimization already returns a completed data matrix at convergence, and this terminal state serves as the default point estimate. If posterior uncertainty is further required, we directly launch MCMC from the fitted terminal state while keeping the global parameters fixed. 
+
+Inference on a new dataset. When the test data differ from the training data, we keep the fitted global parameters (θ, ϕ ) unchanged and update only the sample-specific latent variables and missing entries for the new dataset. Starting from a simple initial completion, we run the same local alternating refinement steps as in training, namely latent updates and missing-data updates, but without modifying the global model parameters. This produces a dataset-specific MAP state, which serves both as the point estimate for the new incomplete data and as the starting point for posterior sampling when uncertainty quantification is requested. 
+
+Posterior sampling. Given either the fitted training state or the dataset-specific MAP state, we approximate the conditional posterior by an HMC-within-Gibbs sampler. Each sweep alternates 23 Algorithm 1 Alternating stochastic optimization for MissBGM. 
+
+Require: Incomplete data matrix Xobs , observation mask R, number of epochs T , mini-batch size 
+
+B, number of inner refinement steps K, learning rates η1 for latent-variable and missing-value updates and η2 for global parameter updates  
+
+> 1:
+
+Run EGM warm-start to initialize the model parameters and (Z(0) , X(0) ) 
+
+> 2:
+
+Set the initial state (Z, X) ← (Z(0) , X(0) ) 
+
+> 3:
+
+for t = 1 , 2, . . . , T do  
+
+> 4:
+
+Randomly shuffle the data and split them into mini-batches B of size at most B 
+
+> 5:
+
+for each mini-batch B do  
+
+> 6:
+
+for k = 1 , 2, . . . , K do  
+
+> 7:
+
+Update the batch latent variables by 
+
+ZB ← ZB − η1 ∇ZB Lz (B),
+
+where Lz (B) is the mini-batch latent objective induced by Eq. (6)  
+
+> 8:
+
+Update the batch missing entries by 
+
+Xmis ,B ← Xmis ,B − η1 ∇Xmis ,B Lxmis (B),
+
+where Lxmis (B) is the mini-batch missing-data objective induced by Eq. (8)  
+
+> 9:
+
+end for  
+
+> 10:
+
+Update the data-model parameters by stochastic gradient ascent on the ELBO, 
+
+θ ← θ + η2 ∇θ Lθ (B), 
+
+> 11:
+
+Update the missingness-model parameters by 
+
+ϕ ← ϕ + η2 ∇ϕLϕ(B),
+
+where Lθ and Lϕ are the corresponding mini-batch ELBO in Eq. (10)  
+
+> 12:
+
+end for  
+
+> 13:
+
+end for  
+
+> 14:
+
+return fitted parameters (θ, ϕ ) and final state (Z, X)
+
+between updating the latent variables conditional on the current completed data and updating the missing entries conditional on the current latent state and observed coordinates. The resulting sampler is therefore a posterior refinement of the deterministic estimate produced by alternating stochastic optimization, rather than a separate inference procedure. 
+
+Posterior summaries. After discarding burn-in iterations, we retain Monte Carlo draws of the completed data matrix and summarize them through posterior means and empirical prediction intervals for the missing entries. In the main experiments, we use 1000 burn-in iterations and retain 
+
+1000 posterior draws, with initial step size 0.1 and 5 leapfrog steps. 
+
+E.5 Model hyperparameters 
+
+Table 6 summarizes the main MissBGM hyperparameters used in the main experiments. Dataset-specific YAML files may override few entries for particular small or large datesets. For ex-ample, we use z_dim=10 , egm_init.n_iter=5000 for the largest Gisette dataset, and use 
+
+g_units=[120,120,120] for the smallest Wine dataset to keep the model simple and stable. The 
+
+epochs is set to 50 for all simulation benchmark experiments. Overall, the model is robust to the choice of hyperparameters for datasets with varying sample sizes and feature dimensions. The EGM encoder architecture is chosen as a rough mirror of the generator gθ (e.g., reversing the layer widths in g_units ), which stabilizes initialization and reduces the need for manual tuning. When the underlying data distribution is complex (large p, strong nonlinearity, or multi-modality), using a larger latent dimension z_dim makes more sense to improve fit and downstream imputation quality, at the cost of additional compute. In our experiments, we find that setting zdim = 5 by default is across-the-board effective for most datasets. 24 Table 6: MissBGM main hyperparameters.                                                                              
+
+> Hyperparameter Explanation Default
+> z_dim Dimension of the latent variable z.5
+> epochs Number of outer training epochs. 200
+> batch_size Minibatch size used for stochastic training updates. 16
+> beta Weight on the missingness-model term in Eq. (8). 0.01
+> g_units Hidden-layer widths of gθ.[120 ,120 ,120 ,120 ,120]
+> missingness_units Hidden-layer widths of fϕ.[64 ,64]
+> lr_theta Learning rate for updating θ.0.005
+> lr_phi Learning rate for updating ϕ.0.005
+> lr_z Learning rate for updating Z.0.002
+> lr_x Learning rate for updating Xmis .0.002
+> n_inner_steps Number of inner updates of Zand Xmis per minibatch. 3
+> use_bnn Whether to use BNNs false kl_weight Weight τon the KL regularization 5×10 −5
+> test_epochs Number of test epochs before MCMC refinement. 30
+> egm_init.enabled Whether to apply EGM initialization. true egm_init.n_iter Number of mini-batches in EGM initialization. 1500
+> egm_init.e_units Hidden-layer widths of encoder in EGM. [120 ,120 ,120 ,120 ,120]
+> egm_init.dz_units Hidden-layer widths of latent discriminator in EGM. [64 ,32 ,8]
+> egm_init.dx_units Hidden-layer widths of data discriminator in EGM. [64 ,32 ,8]
+> posterior.alpha Significance level for posterior prediction intervals. 0.05
+> posterior.n_mcmc Number of retained posterior draws after burn-in. 1000
+> posterior.burn_in Number of warm-up iterations in MCMC. 1000
+> posterior.step_size Initial step size in MCMC. 0.1
+
+E.6 Experimental environment 
+
+MissBGM was implemented in Python using TensorFlow for neural network modeling and alternat-ing stochastic optimization, and TensorFlow Probability (TFP) [Dillon et al., 2017] for Bayesian neural networks and HMC-within-Gibbs posterior sampling. Note that the posterior inference for one sample is independent of other samples, so the Markov chains of all test samples are run in parallel using TFP for efficiency. All benchmark experiments were conducted on a Linux-based high-performance computing cluster managed by Slurm . The GPU compute nodes used in our experiments were equipped with NVIDIA RTX 5000 Ada GPUs and dual-socket CPUs (48 CPU cores per node in total). For each experiment, we requested a maximum wall-clock time of 7 days and 300 GB of memory. We only used one GPU per experiment for deep learning models. 
+
+## F Software usage for MissBGM 
+
+This section provides an example showing how to use MissBGM on a synthetic dataset. The code first loads a YAML configuration file into params , which contains model and inference hyperparameters such as network widths, learning rates, and MCMC settings, etc. It then prepares an incomplete dataset data : the main input to MissBGM is the partially observed matrix x_obs ∈ Rn×p, with missing entries encoded as np.nan ; the optional binary mask mask ∈ { 0, 1}n×p records which entries are observed (will be inferred from x_obs if not provided), and the optional complete data matrix 
+
+x_full for evaluation only. The call MissBGM(params, random_seed=42) initializes the model, and model.fit(...) trains it using x_obs and mask . After fitting, model.x_map_imputed_ 
+
+stores the MAP completed data matrix, while model.predict(...) returns posterior summaries, including posterior-mean imputations and prediction intervals for all the missing entries. Note that the argument x_true is only used for internal evaluation and can be set to None . The argument mask 
+
+can be automatically inferred from x_obs by setting it to None .The example below illustrates running MissBGM on the synthetic benchmark, including model instantialization, model training and posterior-sampling inference. 25 Example: run MissBGM on a synthetic dataset 
+
+> import yaml from missbgm.models import MissBGM from missbgm.datasets import simulate_mnar_oracle_data params = yaml.safe_load(open("configs/MNAR_oracle.yaml", "r")) data = simulate_mnar_oracle_data( n_samples=500, x_dim=50 )# Instantiate the MissBGM model with the configuration model = MissBGM(params, random_seed=42) # Train the MissBGM model model.fit(data=data["x_obs"], mask=data["mask"], x_true=data["x_full"]) # Get the MAP imputation map_imputed = model.x_map_imputed_ # Make posterior predictions with uncertainty quantification mcmc_imputed, intervals = model.predict( data=data["x_obs"], mask=data["mask"], x_true=data["x_full"], alpha=0.05 )
+
+In this example, simulate_mnar_oracle_data returns the observed matrix x_obs (the missing entries are all np.nan ), the binary missingness mask mask , and the complete synthetic ground truth 
+
+x_full . The call to model.fit(...) runs EGM initialization, followed by the alternating stochastic optimization procedure. The subsequent call to model.predict(...) returns the posterior mean imputation and the corresponding posterior prediction intervals for the missing entries. Note that the argument x_true is only used for internal evaluation and can be set to None . The argument mask 
+
+can be automatically inferred from x_obs by setting it to None .When posterior inference is performed on the same incomplete dataset used for training, as in the example above, MissBGM directly reuses the fitted training state and does not re-optimize the global parameters. If uncertainty quantification is not needed, one may stop after training and use the fitted state as the default point estimate. If uncertainty quantification is desired, posterior sampling can then be launched through predict(...) .
+
+## G Effect of missing rate and sample size 
+
+To complement Figure 2(b), which reports the missing-rate experiment at n = 5000 , we provide the corresponding curves for three additional sample sizes, namely n ∈ { 500 , 1000 , 10000 }. In all cases, we fix p = 50 and vary the missing rate only. These additional plots show that the qualitative conclusions are stable across sample sizes. MissBGM remains the strongest method overall. A second consistent pattern is that the RMSE curves are not strictly monotone in the missing rate. Instead, most methods exhibit a broad U-shaped trend, with the lowest RMSE often attained at moderate missingness levels and larger errors reappearing at high missingness rates. This behavior is consistent with the synthetic data construction and the discussion in Appendix C.1. Overall, the figures below reinforce the conclusion from Figure 2(b): MissBGM is robust to substantial changes in missingness severity. 
+
+## H Running time 
+
+Figure 6 reports the running time of all compared methods on a representative synthetic benchmark with moderate complexity settings ( n = 5000 , p = 200 , and missing rate r = 0 .2). The y-axis is 26 Figure 3: RMSE with different missing rate on the synthetic benchmark with n = 500 and p = 50 .
+
+Figure 4: RMSE with different missing rate on the synthetic benchmark with n = 1000 and p = 50 .shown on a logarithmic scale as running time spans different orders of magnitude, from seconds to days. Mean imputation finishes in seconds while OT and ICE both complete in less than 10 minutes. Miceforest requires 215 .6 minutes, which is already more than one order of magnitude slower than MissBGM due to the repeated fitting of conditional models for each feature across multiple iterations. The diffusion-based methods are substantially more expensive. ForestDiffusion requires 17 .9 hours and TabCSDI requires 48 .4 hours. Therefore, although MissBGM jointly models both the data-generating process and the missingness mechanism and additionally supports uncertainty quantification, its computational cost remains mod-erate relative to other deep learning-based imputers. In particular, MissBGM is roughly comparable to GAIN, but substantially faster than miceforest and diffusion-based methods. 
+
+## I Effect of Bayesian neural networks 
+
+To complement the main experiments, we evaluate MissBGM with Bayesian neural networks (BNNs) on the synthetic benchmark. We use the same data-generating process and experimental protocol as in Table 1, but replace the deterministic networks gθ and fϕ with their BNN counterparts (implemented via variational Bayes) by setting use_bnn=True . We report results for three missing rates r = 0 .3
+
+and sample sizes n ∈ { 500 , 1000 , 5000 , 10000 }. Overall, the BNNs achieve comparable or slightly worse performance than the deterministic networks. 27 Figure 5: RMSE with different missing rate on the synthetic benchmark with n = 10000 and p = 50 .
+
+Figure 6: Running time comparison across imputation methods on a representative synthetic bench-mark with moderate complexity settings ( n = 5000 , p = 200 ). Table 7: Effect of Bayesian neural networks (BNNs) on the synthetic benchmark at missing rate 
+
+r = 0 .3. We report mean (s.d.) RMSE over 10 runs.             
+
+> Method Size=500 Size=1000 Size=5000 Size=10000
+> MissBGM w/o BNN 1.620 (0.011) 1.568 (0.009) 1.599 (0.010) 1.562 (0.006)
+> MissBGM w/ BNN 1.632 (0.017) 1.570 (0.012) 1.592 (0.012) 1.564 (0.008)
+
+28
