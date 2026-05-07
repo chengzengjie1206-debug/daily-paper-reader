@@ -6,40 +6,43 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-06
-- 运行时间：2026-05-06 21:10:10 UTC
+- 最新运行日期：2026-05-07
+- 运行时间：2026-05-07 20:35:08 UTC
 - 运行状态：成功
-- 本次总论文数：6
-- 精读区：4
-- 速读区：2
+- 本次总论文数：7
+- 精读区：3
+- 速读区：4
 
 ### 今日简报（AI）
-今日深度复盘 6 篇时序预测前沿论文，重点攻克多变量建模架构与数据缺失处理的底层逻辑。
-推荐研读 9 分佳作 PAMNet 的周期感知调制技术，并同步反思缺失值预测对模型性能的真实影响。
-建议从物理特性建模与数据质量评估两个维度，重新审视并优化现有的时序预测工作流。
-- 详情：[/202605/06/README](/202605/06/README)
+今日深度解析 7 篇时序前沿论文，重点突破不规则多元序列预测与多模态卫星数据融合技术。
+满分论文揭示了概率电路在处理复杂序列中的巨大潜力，同时深度生成模型为遥感数据加密提供了新方案。
+建议同步关注金融推理与图结构序列的可靠性研究，探索 AI 在垂直领域的落地可能。
+- 详情：[/202605/07/README](/202605/07/README)
 
 ### 精读区论文标签
-1. [PAMNet: Cycle-aware Phase-Amplitude Modulation Network for Multivariate Time Series Forecasting](/202605/06/2605.02938v1-pamnet-cycle-aware-phase-amplitude-modulation-network-for-multivariate-time-series-forecasting)  
+1. [Probabilistic Circuits for Irregular Multivariate Time Series Forecasting](/202605/07/2604.27814v2-probabilistic-circuits-for-irregular-multivariate-time-series-forecasting)  
+   标签：评分：10.0/10、query:ts
+   evidence：用于不规则多变量时间序列预测的概率电路
+2. [Densification and forecasting of Sentinel-2 time series from multimodal SAR and Optical satellite data using deep generative models](/202605/07/2605.04239v1-densification-and-forecasting-of-sentinel-2-time-series-from-multimodal-sar-and-optical-satellite-data-using-deep-generative-models)  
    标签：评分：9.0/10、query:ts
-   evidence：最先进的多元时间序列预测
-2. [Predicting missing values: A good idea?](/202605/06/2605.03733v1-predicting-missing-values-a-good-idea)  
+   evidence：不规则卫星时间序列的加密与预测
+3. [A Hierarchical Agent System with Reinforcement Learning for Multivariate Time Series Data Cleaning](/202605/07/2605.04902v1-a-hierarchical-agent-system-with-reinforcement-learning-for-multivariate-time-series-data-cleaning)  
    标签：评分：9.0/10、query:ts
-   evidence：缺失值填补与偏差减少
-3. [ABC: Any-Subset Autoregression via Non-Markovian Diffusion Bridges in Continuous Time and Space](/202605/06/2604.27443v2-abc-any-subset-autoregression-via-non-markovian-diffusion-bridges-in-continuous-time-and-space)  
-   标签：评分：8.0/10、query:ts
-   evidence：基于任意子集和不规则时间步的条件生成
-4. [Training-Free Probabilistic Time-Series Forecasting with Conformal Seasonal Pools](/202605/06/2605.03789v1-training-free-probabilistic-time-series-forecasting-with-conformal-seasonal-pools)  
-   标签：评分：8.0/10、query:ts
-   evidence：最先进的概率预测基准测试
+   evidence：清洗多变量时间序列中的缺失值
 
 ### 速读区论文标签
-1. [Graph Convolutional Support Vector Regression for Robust Spatiotemporal Forecasting of Urban Air Pollution](/202605/06/2605.03795v1-graph-convolutional-support-vector-regression-for-robust-spatiotemporal-forecasting-of-urban-air-pollution)  
+1. [FinSTaR: Towards Financial Reasoning with Time Series Reasoning Models](/202605/07/2605.03460v1-finstar-towards-financial-reasoning-with-time-series-reasoning-models)  
    标签：评分：7.0/10、query:ts
-   evidence：针对异常观测的鲁棒时空预测
-2. [Global and Local Topology-Aware Attention with Persistent Homology and Euler Biases for Time-Series Forecasting](/202605/06/2605.03163v1-global-and-local-topology-aware-attention-with-persistent-homology-and-euler-biases-for-time-series-forecasting)  
-   标签：评分：6.0/10、query:ts
-   evidence：针对时间序列中不规则几何结构的拓扑感知注意力机制
+   evidence：时间序列推理与预测模型
+2. [Learning Time-Inhomogeneous Markov Dynamics in Financial Time Series via Neural Parameterization](/202605/07/2605.04690v1-learning-time-inhomogeneous-markov-dynamics-in-financial-time-series-via-neural-parameterization)  
+   标签：评分：7.0/10、query:ts
+   evidence：非平稳金融时序的神经参数化
+3. [Delving into Non-Exchangeability for Conformal Prediction in Graph-Structured Multivariate Time Series](/202605/07/2605.04957v1-delving-into-non-exchangeability-for-conformal-prediction-in-graph-structured-multivariate-time-series)  
+   标签：评分：7.0/10、query:ts
+   evidence：多变量时间序列的不确定性量化
+4. [Superposition Is Not Necessary: A Mechanistic Interpretability Analysis of Transformer Representations for Time Series Forecasting](/202605/07/2605.05151v1-superposition-is-not-necessary-a-mechanistic-interpretability-analysis-of-transformer-representations-for-time-series-forecasting)  
+   标签：评分：7.0/10、query:ts
+   evidence：对最先进Transformer预测模型表示的分析
 
 
 <div class="dpr-home-promo-card">
