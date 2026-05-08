@@ -6,43 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-07
-- 运行时间：2026-05-07 20:35:08 UTC
+- 最新运行日期：2026-05-08
+- 运行时间：2026-05-08 20:42:57 UTC
 - 运行状态：成功
-- 本次总论文数：7
-- 精读区：3
-- 速读区：4
+- 本次总论文数：11
+- 精读区：6
+- 速读区：5
 
 ### 今日简报（AI）
-今日深度解析 7 篇时序前沿论文，重点突破不规则多元序列预测与多模态卫星数据融合技术。
-满分论文揭示了概率电路在处理复杂序列中的巨大潜力，同时深度生成模型为遥感数据加密提供了新方案。
-建议同步关注金融推理与图结构序列的可靠性研究，探索 AI 在垂直领域的落地可能。
-- 详情：[/202605/07/README](/202605/07/README)
+今日深度研读 11 篇论文，聚焦自回归建模优化与多变量时序数据的智能化清洗。
+重点推荐满分论文提出的无序自回归模型及 AegisTS 强化学习 Agent 清洗系统。
+建议关注层级化智能体与可解释性 KAN 预测在处理复杂、缺失数据时的实战价值。
+- 详情：[/202605/08/README](/202605/08/README)
 
 ### 精读区论文标签
-1. [Probabilistic Circuits for Irregular Multivariate Time Series Forecasting](/202605/07/2604.27814v2-probabilistic-circuits-for-irregular-multivariate-time-series-forecasting)  
+1. [Order-Agnostic Autoregressive Modelling with Missing Data](/202605/08/2605.06355v1-order-agnostic-autoregressive-modelling-with-missing-data)  
    标签：评分：10.0/10、query:ts
-   evidence：用于不规则多变量时间序列预测的概率电路
-2. [Densification and forecasting of Sentinel-2 time series from multimodal SAR and Optical satellite data using deep generative models](/202605/07/2605.04239v1-densification-and-forecasting-of-sentinel-2-time-series-from-multimodal-sar-and-optical-satellite-data-using-deep-generative-models)  
+   evidence：存在缺失数据的自回归建模
+2. [AegisTS: A Hierarchical Agent System with Reinforcement Learning for Multivariate Time Series Data Cleaning](/202605/08/2605.04902v2-aegists-a-hierarchical-agent-system-with-reinforcement-learning-for-multivariate-time-series-data-cleaning)  
    标签：评分：9.0/10、query:ts
-   evidence：不规则卫星时间序列的加密与预测
-3. [A Hierarchical Agent System with Reinforcement Learning for Multivariate Time Series Data Cleaning](/202605/07/2605.04902v1-a-hierarchical-agent-system-with-reinforcement-learning-for-multivariate-time-series-data-cleaning)  
+   evidence：清理含有缺失值的多变量时间序列
+3. [AirQualityBench: A Realistic Evaluation Benchmark for Global Air Quality Forecasting](/202605/08/2605.05854v1-airqualitybench-a-realistic-evaluation-benchmark-for-global-air-quality-forecasting)  
    标签：评分：9.0/10、query:ts
-   evidence：清洗多变量时间序列中的缺失值
+   evidence：具有结构化缺失和原始观测掩码的预测基准
+4. [Towards Scalable One-Step Generative Modeling for Autoregressive Dynamical System Forecasting](/202605/08/2605.05540v1-towards-scalable-one-step-generative-modeling-for-autoregressive-dynamical-system-forecasting)  
+   标签：评分：8.0/10、query:ts
+   evidence：自回归预测的长期不变时空一致性
+5. [Does Synthetic Data Help? Empirical Evidence from Deep Learning Time Series Forecasters](/202605/08/2605.06032v1-does-synthetic-data-help-empirical-evidence-from-deep-learning-time-series-forecasters)  
+   标签：评分：8.0/10、query:ts
+   evidence：评估了 iTransformer 和 PatchTST 等最先进的深度学习预测模型
+6. [Perceive, Route and Modulate: Dynamic Pattern Recalibration for Time Series Forecasting](/202605/08/2605.06310v1-perceive-route-and-modulate-dynamic-pattern-recalibration-for-time-series-forecasting)  
+   标签：评分：8.0/10、query:ts
+   evidence：时间序列预测的动态模式重新校准
 
 ### 速读区论文标签
-1. [FinSTaR: Towards Financial Reasoning with Time Series Reasoning Models](/202605/07/2605.03460v1-finstar-towards-financial-reasoning-with-time-series-reasoning-models)  
+1. [A multivariate Birnbaum-Saunders autoregressive moving average model with application to air pollution concentration data](/202605/08/2605.04211v1-a-multivariate-birnbaum-saunders-autoregressive-moving-average-model-with-application-to-air-pollution-concentration-data)  
    标签：评分：7.0/10、query:ts
-   evidence：时间序列推理与预测模型
-2. [Learning Time-Inhomogeneous Markov Dynamics in Financial Time Series via Neural Parameterization](/202605/07/2605.04690v1-learning-time-inhomogeneous-markov-dynamics-in-financial-time-series-via-neural-parameterization)  
+   evidence：用于时间序列的多变量自回归移动平均模型
+2. [Forecasting Oncology Demand Trends with Boosting-Based Bayesian Conjugate Models](/202605/08/2605.05270v1-forecasting-oncology-demand-trends-with-boosting-based-bayesian-conjugate-models)  
    标签：评分：7.0/10、query:ts
-   evidence：非平稳金融时序的神经参数化
-3. [Delving into Non-Exchangeability for Conformal Prediction in Graph-Structured Multivariate Time Series](/202605/07/2605.04957v1-delving-into-non-exchangeability-for-conformal-prediction-in-graph-structured-multivariate-time-series)  
+   evidence：用于跟踪短期和长期趋势变化的贝叶斯框架
+3. [Temporal Functional Circuits: From Spline Plots to Faithful Explanations in KAN Forecasting](/202605/08/2605.05685v1-temporal-functional-circuits-from-spline-plots-to-faithful-explanations-in-kan-forecasting)  
    标签：评分：7.0/10、query:ts
-   evidence：多变量时间序列的不确定性量化
-4. [Superposition Is Not Necessary: A Mechanistic Interpretability Analysis of Transformer Representations for Time Series Forecasting](/202605/07/2605.05151v1-superposition-is-not-necessary-a-mechanistic-interpretability-analysis-of-transformer-representations-for-time-series-forecasting)  
+   evidence：可解释的 KAN 预测模型
+4. [SDFlow: Similarity-Driven Flow Matching for Time Series Generation](/202605/08/2605.05736v1-sdflow-similarity-driven-flow-matching-for-time-series-generation)  
    标签：评分：7.0/10、query:ts
-   evidence：对最先进Transformer预测模型表示的分析
+   evidence：长周期生成与曝光偏差
+5. [TimeTok: Granularity-Controllable Time-Series Generation via Hierarchical Tokenization](/202605/08/2605.01418v1-timetok-granularity-controllable-time-series-generation-via-hierarchical-tokenization)  
+   标签：评分：6.0/10、query:ts
+   evidence：粒度可控的时序生成
 
 
 <div class="dpr-home-promo-card">
