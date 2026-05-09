@@ -6,55 +6,30 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-08
-- 运行时间：2026-05-08 20:42:57 UTC
+- 最新运行日期：2026-05-09
+- 运行时间：2026-05-09 20:35:15 UTC
 - 运行状态：成功
-- 本次总论文数：11
-- 精读区：6
-- 速读区：5
+- 本次总论文数：3
+- 精读区：2
+- 速读区：1
 
 ### 今日简报（AI）
-今日深度研读 11 篇论文，聚焦自回归建模优化与多变量时序数据的智能化清洗。
-重点推荐满分论文提出的无序自回归模型及 AegisTS 强化学习 Agent 清洗系统。
-建议关注层级化智能体与可解释性 KAN 预测在处理复杂、缺失数据时的实战价值。
-- 详情：[/202605/08/README](/202605/08/README)
+今日聚焦 LLM 驱动的医疗因果推断与抗噪时空降雨估算，深度解析复杂时序场景下的建模突破。
+重点关注利用进化 LLM 解决医疗数据非随机缺失难题，以及通过神经过程提升降雨
+- 详情：[/202605/09/README](/202605/09/README)
 
 ### 精读区论文标签
-1. [Order-Agnostic Autoregressive Modelling with Missing Data](/202605/08/2605.06355v1-order-agnostic-autoregressive-modelling-with-missing-data)  
-   标签：评分：10.0/10、query:ts
-   evidence：存在缺失数据的自回归建模
-2. [AegisTS: A Hierarchical Agent System with Reinforcement Learning for Multivariate Time Series Data Cleaning](/202605/08/2605.04902v2-aegists-a-hierarchical-agent-system-with-reinforcement-learning-for-multivariate-time-series-data-cleaning)  
+1. [Joint Treatment Effect Estimation from Incomplete Healthcare Data: Temporal Causal Normalizing Flows with LLM-driven Evolutionary MNAR Imputation](/202605/09/2605.05125v1-joint-treatment-effect-estimation-from-incomplete-healthcare-data-temporal-causal-normalizing-flows-with-llm-driven-evolutionary-mnar-imputation)  
    标签：评分：9.0/10、query:ts
-   evidence：清理含有缺失值的多变量时间序列
-3. [AirQualityBench: A Realistic Evaluation Benchmark for Global Air Quality Forecasting](/202605/08/2605.05854v1-airqualitybench-a-realistic-evaluation-benchmark-for-global-air-quality-forecasting)  
-   标签：评分：9.0/10、query:ts
-   evidence：具有结构化缺失和原始观测掩码的预测基准
-4. [Towards Scalable One-Step Generative Modeling for Autoregressive Dynamical System Forecasting](/202605/08/2605.05540v1-towards-scalable-one-step-generative-modeling-for-autoregressive-dynamical-system-forecasting)  
+   evidence：不完整纵向电子健康档案中的插补与时间结构
+2. [From Drops to Grid: Noise-Aware Spatio-Temporal Neural Process for Rainfall Estimation](/202605/09/2605.05912v1-from-drops-to-grid-noise-aware-spatio-temporal-neural-process-for-rainfall-estimation)  
    标签：评分：8.0/10、query:ts
-   evidence：自回归预测的长期不变时空一致性
-5. [Does Synthetic Data Help? Empirical Evidence from Deep Learning Time Series Forecasters](/202605/08/2605.06032v1-does-synthetic-data-help-empirical-evidence-from-deep-learning-time-series-forecasters)  
-   标签：评分：8.0/10、query:ts
-   evidence：评估了 iTransformer 和 PatchTST 等最先进的深度学习预测模型
-6. [Perceive, Route and Modulate: Dynamic Pattern Recalibration for Time Series Forecasting](/202605/08/2605.06310v1-perceive-route-and-modulate-dynamic-pattern-recalibration-for-time-series-forecasting)  
-   标签：评分：8.0/10、query:ts
-   evidence：时间序列预测的动态模式重新校准
+   evidence：融合来自不规则分布站点的序列
 
 ### 速读区论文标签
-1. [A multivariate Birnbaum-Saunders autoregressive moving average model with application to air pollution concentration data](/202605/08/2605.04211v1-a-multivariate-birnbaum-saunders-autoregressive-moving-average-model-with-application-to-air-pollution-concentration-data)  
-   标签：评分：7.0/10、query:ts
-   evidence：用于时间序列的多变量自回归移动平均模型
-2. [Forecasting Oncology Demand Trends with Boosting-Based Bayesian Conjugate Models](/202605/08/2605.05270v1-forecasting-oncology-demand-trends-with-boosting-based-bayesian-conjugate-models)  
-   标签：评分：7.0/10、query:ts
-   evidence：用于跟踪短期和长期趋势变化的贝叶斯框架
-3. [Temporal Functional Circuits: From Spline Plots to Faithful Explanations in KAN Forecasting](/202605/08/2605.05685v1-temporal-functional-circuits-from-spline-plots-to-faithful-explanations-in-kan-forecasting)  
-   标签：评分：7.0/10、query:ts
-   evidence：可解释的 KAN 预测模型
-4. [SDFlow: Similarity-Driven Flow Matching for Time Series Generation](/202605/08/2605.05736v1-sdflow-similarity-driven-flow-matching-for-time-series-generation)  
-   标签：评分：7.0/10、query:ts
-   evidence：长周期生成与曝光偏差
-5. [TimeTok: Granularity-Controllable Time-Series Generation via Hierarchical Tokenization](/202605/08/2605.01418v1-timetok-granularity-controllable-time-series-generation-via-hierarchical-tokenization)  
+1. [Local Truncation Error-Guided Neural ODEs for Large Scale Traffic Forecasting](/202605/09/2605.03386v1-local-truncation-error-guided-neural-odes-for-large-scale-traffic-forecasting)  
    标签：评分：6.0/10、query:ts
-   evidence：粒度可控的时序生成
+   evidence：用于大规模交通预测的神经常微分方程
 
 
 <div class="dpr-home-promo-card">
