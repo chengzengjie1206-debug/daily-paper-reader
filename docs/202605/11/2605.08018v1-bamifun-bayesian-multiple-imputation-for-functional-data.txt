@@ -1,0 +1,687 @@
+Title: BAMIFun: Bayesian Multiple Imputation for Functional Data
+
+URL Source: https://arxiv.org/pdf/2605.08018v1
+
+Published Time: Mon, 11 May 2026 01:33:51 GMT
+
+Number of Pages: 29
+
+Markdown Content:
+# BAMIFun: Bayesian Multiple Imputation for Functional Data 
+
+# Ziren Jiang, Lei Xuan, Eric F. Lock, Erjia Cui ∗
+
+# Division of Biostatistics, University of Minnesota 
+
+Abstract 
+
+Missing data are pervasive in modern functional datasets, where trajectories are of-ten sparsely or irregularly observed. Although Functional Principal Component Anal-ysis (FPCA) is widely used to reconstruct incomplete curves, existing FPCA-based approaches typically employ single imputation, leading to overly optimistic inferences in downstream analyses. To address these challenges, we develop a novel Bayesian mul-tiple imputation framework for functional data (BAMIFun). For single-level functional data, we impose a Bayesian low-rank model that incorporates penalized spline represen-tations to enforce smoothness of eigenfunctions and derive an efficient Gibbs sampler algorithm for posterior computation. In addition, we demonstrate and validate how to properly account for the estimation uncertainties in downstream analysis. Furthermore, we extend the framework to multiway functional data using a low-rank Functional Ten-sor Singular Value Decomposition (FTSVD) model, enabling Bayesian multiple impu-tation in settings not supported by existing methods. Simulation studies show that, compared to existing methods, BAMIFun achieves accurate imputation while providing substantially improved coverage and more reliable downstream inference. Case studies using a physical activity dataset and an infant gut microbiome dataset further demon-strate the practical advantages of our proposed methods under severe missingness. Code for our algorithms is available at https://github.com/ZirenJiang/BAMIFun. 
+
+Keywords— Functional data analysis, missing data, Bayesian inference, multiway functional data, multiway data. 
+
+> ∗
+
+corresponding author: ecui@umn.edu 
+
+1
+
+> arXiv:2605.08018v1 [stat.ME] 8 May 2026
+
+# 1 Introduction 
+
+Functional data are often observed on sparse and/or irregular grids. (Huang and Kao, 2025). A wide range of methods has been developed for modeling such data, including functional principal component analysis (FPCA) (Yao et al., 2005), Bayesian approaches for joint registration and curve estimation (Matuk et al., 2022), and more recent methods based on matrix completion (Kidzi´ nski and Hastie, 2024), among others. Despite these advances, the statistical analysis of sparsely or irregularly observed functional data remains challenging. Major difficulties include the implicit reliance of many methods on dense-design assumptions (Kong et al., 2016), the limited availability of software specifically designed for sparse functional data (Wood and Wood, 2015; Beyaztas and Shang, 2025; Centofanti et al., 2022; Febrero-Bande and De La Fuente, 2012), and substantial performance degradation under severe missingness (Di et al., 2009; Greven et al., 2011). A common approach to handling sparse or irregular functional data is to impute missing observations and reconstruct subject-specific trajectories on a regular grid, a method first proposed by Yao et al. (2005) using FPCA. Specifically, they reconstruct each trajectory by estimating principal component scores via conditional expectations. Under the Gaussian assumption, predictions are achieved using the best linear unbiased predictions (BLUPs). This FPCA-based approach has since been extended to multilevel (Di et al., 2009; Zipunnikov et al., 2011; Di et al., 2014; Cui et al., 2023), longitudinal (Greven et al., 2011; Zipunnikov et al., 2014), structural (Shou et al., 2015; Lin et al., 2024), and multivariate (Chiou et al., 2014; Happ and Greven, 2018) settings. In what follows, we refer to this type of method as the “PACE approach”, as coined in their original paper (Yao et al., 2005). The PACE approach produces a single imputed value at each missing location without uncertainty quantification, hence belonging to the “single imputation” approaches. Because single imputation treats the reconstructed trajectories as the truth, the uncertainty measures in downstream analyses 2can often be overly optimistic, particularly in cases of severe sparsity (Rao and Reimherr, 2021; Petrovich et al., 2022). In contrast, the multiple imputation framework (Rubin, 1996; Schafer, 1999) explicitly incorporates the imputation uncertainty by generating multiple plausible completions of the missing functional observations. The variability among these completed datasets reflects the uncertainty inherent in the imputation process, leading to more valid inference for the downstream analysis. Several multiple imputation approaches have been proposed for sparse functional data. Specifically, Petrovich et al. (2022) introduced a frequentist multiple impu-tation procedure that leverages information from a scalar outcome, assuming a generalized additive model linking the functional covariates to the outcome and drawing imputations from the corresponding conditional distribution. Rao and Reimherr (2021) adapted the miss-Forest algorithm to accommodate functional covariates with functional-specific preprocessing and PACE-based initializations. He et al. (2011) modeled functional and scalar covariates jointly through a functional mixed-effects framework and developed a Bayesian multiple imputation strategy via Gibbs sampling. Jang et al. (2021) proposed a Bayesian multiple imputation method for bivariate functional data that exploits the correlation structure be-tween the two functional predictors. Although effective in their respective contexts, these multiple imputation approaches all require additional observed information, such as scalar outcomes, scalar covariates, or supplementary functional variables during their imputation process. Furthermore, most existing methods focus on single-level functional data, and their performance on more complex structures remains unknown. Thus, the multiple imputation for sparse functional data remains underdeveloped. Exist-ing methodologies often leverage auxiliary information for imputation. When such auxiliary information is unavailable or when its relationship with the functional data is misspecified, the imputation performance becomes questionable. In addition, we are not aware of any ex-3isting multiple imputation method for more complex functional data structure, such as the multiway functional data. Multiway data, also referred to as multi-dimensional tensor data, consist of observations indexed over more than two modes (e.g., subject × feature × visit) and arise naturally in modern applications such as neuroimaging (Lynch and Chen, 2018), wearable devices (Leroux et al., 2024), and genomics (Li and Lock, 2025). When one of these modes is a continuum such as time or space, the data become multiway functional. Recently, Jiang, Li and Lock (2025) proposed a Bayesian multiple imputation algorithm for tensor arrays (BAMITA), which imputes tensor data via a low-rank CANDECOMP/PARAFAC (CP) decomposition. However, BAMITA is designed for discrete tensor arrays and does not incorporate the smoothness constraints required for functional data. To fill in these critical methodological gaps for multiple imputations of functional data, we develop BAMIFun: a Bayesian multiple imputation framework for functional data. Specifi-cally, our model (1) embeds penalized splines within a Bayesian multiple imputation frame-work to enforce trajectory smoothness while jointly quantifying uncertainty in the eigenfunc-tions; (2) performs multiple imputation for single-level functional data via a low-rank FPCA representation and supports valid downstream inference by combining estimates across impu-tations using Rubin’s rules; and (3) provides, to our knowledge, the first multiple imputation procedure for the multiway functional data by developing a Bayesian sampler for the func-tional tensor singular value decomposition (FTSVD) model (Han et al., 2024). Through extensive simulation studies and real-data applications, we demonstrate that our BAMIFun model not only achieves substantially improved imputation accuracy over BAMITA for func-tional data, but also attains better coverage for the imputed entries compared to the PACE approach. Moreover, BAMIFun yields more stable downstream inferences (e.g., in func-tional regression), significantly improving coverage properties. We further apply our model to real-world datasets, including (1) a physical activity dataset from the National Health 4and Nutrition Examination Survey (NHANES), and (2) a longitudinally collected infant gut microbiome dataset. Findings from both applications further support the patterns observed in the simulation studies. The remainder of the manuscript is organized as follows. Section 2 introduces the back-ground and problem setup. Section 3 presents our Bayesian multiple imputation algorithm for single-level functional data. Section 4 extends the framework to multiway functional data and introduces the corresponding Bayesian model, with the multiple imputation algorithm provided in the Supplementary Material. Sections 5 and 6 evaluate the proposed BAMIFun method and compare it against BAMITA and PACE using both simulated and real-world data. Section 7 concludes with a discussion. 
+
+# 2 Notation and setup 
+
+Functional data consist of observations recorded over a continuum I, such as time or space. The single-level functional data are assumed to be observed as {Xi(tk)}, where i = 1 , . . . , N 
+
+indexes subjects and tk ∈ I , k = 1 , . . . , K , represent a union of observational time points. We consider the matrix representation for the observed functional data X ∈ RN ×K , where the i-th row and k-th column of X would be Xik = Xi(tk). In practice, not all the Xi(tk)are observed for k = 1 , ..., K . Let O = {O ik }i=1 ,...,N ;k=1 ,...,K ∈ { 0, 1}N ×K be the observation indicator matrix, where Oik = 1 if Xi(tk) is observed for subject i at time point tk and 
+
+Oik = 0 otherwise. In addition, let Yi denote a scalar outcome and Zi ∈ Rp a p-dimensional vector of nonfunctional covariates for subject i. The variables Yi and Zi are used exclusively in downstream analyses, such as scalar-on-function regression, following the functional data imputation; they are not incorporated into the imputation itself. For multiway functional data, denote the data as {Xij (tk)} where i = 1 , ..., N represents each subject, j = 1 , ..., J indexes another mode such as visits, and k = 1 , ..., K indexes 5the observational time points. The levels j for the multiway functional data should share a consistent interpretation across subjects. For example, in our data application, j = 1 , ..., 152 indexes different genera measured from the infant gut. We use a tensor X with the dimen-sionality of N × J × K to represent the multiway functional data where Xijk = Xij (tk). We denote O = {O ijk }i=1 ,...,N ;j=1 ,...,J ;k=1 ,...,K as the observation indicator tensor where Oijk = 1 if {Xij (tk)} is observed and Oijk = 0 if unobserved. Let a ◦ b denote the outer product of two vectors a and b. Let A ⊗ B denote the Kronecker product of matrices A and B, and A ⊙ B denote the Khatri-Rao product (i.e., the columnwise Kronecker product). Let Vec( ·) denote the vectorization operator of matrix or tensor object. For matrix A, let AT denote its transpose, let Aik denote the element in the i-th row and k-th column, let Ai· denote its i-th row, and let A·k denote its k-th column. 
+
+# 3 Single-level functional data 
+
+# 3.1 The model 
+
+We assume that the functional data follow the structure Xi(t) = μ(t) + ˜Xi(t) + ϵi(t), where 
+
+μ(t) is the mean of Xi(t), ˜Xi(t) is a stochastic process with mean zero, and ϵi(t) is a white noise process. Without loss of generality, we assume μ(t) = 0 for the rest of this manuscript. By the Kosambi–Karhunen–Lo` eve (KKL) theorem, ˜Xi(t) = P∞ 
+
+> r=1
+
+ξir ur(t) where ur(t), r =1, 2, ... are orthonormal eigenfunctions and ξir are mutually uncorrelated random variables with Var( ξir ) = λr, respectively, where λ1 ≥ λ2 ≥ ... are the corresponding eigenvalue. Functional principal component analysis assumes that the first R eigenfunctions provide a good approximation for ˜Xi(t) such that Xi(t) = ˜Xi(t) + ϵi(t) ≈ PRr=1 ξir ur(t) + ϵi(t).
+
+Following the matrix representation of functional data in Section 2, we have: 
+
+X = VU T + E , (1) 6where V is a N × R matrix with the r-th column being ξr· = ( ξ1r, ..., ξ N r )T , U is a K ×
+
+R matrix of eigenfunctions with the r-th column being ( ur(t1), ..., u r(tK )) T , and E is a 
+
+N × K matrix of independent and identically distributed error terms with mean 0. In this manuscript, we assume each element of E follows a Gaussian distribution with variance σ2.We further represent the eigenfunctions UT through L number of spline basis: 
+
+UT = BΘ , (2) where Θ is a L × K matrix of spline basis functions evaluated over the grid {tk}Kk=1 , and B
+
+is the corresponding R × L matrix of spline coefficients. Then model (1) can be re-expressed as X = VBΘ + E. By vectorizing both sides of the equation, we have: Vec( X) = Vec( VBΘ ) + Vec( E) = ( ΘT ⊗ V)Vec( B) + Vec( E) . (3) Unlike conventional PCA, the eigenfunctions estimated by FPCA are assumed to be smooth. This additional smoothness constraint is usually induced by adding a penalty for the integration of the squared second derivative of the eigenfunction R (u′′  
+
+> r
+
+(t)) 2dt , where 
+
+u′′  
+
+> r
+
+(t) is the second-order derivative of the r-th eigenfunction ur(t). Under the spline basis expansion (2), we have: 
+
+Z
+
+(u′′  
+
+> r
+
+(t)) 2dt =
+
+Z LX
+
+> l=1
+
+([ Brl Θl·(t)] ′′ )2dt =
+
+Z LX
+
+> l=1
+
+[Brl Θ′′ 
+
+> l·
+
+(t)] T [Brl Θ′′ 
+
+> l·
+
+(t)] dt 
+
+= BTr·
+
+ Z 
+
+[Θ′′ (t)] T [Θ′′ (t)] dt 
+
+
+
+Br· = BTr·PB r· ,
+
+(4) where Br· is the r-th row of matrix B, Θl·(t) is the l-th spline basis, and P is the L×L penalty matrix with the element of l1-th row and l2-th column being Pl1l2 = R [Θ′′ 
+
+> l1·
+
+(t)] T [Θ′′ 
+
+> l2·
+
+(t)] dt .As shown in Jiang, Crainiceanu and Cui (2025), incorporating the penalization R (u′′  
+
+> r
+
+(t)) 2dt 
+
+to the log-likelihood is equivalent to adding a multivariate normal prior p(Br·) ∝ exp 
+
+
+
+−
+
+> BTr·PB r·
+> σ2
+> B
+
+
+
+on each row of the spline coefficients matrix B, where σ2 
+
+> B
+
+is the smoothing param-7eter. Therefore, for the vectorized model (3), the prior for Vec( B) becomes: 
+
+p(Vec( B)) ∝ (σ2 
+
+> B
+
+)−RL/ 2 exp 
+
+
+
+− 1
+
+σ2
+
+> B
+
+Vec( B)T (IR ⊗ P)Vec( B)
+
+
+
+, (5) where IR is the R × R identity matrix. Note that it is common for the penalty matrix P to be rank deficient, which results in an improper prior on Vec( B). To enable the algorithm to be applied to various data scenarios, we consider the following conjugate Jeffreys priors: 
+
+p(V) ∝ 1, p(σ2) ∝ 1
+
+σ2 and p(σ2 
+
+> B
+
+) ∝ 1
+
+σ2
+
+> B
+
+.
+
+The final Bayesian model we adopt for multiple imputation follows: 
+
+
+
+Vec( X) = ( ΘT ⊗ V)Vec( B) + Vec( E) ; Vec( E) ∼ MultivariateNormal(0 , σ 2IN K ) ; Vec( B) ∼ p(Vec( B)) , V ∼ p(V), σ2 ∼ p(σ2), and σ2 
+
+> B
+
+∼ p(σ2 
+
+> B
+
+).
+
+(6) where p refers to the prior for each of the parameters. For model (6), we treat σ2 
+
+> B
+
+as an unknown parameter in the Bayesian model and obtain posterior samples accordingly. In the Supplementary Material Section 2, we present an alternative approach that selects the smoothing parameter σ2 
+
+> B
+
+via cross-validation. Our simulation studies indicate that the cross-validation approach achieves slightly improved imputation accuracy, albeit with marginally reduced coverage. Results from real applications further suggest that the two approaches yield broadly comparable performance. Given the substantially higher computational cost with cross-validation, we recommend estimating σ2 
+
+> B
+
+within the likelihood-based Bayesian framework described in model (6). 83.2 Gibbs sampler with full data 
+
+We now provide the full conditionals for the Gibbs sampling procedure given the fully ob-served functional data {Xi(tk)}i=1 ,...,N ;k=1 ,...,K . For model (1) (and equivalently (3)), the posterior distributions used in the Gibbs sampler, conditional on the full data and the num-ber of principal components R, are given below; detailed derivations are provided in the Supplementary Material Section 1. 
+
+• Given UT = BΘ , σ2, and σ2 
+
+> B
+
+, for i = 1 , ..., N , draw V =
+
+
+
+ξT 
+
+> 1·
+
+ξT 
+
+> 2·
+
+... ξTN ·
+
+T
+
+with 
+
+ξi· ∼ N (( UT U)−1UT Xi·, σ 2(UT U)−1).
+
+• Given V, σ2, and σ2 
+
+> B
+
+, draw Vec( B) following Vec( B) ∼ N (μB , ΣB ) where ΣB =
+
+ 1
+
+σ2 (ΘT ⊗ V)T (ΘT ⊗ V) + 1
+
+σ2
+
+> B
+
+IR ⊗ P
+
+−1
+
+μB = 1
+
+σ2 ΣB (ΘT ⊗ V)T Vec( X)
+
+• Given V, UT = BΘ , and σ2 
+
+> B
+
+, draw σ2 via the inverse-gamma full conditional 
+
+σ2 ∼ IG( α = ( N K )/2, β = ( || X − ˆX|| 2 
+
+> F
+
+)/2) where ˆX = VU T is calculated using the drawn V and U from the previous steps, and 
+
+|| · || F is the Frobenius norm. 
+
+• Given B draw σ2 
+
+> B
+
+via inverse-gamma full conditional 
+
+σ2 
+
+> B
+
+∼ IG  (α = ( R × L)/2, β = (Vec( B)) T (IR ⊗ P)Vec( B) .
+
+9Algorithm 1 Bayesian multiple imputation for single functional data  
+
+> 1:
+
+Input : observed functional data {X, O = 1 }; number of principal components (npc) R;spline basis matrix Θ and the penalty matrix P. 
+
+> 2:
+
+Run the frequentist face.sparse() algorithm to {X, O = 1 } with npc = R and get the estimated eigenfunctions ˆUinit and scores ˆVinit . 
+
+> 3:
+
+Set the initial value of U as ˆUinit and V as ˆVinit . Impute the missing elements of 
+
+{X, O = 0 } using VU T . Set the initial value of σ2 equals 1.  
+
+> 4:
+
+for s = 1 , ..., S -th MCMC iteration do  
+
+> 5:
+
+Sample ˆVs, ˆBs, (ˆ σ2)s, and (ˆ σ2 
+
+> B
+
+)s with the conditional posterior distributions.  
+
+> 6:
+
+Calculate ( ˆUs)T = ˆBsΘ. 
+
+> 7:
+
+Calculate the underlying structure of X as ˜Xs = ˆVs( ˆUs)T . 
+
+> 8:
+
+Impute the missing value { ˆXs, O = 0 } following the Gaussian distribution with mean ˜Xs and variance (ˆ σ2)s. 
+
+> 9:
+
+Rescale ˆUs and ˆVs such that each eigenfunction has unit norm.  
+
+> 10:
+
+end for  
+
+> 11:
+
+Output : Bayesian posterior draws of the imputed functional data { ˆX1, ..., ˆXS }.
+
+# 3.3 Bayesian functional imputation algorithm 
+
+The proposed BAMIFun algorithm is presented in Algorithm 1. The algorithm requires a prespecified number of principal components R. We initialize U using the first R eigen-functions obtained from a frequentist FPCA, and we initialize V using the corresponding estimated scores. These initial values are chosen only to facilitate faster convergence of the Bayesian algorithm; alternative initial values may also be used without affecting the validity of the method. For each MCMC iteration s = 1 , . . . , S , the algorithm sequentially samples ˆVs, ˆBs, ( σ2)s, and ( σ2 
+
+> B
+
+)s from their full conditional posterior distributions, as derived in Section 3.2. The eigenfunction matrix is then computed as ( ˆUs)T = ˆBsΘ, and the underly-ing smooth structure of X is reconstructed as ˜Xs = ˆVs( ˆUs)T . The missing entries of X are imputed using the corresponding entries of ˆXs, where each element of ˆXs follows a Gaus-sian distribution with mean ˜Xs and variance (ˆ σ2)s at the s-th iteration. The imputed data are then treated as “observed” in the next MCMC iteration. The matrices ˆUs and ˆVs are rescaled with ˆUs = ˆUsD and ˆVs = ˆVsD−1 where D is a diagonal matrix such that each row of ˆUs (i.e., each eigenfunction) has unit norm. The algorithm yields a collection of posterior 10 draws of the imputed functional data, ˆX1, . . . , ˆXS , which naturally capture the uncertainty appropriate for multiple imputation. 
+
+Algorithm 2 Cross-validation algorithm for Bayesian multiple functional imputation  
+
+> 1:
+
+Input : observed functional data {X, O = 1 }. 
+
+> 2:
+
+Run the frequentist face.sparse() algorithm to {X, O = 1 } with percent variance ex-plained pve = 0 .99 and get the estimated eigenfunctions ˆUinit , scores ˆVinit , and number of principal component Rfreq . 
+
+> 3:
+
+Set the parameter grid setting for cross-validation: R ∈ { Rfreq − 3, R freq − 2, R freq − 1}. 
+
+> 4:
+
+Randomly select 40% of the observed data points as validation set V = 1 and the rest of the observed data as training set V = 0.  
+
+> 5:
+
+for c = 1 , ..., C -th cross-validation setting do  
+
+> 6:
+
+Run Algorithm 1 with settings R = R[c] and initial value U = ˆUinit [c], V = ˆVinit [c]where R[c] are the c-th value of the parameter grid, ˆUinit [c] is the first R[c] eigenfunctions from ˆUinit and ˆUinit [c] similarily.  
+
+> 7:
+
+Calculate the imputation mean squared error over the validation set V = 1.  
+
+> 8:
+
+end for  
+
+> 9:
+
+Select the parameter R which has the smallest MSE over the validation set.  
+
+> 10:
+
+Run Algorithm 1 with the selected parameter.  
+
+> 11:
+
+Output : Bayesian posterior draws of the imputed functional data { ˆX1, ..., ˆXS }.Since Algorithm 1 requires a pre-specified number of principal components R, we propose to use cross-validation to select it. The algorithm is described in Algorithm 2, which only requires the input of frequentist FPCA results as the initial values and the parameter set for cross-validation. For the default parameter grid, we propose to search across R ∈ { Rfreq −
+
+3, R freq − 2, R freq − 1}. Users may change the parameter grid based on the their specific data structure. The cross-validation randomly selects 40% of the observed data as the validation set and the rest of the data as the training set. The Bayesian functional imputation Algorithm 1 is then conducted using the training data. Parameters are selected to minimize the imputation mean squared error over the elements within the validation set. 11 3.4 Statistical inference for imputation and downstream analysis 
+
+For subject i at time point tk with Oik = 0, we propose to impute the functional observation ˆXi(tk) with the posterior mean. The 95% credible interval for the functional observation can be constructed as [ ˆXL 
+
+> i
+
+(tk), ˆXU 
+
+> i
+
+(tk)] where ˆXU 
+
+> i
+
+(tk) is the 0 .975 quantile of the posterior samples { ˆX1 
+
+> i
+
+(tk), . . . , ˆXRi (tk)} and ˆXL 
+
+> i
+
+(tk) is the 0 .025 quantile of the posterior samples. For downstream analysis, we take the Scalar-on-Function Regression (SoFR) as an ex-ample, but our methods are generally applicable to other statistical analyses. The point estimate ˆβ(t) for the functional coefficient can be obtained by fitting the SoFR model using the imputed dataset ˆX. The confidence interval is then constructed following the Rubin’s rule (Rubin, 1996). Specifically, for each posterior draw of the imputed dataset ˆXs, running SoFR provides the estimated functional coefficient ˆβs(t) and the corresponding variance ˆV s(t). We then calculate the within-imputation variance as ˆVW (t) = 1
+
+> S
+
+PSr=1 ˆV s(t) and the between-imputation variance as ˆVB (t) = 1
+
+> S−1
+
+PSs=1 ( ¯β(t) − ˆβs(t)) 2, where ¯β(t) = 1
+
+> S
+
+PSs=1 ˆβs(t)is the pooled estimate of the coefficient. The total variance at time t becomes: ˆVT (t) = ˆVW (t) + (1 + 1
+
+S ) ˆVB (t) .
+
+The 95% confidence interval for β(t) is ¯β(t)±tν, 0.975 
+
+q
+
+ˆVT (t), where tν, 0.975 is the 0 .975 quantile of t-distribution with degrees of freedom ν = ( S − 1) 
+
+
+
+1 + ˆVW (t)(1+ 1  
+
+> S) ˆVB(t)
+
+
+
+.
+
+# 4 Multiway functional data 
+
+The multiway functional data X = {Xij (tk)}i=1 ,...,N ; j=1 ,...,J ; k=1 ,...,K can be represented as a tensor of dimension N × J × K. We adopt the Functional Tensor Singular Value Decom-position (FTSVD) model proposed by Han et al. (2024), which approximates the multiway 12 functional data through the decomposition 
+
+X =
+
+> R
+
+X
+
+> r=1
+
+λrvr ◦ wr ◦ ur + E , (7) where for each r = 1 , . . . , R , vr and wr are unit-norm vectors of length N and J correspond-ing to the subject and feature (or visit) dimensions, respectively. ur = ur(t), t = t1, . . . , t K ,represents the functional mode on which we impose a smoothness constraint. Model (7) is similar to the CP decomposition factorization of tensor data proposed in Jiang, Li and Lock (2025), except that a smoothness constraint is imposed on ur. Unlike Han et al. (2024), which develops a frequentist estimation procedure for the FTSVD model, we pro-pose a Bayesian sampling algorithm that facilitates simultaneous parameter estimation and multiple imputation of sparsely observed functional trajectories. We emphasize that the FTSVD model for the multiway functional data is different from the multilevel FPCA (MFPCA) model in Di et al. (2009). The FTSVD model directly specifies a low-rank decomposition of the entire functional tensor (e.g., a CP-type factoriza-tion), in which the latent structure is represented through multiplicatively coupled factors across the discrete modes (e.g., subject/feature/visit) and a smooth functional factor along the time domain. In contrast, the MFPCA framework treats the data as a collection of clustered/hierarchical curves Xij (t) and characterizes the dependence through an additive functional mixed-effects representation, decomposing between- and within-cluster variability via separate Karhunen–Lo` eve expansions with level-specific eigenfunctions and scores. Thus, the FTSVD model is most suitable when the data are naturally a tensor, e.g., many subjects observed on a common time interval for multiple features/visits, so that each curve can be viewed as one slice of a coherent N × J × K array and the dependence is well captured by a shared low-rank multilinear structure across modes. When the data are primarily clustered functional observations with irregular/sparse time points and strong additive within-cluster 13 subject-specific deviations (random intercept/slope-type behavior), FTSVD is less appropri-ate because it does not directly separate between- and within-cluster variability or provide level-specific covariance/eigenfunction interpretations as in MFPCA. Define the matrix V = [ v1 v2 · · · vR], W = [ w1 w2 · · · wR], U = [ u1 u2 · · · uR], and the notation JV, W, UK := PRr=1 vr ◦ wr ◦ ur. We can re-express model (7) in matrix form as follows (Jiang, Li and Lock, 2025): 
+
+X(1) = VΛ (U ⊙ W)T + E(1) , (8) where X(1) is the mode-1 matricization of tensor X with dimension N × JK , Λ is a diagonal matrix of ( λ1, ..., λ R), and each element of E(1) follows i.i.d. Gaussian distribution with 0 mean and variance σ2. For simplicity, we assume that vr, wr, and ur have the same norm of λ1/3 
+
+> r
+
+, which makes Λ = IR where IR is the identity matrix with dimension R. Thus, (8) becomes X(1) = V(U ⊙ W)T + E(1) . Similarily, matricizing the tensor X along other dimensions yields: X(2) = W(U ⊙ V)T and X(3) = U(W ⊙ V)T .Similar to single-level functional data, we use the basis expansion to model the matrix 
+
+UT = BΘ and impose a shrinkage prior on the parameter matrix B as in (5). We consider the conjugate Jeffreys prior for V, W, σ2, and σ2 
+
+> B
+
+:
+
+p(W) ∝ 1, p(V) ∝ 1, p(σ2) ∝ 1
+
+σ2 , and p(σ2 
+
+> B
+
+) ∝ 1
+
+σ2
+
+> B
+
+.
+
+The final Bayesian model we adopt for multiway functional data imputation follows: 
+
+
+
+Vec( X T
+
+> (3)
+
+) = ( ΘT ⊗ (W ⊙ V))Vec( B) + Vec( ET
+
+> (3)
+
+) ; Vec( ET
+
+> (3)
+
+) ∼ MultivariateNormal(0 , σ 2IN JK ) ; Vec( B) ∼ p(Vec( B)) , W ∼ p(W), V ∼ p(V), σ2 ∼ p(σ2), and σ2 
+
+> B
+
+∼ p(σ2 
+
+> B
+
+).
+
+(9) Here, we matricize the tensor along the third dimension, as it corresponds to the functional 14 observations. In the Supplementary material Section 3, we present the Gibbs sampler for multiway functional data under model (9) with the corresponding Bayesian multiple impu-tation algorithm. 
+
+# 5 Simulation experiments 
+
+# 5.1 Imputation performance for single-level functional data 
+
+5.1.1 Data generating mechanism 
+
+In the first simulation experiment, we evaluate the imputation performance for the single-level functional data. We generate functional data {Xi(t), t ∈ { 1 
+
+> K
+
+, ..., KK }} with K = 100 observation points. The functional data are generated as follows 
+
+Xi(t) = 
+
+> 12
+
+X
+
+> h=1
+
+ξih uh(t) + ϵi(t)where uh, h = 1 , ..., 12 is the 12 eigenfunctions obtained from our data application using the NHANES dataset, ξih ∼ N (0 , σ 2
+
+> h
+
+) are the corresponding scores with eigenvalues {σ2
+
+> h
+
+}12  
+
+> h=1
+
+=[2 , 2, 2, 1, 1, 1, 0.5, 0.5, 0.5, 0.1, 0.1, 0.1]. We draw each ϵi(t) independently from a Gaussian distribution with mean 0 and variance σ2 = 1. For each subject i = 1 , ..., N , we randomly set a proportion s = 0 .8, 0.9, 0.95 of their functional observations as missing. Since the missing proportion is very high, we impose a constraint that there are at least 2 observed time points for each subject. 
+
+5.1.2 Methods and metrics under comparison 
+
+For each simulation scenario, we compare our BAMIFun algorithm for single-level functional data with (1) the PACE algorithm using state-of-art fast FPCA for sparse functional data (Xiao et al., 2018), and (2) the Bayesian multiple imputation algorithm for tensor array 15 (BAMITA) (Jiang, Li and Lock, 2025). For the PACE algorithm, we set the proportion of variance explained (pve) to be 0.99. For our Bayesian functional imputation algorithm, we use the B-spline basis with dimensionality L = 15 to model the eigenfunctions. The tuning parameters R are selected through cross-validation (Algorithm 2) over a grid parameter space R = {Rfreq − 3, R freq − 2, R freq − 1} where Rfreq is the number of principal component estimated through fast FPCA. We evaluate the imputation performance for the single-level functional data in terms of: (1) the relative mean squared error (MSE) for the imputation   
+
+> P
+> O=0 (( X−ˆX)2)
+> P
+> O=0 (X2)
+
+, where X
+
+is the functional data, ˆX is the imputed functional data, and O = 0 indicates unobserved timepoints; and (2) the coverage rate for the estimated 95% confidence/credible interval for the functional data. The confidence interval for the PACE algorithm is calculated using the estimated standard error from the face.sparse() function in R. 
+
+5.1.3 Results 
+
+Figure 1 reports the imputation MSE and coverage rates across methods. For MSE, our BAMIFun algorithm performs comparably to PACE when the missing proportion is 80%. At 90% missingness, it shows slightly larger MSE for small sample sizes ( n = 100), but the difference diminishes as n increases. Under extremely high missingness, our BAMIFun method initially has a higher MSE than the frequentist method; however, the gap narrows with larger sample sizes. Across all settings, incorporating the smoothness constraint allows our BAMIFun algorithm to consistently outperform BAMITA in terms of imputation ac-curacy. For the coverage rate of 95% confidence/credible interval, our BAMIFun approach maintains coverage close to the nominal level (around 95%), substantially higher than PACE. BAMITA exhibits under-coverage when the sample size is small, likely due to its larger MSE. Although its coverage improves with increasing sample size, it remains worse than that of 16 Figure 1: Simulation results for the imputation performance of single-level functional data. The top panel displays the relative imputation MSE, and the bottom panel displays the coverage rate. We vary the missing proportion and sample size for the data-generating mechanism. 
+
+the proposed Bayesian method. In the Supplementary Material Section 3, we also present the results for an alternative imputation algorithm where the smoothing parameter σ2 
+
+> B
+
+is selected through cross-validation. The results indicate that the alternative approach achieves slightly improved imputation accuracy at the price of a reduced coverage rate. 17 5.2 Downstream analysis with imputed functional data 
+
+5.2.1 Data generating mechanism 
+
+In the second simulation experiment, we compare the various imputation algorithms in terms of their performance in the downstream analysis using the imputed data. We generate the functional data following the same mechanism as in the first experiment. For the down-stream analysis, we further generate an outcome variable follows a Gaussian distribution with variance 1, and mean E[Yi] = R 10 β(t)Xi(t)dt where β(t) = −10 t2 + 10 t + 0 .34, t ∈ [0 , 1] is a quadratic functional coefficient. 
+
+5.2.2 Methods and metrics under comparison 
+
+For the performance of downstream analysis using the imputed data, we first impute the functional data using the same approaches as in the first simulation experiment. We then perform scalar-on-function regression (SoFR) with the R package mgcv using the imputed functional data. The number of knots for the SoFR is set to increase with the increase in sample size. For the PACE algorithm, the 95% confidence interval for ˆβ(t) is calculated using the non-parametric bootstrap for the imputed dataset. For the BAMITA and BAM-IFun algorithms, the 95% confidence interval for ˆβ(t) is calculated follows the Rubin’s rule described in Section 3.4. We calculate the relative integrated squared error as: 
+
+R 10 ( ˆβ(t) − β(t)) 2dt 
+
+R 10 β(t)2dt 
+
+where ˆβ is the estimated functional coefficient. We also calculate the coverage rate for the estimated 95% confidence interval for the SoFR coefficient. 18 Figure 2: Simulation results for the performance of downstream Scalar-on-Function Regression (SoFR) using the imputed single-level functional data. The top panel displays the relative imputa-tion MSE, and the bottom panel displays the coverage rate. We vary the missing proportion and sample size for the data-generating mechanism. 
+
+5.2.3 Simulation results 
+
+Figure 2 presents the results for the estimation of the SoFR coefficients based on imputed functional data. In terms of the relative ISE of the estimated SoFR coefficient, our BAMIFun method demonstrates superior performance across most simulation scenarios. Our algorithm gains more from the increase in sample size compared with the PACE algorithm. In some scenarios, the MSE of the PACE estimator even increases with the increase of sample size. With respect to coverage, BAMIFun consistently outperforms the PACE algorithm, which exhibits systematic undercoverage. These findings underscore the advantage of the proposed 19 multiple imputation method, which appropriately accounts for imputation uncertainty and leads to more reliable interval estimation in downstream analyses. In the Supplementary Material Section 3, we also present the results for the BAMIFun algorithm with smoothing parameters determined through cross-validation, which yields a consistent message as in the first experiment. 
+
+# 5.3 Imputation performance for multiway functional data 
+
+5.3.1 Data generating mechanism 
+
+In the third simulation experiment, we evaluate our Bayesian multiple imputation algorithm for the multiway functional data. For multiway functional data {Xij (t), t ∈ { 1 
+
+> K
+
+, ..., KK }} , we set K = 100 and the number of visits J = 4. We generate the multiway functional data based on whether a low-rank structure exists. For the scenario with a low rank structure, we generate the data as follows: 
+
+X =
+
+> 4
+
+X
+
+> r=1
+
+ar ◦ br ◦ ur + E
+
+where ar and br are vectors with length N and J whose elements follows an i.i.d. Gaussian distribution with mean 0 and variance {σ2 
+
+> r
+
+}4 
+
+> r=1
+
+= {2, 1, 0.5, 0.1}, ur are the same set of eigenfunctions as in the first simulation study, and the elements in E follows i.i.d. Gaussian distribution with mean 0 and variance 1. For the scenario without assuming a low rank structure, we generate 
+
+Xij (tk) = 
+
+> 2
+
+X
+
+> r=1
+
+air ur(tk) + 
+
+> 4
+
+X
+
+> r=1
+
+bijr ur+4 (tk) + ϵijk (10) where air , b irj ∼ N (0 , σ 2 
+
+> r
+
+), ϵijk ∼ N (0 , 1) and ur again are generated according to the data application. All other settings are the same as in previous simulation experiments. 20 5.3.2 Results 
+
+We compare our BAMIFun algorithm with the PACE approach based on the frequentist multilevel FPCA (MFPCA) framework (Di et al., 2009). We do not include BAMITA in this comparison, as its inferior performance under functional data settings has already been proven in the previous experiments. For each simulation scenario, we conduct 500 replica-tions. For the Bayesian approach, we compute both the MSE and the empirical coverage of the imputed elements. For the PACE approach, since existing R implementations do not provide confidence intervals for the predicted functional elements, we report only the MSE.  
+
+> Table 1:
+
+# Comparison of imputation performance for the PACE(MFPCA) and BAMIFun algorithms across varying missing proportions and sample sizes. For each method, we report the relative MSE and the coverage rate (in paren-theses). Because the current MFPCA software implementation does not pro-vide confidence intervals for the fitted curves, coverage rates are not available for PACE. 
+
+Sample Size Missing Non low-rank data Low-rank data Proportion PACE BAMIFun PACE BAMIFun 
+
+100 0.95 0.437(–) 0.541(91.7) 0.614(–) 0.397(92.8) 0.90 0.325(–) 0.432(93.5) 0.430(–) 0.272(94.7) 0.80 0.258(–) 0.377(94.1) 0.237(–) 0.215(95.2) 300 0.95 0.403(–) 0.525(93.4) 0.582(–) 0.419(94.1) 0.90 0.306(–) 0.425(94.1) 0.385(–) 0.310(95.9) 0.80 0.251(–) 0.382(94.4) 0.227(–) 0.231(96.6) 500 0.95 0.394(–) 0.516(93.6) 0.581(–) 0.429(94.3) 0.90 0.302(–) 0.423(94.1) 0.383(–) 0.323(96.4) 0.80 0.249(–) 0.379(94.4) 0.233(–) 0.238(97.1) 1000 0.95 0.387(–) 0.501(93.7) 0.565(–) 0.448(95.6) 0.90 0.298(–) 0.418(94.1) 0.374(–) 0.343(97.5) 0.80 0.247(–) 0.379(94.4) 0.217(–) 0.245(98.3) The simulation results are summarized in Table 1. For multilevel functional data with a low-rank structure, the BAMIFun algorithm consistently outperforms the PACE approach. 21 In contrast, when the underlying functional structure is not low-rank, the BAMIFun algo-rithm exhibits slightly higher MSE than PACE. Nevertheless, across all simulation settings, the BAMIFun algorithm attains close-to-nominal coverage for the 95% confidence intervals, including scenarios without a low-rank structure. These results highlight the robustness and broad applicability of the BAMIFun algorithm across diverse data-generating mechanisms. 
+
+# 6 Case studies 
+
+# 6.1 Single-level functional data 
+
+For the single-level functional dataset, we apply our proposed BAMIFun algorithms to the physical activity data from the National Health and Nutrition Examination Survey (NHANES) and compare the imputation performance against (1) the PACE algorithm, and (2) the Bayesian multiple imputation algorithm, BAMITA, without incorporating the func-tional feature of the dataset. NHANES is a nationwide program conducted by the U.S. Centers for Disease Control and Prevention to monitor the health and nutritional status of adults and children in the United States (Cui et al., 2021; Cui, Leroux, Smirnova and Crainiceanu, 2022; Cui, Thompson, Carroll and Ruppert, 2022). For this analysis, we use data from the 2011–2012 and 2013–2014 cycles (Crainiceanu et al., 2024). We include subjects with full observations whose age greater than 50 years old for the NHANES study with a total of N = 3880 subjects. The reported functional MIMS data originally has K = 1440 observed timepoints up to J = 7 days. We average each subject’s measurements across all available days and then uniformly subsample the resulting curves to 720 time points to reduce computational cost. This yields a dataset of N = 3880 subjects observed on K = 720 time points without missing values. Missingness is introduced by randomly masking ρ = 0 .975 , 0.95 , or 0 .9 of the observed time points. We then apply the 22 imputation methods to the resulting incomplete curves and compute the imputation MSE and coverage for the removed entries for both our BAMIFun algorithm and the FPCA-based PACE algorithm. For our BAMIFun algorithm, we select the smoothing parameter σ2 
+
+> B
+
+by cross-validation on the potential values {0.001 , 0.01 , 0.05 , 0.1, 1} and use the same number of principal components as the FPCA. We repeat each scenario 100 times and summarize the MSE and coverage in Table 2. The BAMIFun algorithm yields slightly higher MSE under extreme missingness, though the gap diminishes when the missing proportion is reduced to approximately 95%. Across all levels of missingness, the BAMIFun algorithm consistently provides empirical coverage close to the nominal level for the estimated 95% credible intervals. In contrast, the FPCA-based PACE algorithm results in much lower coverage across all settings.   
+
+> Table 2: Imputation performance with the NHANES dataset for the FPCA, BAMIFun, and BAMITA algorithms. For each method, we report the relative MSE and the coverage rate (in parentheses)
+
+Missing FPCA BAMIFun BAMITA Proportion MSE (Coverage) MSE (Coverage) MSE (Coverage) 
+
+97.5% 0.140(71.4) 0.148(92.3) 0.173(90.1) 95% 0.124(61.9) 0.127(93.4) 0.137(92.7) 90% 0.115(53.4) 0.117(93.7) 0.121(93.5) 
+
+# 6.2 Multiway functional data 
+
+We use an infant gut microbiome dataset as an example of multiway functional data. The human gut harbors a complex and dynamic microbial ecosystem that evolves rapidly during early life and plays a critical role in immune development and overall health. We analyze data from a longitudinal study of 52 preterm infants admitted to the neonatal intensive care unit (NICU), in which stool samples were repeatedly collected over the first three months of life (Cong et al., 2017). Sampling times varied across infants, yielding irregularly observed 23 longitudinal profiles. Microbial composition was quantified using 16S rRNA sequencing, and relative abundances were summarized at the genus level, resulting in 152 unique genera across all samples. After standard quality control and filtering to remove rare taxa, the data form a three-way array indexed by subject, time, and microbial genus, naturally motivating a multiway functional representation in which each infant is associated with a collection of genus-specific abundance trajectories over time. We employed standard preprocessing techniques and applied the centered log-ratio (clr) transformation to the dataset. The infant gut microbiome dataset was also used by Jiang, Li and Lock (2025). However, due to the high proportion of missingness and time constraint, they aggregated results for consecutive days, resulting in 30 time intervals. In contrast, we analyze the original data structure, which consists of measurements collected over 118 days. The resulting multiway functional dataset has dimensions 52 ×152 ×118, of which 91 .1% of the entries are unobserved due to the study design, posing substantial challenges for imputation. For example, multilevel FPCA methods (as implemented in the refund package) are not applicable in this setting because certain subject-genus combinations contain only a single observed time point. We evaluate the imputation performance for the following algorithm: (i) Bayesian mul-tiple imputation without explicitly modeling functional structure (BAMITA); (ii) Bayesian multiple imputation for functional data (BAMIFun) with the smoothing parameter treated as an unknown quantity and assigned a non-informative prior. In the Supplementary Mate-rial, we also display the result for our BAMIFun algorithm with the smoothing parameter selected through cross-validation. Frequentist MFPCA methods are not considered, as ex-isting software implementations cannot accommodate datasets with such an extreme level of missingness. Because cross-validation has already been assessed in previous simulation studies and applications, and to reduce computational cost, we do not use cross-validation to select the number of principal components. Instead, we vary the number of principal 24 components from 10 to 38 and present the corresponding results.   
+
+> Figure 3: Multiple imputation results using the infant gut microbiome dataset. The top panel displays the mean squared error (MSE) for the imputed elements. In the bottom panel, we display the coverage rate for the imputed elements.
+
+For each of the simulation experiments, we randomly sample 30% of the observed entries as a test set and apply the imputation methods to the rest of the observed entries. For each number of principal components, we repeat the experiment 100 times and report the mean imputation MSEs over the test set in Figure 3. Our BAMIFun algorithm consistently outperforms the BAMITA algorithm across all numbers of principal components. In addition, it achieves reasonable coverage rates (around 93%) for the imputed elements close to the nominal level. 
+
+# 7 Discussion 
+
+In this manuscript, we developed BAMIFun: a Bayesian multiple imputation framework for sparsely observed functional data, including both single-level and multiway functional set-tings. The proposed BAMIFun algorithm provides a principled approach to reconstructing 25 incomplete trajectories while explicitly quantifying the uncertainty arising from the impu-tation. Our method addresses a key limitation of the widely used FPCA-based imputation approaches (PACE), that is, their tendency to treat imputed curves as known, thereby un-derestimating uncertainty in downstream analyses. For the single-level functional data, as shown in the simulation studies, our BAMIFun algorithm achieves similar imputation pre-cision with the PACE approach. However, by effectively accounting for the imputation un-certainty, our approach yields a nominal coverage rate and much better performance for the downstream analysis. For multiway functional data, we adopted the low-rank factorization model proposed by Han et al. (2024) and proposed a novel Bayesian imputation algorithm. Since this model is different from the MFPCA model, the imputation precision for the two methods depends on the specific feature of the data, as demonstrated in the simulations. The case studies further reinforce the insights from our simulations. For the NHANES study, under realistically high levels of artificially induced missingness (up to 97.5%), the Bayesian algorithm consistently achieved nominal coverage for imputed values, whereas the FPCA-based single imputation resulted in substantial undercoverage. Although the Bayesian method produced slightly larger MSEs, the gap decreased as the missing proportion declined, and the coverage remained stable across all scenarios. Consistent with the simulation ex-periment, our BAMIFun algorithm outperforms the BAMITA algorithm in terms of both the imputation precision and the coverage rate. For the infant gut microbiome study, our BAMIFun algorithm significantly outperforms the BAMITA algorithm in terms of MSE. Our Bayesian algorithm imposes smoothness through a basis expansion for functional data; however, its performance may depend on the choice of spline basis. Recently, Sartini et al. (2025) proposed an alternative FPCA framework that parameterizes principal com-ponents on the Stiefel manifold. Extending their approach to Bayesian multiple imputation represents an interesting direction for future work. 26 References 
+
+Beyaztas, U. and Shang, H. L. (2025), ‘Package ‘robflreg”, Statistical Modelling: An Inter-national Journal 25 (3), 195–215. Centofanti, F., Fontana, M., Lepore, A. and Vantini, S. (2022), ‘Smooth lasso estimator for the function-on-function linear regression model’, Computational Statistics & Data Analysis 176 , 107556. Chiou, J.-M., Chen, Y.-T. and Yang, Y.-F. (2014), ‘Multivariate functional principal com-ponent analysis: A normalization approach’, Statistica Sinica pp. 1571–1596. Cong, X., Judge, M., Xu, W., Diallo, A., Janton, S., Brownell, E. A., Maas, K. and Graf, J. (2017), ‘Influence of feeding type on gut microbiome development in hospitalized preterm infants’, Nursing research 66 (2), 123–133. Crainiceanu, C. M., Goldsmith, J., Leroux, A. and Cui, E. (2024), Functional data analysis with R , Chapman and Hall/CRC. Cui, E., Crainiceanu, C. M. and Leroux, A. (2021), ‘Additive functional cox model’, Journal of Computational and Graphical Statistics 30 (3), 780–793. Cui, E., Leroux, A., Smirnova, E. and Crainiceanu, C. M. (2022), ‘Fast univariate inference for longitudinal functional models’, Journal of Computational and Graphical Statistics 
+
+31 (1), 219–230. Cui, E., Li, R., Crainiceanu, C. M. and Xiao, L. (2023), ‘Fast multilevel functional principal component analysis’, Journal of Computational and Graphical Statistics 32 (2), 366–377. Cui, E., Thompson, E. C., Carroll, R. J. and Ruppert, D. (2022), ‘A semiparametric risk score for physical activity’, Statistics in medicine 41 (7), 1191–1204. Di, C., Crainiceanu, C. M. and Jank, W. S. (2014), ‘Multilevel sparse functional principal component analysis’, Stat 3(1), 126–143. Di, C.-Z., Crainiceanu, C. M., Caffo, B. S. and Punjabi, N. M. (2009), ‘Multilevel functional principal component analysis’, The annals of applied statistics 3(1), 458. Febrero-Bande, M. and De La Fuente, M. O. (2012), ‘Statistical computing in functional data analysis: The r package fda. usc’, Journal of statistical Software 51 , 1–28. Greven, S., Crainiceanu, C., Caffo, B. and Reich, D. (2011), Longitudinal functional principal component analysis, in ‘Recent advances in functional data analysis and related topics’, Springer, pp. 149–154. Han, R., Shi, P. and Zhang, A. R. (2024), ‘Guaranteed functional tensor singular value decomposition’, Journal of the American Statistical Association 119 (546), 995–1007. Happ, C. and Greven, S. (2018), ‘Multivariate functional principal component analysis for data observed on different (dimensional) domains’, Journal of the American Statistical Association 113 (522), 649–659. He, Y., Yucel, R. and Raghunathan, T. E. (2011), ‘A functional multiple imputation ap-proach to incomplete longitudinal data’, Statistics in medicine 30 (10), 1137–1156. 27 Huang, E. C.-H. and Kao, M.-H. (2025), ‘Optimal experimental designs for sparse functional data: A review’, Wiley Interdisciplinary Reviews: Computational Statistics 17 (3), e70039. Jang, J. H., Manatunga, A. K., Chang, C. and Long, Q. (2021), ‘A bayesian multiple im-putation approach to bivariate functional data with missing components’, Statistics in medicine 40 (22), 4772–4793. Jiang, Z., Crainiceanu, C. and Cui, E. (2025), ‘Tutorial on bayesian functional regression using stan’, Statistics in Medicine 44 (20-22), e70265. Jiang, Z., Li, G. and Lock, E. F. (2025), ‘Bamita: Bayesian multiple imputation for tensor arrays’, Biostatistics 26 (1), kxae047. Kidzi´ nski, L. and Hastie, T. (2024), ‘Modeling longitudinal data using matrix completion’, 
+
+Journal of Computational and Graphical Statistics 33 (2), 551–566. Kong, D., Staicu, A.-M. and Maity, A. (2016), ‘Classical testing in functional linear models’, 
+
+Journal of nonparametric statistics 28 (4), 813–838. Leroux, A., Cui, E., Smirnova, E., Muschelli, J., Schrack, J. A. and Crainiceanu, C. M. (2024), ‘Nhanes 2011-2014: Objective physical activity is the strongest predictor of all-cause mortality’, Medicine and science in sports and exercise 56 (10), 1926–1934. Li, G. and Lock, E. F. (2025), ‘Integrative analysis of multimodal omics data’, Annual Review of Statistics and Its Application 13 .Lin, W., Zou, J., Di, C., Rock, C. L. and Natarajan, L. (2024), ‘Multilevel longitudinal functional principal component model’, Statistics in medicine 43 (25), 4781–4795. Lynch, B. and Chen, K. (2018), ‘A test of weak separability for multi-way functional data, with application to brain connectivity studies’, Biometrika 105 (4), 815–831. Matuk, J., Bharath, K., Chkrebtii, O. and Kurtek, S. (2022), ‘Bayesian framework for simultaneous registration and estimation of noisy, sparse, and fragmented functional data’, 
+
+Journal of the American Statistical Association 117 (540), 1964–1980. Petrovich, J., Reimherr, M. and Daymont, C. (2022), ‘Highly irregular functional generalized linear regression with electronic health records’, JRSSC 71 (4), 806–833. Rao, A. R. and Reimherr, M. (2021), ‘Modern multiple imputation with functional data’, 
+
+Stat 10 (1), e331. Rubin, D. B. (1996), ‘Multiple imputation after 18+ years’, JASA 91 (434), 473–489. Sartini, J., Zhou, X., Selvin, L., Zeger, S. and Crainiceanu, C. M. (2025), ‘Fast bayesian functional principal components analysis’, JCGS (just-accepted), 1–20. Schafer, J. L. (1999), ‘Multiple imputation: a primer’, SMMR 8(1), 3–15. Shou, H., Zipunnikov, V., Crainiceanu, C. M. and Greven, S. (2015), ‘Structured functional principal component analysis’, Biometrics 71 (1), 247–257. Wood, S. and Wood, M. S. (2015), ‘Package ‘mgcv”, R package version 1(29), 729. 28 Xiao, L., Li, C., Checkley, W. and Crainiceanu, C. (2018), ‘Fast covariance estimation for sparse functional data’, Statistics and computing 28 (3), 511–522. Yao, F., M¨ uller, H.-G. and Wang, J.-L. (2005), ‘Functional data analysis for sparse longitu-dinal data’, Journal of the American statistical association 100 (470), 577–590. Zipunnikov, V., Caffo, B., Yousem, D. M., Davatzikos, C., Schwartz, B. S. and Crainiceanu, C. (2011), ‘Multilevel functional principal component analysis for high-dimensional data’, 
+
+Journal of Computational and Graphical Statistics 20 (4), 852–873. Zipunnikov, V., Greven, S., Shou, H., Caffo, B., Reich, D. S. and Crainiceanu, C. (2014), ‘Longitudinal high-dimensional principal components analysis with application to diffusion tensor imaging of multiple sclerosis’, The annals of applied statistics 8(4), 2175. 29
