@@ -1,0 +1,986 @@
+Title: Controlling Transient Amplification Improves Long-horizon Rollouts
+
+URL Source: https://arxiv.org/pdf/2605.08856v1
+
+Published Time: Tue, 12 May 2026 01:01:31 GMT
+
+Number of Pages: 35
+
+Markdown Content:
+# Controlling Transient Amplification Improves Long-horizon Rollouts 
+
+Adeel Pervez Adeel.Pervez@ist.ac.at 
+
+Institute of Science and Technology Austria Klosterneuburg, Austria 
+
+Francesco Locatello Francesco.Locatello@ist.ac.at 
+
+Institute of Science and Technology Austria Klosterneuburg, Austria 
+
+Abstract 
+
+Autoregressive neural simulators now match classical solvers on short-horizon prediction of physical systems, yet their accuracy degrades rapidly when rolled out over long horizons. In this work, we identify transient amplification of perturbations around rollout trajectories as a structural mechanism driving rollout error. Using a linearization analysis we show that when the Jacobians along an autoregressive trajectory are non-normal and non-commuting, the model amplifies errors transiently, resulting in model rollout drift even when the overall system is asymptotically stable. Building on the analysis, we propose commutativity regularization : a combination of two penalties designed to reduce the normality defect of individual Jacobians and the commutator norm of Jacobians across steps. The penalties are estimated with Jacobian-vector products and have no inference-time cost. We show a propagator bound that quantifies rollout error under approximate commutativity and normality. We evaluate UNet and FNO variants with commutativity regularization on 1D and 2D spatio-temporal data in synthetic and real settings, showing successful long-horizon rollouts over thousands of steps. Further, we show that the method improves FourCastNet climate forecasts on ERA5 without using any new data. The gain is most pronounced out-of-distribution: trained on trajectories of a few hundred steps, regularized models remain in-distribution for thousands of rollout steps on initial conditions where baselines diverge. 
+
+1 Introduction 
+
+Neural networks that simulate physical systems one step at a time have become remarkably capable. Models such as FourCastNet (Pathak et al., 2022), GraphCast (Lam et al., 2023), Pangu-Weather (Bi et al., 2023), Aurora (Bodnar et al., 2024), NeuralGCM (Kochkov et al., 2024) and the diffusion-based GenCast (Price et al., 2025) now match or surpass operational numerical weather prediction at lead times of five to seven days. Similar progress has been made across fluid dynamics (Sanchez-Gonzalez et al., 2020), climate emulation (Kochkov et al., 2024), and molecular simulation (Batzner et al., 2022) using autoregressive architectures such as Fourier Neural Operators, U-Nets and graph neural networks (Li et al., 2021; Ronneberger et al., 2015). On the other hand, the same models, when run iteratively for many steps, degrade far faster than their single-step accuracy would suggest: predictions that closely match the ground truth at one step may diverge or drift within tens of steps on complex systems (Lippe et al., 2023). Bridging this gap between single-step and long-rollout performance is the central open problem for neural simulators of physical dynamics. 
+
+1
+
+> arXiv:2605.08856v1 [cs.LG] 9 May 2026 Controlling Transient Amplification Improves Long-horizon Rollouts
+
+The standard explanation of this phenomenon is distributional shift . During training the model sees clean ground-truth states as inputs; at rollout time it receives its own imperfect predictions, which progressively drift away from the training distribution. Recent methods address this by exposing the model to its own errors during training (Lippe et al., 2023; Cao et al., 2025) or by applying iterative corrections at inference time (Kohl et al., 2026), requiring multi-step training or expensive inference. These approaches are often effective, but they treat rollout distribution shift as a data or inference problem and do not identify the structural mechanisms underlying error growth. In this paper, we identify one such mechanism in transient amplification of rollout error. For a model linearized around its predicted trajectory, the prediction error at each step evolves under a sequence of local linear Jacobian maps. When such a map is normal 1 it acts cleanly on errors, stretching them along orthogonal directions so that each direction behaves in isolation. Non-normal maps have non-orthogonal directions of amplification which interact to produce error growth. For asymptotically stable maps these excursions of growth, called 
+
+transients , eventually die away. Prior work has frequently targeted stability as a desirable property that guarantees asymptotic decay of error. Rollouts, however, are evaluated at tens to hundreds of steps, precisely the medium-horizon regime where transients dominate: stable maps can still produce large transient amplification at the horizons that matter in practice. Normality of individual Jacobians, however, is only part of the story. Nonlinear models have state-dependent Jacobians for which the directions of error amplification may rotate with time. When these directions are misaligned across steps, error components can amplify even when no individual step does so on its own. Aligning successive directions can mitigate this amplification; and a sufficient condition for alignment is that Jacobians across steps be commutative . Commuting normal maps share common orthogonal eigenbases, which suppresses transient amplification at every horizon. Non-commuting, non-normal Jacobians violate both conditions simultaneously, and unregularized networks trained on non-normal dynamics tend to learn Jacobians with this combination of properties. To control transient amplification directly, we propose commutativity regularization , inclu-sive of two auxiliary training losses applied over latent space operators. A commutator penalty 
+
+regulates commutativity of consecutive Jacobians, targeting the cross-step compounding of transients; a normality penalty discourages individual Jacobians from generating large transients in the first place. The two are complementary: penalizing non-commutativity alone still permits large within-step transients, and penalizing non-normality alone leaves cross-step compounding uncontrolled. Their combination drives the learned dynamics toward a regime in which errors decay at the rate set by the Jacobian spectra with controlled intermediate amplification. At inference, the rollout procedure is unchanged and there is no additional cost. We validate the method on the following settings: the 1D KdV equation, the 2D Barotropic Vorticity Equation, sea surface temperature data, and fine-tuning of the pre-trained FourCastNet global weather model on ERA5 atmospheric data. In each setting, commutativity regularization improves long-horizon rollout accuracy without modifying the inference procedure.          
+
+> 1. A linear operator or matrix Ais normal if AA ⊤=A⊤A. Normal matrices have a full set of orthogonal
+> eigenvectors.
+> 2
+
+Contributions. We make the following contributions. (i) We identify non-normal, non-commuting latent Jacobians as a structural driver of transient amplification in autoregressive neural operators, one not addressed by stability. (ii) We propose commutativity regularization: a commutator penalty together with a normality penalty, both estimated via Jacobian-vector products with zero inference-time overhead. (iii) We show a propagator bound under approximate commutativity and normality that replaces the per-step spectral norm with the shared spectral radius as the effective decay rate, a strict improvement whenever the Jacobians are non-normal. (iv) We validate the method on settings spanning chaotic, geophysical, integrable, and synthetic dynamical systems as well as large-scale atmospheric forecasting, obtaining consistent long-horizon accuracy gains over thousands of steps, including in an OOD setting. 
+
+2 Autoregressive Neural Operators and Transient Error 
+
+Let Fθ : X → X be an operator trained to advance a dynamical state by one timestep. At inference the model is applied autoregressively : given an initial condition x0 ∈ X , the rollout is 
+
+ˆx0 = x0, ˆxt+1 = Fθ(ˆ xt), t = 0 , 1, . . . , T − 1. (1) The model is typically trained on a single-step mean-squared loss Lpred = Et
+
+∥Fθ(xt)−xt+1 ∥2,which does not expose it to its own prediction errors during training. 
+
+Error propagation. Let εt = xt − ˆxt denote the prediction error at step t. Linearising Fθ
+
+around the predicted trajectory gives 
+
+εt+1 ≈ Jt εt, Jt = ∂F θ
+
+∂x ˆxt
+
+, (2) so that after T steps εT ≈ ΦT ε0, where the propagator is the ordered Jacobian product 
+
+ΦT = JT −1 JT −2 · · · J0. (3) The rollout error is therefore bounded by ∥εT ∥2 ≤ ∥ ΦT ∥2 ∥ε0∥2. Controlling the spectral norm of individual Jacobians, ∥Jt∥2 ≤ α < 1, yields ∥ΦT ∥2 ≤ αT by submultiplicativity. However, this estimate conceals a key problem: for non-normal Jacobians, the intermediate propagator norm sup t≤T ∥Φt∥2 can greatly exceed ∥ΦT ∥2 due to ordering effects between non-commuting factors. This intermediate growth can occur even when each individual factor is contractive and the system is asymptotically stable Trefethen and Embree (2005). This is the transient amplification mechanism we target. 
+
+> 3Controlling Transient Amplification Improves Long-horizon Rollouts
+
+Figure 1: Normal vs. non-normal transient growth on 2 × 2 stable systems, Left: normal system, eigenvectors are orthogonal, Centre: non-normal system, eigenvectors are nearly parallel, Right: norm ∥x(t)∥ showing transient growth. 
+
+Highlight 
+
+Suppressing transient amplification of error across a rollout improves long-horizon accu-racy in dynamical models with no inference-time overhead. Commutativity regularization 
+
+achieves this by encouraging normality and commutativity of Jacobians around rollout trajectories. 
+
+2.1 Non-Normal Matrices and Transient Growth 
+
+A matrix A is normal if A⊤A = AA ⊤. For normal matrices the eigenvectors are orthonormal, the spectral radius equals the spectral norm, ρ(A) = ∥A∥2, and there is no transient growth: 
+
+∥At∥2 = ρ(A)t for all t ≥ 0.For a non-normal matrix, by contrast, it may be that ρ(A) ≪ ∥ A∥2 and ∥At∥2 can vastly exceed ρ(A)t for intermediate t (transient growth), even though asymptotically 
+
+lim t→∞ ∥At∥1/t  
+
+> 2
+
+= ρ(A) Horn and Johnson (1985). The same phenomenon arises in products of distinct matrices. For A0, . . . , A T −1 each satisfying ∥At∥2 ≤ α, submultiplicativity gives 
+
+∥AT −1 · · · A0∥2 ≤ αT . (4) When the matrices are non-commuting, and are not simultaneously diagonalizable, the bound can be highly non-tight, and the product can exhibit significant transient amplification relative to its asymptotic behavior, even when all ρ(At) < 1.
+
+Illustration. Figure 1 contrasts the two behaviours on 2×2 toy systems. Both matrices have all eigenvalues with negative real part, so both systems are asymptotically stable. The normal 
+
+system has orthogonal eigenvectors: the state decays smoothly along the eigendirections and the norm ∥x(t)∥ decreases monotonically. The non-normal system has nearly parallel eigenvectors: the initial state contains large, nearly-cancelling projections onto them. During the transient phase these components briefly reinforce one another and the norm grows ,reaching a peak well above the initial value, before eventually decaying. This transient amplification is invisible to a purely eigenvalue-based stability analysis Trefethen and Embree (2005), yet it is the mechanism that compounds across time steps in autoregressive rollout for neural operators trained on spatio-temporal data. 
+
+> 4
+
+Table 1: LTI normality concepts and LTV analogues.                        
+
+> LTI (static A)LTV (time-varying {Jt})
+> A⊤A=AA ⊤(normality) [Jt1, J t2] = 0 ∀t1, t 2(normality and commutativity) Orthonormal eigenvectors Shared orthonormal eigenbasis
+> ∥AT∥2=ρ(A)T∥ΦT∥2≤ρT≤αT
+> No transient growth No ordering-induced transients
+
+2.2 Temporal Commutativity as the LTV Analogue of Normality 
+
+The system xt+1 = Jt xt is a linear time-varying (LTV) system Rugh (1981). For linear time-invariant (LTI) systems (static Jt = A), normality ensures ∥AT ∥2 = ρ(A)T , providing tight control of long-horizon amplification. For LTV systems the direct analogue is temporal commutativity in addition to normality: if [Jt1 , J t2 ] ≡ Jt1 Jt2 − Jt2 Jt1 = 0 for all t1, t 2, then the matrices share a common eigenbasis (Horn and Johnson, 1985) and the propagator satisfies 
+
+ΦT = JT −1 · · · J0 = U ΛT −1 · · · Λ0 U ⊤, (5) where U is the shared eigenbasis. Consequently ∥ΦT ∥2 ≤ ρT , where ρ = max i,t |λi(Jt)| ≤ α.This recovers a tight LTI-like bound, with the spectral radius ρ (which may be strictly less than the spectral norm α for non-normal matrices) controlling growth rather than the norm. The correspondence between LTI normality and LTV temporal commutativity is in Table 1. 
+
+2.3 Error Bound Under Approximate Commutativity and Normality 
+
+We now state the key theoretical result motivating our regularizer. The ideal case is when all Jacobians are simultaneously, orthogonally diagonalizable. The following theorem characterises how far the propagator deviates from this ideal when the two conditions, all-pairs commutativity and per-step normality, hold approximately. The proof is deferred to Appendix A. 
+
+Theorem 2.1 (Propagator bound under approximate commutativity and normality) . Let 
+
+J0, J 1, . . . , J T −1 ∈ Rn×n satisfy (i) ∥Jt∥2 ≤ α < 1 (contraction) for all t,(ii) ρ(Jt) ≤ ρ ≤ α (spectral radius bound) for all t,(iii) ∥[Js, J t]∥F ≤ ε for all 0 ≤ s, t ≤ T − 1 (all-pairs approximate commutativity) , and (iv) ∥J⊤ 
+
+> t
+
+Jt − JtJ⊤ 
+
+> t
+
+∥F ≤ η (approximate normality) for all t.Then the propagator satisfies ∥ΦT ∥2 ≤ ρT + 2 T α T −1 δ(ε, η ), where δ(ε, η ) → 0 as ε, η → 0.
+
+2.4 Commutativity and Normality Regularization 
+
+Theorem 2.1 provides two auxiliary losses that penalize the mechanisms driving the growth of ∥Φt∥2.
+
+> 5Controlling Transient Amplification Improves Long-horizon Rollouts
+
+Figure 2: Latent advance architecture used by commutativity regularization. Other configu-rations possible (See Appendix B. 
+
+Latent-space Jacobians. For a given hidden representation zt of input xt for a neural model define the latent advance map Gθ : zt 7 → zt+1 as the bottleneck-to-bottleneck dynamics, and let Jt = ∂G θ/∂ z zt denote its Jacobian. For a UNet we use the bottleneck feature, for FNO we use the middle layer features (Figure 2). Regularizing latent map Jacobians prevents the model from introducing further non-normality in representation space. For large models (such as FourCastNet) we regularize a selected block as shown in Figure 11. 
+
+Commutator penalty. We estimate the squared Frobenius norm of the commutator 
+
+[Jt+1 , Jt] using a single random probe v ∼ N (0 , I ) per minibatch (Hutchinson estimator): 
+
+Lcomm = Ev
+
+h
+
+Jt+1 Jt v − Jt Jt+1 v 2i
+
+. (6) 
+
+Normality penalty. To suppress within-step transient amplification we additionally penalise the normality defect of each Jt:
+
+Lnorm = Ev
+
+h
+
+J⊤ 
+
+> t
+
+Jt v − Jt J⊤ 
+
+> t
+
+v 2i
+
+. (7) This penalises ∥J⊤ 
+
+> t
+
+Jt − JtJ⊤ 
+
+> t
+
+∥2 
+
+> F
+
+in expectation. Together with Lcomm , it drives Jt toward the ideal case of Theorem 2.1: contractive, normal, and temporally commutative. 
+
+Training objective. The full training loss is 
+
+L = Lpred + λc Lcomm + λn Lnorm , (8) where Lpred is the standard single-step MSE loss. 
+
+2.5 Efficient JVP-Based Implementation Matrix-free computation. All four JVPs required for Lcomm and the two JVPs plus one VJP required for Lnorm are computed using torch.func.jvp and torch.func.vjp (PyTorch 
+
+> 6
+
+2.0+) Paszke et al. (2019). No explicit n × n Jacobian matrix is stored at any point. The sequence of operations for Lcomm is: 
+
+u = Jt+1 v, p = Jt u = JtJt+1 v, (9) 
+
+w = Jt v, q = Jt+1 w = Jt+1 Jt v, (10) after which Lcomm = ∥p − q∥2. Each jvp call is a single forward pass over the latent-advance sub-network, applied to the flattened latent. For Lnorm :
+
+Jt v vjp 
+
+−−−→ J⊤ 
+
+> t
+
+(Jt v) , J⊤ 
+
+> t
+
+v jvp 
+
+−−−→ Jt
+
+
+
+J⊤ 
+
+> t
+
+v
+
+
+
+, (11) yielding (J⊤ 
+
+> t
+
+Jt − JtJ⊤ 
+
+> t
+
+)v as required by (7). 
+
+3 Related Work 
+
+Long-horizon error in autoregressive neural simulators. The dominant framing of rollout drift is distributional shift : a model trained on ground-truth states must, at inference, consume its own noisy predictions. PDE-Refiner (Lippe et al., 2023) addresses this by training a denoising network that iteratively refines each rollout step, and Spectral-Refiner (Cao et al., 2025) fine-tunes an FNO to correct mis-resolved Fourier modes; conditional diffusion approaches (Kohl et al., 2026) go further, running many denoising iterations per step in exchange for trajectory-level error correction. These methods target a symptom of the problem rather than its structural mechanism and impose substantial inference-time cost. The closest training-time precursor is McCabe et al. (2023), which penalises the per-step spectral norm of the operator’s Jacobian to enforce Lipschitz contraction, focusing on stability rather than transient amplification which is the goal of this paper. 
+
+Linear-operator views and non-normal dynamics. Koopman approaches (Mezić, 2005; Williams et al., 2015; Azencot et al., 2020) model the latent dynamics with a single 
+
+linear operator K, for which all Jacobians along a trajectory commute trivially. Com-mutativity regularisation can be read as a relaxation of the Koopman view: it asks only that the time-varying latent Jacobians share an orthogonal eigenbasis with state-dependent eigenvalues, recovering the favourable spectral-radius propagator bound while permitting genuinely nonlinear dynamics. The phenomenon that non-normal operators can amplify perturbations even when individually contractive originates in hydrodynamic stability theory and pseudospectra (Trefethen et al., 1993; Schmid, 2007; Trefethen and Embree, 2005; Kreiss, 1962); we transfer this lens from physical operators to the learned Jacobians of neural simulators and turn it into a training signal. 
+
+Multi-step and unrolled training. A natural alternative to single-step training is to optimise the rollout itself List et al. (2025). The pushforward trick Brandstetter et al. (2022) backpropagates through one rollout step while detaching the gradient at an earlier prediction. Such schemes mitigate covariate shift and bring training closer to the deployment regime, but their gradient signal degrades rapidly with the unroll length: Scieur et al. (2022) show that differentiating through long unrolls suffers from a "curse of unrolling" in which the gradient becomes either vanishing or ill-conditioned, limiting the practical horizon over which they can shape the operator. Commutativity regularisation acts on the same composition of Jacobians but estimates their structural defect locally, with two-step probes, side-stepping 
+
+> 7Controlling Transient Amplification Improves Long-horizon Rollouts
+
+long-unroll backpropagation entirely. The two ideas are orthogonal and can be combined: a short pushforward window controls covariate shift while comm-reg controls the per-step structural amplification. 
+
+Training-time noise injection. An alternative stabilisation line injects perturbations into rollout inputs during training, so that the model learns to recover from its own errors. Originally introduced for graph-network particle simulators (Sanchez-Gonzalez et al., 2020) and mesh-based fluid simulators (Pfaff et al., 2021), the technique has since been applied to turbulence emulators (Stachenfeld et al., 2022) to stabilise rollouts well beyond the training horizon. Like multi-step training, these schemes target the input distribution rather than the structural Jacobian properties that drive transient amplification, and are orthogonal to commutativity regularisation. 
+
+4 Experiments 
+
+We evaluate commutativity regularisation across four spatio-temporal forecasting settings spanning 1D and 2D, integrable and chaotic, and synthetic and real data: the 1D KdV equation, the 2D barotropic vorticity equation, fine-tuning of the pretrained FourCastNet weather model on ERA5, and an OISST sea surface temperature benchmark. In each setting we compare a baseline trained with the standard prediction loss against an otherwise-identical model trained with the same objective plus the commutator and normality penalties of Eq. (8) ; the rollout procedure is unchanged at inference, and we evaluate on horizons of hundreds to thousands of steps, well beyond the training window. Across architectures (U-Net, FNO, U-FNO, and FourCastNet’s AFNO backbone) the regularisation consistently extends the horizon over which the learned operator stays close to ground-truth trajectories, with the largest gains where transient amplification is most pronounced: deep rollouts and out-of-distribution initial conditions. 
+
+4.1 Korteweg–de Vries equation 
+
+The KdV equation is a clean probe for our central claim. It is integrable, so any long-horizon divergence between two rollouts on the same initial condition is attributable to the learned operator rather than to chaotic loss of predictability. We train every model on a short window of single -soliton dynamics ( 200 rollout steps, 10 s of physical time) and then evaluate the autoregressive rollout out to 25 × that horizon, both in-distribution and on an out-of-distribution test set whose initial conditions contain up to three interacting solitons, a regime never seen during training. We consider four backbones: a 1D UNet, FNO (Li et al., 2021), U-FNO, PDE-Refiner (Lippe et al., 2023) as a representative inference-time correction baseline. Every regime is trained with a one-step MSE loss on the same 256 -trajectory single-soliton dataset. Results are shown in Figure 3 and appendix Tables 3, 4, and 5. 
+
+In-distribution: commutativity reg. wins at long horizons. At very short leads, the unregularised UNet baseline is slightly more accurate than UNet+CR : the regulariser pays a small single-step cost. This ordering reverses already inside the training window and the gap then widens monotonically. By step 1000 UNet+CR shows a 5× improvement over the baseline. PDE-Refiner is the strongest unregularised baseline at the shorter horizons, 
+
+> 8
+
+Figure 3: KdV rollout nMSE vs. time, averaged over 50 held-out test trajectories. The dashed line marks the training horizon ( t = 10 s, 200 steps); everything to its right is extrapolation in rollout length. onward. (Cf. Tables 3, 4, 5) it is more accurate than UNet+CR up to ∼1000 steps, paying 5× inference-time cost, but it eventually accumulates error and at step 5000 , it is 5× worse than the training-time regulariser despite its much inference cost. 
+
+Out-of-distribution: the gap grows on multi-soliton ICs. On the multi-soliton OOD split the unregularised UNet and PDE-Refiner both experience severe degradation, failing to maintain rollout coherence. UNet+CR is essentially unaffected by the distribution shift. The regularised model is the only one that stays on a coherent multi-soliton trajectory at the longest horizons. The qualitative space-time visualization is in Figures 4 and 5. 
+
+Spectral backbones: comm. reg. recovers an unstable rollout. On the same data, the FNO and U-FNO backbones exhibit a stronger version of the same effect (Figure 3, middle; detailed results in Table 5). 
+
+Figure 4: KdV UNet variant rollout 
+
+Figure 5: KdV UNet variant OOD rollout 
+
+Figure 6: KdV FNO variant Rollouts The unregularised FNO has an ex-cellent one-step MSE on the validation set, ∼4× better per step than its regu-larised counterpart) yet its autoregres-sive rollout becomes unstable around step 100 and loses coherence already by the end of the training window. The U-FNO baseline holds longer, un-til step 500 , before collapsing. Both commutativity-regularised variants stay bounded throughout the 2000 -step eval-uation window, comparable to the regu-larised UNet at the same horizon and is reached on a backbone that diverges en-tirely without the penalty. On the spec-tral architectures the regulariser thus does more than improve a stable base-line: it converts a divergent autoregres-sive rollout into a bounded one, exactly the qualitative behaviour the propaga-tor analysis of Section 2 predicts when non-normal Jacobian products are left unconstrained. 
+
+> 9Controlling Transient Amplification Improves Long-horizon Rollouts
+
+Summary. Across all four backbones, commutativity regularisation trades a small amount of one-step accuracy for a long-horizon rollout that is bounded and, beyond the training window, between 5× and several orders of magnitude more accurate than its unregularised counterpart. It matches PDE-Refiner at intermediate horizons without the latter’s 5×
+
+inference-time overhead, and outperforms it past ∼2000 steps. The OOD experiment shows that the gain is robust to a regime shift in the initial conditions, suggesting that the regulariser shapes a structural property of the learned operator rather than memorising a training distribution. Per-trajectory space–time snapshots, the full per-horizon nMSE numbers, and the architectural and training details are in Appendix D. 
+
+4.2 Barotropic Vorticity Equation 
+
+We evaluate on a chaotic 2D fluid PDE: the barotropic vorticity equation (BVE). The system is dissipative and chaotic: small perturbations amplify exponentially in time, so any improvement must model intrinsic divergence. 
+
+Figure 7: BVE rollout RMSE on the held-out test set. 
+
+Setup. The backbone is a 2D UNet with circular padding, and an 8×8×256 bottleneck on which the regulariser acts. Both regimes are trained with one-step MSE on 200 -frame trajectories. Further details are deferred to Appendix E. 
+
+Result: the baseline destabilises inside the training window. Figure 7 and Table 8 report the comparison. The two regimes are essentially tied at one step but they quickly separate fast. By t=1 s(20 steps) the baseline is already 5× worse than the regularised model. RMSE= 1, error variance equal to signal variance, and from t≈3 s onward it saturates at RMSE ≈ 3–6, where the rollout has decorrelated from the ground truth. The regularised model stays below RMSE= 1 throughout the training horizon. At the end of the 10 s window the regularised RMSE is 9× smaller than the baseline; in nMSE terms (the operationally relevant unit on this normalised field) the gap is 82 ×.The qualitative picture is in the snapshot grid in Figure 8 and Appendix E.6: the baseline visibly amplifies vorticity to several times the natural scale of the flow well before the end of the training horizon, while the regularised rollout preserves coherent vortex structures and the correct amplitude band throughout. 
+
+Summary. On a 2D chaotic PDE the unregularised UNet rollout becomes unstable inside the training horizon. The same training-time regulariser that controls long-horizon drift on KdV turns this instability into a bounded, on-attractor rollout, with a 9× RMSE improvement at the end of the 10 s horizon and a ∼80 × improvement in nMSE. Together with the KdV results, this validates the effectiveness the regulariser across 1D and 2D and integrable vs. chaotic. In both regimes, single-step MSE and rollout error rank the regimes in opposite orders, and a Jacobian-product-aware regulariser recovers the long-horizon behaviour that the standard one-step training objective leaves unconstrained. Per-step RMSE numbers, full data generation, architecture and hyperparameters, and more visualizations are in Appendix E. 
+
+> 10
+
+Figure 8: Barotropic vorticity unregularized (middle) and regularized (bottom) UNet rollout (Cf. Appendix E). 
+
+4.3 FourCastNet on ERA5 
+
+We test commutativity regularisation on a large pretrained autoregressive weather model: FourCastNet v1 (Pathak et al., 2022), an AFNO that maps the 20-channel ERA5 (Hersbach et al., 2020; Rasp et al., 2023) state at 720 ×1440 (0.25 ◦) to the state 6 h later. The question is whether the regulariser improves long-horizon rollout when FCN is fine-tuned on a small, in-distribution slice of its own training data, so that any gain has to come from the structural effect of the regulariser on the learned Jacobians. The main finding is that plain supervised fine-tuning on this slice actively worsens the long-horizon near-surface temperature forecast, while fine-tuning with commutativity regularisation on the same data turns this regression into a substantial improvement. Results are shown in Figure 9 and Tables 10 and 11. 
+
+Setup. Starting from the pretrained FCNv1 2 backbone, we fine-tune three years (2013-2015) inside FCN’s own 1979–2015 training range and compare against (i) the frozen pretrained model and (ii) a plain supervised fine-tune on 2013–2015 with the same optimiser and schedule but no regularization. The regularization is applied on the deep AFNO blocks: the first 8 blocks are run once and detached, and the penalties are evaluated on the last two blocks. In this case, we apply the regularizer to layer normalized blocks. We evaluate 40-step (10 -day) autoregressive rollouts on ERA5 2018 at 41 initial conditions, following Pathak et al. (2022), and report latitude-weighted RMSE in physical units on the variables z500 
+
+and t2m . A second held-out evaluation on ERA5 2019 shows the same improvement for the  
+
+> 2. https://github.com/NVlabs/FourCastNet
+> 11 Controlling Transient Amplification Improves Long-horizon Rollouts
+
+Figure 9: ERA5 rollout RMSE vs. lead time on t2m and z500 for held-out years 2018 and 2019 together with finetuning without regularization. Finetuning-only destroys long-horizon t2m ;the same data with commutativity regularisation pulls well below the frozen FCN baseline. three-year finetuning. Architecture, hyperparameters, visualizations and other details are in Appendix F. 
+
+Plain finetuning worsens t2m , the regulariser recovers it. Table 10 reports the t2m 
+
+rollout RMSE on ERA5 2018 . Through day 5 the three regimes are tied within ∼5% . From day 7 onwards they split sharply: the plain finetune regresses relative to the frozen model , while the regularised finetune on the same data improves on the frozen model. The 2019 
+
+replication (Appendix F.4) shows the same pattern. On the upper-air channels z500 , t850 ,
+
+u850 (all four in Appendix F.4) the regularised and frozen models are within ∼1–3% at every lead, while the plain finetune again drifts at the longest lead (e.g. t850 day 10 : 4.26 K frozen, 
+
+6.33 K plain finetune, 4.14 K regularised). The regulariser thus matches the frozen model on the variables FCN already gets right and substantially improves on the variable it most struggles with. 
+
+Summary. On a 74 M-parameter pretrained weather model, fine-tuning on a small in-distribution slice of its own training years with the same training-time regulariser used for the synthetic PDEs flips a catastrophic 3× degradation of t2m at day 10 into a 41% improvement (and a comparable improvement on the held-out 2019 year), without exposure to new data and without inference-time cost. Together with the KdV and BVE results, this brings the validation from 1D integrable and 2D chaotic synthetic settings up to a high-resolution real-world weather model, on the variable for which the iterated rollout most visibly fails. The full per-channel, per-lead, multi-year tables, the regulariser implementation details and the architectural hyperparameters are in Appendix F. 
+
+4.4 Sea Surface Temperature Forecast 
+
+We train and compared a regularized model from scratch on a real, observation-derived field: weekly NOAA OISST sea-surface temperature on a global 1◦ grid (Reynolds et al., 2002). A 2D UNet ( kin =1, depth 4, base width 64 ) is trained with one-step MSE on the 
+
+1200 -week training split, with and without the latent commutativity / normality penalties of Section 1 on its bottleneck. We initialise from the first frame of the 377 -week test split and roll autoregressively for 376 weeks ( ≈ 7.2 years). Setup, architecture and hyperparameters are in Appendix G. The two models are tied at one-week lead, i.e. the regulariser does not hurt short-lead accuracy. They diverge from ∼ 3 months onward: the baseline drifts in phase relative to the annual cycle and amplifies anomalies, while the regularised rollout tracks the seasonal cycle out to the end of the ∼ 7-year window. Averaged over the full 376 -step rollout the 
+
+> 12
+
+Figure 10: SST rollout RMSE (normalised units) versus lead time (Cf. Appendix G). regularised model is 3.0× more accurate. Together with the BVE result, this shows that the same regulariser controls two qualitatively different long-horizon failure modes, chaotic energy saturation on BVE, and slow phase drift on a forced near-periodic real-world field. 
+
+5 Conclusion 
+
+We identified transient amplification of perturbations along rollout trajectories, driven by non-normal and non-commuting latent Jacobians, as a structural mechanism for long-horizon error growth in autoregressive neural simulators and responsible from distributional shift. On the basis of this analysis we introduced commutativity regularisation : a pair of JVP-based penalties on per-step Jacobian normality and across-step commutativity, supported by a propagator bound that replaces the spectral-norm αT rate by the spectral-radius ρT rate as the two penalties go to zero. Across KdV, the barotropic vorticity equation, sea surface temperature data, and fine-tuning of the pretrained FourCastNet weather model on ERA5, the method consistently improves long-horizon accuracy at zero inference-time cost, and pushes regularised models well past the rollout horizons at which baselines diverge. 
+
+Limitations and outlook. The propagator bound is linearisation-based and assumes that the local Jacobians are representative of the rollout error map; far from the training distribution, where the linearisation itself is suspect, our guarantees become only suggestive. The penalties are estimated stochastically with single-probe JVPs, and per-step normality together with adjacent-step commutativity is a tractable surrogate for the all-pairs joint diagonalisability condition that the theory asks for. The method also targets the structural 
+
+component of error growth and is therefore complementary to, rather than a replacement for, refinement and diffusion methods that address distributional shift; we expect the strongest results from combining the two. Finally, the regulariser is most natural for architectures with an explicit latent bottleneck through which temporal dynamics must pass; choosing the regularised subspace for purely spectral or attention-based simulators, and scaling the method to global weather and climate models at higher resolution, are the directions we view as most pressing. 
+
+> 13 Controlling Transient Amplification Improves Long-horizon Rollouts
+
+Acknowledgements 
+
+This project has received funding from the European Union’s Horizon 2020 research and innovation programme under the Marie Skłodowska-Curie Grant Agreement No. 101034413. 
+
+> 14
+
+References 
+
+O. Azencot, N. B. Erichson, V. Lin, and M. W. Mahoney. Forecasting sequential data using consistent Koopman autoencoders. In Proceedings of the 37th International Conference on Machine Learning , volume 119 of Proceedings of Machine Learning Research , pages 475–485, 2020. URL https://proceedings.mlr.press/v119/azencot20a.html .S. Batzner, A. Musaelian, L. Sun, M. Geiger, J. P. Mailoa, M. Kornbluth, N. Molinari, T. E. Smidt, and B. Kozinsky. E(3)-equivariant graph neural networks for data-efficient and accurate interatomic potentials. Nature Communications , 13:2453, 2022. doi: 10.1038/ s41467-022-29939-5. K. Bi, L. Xie, H. Zhang, X. Chen, X. Gu, and Q. Tian. Accurate medium-range global weather forecasting with 3D neural networks. Nature , 619:533–538, 2023. doi: 10.1038/ s41586-023-06185-3. C. Bodnar, W. P. Bruinsma, A. Lucic, M. Stanley, J. Brandstetter, P. Garvan, M. Riechert, J. Weyn, H. Dong, A. Vaughan, J. K. Gupta, K. Tambiratnam, A. Archibald, E. Heider, M. Welling, R. E. Turner, and P. Perdikaris. Aurora: A foundation model of the atmosphere. 
+
+arXiv preprint arXiv:2405.13063 , 2024. J. Brandstetter, D. E. Worrall, and M. Welling. Message passing neural PDE solvers. In International Conference on Learning Representations (ICLR) , 2022. URL https: //openreview.net/forum?id=vSix3HPYKSU .S. Cao, F. Brarda, R. P. Li, and Y. Xi. Spectral-refiner: Accurate fine-tuning of spatiotemporal fourier neural operator for turbulent flows. In The Thirteenth International Conference on Learning Representations , 2025. URL https://openreview.net/forum?id=MKP1g8wU0P .H. Hersbach, B. Bell, P. Berrisford, S. Hirahara, A. Horányi, J. Muñoz-Sabater, J. Nicolas, C. Peubey, R. Radu, D. Schepers, A. Simmons, C. Soci, S. Abdalla, X. Abellan, G. Balsamo, P. Bechtold, G. Biavati, J. Bidlot, M. Bonavita, G. De Chiara, P. Dahlgren, D. Dee, M. Diamantakis, R. Dragani, J. Flemming, R. Forbes, M. Fuentes, A. Geer, L. Haimberger, S. Healy, R. J. Hogan, E. Hólm, M. Janisková, S. Keeley, P. Laloyaux, P. Lopez, C. Lupu, G. Radnoti, P. de Rosnay, I. Rozum, F. Vamborg, S. Villaume, and J.-N. Thépaut. The era5 global reanalysis. Quarterly Journal of the Royal Meteorological Society , 146(730):1999– 2049, 2020. doi: https://doi.org/10.1002/qj.3803. URL https://rmets.onlinelibrary. wiley.com/doi/abs/10.1002/qj.3803 .R. A. Horn and C. R. Johnson. Matrix Analysis . Cambridge University Press, Cambridge, 1985. D. Kochkov, J. Yuval, I. Langmore, P. Norgaard, J. Smith, G. Mooers, M. Klöwer, J. Lottes, S. Rasp, P. Düben, S. Hatfield, P. Battaglia, A. Sanchez-Gonzalez, M. Willson, M. P. Brenner, and S. Hoyer. Neural general circulation models for weather and climate. Nature ,632:1060–1066, 2024. G. Kohl, L.-W. Chen, and N. Thuerey. Benchmarking autoregressive conditional diffusion models for turbulent flow simulation. Neural Networks , 199:108641, 2026. ISSN 0893-6080. 
+
+> 15 Controlling Transient Amplification Improves Long-horizon Rollouts
+
+doi: https://doi.org/10.1016/j.neunet.2026.108641. URL https://www.sciencedirect. com/science/article/pii/S0893608026001036 .H.-O. Kreiss. Über die Stäbilitätsdefinition für Differenzengleichungen die partielle Differ-entialgleichungen approximieren. BIT Numerical Mathematics , 2(3):153–181, 1962. doi: 10.1007/BF01957346. R. Lam, A. Sanchez-Gonzalez, M. Willson, P. Wirnsberger, M. Fortunato, F. Alet, S. Ravuri, T. Ewalds, Z. Eaton-Rosen, W. Hu, et al. Learning skillful medium-range global weather forecasting. Science , 382(6677):1416–1421, 2023. doi: 10.1126/science.adi2336. Z. Li, N. Kovachki, K. Azizzadenesheli, B. Liu, K. Bhattacharya, A. Stuart, and A. Anand-kumar. Fourier neural operator for parametric partial differential equations. In Inter-national Conference on Learning Representations , 2021. URL https://arxiv.org/abs/ 2010.08895 .P. Lippe, B. S. Veeling, P. Perdikaris, R. E. Turner, and J. Brandstetter. PDE-refiner: Achieving accurate long rollouts with neural PDE solvers. In Thirty-seventh Conference on Neural Information Processing Systems , 2023. URL https://openreview.net/forum? id=Qv6468llWS .B. List, L.-W. Chen, K. Bali, and N. Thuerey. Differentiability in unrolled training of neural physics simulators on transient dynamics. Computer Methods in Applied Mechanics and Engineering , 433:117441, Jan. 2025. ISSN 0045-7825. doi: 10.1016/j.cma.2024.117441. URL https://www.sciencedirect.com/science/article/pii/S0045782524006960 .M. McCabe, P. Harrington, S. Subramanian, and J. Brown. Towards stability of autoregressive neural operators. Transactions on Machine Learning Research , 2023. ISSN 2835-8856. URL https://openreview.net/forum?id=RFfUUtKYOG .I. Mezić. Spectral properties of dynamical systems, model reduction and decompositions. 
+
+Nonlinear Dynamics , 41:309–325, 2005. doi: 10.1007/s11071-005-2824-x. A. Paszke, S. Gross, F. Massa, A. Lerer, J. Bradbury, G. Chanan, T. Killeen, Z. Lin, N. Gimelshein, L. Antiga, et al. Pytorch: An imperative style, high-performance deep learning library. Advances in neural information processing systems , 32, 2019. J. Pathak, S. Subramanian, P. Harrington, S. Raja, A. Chattopadhyay, M. Mardani, T. Kurth, D. Hall, Z. Li, K. Azizzadenesheli, P. Hassanzadeh, K. Kashinath, and A. Anandkumar. FourCastNet: A global data-driven high-resolution weather model using adaptive Fourier neural operators. arXiv preprint arXiv:2202.11214 , 2022. URL https://arxiv.org/abs/ 2202.11214 .T. Pfaff, M. Fortunato, A. Sanchez-Gonzalez, and P. W. Battaglia. Learning mesh-based simulation with graph networks. In International Conference on Learning Representations (ICLR) , 2021. I. Price, A. Sanchez-Gonzalez, F. Alet, T. R. Andersson, A. El-Kadi, D. Masters, T. Ewalds, J. Stott, S. Mohamed, P. Battaglia, R. Lam, and M. Willson. Probabilistic weather forecasting with machine learning. Nature , 637:84–90, 2025. 
+
+> 16
+
+S. Rasp, S. Hoyer, A. Merose, I. Langmore, P. Battaglia, T. Russel, A. Sanchez-Gonzalez, V. Yang, R. Carver, S. Agrawal, M. Chantry, Z. B. Bouallegue, P. Dueben, C. Bromberg, J. Sisk, L. Barrington, A. Bell, and F. Sha. Weatherbench 2: A benchmark for the next generation of data-driven global weather models, 2023. R. W. Reynolds, N. A. Rayner, T. M. Smith, D. C. Stokes, and W. Wang. An improved in situ and satellite SST analysis for climate. Journal of Climate , 15(13):1609–1625, 2002. doi: 10.1175/1520-0442(2002)015<1609:AIISAS>2.0.CO;2. O. Ronneberger, P. Fischer, and T. Brox. U-Net: Convolutional networks for biomedical image segmentation. In Medical Image Computing and Computer-Assisted Intervention (MICCAI) , pages 234–241, 2015. doi: 10.1007/978-3-319-24574-4_28. W. J. Rugh. Nonlinear system theory . Johns Hopkins University Press Baltimore, 1981. A. Sanchez-Gonzalez, J. Godwin, T. Pfaff, R. Ying, J. Leskovec, and P. W. Battaglia. Learning to simulate complex physics with graph networks. In International Conference on Machine Learning (ICML) , 2020. P. J. Schmid. Nonmodal stability theory. Annual Review of Fluid Mechanics , 39:129–162, 2007. doi: 10.1146/annurev.fluid.38.050304.092139. D. Scieur, G. Gidel, Q. Bertrand, and F. Pedregosa. The curse of unrolling: Rate of differentiating through optimization. In A. H. Oh, A. Agarwal, D. Belgrave, and K. Cho, editors, Advances in Neural Information Processing Systems , 2022. URL 
+
+https://openreview.net/forum?id=b57KM4ydqpp .K. Stachenfeld, D. B. Fielding, D. Kochkov, M. Cranmer, T. Pfaff, J. Godwin, C. Cui, S. Ho, P. Battaglia, and A. Sanchez-Gonzalez. Learned coarse models for efficient turbulence simulation. In International Conference on Learning Representations (ICLR) , 2022. L. N. Trefethen and M. Embree. Spectra and Pseudospectra: The Behavior of Nonnormal Matrices and Operators . Princeton University Press, Princeton, NJ, 2005. L. N. Trefethen, A. E. Trefethen, S. C. Reddy, and T. A. Driscoll. Hydrodynamic stability without eigenvalues. Science , 261(5121):578–584, 1993. doi: 10.1126/science.261.5121.578. M. O. Williams, I. G. Kevrekidis, and C. W. Rowley. A data-driven approximation of the Koopman operator: Extending dynamic mode decomposition. Journal of Nonlinear Science , 25(6):1307–1346, 2015. doi: 10.1007/s00332-015-9258-5. 
+
+> 17
+
+Controlling Transient Amplification Improves Long-horizon Rollouts 
+
+Appendix A. Proof of theorem 2.1 
+
+We first record the exact result when the Jacobians commute and are individually normal. 
+
+Proposition A.1 (Exact commuting case) . Let J0, . . . , J T −1 ∈ Rn×n be simultaneously diagonalisable as Jt = U ΛtU ⊤ for a common orthogonal matrix U and diagonal Λt =diag( λ1,t , . . . , λ n,t ). If ρ = max i,t |λi,t |, then 
+
+∥ΦT ∥2 ≤ ρT . (12) 
+
+Proof. ΦT = U ΛT −1 · · · Λ0 U ⊤. Since U is orthogonal, ∥ΦT ∥2 = ∥ΛT −1 · · · Λ0∥2. The product of diagonal matrices is diagonal with (i, i ) entry QT −1 
+
+> t=0
+
+λi,t , so ∥ΛT −1 · · · Λ0∥2 =max i | Q 
+
+> t
+
+λi,t | ≤ ρT .
+
+Remark A.2. The improvement over the crude submultiplicativity bound αT (where α =max t ∥Jt∥2 ≥ ρ(Jt) ≥ ρ) is real whenever the Jacobians are non-normal : a non-normal matrix satisfies ρ(J) < ∥J∥2, so ρ < α and ρT ≪ αT for large T . Proposition A.1 therefore shows that commutativity (plus normality) lets the propagator grow at the spectral-radius 
+
+rate rather than the spectral-norm rate. 
+
+Theorem 2.1 (Propagator bound under approximate commutativity and normality) . Let 
+
+J0, J 1, . . . , J T −1 ∈ Rn×n satisfy (i) ∥Jt∥2 ≤ α < 1 (contraction) for all t,(ii) ρ(Jt) ≤ ρ ≤ α (spectral radius bound) for all t,(iii) ∥[Js, J t]∥F ≤ ε for all 0 ≤ s, t ≤ T − 1 (all-pairs approximate commutativity) , and (iv) ∥J⊤ 
+
+> t
+
+Jt − JtJ⊤ 
+
+> t
+
+∥F ≤ η (approximate normality) for all t.Then the propagator satisfies ∥ΦT ∥2 ≤ ρT + 2 T α T −1 δ(ε, η ), where δ(ε, η ) → 0 as ε, η → 0.Proof. When ε = η = 0 , each Jt is normal and all pairs commute. Commuting normal matrices are simultaneously diagonalizable by a common orthogonal matrix (Horn and Johnson, 1985), giving ∥ΦT ∥2 ≤ ρT by Proposition A.1. For ε, η > 0, the joint conditions (iii)–(iv) imply that {Jt} lies within distance δ(ε, η )
+
+of the closed set of simultaneously orthogonally diagonalizable families, i.e. there exist 
+
+J′ 
+
+> t
+
+= U ΛtU ⊤ (orthogonal U , diagonal Λt with |λi,t | ≤ ρ) satisfying ∥Jt − J′
+
+> t
+
+∥2 ≤ δ(ε, η ).Write Jt = J′ 
+
+> t
+
++ Et with ∥Et∥2 ≤ δ ≡ δ(ε, η ). Expanding the product to first order in 
+
+{Et}:
+
+ΦT = 
+
+> T−1
+
+Y
+
+> t=0
+
+(J′ 
+
+> t
+
++ Et) =  
+
+> T−1
+
+Y
+
+> t=0
+
+J′
+
+> t
+
+| {z } 
+
+> =: Φ ′
+> T
+
++ 
+
+> T−1
+
+X
+
+> k=0
+
+J′  
+
+> T−1
+
+· · · J′
+
+> k+1
+
+| {z }
+
+> Lk
+
+Ek Jk−1 · · · J0
+
+| {z }
+
+> Rk
+
++ O(δ2).
+
+Since J′ 
+
+> t
+
+= U ΛtU ⊤, we have ∥Φ′ 
+
+> T
+
+∥2 = ∥ΛT −1 · · · Λ0∥2 ≤ (ρ + δ)T ≤ ρT + T ρ T −1δ ≤
+
+ρT + T α T −1δ. Each cross-term satisfies ∥LkEkRk∥2 ≤ αT −1δ. Summing the T cross-terms and absorbing the O(δ2) remainder into the leading terms for small δ:
+
+∥ΦT ∥2 ≤ ρT + T α T −1δ + T α T −1δ = ρT + 2 T α T −1δ(ε, η ).
+
+18 Remark A.3 (Why both conditions are needed) . Condition (iii) alone (commutativity, without normality) yields commuting approximants J′ 
+
+> t
+
+that share an eigenbasis, but that basis need not be orthogonal, so the ∥Φ′
+
+> t
+
+∥2 bound would require a conditioning factor for the eigenbasis. Condition (iv) alone (normality, without commutativity) ensures each Jt
+
+individually has ∥Jkt ∥2 = ρ(Jt)k, but products of distinct normal matrices need not satisfy 
+
+∥ΦT ∥2 ≤ ρT . The two conditions are complementary: together they drive the sequence toward a simultaneously orthogonally diagonalizable family. 
+
+Remark A.4 (Spectral norm alone is insufficient) . Condition (i) without (iii)–(iv) does not prevent transient amplification. There exist sequences {Jt} with ∥Jt∥2 = α < 1 yet 
+
+∥ΦT ∥2 ≫ αT for T in the transient regime, due to non-commuting, non-normal interactions. 
+
+Appendix B. Regularizer configuration 
+
+For very large models where the regularizing the latent advance in infeasible (such as FourCastNet), we instead regularize a chosen block in the network. A schematic of this is show in Figure 11. 
+
+Figure 11: Latent block commutativity regularization. Use only for the FourCastNet experiment in this paper. 
+
+Appendix C. Reducing computational overhead 
+
+Three practical approximations reduce cost with negligible quality loss. (a) Temporal subsampling : the regularization terms are evaluated only every K ∈ { 1, 5, 10 } minibatches depending on the experiment, since Jacobian structure changes slowly relative to individual gradient steps. (b) Jacobian vector products are chosen on a smaller sample (about half) of each minibatch, and (c) Single shared probe : one probe vector v is drawn per minibatch and reused for all examples, rather than drawing per-example vectors. With these approximations the additional training wall-clock cost is approximately 20 –30% over the baseline. The inference cost is exactly zero : the regularizer affects only the learned weights θ, not the rollout procedure. 
+
+> 19 Controlling Transient Amplification Improves Long-horizon Rollouts
+
+Appendix D. KdV experiment: details 
+
+This appendix expands the KdV experiment of Section 4.1: data and OOD construction, the four backbone architectures, training and regulariser hyperparameters, and the full per-horizon nMSE numbers underlying Figure 3 and Tables 3, 4 and 5. 
+
+D.1 Data generation and OOD construction Equation and solver. We solve the 1D Korteweg–de Vries equation 
+
+ut + u u x + uxxx = 0 , x ∈ [−20 , 20] , u(·, t ) periodic , (13) on a uniform grid of N = 256 points. Spatial derivatives are taken pseudospectrally, 
+
+ux = F−1[ik ˆu] and uxxx = F−1[( ik )3 ˆu], and the resulting ODE system is integrated with SciPy’s adaptive RK45 ( solve_ivp , rtol = 10 −6). Snapshots are stored on a uniform time grid of ∆t = 0 .05 s. 
+
+Single-soliton training set (in-distribution). Initial conditions are random single solitons, 
+
+u0(x) = A sech 2 (x − x0)/w , A ∼ U [0 .5, 2.0] , w ∼ U [0 .5, 2.0] , x0 ∼ U [−15 , 15] .
+
+(14) We generate 256 training and 120 validation trajectories of 200 steps each ( 10 s of physical time) for fitting all four backbones, and an additional 50 trajectories of 5000 steps for the long-horizon in-distribution evaluation. 
+
+Multi-soliton OOD set. The OOD test set is generated by the same solver but with initial conditions consisting of a uniformly random number of solitons in {1, 2, 3}, each with independently sampled amplitude, width and centre from the training distribution. The 
+
+50 OOD trajectories are 5000 steps long. Models trained only on single solitons are thus evaluated on collisions and overtakings they have never seen during training. 
+
+D.2 Architectures 
+
+All four backbones consume a single channel ( u(x, t k)) and produce a single channel (u(x, t k+1 )) on the same 256 -point periodic grid. 
+
+1D UNet. A circular-padded 1D UNet, ∼1.39 M parameters): base channel width 32 ,channel multipliers (1 , 2, 4, 8) , depth 4, 3×1 kernels, GELU activations, no normalisation, residual two-conv blocks at every encoder/decoder level, strided 2×1 convolutions for down-sampling and transposed convolutions for up-sampling. Skip connections at every encoder level. The bottleneck has shape (256 , 16) = 4096 dimensions and is the latent state on which the regulariser acts; the latent advance operator is F (z, skips ) = encode  decode (z, skips ),so the regularised Jacobian naturally couples the bottleneck channels with the skip-feature channels. 
+
+Fourier Neural Operator (FNO). A four-block FNO, with 64 retained Fourier modes per layer, channel width 128 , GELU activations, and a final two-layer pointwise projection. The first two blocks define the encoder ( z = encode (u) of shape (64 , 256) = 16384 dims, no 
+
+> 20
+
+skip connections); the last two define the decoder. The latent advance operator differentiated by the regulariser is F (z) = encode(decode( z)) .
+
+U-FNO. The U-FNO backbone replaces the last two FNO blocks with U-FNO blocks that sum a spectral convolution, a small two-level 1D UNet on the same feature map, and a 
+
+1×1 pointwise convolution before activation. Channel width 128 , 64 retained Fourier modes, GELU activations. The regulariser acts on the encoder/decoder split in the same way as for the plain FNO. 
+
+PDE-Refiner. We use the PDE-Refiner formulation (Lippe et al., 2023) with a single denoising network conditioned on the previous state, the current (noisy) prediction, and a step index k ∈ { 0, . . . , M }. The backbone is identical to the UNet above; we use M = 4 
+
+refinement iterations per rollout step and the geometric noise schedule of Lippe et al. (2023) with σmin = 10 −7. PDE-Refiner therefore costs M + 1 = 5 × backbone evaluations per rollout step at inference; commutativity regularisation does not modify the rollout procedure and adds no inference-time cost. 
+
+D.3 Training and regulariser hyperparameters 
+
+Table 2: KdV training hyperparameters, identical between baseline and regularised regimes except for the loss term. PDE-Refiner uses the same optimiser settings as the UNet and adds the denoising loss schedule of Lippe et al. (2023).                              
+
+> Optimiser AdamW Peak learning rate 3×10 −4
+> Weight decay 10 −5
+> Schedule cosine annealing to 10 −7
+> Epochs 500 (UNet, FNO, U-FNO) / 500 (PDE-Refiner) Batch size 256
+> Training trajectory length 200 steps ( 10 s) Loss (one-step) ∥Fθ(ut)−ut+1 ∥2(MSE) Regulariser latent-space comm. + normality
+> λc10 −4
+> λn10 −4
+> JVP frequency every 10 th minibatch Probe vector vi.i.d. Gaussian, fresh per evaluation Adjacent pair (zt, z t+1 =Gθ(zt))
+
+Regulariser construction (same on every backbone). At a regulariser-active mini-batch we draw a fresh sample ut, encode it to obtain zt, then decode-then-encode the pair 
+
+(zt, skips t) to obtain the model’s own one-step image zt+1 = Gθ(zt) (and the corresponding skip activations for the UNet). The commutator and normality penalties are computed as 
+
+Lcomm = ∥[Jt, J t+1 ] v∥2, Lnorm = ∥(J⊤ 
+
+> t
+
+Jt − JtJ⊤ 
+
+> t
+
+) v∥2,
+
+on the latent state space, with J• = ∂F/∂z evaluated at the appropriate latent state, each Jacobian–vector product computed by a single torch.func.jvp call (and one vjp for the 
+
+> 21
+
+Controlling Transient Amplification Improves Long-horizon Rollouts 
+
+normality term). Subsampling the regulariser to every tenth minibatch keeps the training-time overhead within ∼10 –20% of the baseline per epoch on the same hardware. 
+
+D.4 Full per-horizon results: UNet variants 
+
+Table 3: KdV final-step nMSE for the UNet variants on the single-soliton in-distribution test set (50 trajectories, mean over 3 seeds). Training horizon is 200 steps. Lower is better.                                 
+
+> Step 50 100 200 500 1000 2000 3000 5000
+> UNet 2.9×10 −42.1×10 −32.1×10 −22.6×10 −13.8×10 −14.7×10 −16.7×10 −11.9
+> PDE-Refiner 2.2×10 −46.1×10 −41.5×10 −34.2×10 −31.2×10 −21.1×10 −12.1×10 −13.7×10 −1
+> UNet + comm. reg. 1.3×10 −21.8×10 −21.9×10 −22.0×10 −22.3×10 −23.5×10 −25.1×10 −26.9×10 −2
+
+Table 4: KdV final-step nMSE for the UNet variants on the multi-soliton out-of-distribution test set ( 50 trajectories with up to three solitons, mean over 3 seeds). Training horizon is 
+
+200 steps. Lower is better.                                 
+
+> Step 50 100 200 500 1000 2000 3000 5000
+> UNet 2.0×10 −42.2×10 −32.1×10 −22.6×10 −14.0×10 −14.9×10 −17.3×10 −11.8
+> PDE-Refiner 3.8×10 −35.8×10 −31.1×10 −23.4×10 −26.6×10 −21.1×10 −12.0×10 −13.8×10 −1
+> UNet + comm. reg. 1.6×10 −22.1×10 −22.1×10 −22.3×10 −22.5×10 −23.6×10 −24.7×10 −26.1×10 −2
+
+The UNet baseline is the more accurate model at the very first rollout steps ( ≤ 50 ) but is overtaken by both alternatives by step ∼100 and is more than an order of magnitude worse than UNet+CR already inside the training window (step 200 ). PDE-Refiner is the strongest 
+
+unregularised model up to step ∼1000 , paying 5× inference-time cost; from step ∼2000 
+
+onwards UNet+CR overtakes it on both the in-distribution and the out-of-distribution split. The relative gain is largest in the 25 ×-extrapolation regime, where the unregularised UNet rollout has lost coherence and PDE-Refiner has accumulated enough error to also degrade. 
+
+D.5 Full per-horizon results: spectral backbones 
+
+Table 5: KdV final-step nMSE for the spectral backbones on the in-distribution single-soliton test set ( 120 trajectories, mean over seeds: FNO and FNO+CR three seeds, U-FNO+CR three seeds, U-FNO baseline two seeds). Training horizon is 200 steps; the rightmost four columns are extrapolation in rollout length. Lower is better.                                    
+
+> Step 50 100 200 500 1000 1500 2000
+> FNO 6.3×10 −47.6×10 −23.1×10 −13.9×10 −14.9×10 −15.0×10 −15.0×10 −1
+> U-FNO 2.1×10 −46.1×10 −41.5×10 −37.2×10 −31.7×10 −11.6×10 −11.7×10 −1
+> FNO + comm. reg. 2.1×10 −46.1×10 −41.5×10 −37.3×10 −31.9×10 −23.4×10 −25.1×10 −2
+> U-FNO + comm. reg. 2.1×10 −46.2×10 −41.5×10 −34.4×10 −31.3×10 −22.9×10 −24.6×10 −2
+
+Why the unregularised FNO collapses. At the end of training the baseline FNO has a one-step validation MSE of ∼1.5×10 −7 and the regularised FNO ∼6.9×10 −7, i.e. the baseline is ∼4× better per step. Yet the baseline’s autoregressive rollout amplifies error 
+
+22 super-exponentially and reaches nMSE ∼0.3 by step 200 , while FNO+CR maintains nMSE 
+
+∼1.5×10 −3 at the same horizon. The U-FNO baseline is more stable than the plain FNO baseline because the embedded multi-scale UNet path injects local mixing that breaks the otherwise diagonal Fourier-block structure, but it still collapses around step ∼1000 . In both cases the regulariser converts a divergent rollout into a bounded one, and the per-step accuracy difference between regularised and unregularised is in the third or fourth significant digit. 
+
+D.6 In-distribution Per-trajectory snapshots 
+
+See Figure 12. 
+
+Figure 12: KdV space–time plots of u(x, t ) for representative in-distribution test trajectories: ground truth, baseline rollout, and commutativity-regularised rollout, run for the full 5000 
+
+steps (UNet variants) from a single initial condition. Color scale is symmetric and shared per trajectory. 
+
+D.7 Out-of-distribution Per-trajectory snapshots 
+
+See Figure 13. 
+
+Appendix E. BVE experiment: details 
+
+This appendix expands the BVE experiment of Section 4.2: data generation, the 2D UNet architecture, training and regulariser hyperparameters, evaluation, the full per-horizon RMSE numbers underlying Figure 7 and Table 8, and per-trajectory snapshots. 
+
+E.1 Data generation Equation and solver. We integrate the 2D barotropic vorticity equation 
+
+∂tζ + J(ψ, ζ + βy ) = −ν(−∇ 2)2ζ − rζ, ζ = ∇2ψ, (15) 
+
+> 23 Controlling Transient Amplification Improves Long-horizon Rollouts
+
+Figure 13: KdV space–time plots of u(x, t ) for representative OOD test trajectories: ground truth, baseline rollout, and commutativity-regularised rollout, run for the full 5000 steps (UNet variants). on the doubly-periodic domain [0 , 2π]2 with N =64 grid points per side. The solver is pseudospectral in space with the 2/3-rule dealiasing mask and RK4 in time. The Jacobian 
+
+J(ψ, q ) = ∂xψ ∂ yq − ∂yψ ∂ xq is evaluated in real space; all linear operations (Laplacian inversion, derivatives, hyperviscosity) are evaluated in spectral space. Physical and numerical parameters are summarised in Table 6. 
+
+Initial conditions. Initial conditions are random Gaussian fields with prescribed energy spectrum 
+
+E(k) ∝ k4 exp  −2 ( k/k peak )2, kpeak = 6 , (16) 
+
+> 24
+
+Figure 14: KdV space–time plots of u(x, t ) for representative test trajectories: ground truth, baseline rollout, and commutativity-regularised rollout, run for the full 2000 steps (FNO variants). sampled in spectral space with i.i.d. uniform phases on [0 , 2π), then rescaled in real space so that the RMS vorticity is 1.5. Each trajectory is integrated through a 2 s spin-up that is discarded, after which 200 snapshots are recorded at ∆tout =0.05 s, giving a 10 s recording window. 
+
+Splits and normalisation. The dataset contains 300 trajectories, split deterministically into 240 / 30 / 30 for train / val / test. Vorticity fields are standardised to zero mean and unit standard deviation using the train-split statistics before being passed through the network; predictions are evaluated in this normalised space. All RMSE numbers in the main text and this appendix are in these normalised vorticity units. 
+
+E.2 Architecture 
+
+The 2D UNet advances the field one step in time, ζt 7 → ζt+1 , with the following layout: 
+
+> 25 Controlling Transient Amplification Improves Long-horizon Rollouts
+
+Table 6: BVE solver parameters.                                   
+
+> Domain [0 ,2π]2, doubly periodic Grid N×N= 64 ×64
+> β(planetary vorticity gradient) 1.0
+> Hyperviscosity ν= 10 −8, biharmonic order p= 2
+> Ekman drag r10 −2
+> Time step ∆t5×10 −4
+> Save stride every 100 steps; ∆tout = 0 .05 sSpin-up 2.0s (discarded) Recording window 10 s ( 200 snapshots/trajectory) Dealiasing 2/3rule Time integrator RK4
+
+• Encoder. Three residual conv blocks with channel widths (64 , 128 , 256) . Each block is two 3×3 circular convolutions wrapped in Conv → GroupNorm( min (8 , C )) → GELU ,with a 1×1 skip when the channel count changes. Each level is followed by 2×2 average pooling, producing skip activations at resolutions 64 , 32 , 16 .
+
+• Bottleneck. A residual conv block ConvBlock (256 → 256) at the 8 × 8 × 256 = 16384 -dimensional latent state. 
+
+• Decoder. Two transposed 2×2 convolutions interleaved with residual conv blocks consuming the corresponding encoder skip activations at resolutions 16 and 32 . Abilinear interpolation guards against odd-dimension rounding before concatenation. 
+
+• Head. A 1×1 convolution to a single output channel. The latent state used by the regulariser is the output of encode( ζ) after all encoder downsamplings and the bottleneck residual block, and the latent advance operator is 
+
+F (z, skips ) = encode  decode (z, skips ), exactly as in the KdV UNet of Section 4.1. The Jacobian penalised by the regulariser is therefore the Jacobian of this encode ◦decode map at the bottleneck, naturally coupling bottleneck channels with the skip-feature channels. 
+
+E.3 Training and regulariser hyperparameters Construction of the in-trajectory pair. Each minibatch sample carries, in addition to the supervised pair (ζt, ζ t+1 ), an independently drawn second adjacent pair (ζt′ , ζ t′+1 ) from the same trajectory with t′ uniform over the recorded frames. The regulariser encodes both endpoints of this partner pair, zt′ = encode( ζt′ ) and zt′+1 = encode( ζt′+1 ), and computes 
+
+Lc = [Jt′ , J t′+1 ] v 2, Ln = (J⊤ 
+
+> t′
+
+Jt′ − Jt′ J⊤ 
+
+> t′
+
+) v 2, (17) on the latent state space, with J• = ∂F/∂z |(z•,skips •) and v a fresh Gaussian probe vector. Each Jacobian–vector product is computed by a single torch.func.jvp call (and one vjp 
+
+for the normality term). The total loss is L = MSE + λcLc + λnLn with λc = λn = 10 −7.The regulariser is applied on the first 25 samples of every 15 th minibatch, which keeps the training-time overhead small relative to the baseline per epoch while still providing a fresh in-trajectory pair on each application. 
+
+> 26
+
+Table 7: BVE training hyperparameters, identical between baseline and regularised regimes except for the loss term. 
+
+Optimiser AdamW Peak learning rate 10 −4
+
+Weight decay 10 −5
+
+Schedule cosine annealing to 10 −7
+
+Epochs 500 
+
+Batch size 128 
+
+Training trajectory length 200 frames ( 10 s) Loss (one-step) ∥Fθ (ζt) − ζt+1 ∥2 (MSE) Checkpoint selection best validation MSE Regulariser latent-space comm. + normality 
+
+λc 10 −7
+
+λn 10 −7
+
+JVP frequency every 15 th minibatch Regulariser sub-batch first 25 samples of the minibatch Regulariser pair in-trajectory adjacent step (ζt′ , ζ t′+1 ), t′ uniform per sample Probe vector v i.i.d. Gaussian, fresh per evaluation 
+
+E.4 Evaluation Metric 
+
+The reported metric is the per-step spatial RMSE on the normalised vorticity field, 
+
+RMSE( t) = 
+
+s 1 
+
+> N2
+
+X
+
+> i,j
+
+(ˆζt,ij − ζt,ij )2,
+
+averaged over the 30 test trajectories per seed. 
+
+E.5 Full per-horizon results 
+
+Table 8 reports the per-step RMSE at every 20 rollout steps on the same 30 test trajectories, together with the across-seed standard deviation. Two features are visible across the entire range. First, the baseline crosses RMSE 1 around step 33 (t≈1.65 s, well within the training horizon) and saturates near RMSE ≈ 5–6 from step ∼140 onward; the regularised model stays bounded throughout. Second, the across-seed dispersion (std at step 199 ) is 1.90 for the baseline ( σ/μ ≈ 0.32 ) and 0.009 for the regularised model ( σ/μ ≈ 0.013 ); the regulariser not only improves the mean rollout but also collapses the seed spread, suggesting that the unconstrained Jacobian product dominates the seed-to-seed variability of the baseline rollout while the regularised rollout is essentially a structural property of the data that all seeds converge to. 
+
+E.6 Per-trajectory snapshots 
+
+See Figure 15 
+
+27 Controlling Transient Amplification Improves Long-horizon Rollouts 
+
+Figure 15: Vorticity snapshots ζ(x, y, t ) for representative test trajectories: ground truth, baseline rollout, and commutativity-regularised rollout, all run for the full 199 rollout steps (∼ 10 s) from a single initial condition. Color scale is symmetric and shared between truth and predictions per trajectory; absolute error uses a separate scale. The baseline visibly amplifies vorticity to several times the natural scale of the flow well before the end of the training horizon, while the regularised model preserves coherent structures and the correct amplitude band over the full rollout. 
+
+> 28
+
+Figure 16: Further vorticity snapshots ζ(x, y, t ) for representative test trajectories: ground truth, baseline rollout, and commutativity-regularised rollout, all run for the full 199 rollout steps ( ∼ 10 s) from a single initial condition. 
+
+> 29
+
+Controlling Transient Amplification Improves Long-horizon Rollouts 
+
+Table 8: BVE per-step RMSE on the 30 -trajectory test split at every 20 rollout steps (mean over 3 training seeds, normalised vorticity units). ∆tout = 0 .05 s.                                                                       
+
+> Step 120 40 60 80 100 120 140 160 199
+> Time (s) 0.05 123456789.95
+> Baseline (mean) 0.0040 0.272 1.582 2.810 3.620 4.266 4.890 5.391 5.721 6.007
+> Baseline (std) 0.0001 0.027 0.242 0.381 0.332 0.282 0.695 1.187 1.540 1.896
+> Comm. reg. (mean) 0.0028 0.0512 0.0962 0.140 0.186 0.239 0.302 0.377 0.465 0.665
+> Comm. reg. (std) 0.00003 0.0007 0.0014 0.002 0.003 0.004 0.005 0.006 0.007 0.009
+> Ratio (mean) 1.45.316 .420 .119 .517 .816 .214 .312 .39.0
+
+Appendix F. FCN/ERA5 experiment: details 
+
+This appendix expands the FCN experiment of Section 4.3: data and preprocessing, the training/eval protocol, the regulariser implementation in the AFNO latent stack, and the full per-channel, per-lead RMSE numbers underlying Figure 9 in Tables 10 and 11. 
+
+F.1 Data and preprocessing Source. ERA5 reanalysis on FCN’s native 20 -channel state at 721 ×1440 (0.25 ◦, ∆t = 6 h): 
+
+10 m winds (u10 , v 10 ), 2 m temperature t2m , surface and mean-sea-level pressures (sp , msl ),
+
+T at 850 hPa, winds at 1000 /850 /500 hPa, geopotential at 1000 /850 /500 /50 hPa, relative humidity at 500 /850 hPa, T at 500 hPa, and total column water vapour tcwv . We use FCN’s per-variable normalisation statistics throughout, so the network is run in its native input space; metric values are reported in physical units after the inverse normalisation. 
+
+Years. Pretraining of FCN v1 covers 1979 –2015 , so all fine-tuning years used here lie inside its training range and expose the model to no new physical signal: 
+
+• FCN+CR [2013–15]: fine-tuned on {2013 , 2014 , 2015 }.
+
+• Plain-finetune baseline: fine-tuned on {2013 , 2014 , 2015 }.Validation uses 2017 during fine-tuning. The reported test years are 2018 (Section 4.3) and 
+
+2019 (held-out replication, Appendix F.4); both are genuinely outside FCN v1’s training range. 
+
+Evaluation initial conditions. For each test year we sample 41 initial conditions at a fixed stride (every 9 h, stride= 36 on the 6 h steps) and run an autoregressive 40 -step rollout (10 days) per IC. The reported metric is the mean over ICs of the latitude-weighted RMSE, 
+
+RMSE( t) = 
+
+s 1
+
+> HW
+
+X
+
+> i,j
+
+wi
+
+  ˆXt,ij − Xt,ij 
+
+2 , wi = cos( ϕi),
+
+on each of the channels z500 , t850 , u850 , t2m . Numbers are reported in physical units after inverse-normalising with the FCN per-channel statistics. 
+
+F.2 Architecture and where the regulariser acts 
+
+The backbone is the released FCN v1 AFNO with 74 .7 M total parameters. Fine-tuning unfreezes the 34 .5 M parameters of the deep AFNO blocks and the head; the patch-embed 
+
+30 and the first several blocks are kept frozen and run once per minibatch with their output detached. 
+
+Latent space operator. The latent state on which the regulariser acts is the activation 
+
+after the first K=10 AFNO blocks; the regulariser flows JVP / VJP only through the remaining (deep) blocks, so the Jacobian–vector products it touches have memory cost 
+
+∝ (depth − K) rather than full depth. This is necessary at 720 ×1440 resolution: fully differentiating the network would otherwise blow GPU memory at batch size ≥ 1, even at low precision. 
+
+F.3 Training and regulariser hyperparameters 
+
+Table 9: FCN fine-tuning hyperparameters (identical across the two fine-tune regimes except for the loss term).                          
+
+> Backbone FCN v1 AFNO, pretrained (Pathak et al., 2022) Optimiser AdamW Peak learning rate 5×10 −6
+> Weight decay 0
+> Schedule cosine annealing Epochs 50
+> Batch size 2(single-GPU, A100 80 GB) Loss (one-step) latitude-weighted MSE between ˆXt+1 and ERA5 Regulariser latent comm. + normality
+> λc10 −5
+> λn10 −5
+> JVP frequency every minibatch ( comm_freq =1)Skip blocks first 10 AFNO blocks detached ( comm_skip_blocks =10 )Comm. pair adjacent-step pair (Xt, X t+1 )(comm_window =1)Probe vector vi.i.d. Rademacher, fresh per call
+
+Construction of the JVP. At each (regulariser-active) minibatch we draw the supervised pair (Xt, X t+1 ) and compute, in the post-skip latent space, 
+
+Lc = [J(zt), J (zt+1 )] v 2, Ln = J(zt)⊤J(zt) v − J(zt)J(zt)⊤ v 2,
+
+where J is the Jacobian of the deep-block stack at the indicated latent state, v is a fresh Rademacher probe, and the JVP/VJP are evaluated on the first two samples of the minibatch (memory bound). Three JVPs and one VJP are needed per call; J(zt) v is reused between the commutator and normality terms. The total fine-tune loss is L = LMSE + λc Lc + λn Ln
+
+with λc = λn = 10 −5.
+
+F.4 Full per-channel, per-lead RMSE numbers 
+
+Table 10 (test year 2018 ) and Table 11 (held-out year 2019 ) give the latitude-weighted RMSE in physical units at every day from 1 to 10 on all four WB2 headline channels. 
+
+> 31
+
+Controlling Transient Amplification Improves Long-horizon Rollouts 
+
+Table 10: ERA5 2018 rollout RMSE (latitude-weighted, physical units) at daily lead times for the four variables, averaged over 41 initial conditions ( 9 h stride). Bold marks the best entry per column. The FCN+CR entries here use the [2013–15] fine-tune. 
+
+Channel Method 1 d 2 d 3 d 4 d 5 d 6 d 7 d 8 d 9 d 10 d 
+
+z500 [m 2/s 2]Frozen 86 .9 165 .0 258 .3 374 .5 494 .5 608 .8 704 .4 785 .0 854 .3 903 .7
+
+Finetune 81 .7 162 .7 260 .8 381 .1 503 .0 615 .5 710 .9 792 .9 871 .7 930 .0
+
+FCN+CR [2013-2015] 82 .7 164 .2 264 .0 385 .0 510 .3 622 .6 712 .5 790 .0 855 .3 908 .4
+
+t850 [K] Frozen 0.86 1.19 1.59 2.06 2.52 2.98 3.36 3.61 3.88 4.26 
+
+Finetune 0.84 1.19 1.62 2.10 2.57 3.02 3.38 3.67 4.10 5.18 
+
+FCN+CR [2013-2015] 0.86 1.22 1.65 2.13 2.60 3.07 3.42 3.68 3.91 4.14 
+
+u850 [m/s] Frozen 1.60 2.43 3.29 4.15 4.93 5.60 6.06 6.46 6.80 7.01 
+
+Finetune 1.61 2.45 3.34 4.23 5.01 5.67 6.15 6.53 6.88 7.20 
+
+FCN+CR [2013-2015] 1.62 2.48 3.39 4.28 5.05 5.73 6.21 6.56 6.90 7.08 
+
+t2m [K] Frozen 0.97 1.18 1.42 1.72 2.03 2.34 2.56 3.00 4.32 7.53 
+
+Finetune 0.95 1.18 1.43 1.74 2.05 2.36 2.66 3.97 7.62 16 .16 
+
+FCN+CR [2013-2015] 0.97 1.21 1.47 1.79 2.10 2.39 2.62 2.87 3.19 4.48 
+
+Table 11: ERA5 2019 replication: rollout RMSE (latitude-weighted, physical units) at daily lead times. Bold marks the best entry per column. 
+
+Channel Method 1 d 2 d 3 d 4 d 5 d 6 d 7 d 8 d 9 d 10 d 
+
+z500 [m 2/s 2]Frozen 87 .9 166 .1 263 .2 369 .9 481 .9 595 .3 697 .7 788 .2 861 .0 908 .9
+
+Finetune [2013–15] 84 .1 164 .9 263 .4 371 .2 486 .9 602 .8 710 .5 797 .0 868 .2 920 .1
+
+FCN+CR [2013–15] 84 .7 166 .2 267 .0 377 .7 491 .3 607 .0 714 .6 803 .6 872 .6 920 .0
+
+t850 [K] Frozen 0.87 1.20 1.62 2.05 2.49 2.91 3.28 3.65 3.93 4.23 
+
+Finetune [2013–15] 0.86 1.21 1.63 2.07 2.52 2.94 3.32 3.67 4.10 5.02 
+
+FCN+CR [2013–15] 0.87 1.23 1.66 2.11 2.57 2.99 3.37 3.73 4.00 4.24 
+
+u850 [m/s] Frozen 1.62 2.43 3.35 4.15 4.90 5.55 6.03 6.46 6.78 6.95 
+
+Finetune [2013–15] 1.63 2.45 3.38 4.19 4.95 5.62 6.16 6.53 6.84 7.10 
+
+FCN+CR [2013–15] 1.64 2.48 3.41 4.23 4.98 5.65 6.21 6.62 6.91 7.12 
+
+t2m [K] Frozen 0.97 1.18 1.42 1.69 1.99 2.28 2.55 2.81 3.58 5.54 
+
+Finetune [2013–15] 0.95 1.18 1.43 1.71 2.01 2.28 2.61 3.73 6.96 14 .43 
+
+FCN+CR [2013–15] 0.97 1.20 1.47 1.75 2.06 2.34 2.63 2.87 3.33 3.99 
+
+F.5 Qualitative forecasts 
+
+See Figure 17 for ERA5 t2m forecasts. 
+
+Appendix G. SST: details 
+
+This appendix expands the SST experiment summarised in Section 4.4: data and preprocess-ing, the full UNet architecture, training hyperparameters, the regulariser implementation, and the per-step rollout numbers and qualitative snapshots underlying Figure 10. 
+
+G.1 Data and preprocessing Source. NOAA Optimum Interpolation Sea-Surface Temperature, weekly-mean product (sst.wkmean.1990-present ) (Reynolds et al., 2002), covering the global ocean on a 1◦
+
+(180 ×360 ) grid at weekly cadence. The version we use contains 1727 weeks beginning in 1990. 
+
+32 Figure 17: Qualitative day-6, 8 and 10 rollout error snapshots of t2m on a single ERA5 2018 
+
+initial condition for 2m temperature. Land pixels are filled with 0 in the raw NetCDF and are masked only in the visualisations (Appendix G.6); the network sees them as zero pixels. 
+
+Padding. The network requires spatial dimensions divisible by 24 = 16 . We pad each frame from 180 ×360 to 192 ×384 using boundary-aware padding: 6 rows of reflect padding at each pole (no real wrap-around at the poles), and 12 columns of wrap (periodic) padding at the 0◦/360 ◦ longitude seam. This avoids the mid-Pacific padding artefacts that a default zero or reflect padding would introduce and matches the natural periodicity of the longitude axis. 
+
+Splits and normalisation. We split chronologically into 1200 / 150 / 377 weeks of train / val / test. The test split therefore covers ≈ 7.24 years and includes ∼ 7 full annual cycles. Frames are standardised to zero mean and unit standard deviation using train-set statistics; all RMSE numbers in Section 4.4 and below are reported in these normalised units. 
+
+> 33 Controlling Transient Amplification Improves Long-horizon Rollouts
+
+G.2 Architecture 
+
+The backbone is a 2D UNet with circular-aware inputs (the wrap padding above provides the longitude periodicity) operating on the full 192 ×384 field. 
+
+Encoder/decoder structure. Depth D = 4 , base channel width C0 = 64 , so the encoder produces channel widths (64 , 128 , 256 , 512) at successive levels. Each encoder block is a residual two-conv block Conv 3×3 → GroupNorm( min (8 , C )) → GELU applied twice with a 
+
+1×1 skip when the channel count changes, followed by 2×2 average pooling. The decoder mirrors the encoder with 2 × 2 transposed convolutions and a residual block taking the concatenated skip features. The bottleneck spatial size is therefore 192 /16 × 384 /16 = 12 ×24 
+
+at 512 channels, the latent state on which the regulariser acts. A final 1×1 convolution maps back to one output channel (the next-week SST). The model has ∼ 17 M parameters. 
+
+Inputs and outputs. kin = 1 : the network sees one previous week and predicts the next. We did not find a benefit from longer context windows on this data. 
+
+G.3 Training and regulariser Optimiser and schedule. AdamW with learning rate 10 −4, weight decay 10 −5, batch size 
+
+4, 200 epochs. The learning rate follows a cosine annealing schedule with ηmin = 10 −7. Loss is one-step MSE on the next-week SST: the model never sees a multi-step rollout during training. 
+
+Commutativity regulariser. The regulariser is identical in form to the BVE one (Ap-pendix E.3) but applied to the 12 ×24 bottleneck of the SST UNet. At minibatch b with input x and an in-trajectory random partner ˜x, the latent advance operator F (z, s ) = encode ( decode (z, s )) is differentiated through torch.func.jvp on the bottleneck features and skip stack, and the squared norms 
+
+Lc(x, ˜x) = [JF (z(x)) , J F (z(˜ x))] v 2, (18) 
+
+Ln(x) = JF (z(x)) ⊤JF (z(x)) v − JF (z(x)) JF (z(x)) ⊤v 2, (19) are estimated on a single random Gaussian probe v. The total loss is L = MSE + λcLc + λnLn
+
+with λc = λn = 10 −7, evaluated every fifth minibatch and on the first 5 samples of that minibatch (the exact JVP at full batch and full 192 ×384 resolution is GPU-memory bound). 
+
+G.4 Evaluation protocol 
+
+We evaluate a single autoregressive rollout starting from the first frame of the test split and continuing for Teval = 376 weeks (the test length minus the input context). At each step the network produces the next normalised SST field, which is then fed back as the next input. The reported metric is the per-step spatial RMSE 
+
+RMSE( t) = 
+
+s 1
+
+> HW
+
+X
+
+> i,j
+
+  ˆTt,ij − Tt,ij 
+
+2,
+
+on the normalised field, computed over the entire padded 192 ×384 grid (including the masked land pixels, whose target value is 0 in the dataset). Reporting on the ocean-pixels-only mask gives values that are uniformly ∼ 5% larger but does not change the relative comparison. 
+
+> 34
+
+Table 12: SST rollout spatial RMSE on the normalised test field at selected rollout steps (single rollout, 376 weeks). Lower is better; bold marks the better entry per column. The two final columns are summary statistics over the entire 376 -step rollout.                                         
+
+> Method 113 26 52 104 156 260 376 mean max Lead 1 wk 3 mo 6 mo 1 yr 2 yr 3 yr 5 yr 7.2 yr all all Baseline 0.025 0.059 0.120 0.160 0.250 0.277 0.193 0.148 0.248 0.516
+> Commutativity reg. 0.025 0.046 0.050 0.062 0.055 0.066 0.097 0.114 0.082 0.162
+
+G.5 Per-step RMSE numbers 
+
+Table 12 reports per-step RMSE at a denser set of lead times than Section 4.4. The qualitative behaviour, baseline error oscillating with the annual cycle and growing in envelope, regularised error phase-locked and bounded, is visible at every horizon beyond ∼ 3 months. 
+
+G.6 Qualitative snapshots 
+
+Visualizations of sea surface temperature predictions and errors are shown in Figure 18. 
+
+Figure 18: Spatial snapshots of the SST autoregressive rollout at selected lead times for the baseline and the commutativity-regularised UNet, with ground-truth SST in the top row and absolute error in the lower rows. Land is overlaid in grey. The baseline progressively blurs mid-latitude anomalies and drifts in the seasonal phase; the regularised rollout retains the large-scale structure of the true field through the full 7.2-year window.
