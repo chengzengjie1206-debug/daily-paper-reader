@@ -1,0 +1,924 @@
+Title: Variational Smoothing and Inference for SDEs from Sparse Data with Dynamic Neural Flows
+
+URL Source: https://arxiv.org/pdf/2605.05606v1
+
+Published Time: Fri, 08 May 2026 00:31:36 GMT
+
+Number of Pages: 16
+
+Markdown Content:
+# Variational Smoothing and Inference for SDEs from Sparse Data with Dynamic Neural Flows 
+
+Yu Wang ∗
+
+Department of Mathematics Louisiana State University 
+
+yuwang@lsu.edu 
+
+Arnab Ganguly ∗†
+
+Department of Mathematics Louisiana State University 
+
+aganguly@lsu.edu 
+
+## Abstract 
+
+Stochastic differential equations (SDEs) provide a flexible framework for modeling temporal dynamics in partially observed systems. A central task is to calibrate such models from data, which requires inferring latent trajectories and parameters from sparse, noisy observations. Classical smoothing methods for this problem are often limited by path degeneracy and poor scalability. In this work, we developed a novel method based on characterization of the posterior SDE in terms of conditional backward-in-time score defined as the gradient of a function solving a Kolmogorov backward equation with multiplicative updates at observation times. We learn this conditional score using neural networks trained to satisfy both the governing PDE and the observation-induced jump conditions, thereby integrating continuous-time dynamics with discrete Bayesian updates. The resulting score induces a posterior SDE with the same diffusion coefficient but a modified drift, enabling efficient posterior trajectory sampling. We further derive a likelihood-based objective for learning the SDE parameters, yielding an evidence lower bound (ELBO) for joint state smoothing and parameter estimation. This leads to a variational EM-style procedure, where the neural conditional score is optimized to approximate the smoothing distribution, followed by a maximization step over the SDE parameters using samples from the induced posterior. Experiments on nonlinear systems demonstrate accurate and stable inference with a very few observations demonstrat-ing significant improved scalability compared to classical MCMC methods. 
+
+## 1 Introduction 
+
+Stochastic differential equations (SDEs) provide a flexible framework for modeling dynamical systems evolving under uncertainty. They have also emerged as a cornerstone of generative modeling, where they serve to transform simple noise to complex data distributions [ 32 , 33 , 30 , 8, 26 , 25 ]. In many applications, however, the latent state process is not directly observed; instead, one has access only to sparse and noisy measurements at discrete time points. A central problem is therefore to infer both the unknown parameters governing the dynamics and the distribution of latent trajectories conditioned on these observations, commonly referred to as the smoothing or posterior distribution .Parametric inference for SDEs has been extensively studied (e.g., see [ 36 , 21 , 13 , 29 , 1, 22 , 17 , 4,14 , 2, 18 , 20 , 9 , 3 , 11 , 23 , 7, 34 , 6, 16 , 15 ]). A typical approach to this problem involves discretizing the latent or prior SDE in time and performing inference on the resulting high-dimensional latent state vector. Methods based on particle filtering, or Markov chain Monte Carlo (MCMC) are widely used [ 13 , 18 , 14 , 19 , 35 ], but often suffer from path degeneracy, poor mixing, and limited scalability, especially when observations are sparse or and the latent dynamics is highly nonlinear. 
+
+> ∗Equal contribution.
+> †Corresponding author. Preprint.
+> arXiv:2605.05606v1 [stat.ML] 7 May 2026
+
+In this work, we take a different perspective based on a path-space characterization of the smoothing distribution. We utilize the fact that the smoothing distribution over trajectories can be described as the law of a diffusion process, whose drift is the prior drift modified by a backward-in-time conditional score . The latter is defined as the spatial gradient of the logarithm of a message function solving a backward Kolmogorov equation with multiplicative updates at observation times. This yields a continuous-time formulation of Bayesian conditioning at the level of path measures. Building on this characterization, we develop a scalable method for joint smoothing and parameter estimation. The key idea is to approximate the backward conditional score by a family of neural networks trained to satisfy the governing partial differential equations (PDEs) together with the observation-induced jump conditions. This yields a tractable approximation of the posterior SDE, from which approximate trajectories can be efficiently sampled without resorting to high-dimensional discretizations of the prior process. We next derive a likelihood-based objective for learning the SDE parameters in the form of an evidence lower bound (ELBO). This leads to a variational Expectation Maximization (EM)-type procedure: for a given iterate of the SDE parameter, the E-step consists of training the neural network to approximate the conditional score and and using it to define a tractable posterior SDE whose law is the approximate smoothing distribution. Samples from this induced SDE are then used to compute a Monte Carlo approximation of the corresponding ELBO, thereby approximating the intractable conditional expectation required in the EM objective. In the M-step, the next iterate of SDE parameter is obtained by maximizing this Monte Carlo ELBO . We summarize the main components of our approach as follows: • Characterization of smoothing: We utilize a representation of the smoothing distribution as the law of a posterior SDE whose drift equals the prior drift plus a correction given by a backward-in-time conditional score. • Neural approximation of backward score: We approximate this conditional score using neural networks, yielding a tractable posterior SDE that can be efficiently sampled without resorting to MCMC. • Variational EM: We construct a variational EM procedure based on a Monte Carlo approxi-mation of the ELBO using reparameterized samples from the learned posterior SDE, for joint smoothing and parameter estimation. The resulting framework integrates continuous-time stochastic dynamics, partial observation, and variational inference in a novel unified manner. In contrast to classical discretization-based approaches, our method operates directly at the level of the smoothing distribution, leading to improved stability and scalability, particularly in regimes with sparse observations. Empirical results on nonlinear systems demonstrate accurate trajectory reconstruction and parameter estimation, with significant gains over standard MCMC-based methods. 
+
+## 2 Model and problem setup 
+
+Let (Ω , F, {F t}, P) be a filtered probability space supporting a d-dimensional Brownian motion W .Our model consists of the the latent SDE: 
+
+dX (t) = b(κ, X (t)) dt + σ(X(t)) dW (t), X(0) ∼ p0, (1) where κ ∈ K0 ⊂ Rd0 is the model parameter, and the parameter set K0 is assumed to be compact. We assume that for each κ, the SDE admits a strong unique solution (e.g., under linear growth and local Lipschitz conditions on the coefficients). We denote a sample path until time T by Xκ 
+
+> [0 ,T ]
+
+.
+
+Data: The latent process X is not observed directly. Our data comprises noisy, partial mea-surements y1: M0 = ( y1, . . . , y M0 ) at times {tm}M0 
+
+> m=1
+
+⊂ [0 , T ] — a realization of Yt1:tM0 =(Y (t1), Y (t2), . . . , Y (tM0 )) . We assume, without loss of generality, tM0 = T . For each obser-vation time tm, Y (tm) is an Rd0 -valued random variable with d0 ⩽ d satisfying 
+
+Y (tm)|X(tm) = xm ∼ ρobs (·| xm).
+
+A widely used observation model is the linear Gaussian model: 
+
+Y (tm) = GX (tm) + εm, with εmiid 
+
+∼ N d0 (0 , Σnoise ), (2) 2where G ∈ Rd0×d and the covariance matrix of the noise, Σnoise , is p.d. In this case, the conditional observation density ρobs is given by ρobs (·| X(tm) = xm) = Nd0 (·| Gx m, Σnoise ).
+
+Goal: Given y1: M0 , our objectives are: (i) to approximate the smoothing (or posterior) distribution 
+
+Π(κ)post (· | y1: M0 ) defined as the conditional distribution of full latent trajectory X[0 ,T ] given Yt1:tM0 =
+
+y1: M0 , and (ii) to estimate κ.We emphasize that Π(κ)post (·| y1: M0 ) and Π(κ)pre 
+
+> def
+
+= Law( X[0 ,T ]) are probability measures on the path space C([0 , T ], Rd), rather than a collection of marginal distributions at discrete times; specifically, for a measurable set A ⊂ C([0 , T ], Rd),
+
+P(X[0 ,T ] ∈ A ) = Π (κ)pre (A), P(X[0 ,T ] ∈ A | Yt1:tM0 = y1: M0 ) = Π (κ)post (A| y1: M0 ).
+
+Moreover, Π(κ)post (· | y1: M0 ) is absolutely continuous with respect to Π(κ)pre satisfying 
+
+dΠ(κ)post (· | y1: M0 )
+
+dΠ(κ)pre 
+
+(X[0 ,T ]) = 
+
+QM0 
+
+> m=1
+
+ρobs (ym | X(tm)) 
+
+eℓ(κ|y1: M0 ) , (3) where 
+
+ℓ(κ | y1: M0 ) = ln Eκ
+
+" M0Y
+
+> m=1
+
+ρobs (ym | X(tm)) 
+
+#
+
+. (4) is the log-likelihood function of κ given the observations. Thus the maximum likelihood estimate (MLE) of κ is given by ˆκmle = arg max κ ℓ(κ | y1: M0 ).
+
+## 3 Methodology 
+
+Estimation of the SDE parameter κ and the smoothing distribution Π(κ)post (· | y1: M0 ) are intricately tied. The starting point of our approach is the following variational characterization of the log-likelihood. We provide the proof in Appendix B (21) 
+
+Theorem 1 (Variational representation of the log-likelihood) . For any κ ∈ K0,
+
+ℓ(κ | y1: M0 ) = sup  
+
+> Q∈P (C([0 ,T ],Rd))
+
+ELBO( Q, κ | y1: M0 ), (5) 
+
+where 
+
+ELBO( Q, κ | y1: M0 ) = EQ
+
+" M0X
+
+> m=1
+
+ln ρobs (ym | X(tm)) 
+
+#
+
+− KL  Q ∥ Π(κ)pre 
+
+. (6) 
+
+Moreover, the supremum is attained at Q∗ = Π (κ)post (· | y1: M0 ).
+
+Consequently, ˆκMLE = arg max κ sup Q ELBO( Q, κ ), which leads to a variational EM-type proce-dure consisting of alternating maximization over Q and κ:• (E-step) Fix κi, and construct an approximation eQi(· | y1: M0 ) to Π(κi)post (· | y1: M0 ).Compute ELBO. • (M-step) Update κi+1 = arg max  
+
+> κ
+
+ELBO( eQi, κ | y1: M0 ).
+
+The KL term in (6) is finite only when Q is the law of an SDE with the same diffusion coefficient as the prior. In this case, it admits an explicit representation via Girsanov’s theorem (see (21) ). This plays a crucial role in our learning procedure. 
+
+3.1 E-Step (first half): Approximation of smoothing distribution Variational characterization of posterior on path space: We now describe a method for approx-imating the smoothing distribution Π(κ)post (· | y1: M0 ) for a given κ. A key theoretical ingredient 3underlying our method is the path-space characterization of the smoothing distribution. Specifically, the posterior measure Π(κ)post (· | y1: M0 ) can be characterized as the law of a diffusion process ¯X
+
+solving the posterior SDE 
+
+d ¯X(t) = ¯b(κ, t, ¯X(t)) dt + σ( ¯X(t)) dW (t), a(x) = σ(x)σ(x)⊤, (7) where the drift is given by 
+
+¯b(κ, t, x ) = b(κ, x ) + a(x)∇x ln w(κ, x, t ). (8) Here, the function w(κ, x, t ) represents the conditional likelihood of the future observations ym+1: M0
+
+given the current state X(t) = x, for t ∈ (tm, t m+1 ], and admits the representation 
+
+w(κ, x, t ) = p(κ) ym+1: M0 | X(t) = x = Eκ
+
+" Y
+
+> k>m
+
+ρobs 
+
+ yk | X(tk) X(t) = x
+
+#
+
+. (9) By (20) , the function w satisfies a backward Kolmogorov equation with multiplicative updates at observation times. Specifically, for t ∈ (tm, t m+1 ], w evolves backward in time according to 
+
+∂tw(κ, x, t ) + A(κ)w(κ, x, t ) = 0 ,
+
+where the infinitesimal generator A(κ) of the SDE (1) is given by 
+
+A(κ)f (x) = 
+
+> d
+
+X
+
+> i=1
+
+bi(x; κ) ∂f (x)
+
+∂x i
+
++ 12
+
+> d
+
+X
+
+> i,j =1
+
+aij (x) ∂2f (x)
+
+∂x i∂x j
+
+, f ∈ C2(Rd, R),
+
+At each observation time tm, w undergoes a multiplicative update: 
+
+w(κ, x, t −
+
+> m
+
+) = ρobs (ym | x) w(κ, x, t +
+
+> m
+
+), (10) with terminal condition w(κ, x, T ) = ρobs (yM0 | x).Since w is not available in closed form, (7) and (8) suggest approximating the smoothing distribution 
+
+Π(κ)post (· | y1: M0 ) by the law eQ of a controlled diffusion eX on [0 , T ] of the form 
+
+d eX(t) = eb(κ, t, eX(t)) dt + σ( eX(t)) dW (t), eb(κ, t, x ) = b(κ, x ) + a(x)es(κ, x, t ), (11) Related ideas have been explored in [ 31 ] and [ 27 , 3], where the posterior SDE is approximated by restricting its time marginals to lie within a parametric family (exponential family in [ 31 ] and Gaussian in [ 27 , 3 ]). However, constraining only the time marginals does not in general yield an accurate approximation of the smoothing distribution over path space, and further restricting these marginals to simple parametric families significantly limits their expressiveness. 
+
+Approximation of the conditional score: In contrast, we obtain ˜s(κ, ·, ·) by direct approximation of the backward conditional score 
+
+s(κ, x, t ) .
+
+= ∇x ln w(κ, x, t ),
+
+via a neural parameterization. This leads to an approximation of Π(κ)post in the path-space thereby avoiding simpler parametric assumptions only on time marginals. Note that w(κ, x, t ) is not a probability density in x, but admits a Feynman-Kac representation. Consequently, s(κ, x, t ) is not a Fisher score in the classical sense, but simply the spatial gradient of the log of this backward message function. Note that accurate approximation of the conditional score s(κ, ·, ·) requires accuracy of approximation of the backward message function w(κ, ·, ·) in log-scale. We thus directly approximate its logarithm: 
+
+h(κ, x, t ) def 
+
+= ln w(κ, x, t ). The following result derives the explicit PDE for h(κ, ·, ·). Refer to Appendix B (21) for the proof. 
+
+Proposition 1. For any κ ∈ K0, h(κ, ·, ·) satisfies the backward PDE between observation times 
+
+(tm−1, t m]
+
+∂th(κ, x, t ) + A(κ)h(κ, x, t ) + 12 ∇⊤ 
+
+> x
+
+h(κ, x, t ) a(x) ∇xh(κ, x, t ) = 0 , (12) 
+
+with the boundary condition at tm given by 
+
+h(κ, x, t m) = ln ρobs (ym | x) + h(κ, x, t +
+
+> m
+
+). (13) 4Key idea: Since h evolves differently across intervals (tm−1, t m], to approximate h for a fixed κ we employ a collection of neural networks (NNs) {ehθm }M0 
+
+> m=1
+
+with parameters θ = ( θ1, . . . , θ M0 ). To train these networks, we enforce the PDE (12) over each interval (tm−1, t m] together with the jump condition (13) at tm. For this purpose, we introduce a reference probability measure pref on Rd (e.g. a Gaussian distribution or Uniform distribution over some compact set) and sample space–time points 
+
+(x, t ) with x ∼ pref and t ∼ U (tm−1, t m]. The networks {ehθm } are then trained simultaneously 
+
+so that these conditions are approximately satisfied at the sampled points (x, t ). This leads to the following loss function for determining θ = ( θ1, . . . , θ M0 ):
+
+Lsmooth (κ, θ) = 
+
+> M0
+
+X
+
+> m=1
+
+h
+
+E x∼pref  
+
+> t∼U(tm−1,t m]
+
+∂tehθm (κ, x, t ) + A(κ)ehθm (κ, x, t ) + 12 ∇⊤ 
+
+> x
+
+ehθm a(x)∇xehθm
+
+> 2
+
++ Ex∼pref 
+
+ehθm (κ, x, t m) − ln ρobs (ym | x) − ehθm+1 (κ, x, t +
+
+> m
+
+) 2i
+
+.
+
+The optimal θ is then given by θ∗ ≡ θ∗(κ) = arg min θ Lsmooth (κ, θ), and the learned approximate conditional score function by 
+
+es∗(κ, x, t ) ≡ esθ∗ (κ, x, t ) = ∇xehθ∗ 
+
+> m
+
+(κ, x, t ), t ∈ (tm−1, t m]. (14) 
+
+Remark: Importantly, if the observation density is known up to a multiplicative constant independent of x, i.e., 
+
+ρobs (ym | x) = Cm qobs (ym | x), Cm > 0,
+
+then ln ρobs (ym | x) differs from ln qobs (ym | x) by an additive constant ln Cm, which does not affect the PDE residuals or jump constraints in the training. Specifically, if ˘hθm denotes the NN trained with 
+
+ln qobs (ym | x) in place of ln ρobs (ym | x) in Lsmooth , and ˘θ∗ denotes the corresponding optimizer, it can be seen that for t ∈ (tm−1, t m], ehθ∗ 
+
+> m
+
+(κ, x, t ) = ˘h˘θ∗
+
+> m
+
+(κ, x, t ) + cm, where cm = PM0 
+
+> k=m
+
+ln Ck.Hence, the learned score field is invariant: 
+
+es(κ, x, t ) ≡ ∇ xehθ∗ 
+
+> m
+
+(κ, x, t ) = ∇x˘h˘θ∗
+
+> m
+
+(κ, x, t ), t ∈ (tm−1, t m].
+
+Our approach leads to the following algorithm. 
+
+Algorithm 1 Approximation of backward conditional score function and smoothing distribution 1. Input: Parameter κ, observations y1: M0 , observation times {tm}M0
+
+> m=1
+
+.2. Initialize the interval-wise neural networks {ehθm }M0
+
+> m=1
+
+.3. Train the networks by solving θ∗ = arg min θ Lsmooth (κ, θ)
+
+4. Compute the learned conditional score function esθ∗ (κ, x, t ) by (14). 5. Output: Trained networks {ehθ∗ 
+
+> m
+
+}M0 
+
+> m=1
+
+and score function esθ∗ .This training strategy is related in spirit to physics-informed neural networks (PINNs) [ 28 , 10 ], in that it enforces a governing PDE through a residual loss. However, unlike standard PINN formulations that target continuous solutions of classical PDEs, our setting involves a discontinuous target function 
+
+h and a sequence of distinct but coupled NNs {ehθm } across successive time intervals, which must simultaneously satisfy the PDE within each interval and the observation-driven jump conditions at the observation times. 
+
+3.2 E-Step (Second half) and M-step: Computing and Maximizing ELBO 
+
+Suppose κi is the SDE parameter at epoch i of the variational EM algorithm, and let θ(i),∗(κi) ≡
+
+θ(i),∗ = ( θ(i),∗ 
+
+> 1
+
+, . . . , θ (i),∗ 
+
+> M0
+
+) denote the parameters obtained from the first half of E-step of next epoch, 
+
+i + 1 . Then the law eQ(i),∗ ≡ eQθ(i),∗ of the SDE 
+
+d eX(t) = ebθ(i),∗ (κ, eX(t), t ) dt + σ( eX(t)) dW (t), ebθ(i),∗ (κ, t, x ) = b(κ, x ) + a(x)esθ(i),∗ (κ, x, t )
+
+5approximates Π(κi)post (· | y1: M0 ). Here the conditional score esθ(i),∗ is as in (14) . The structure of the posterior SDE enables us to calculate the ELBO in explicit form by Girsanov’s theorem (see (22)) 
+
+ELBO( eQ(i),∗, κ | y1: M0 ) = E eQ(i),∗
+
+ M0X
+
+> m=1
+
+ln ρobs (ym | eX(tm)) 
+
+− 12
+
+Z T
+
+> 0
+
+esθ(i),∗ (t, eX(t)) ⊤a( eX(t)) esθ(i),∗ (t, eX(t)) dt 
+
+
+
+.
+
+(15) 
+
+Time discretization, reparameterization and MC Approximation: Fix a grid 0 = s0 < · · · <sN0 = T with step size ∆ ≡ si − si−1 ≪ 1, chosen such that {tm} ⊂ { sn} and tm = snm . For simplicity, assume the initial condition x0 is known and fixed. Also, for notational convenience, we drop the epoch index i and write θ∗ instead of θ(i),∗. Let ϕκ be the one-step map given by 
+
+ϕκ(s, u, y ) = u + ebθ∗ (κ, u, s )∆ + σ(u)√∆ y, s ∈ (tm−1, t m].
+
+Then eXD ≡ (x0, eXD 
+
+> 1
+
+, . . . , eXDN0 ) generated recursively via 
+
+eXDn+1 = ϕκ(sn, eXDn , ξ n+1 ), ξn
+
+> iid
+
+∼ N (0 , I d) (16) defines a deterministic map eXD ≡ (x0, eXD 
+
+> 1
+
+, . . . , eXDN0 ) def 
+
+= Φ( κ, x 0, ξ1: N0 ), where Φ is the time-ordered composition of ϕκ along the grid {si} driven by the input noise sequence ξ1: N0 . This leads to the following Monte-Carlo approximation of ELBO. 
+
+ELBO MC ( eQ∗, κ ) = 1
+
+L
+
+> L
+
+X
+
+> l=1
+
+" M0X
+
+> m=1
+
+ln ρ
+
+
+
+ym | eXD, (l)
+
+> nm
+
+
+
+− 12
+
+> M0
+
+X
+
+> m=1
+
+X
+
+> n:tm−1<s n⩽tm
+
+g⊤ 
+
+> θ∗
+> m
+
+( eXD, (l) 
+
+> n
+
+, s n) a( eXD, (l) 
+
+> n
+
+) gθ∗ 
+
+> m
+
+( eXD, (l) 
+
+> n
+
+, s n) ∆ 
+
+#
+
+,
+
+(17) where the ξ(l)1: N0 , l = 1 , . . . , L , are i.i.d. samples and eXD, (l) := Φ( κ, x 0, ξ(l)1: N0 ). Since ξ(l)1: N0 is independent of κ and Φ is a deterministic function of (κ, x 0, ξ), gradients ∇κELBO MC ( eQ∗, κ ) in the M-step can be computed via backpropagation through the recursion defining Φ.
+
+Algorithm 2 Variational EM algorithm for parameter inference 1. Input: Initial parameter κ(0) , data y1: M0 , initial state x0, grid {sn}N0
+
+> n=0
+
+, number of trajecto-ries L, and a convex coefficient α.2. For i = 0 , 1, 2, . . . :(a) Run Algorithm 1 with κ = κ(i) to obtain esθ(i),∗ .(b) Compute the drift function of the posterior SDE: ebθ(i),∗ (κ, t, x ) = b(κ, x ) + 
+
+a(x)esθ(i),∗ (κ, x, t )
+
+(c) Simulate L posterior trajectories eXD,κ, (l) = Φ 
+
+
+
+κ, x 0, ξ(l)1: N0
+
+
+
+and compute ELBO by (17). (d) Update κ(i+1) = arg max κ∈K0 ELBO MC ( eQ(i),∗, κ ), where ELBO MC is as in (17) .The maximization is performed in closed form when available, or by gradient as-cent/Adam. 3. Output: ˆκ.
+
+Discussion of existing methodology and its limitations: As mentioned in the introduction, a standard approach to estimation of smoothing distribution and SDE-parameter proceeds by time discretization followed by MCMC sampling. Specifically, one approximates the latent path X[0 ,T ] by a high-dimensional vector X0: N = ( X(s0), X (s1), . . . , X (sN )) over a fine grid {si}Ni=0 with step size ∆ = si − si−1 ≪ 1. Using the Euler–Maruyama scheme, 
+
+X(si) = X(si−1) + b(κ, X (si−1)) ∆ + σ(X(si−1)) √∆ ξi, ξi
+
+> i.i.d.
+
+∼ N (0 , I ),
+
+6one obtains the approximate posterior density 
+
+πpost (x0: N | y1: M0 ) ∝
+
+> N
+
+Y
+
+> i=1
+
+N xi xi−1 + b(κ, x i−1)∆ , a (xi−1)∆  M0Y
+
+> m=1
+
+ρobs (ym | xim ),
+
+where the grid is chosen such that sim = tm and a(x) = σ(x)σ(x)⊤.Since πpost (· | y1: M0 ) is known only up to a normalization constant, MCMC methods can be used to generate approximate samples. However, this approach has several well-known limitations. First, discretization converts the problem into an artificial high-dimensional density sampling task in 
+
+RN d , even when the underlying state process is low-dimensional. Second, the efficiency of MCMC depends critically on the proposal distribution, and mixing typically deteriorates as ∆ → 0. When observations are sparse in time, the posterior over paths becomes highly constrained by only a few observations. While various proposals for sampling diffusion bridges exist, at least in the noise-free setting (e.g., [ 12 , 5, 24 , 35 ]), they are often ineffective for bridging long time intervals in realistic SDE models. As a result, standard MCMC methods often yield poor approximations of the smoothing distribution in such regimes (demonstrated in our experiments). A further conceptual limitation lies in how discretization interacts with conditioning. In the standard approach, time discretization is applied at the level of the prior SDE X, and the resulting approxima-tion is then used to construct an approximate posterior density. While the Euler–Maruyama scheme provides a controlled approximation of the prior dynamics over small time steps, the smoothing distribution is obtained through Bayes’ rule, which introduces a nonlinear dependence on the prior path measure. Consequently, although the posterior approximation error is induced by the prior discretization, its effect on the posterior distribution is indirect and generally difficult to characterize. In contrast, our approach applies discretization to the posterior SDE eX directly. As a result, the numerical scheme directly approximates the posterior (smoothing) distribution and, consequently, the associated ELBO. In particular, the discretization error arises at the level of the target quantity of interest, and therefore, by standard Euler–Maruyama approximation results for SDEs, is expected to decrease as the discretization time step becomes smaller. 
+
+## 4 Experiments 
+
+We evaluate the proposed framework on two stochastic systems of increasing complexity: a 2D biochemical model (Michaelis–Menten) and a 4D nonlinear multi-stable system (ring-coupled double well). Both experiments follow an identical setup to enable direct comparison. 
+
+Models: Both systems are governed by SDEs with drift b(x; κ) and isotropic diffusion σ(x) = σI .
+
+2D Michaelis–Menten (MM): The Michaelis–Menten mechanism models describes the interaction conversion of a substrate (S) to product (P) in presence of enzyme (E) through the reactions: 
+
+S + E k1
+
+⇌
+
+> k−1
+
+C k2
+
+−→ P + E. 
+
+The conservation laws, XE + XC = J and XS + XC + XP = J′, where J and J′ are time-independent constants, allows us to embed the system in [0 , ∞)2, by modeling X = ( XS , X E ) via an SDE with drift function: 
+
+b1(x) = −k1x1x2 + k−1(J − x2), b2(x) = −k1x1x2 + ( k−1 + 1 .0)( J − x2).
+
+The parameters k1, k−1, and k2 represent reaction rates, and we fix J = 3 .0 and σ = 0 .3.
+
+4D Ring-Coupled Double Well: A high-dimensional Ringed Double-well SDE physically models a spatially coupled network of bistable states driven by thermal fluctuations. We consider a 4D-SDE with with σ = 0 .4, and drift 
+
+bi(x) = kixi − x3 
+
+> i
+
++ 0 .5 X 
+
+> j∈N(i)
+
+(xj − xi), i = 1 , . . . , 4,
+
+where N (i) denotes the two neighbors of node i in a ring topology, i.e., N (1) = N (3) = {4, 2},
+
+N (2) = N (4) = {1, 3}.7Inference task: (MM) κ = ( k1, k −1); k2 = 1 is fixed. (4D-DW): κ = ( k1, k 2, k 3); k4 = 1 is fixed. Ground truth parameters: 
+
+MM : ( k1, k −1) = (1 .0, 1.5) , 4D − DW : k1 = k2 = k3 = 1 .0.
+
+Data generation. Trajectories are simulated via the Euler–Maruyama scheme and subsampled at 5 equidistant time points, subject to additive Gaussian noise ym = X(tm) + εm, where εm ∼N (0 , 0.22). For the 2D Michaelis–Menten system (governing PDE dimension 3), we simulate up to T = 0 .5 with step size ∆t = 0 .001 from X(0) = (1 , 1) , extracting observations at tm ∈{0.1, . . . , 0.5}. For the 4D Double Well (governing PDE dimension 5), we simulate up to T = 5 
+
+with ∆t = 0 .05 from X(0) = (1 .5, 1.5, 1.5, 1.5) , extracting observations at tm ∈ { 1.0, . . . , 5.0}.
+
+Parameter inference: Figures 1a and 2 show that our proposed method converges reliably toward true parameters in both models, even from poor initialization. In contrast, the MCMC baseline exhibits poor mixing in the MM system and unstable behavior with large fluctuations in the 4D system. 
+
+Trajectory quality. Figures 1c and 3 illustrate trajectories sampled from the learned posterior SDEs after convergence as recoveries of the latent states in both cases. In both models, sampled paths remain consistent with noisy observations and capture the underlying dynamics smoothly. 
+
+Implementation Details & Computational Cost. To enable efficient computation, we model the approximate log-message functions ehθ using a uniform architecture across all observation intervals: 5 hidden layers of 70 neurons with tanh activations for smooth gradients. While we employ distinct NNs across diiferent observation intervals, formulating the Lsmooth as a global sum allows the gradient computations for the PDE residuals and jump conditions to be batched and distributed across multiple GPUs. This design ensures the framework remains scalable as the number of observations increases. For the specific experiments presented in this work—both featuring exactly 5 sparse observations—the method executes efficiently locally utilizing standard compute backends (e.g., Apple MPS or NVIDIA CUDA). In these instances, the initial PINN training requires approximately 20 minutes when employing a learning rate decay schedule (e.g., annealing from 10 −2 down to 
+
+10 −4), whereas subsequent EM iterations take 1 minute or less by warm-starting the networks with parameters optimized in the previous iteration.  
+
+> (a) Proposed Method (b) MCMC Baseline
+
+Figure 2: Parameter inference for the 4D ring-coupled double well system. 
+
+## 5 Conclusion 
+
+We introduced a variational EM framework for joint smoothing and parameter inference in partially observed SDEs. The method is based on a path-space formulation of the smoothing distribution and a learned approximation of the backward-in-time conditional score. This allows the posterior dynamics to be represented through a tractable diffusion process, enabling scalable trajectory sampling and parameter learning from sparse observations. The proposed approach avoids explicit discretization of prior SDE, which can introduce artificial high-dimensionality, and instead relies on a neural parameterization of the conditional score combined 8(a) Proposed PINN-based Method 
+
+> (b) MCMC Baseline
+> (c) Trajectory samples for the Michaelis–Menten system.
+
+Figure 1: Parameter inference and trajectory results for the stochastic Michaelis–Menten system. 
+
+Figure 3: Trajectory samples for the 4D double well system. with a variational ELBO objective. This leads to a unified algorithm that integrates continuous-time stochastic dynamics with VI, and performs favorably in regimes with limited observational data. Our method depends on the accuracy of the learned conditional score, which is determined by the expressiveness and optimization of the neural parameterization. Inaccuracies in this approximation may affect the induced posterior dynamics and consequently the ELBO optimization. In addition, as with general EM-type procedures, performance can depend on initialization and may be influenced by nonconvexity in the parameter landscape. This can be largely mitigated through multiple initial-izations. Developing more expressive architectures and improved optimization strategies for stable score learning in high-dimensional settings is an important direction for future work. 9References 
+
+[1] Yacine Aït-Sahalia. Maximum likelihood estimation of discretely sampled diffusions: a closed-form approximation approach. Econometrica , 70(1):223–262, 2002. [2] Yacine Aït-Sahalia. Closed-form likelihood expansions for multivariate diffusions. Ann. Statist. ,36(2):906–937, 2008. [3] Cédric Archambeau and Manfred Opper. Approximate inference for continuous-time Markov processes. In Bayesian time series models , pages 125–140. Cambridge Univ. Press, Cambridge, 2011. [4] Alexandros Beskos, Omiros Papaspiliopoulos, Gareth O. Roberts, and Paul Fearnhead. Exact and computationally efficient likelihood-based estimation for discretely observed diffusion processes. J. R. Stat. Soc. Ser. B Stat. Methodol. , 68(3):333–382, 2006. With discussions and a reply by the authors. [5] Alexandros Beskos, Gareth Roberts, Andrew Stuart, and Jochen Voss. MCMC methods for diffusion bridges. Stoch. Dyn. , 8(3):319–350, 2008. [6] Jaya P. N. Bishwal. Parameter estimation in stochastic volatility models . Springer, Cham, 2022. [7] Mogens Bladt and Michael Sø rensen. Simple simulation of diffusion bridges with application to likelihood inference for diffusions. Bernoulli , 20(2):645–675, 2014. [8] Hanqun Cao, Cheng Tan, Zhangyang Gao, Yilun Xu, Guangyong Chen, Pheng-Ann Heng, and Stan Z Li. A survey on generative diffusion models. IEEE transactions on knowledge and data engineering , 36(7):2814–2830, 2024. [9] Jinyuan Chang and Song Xi Chen. On the approximate maximum likelihood estimation for diffusion processes. Ann. Statist. , 39(6):2820–2851, 2011. [10] Xiaoli Chen, Liu Yang, Jinqiao Duan, and George Em Karniadakis. Solving inverse stochastic problems from discrete particle observations using the fokker–planck equation and physics-informed neural networks. SIAM Journal on Scientific Computing , 43(3):B811–B830, 2021. [11] Botond Cseke, Manfred Opper, and Guido Sanguinetti. Approximate inference in latent gaussian-markov models from continuous time observations. In C. J. C. Burges, L. Bottou, M. Welling, Z. Ghahramani, and K. Q. Weinberger, editors, Advances in Neural Information Processing Systems 26 , pages 971–979. Curran Associates, Inc., 2013. [12] Bernard Delyon and Ying Hu. Simulation of conditioned diffusion and application to parameter estimation. Stochastic Process. Appl. , 116(11):1660–1675, 2006. [13] Ola Elerian, Siddhartha Chib, and Neil Shephard. Likelihood inference for discretely observed nonlinear diffusions. Econometrica , 69(4):959–993, 2001. [14] Paul Fearnhead, Omiros Papaspiliopoulos, and Gareth O. Roberts. Particle filters for partially observed diffusions. J. R. Stat. Soc. Ser. B Stat. Methodol. , 70(4):755–777, 2008. [15] Arnab Ganguly, Riten Mitra, and Jinpu Zhou. Infinite-dimensional optimization and Bayesian nonparametric learning of stochastic differential equations. J. Mach. Learn. Res. , 24:Paper No. [159], 39, 2023. [16] Arnab Ganguly, Riten Mitra, and Jinpu Zhou. Nonparametric learning of stochastic differential equations from sparse and noisy data, 2025. [17] A. Golightly and D. J. Wilkinson. Bayesian inference for stochastic kinetic models using a diffusion approximation. Biometrics , 61(3):781–788, 2005. [18] A. Golightly and D. J. Wilkinson. Bayesian inference for nonlinear multivariate diffusion models observed with error. Comput. Statist. Data Anal. , 52(3):1674–1693, 2008. [19] Andrew Golightly and Darren J. Wilkinson. Bayesian parameter inference for stochastic biochemical network models using particle markov chain monte carlo. Interface Focus , 1(6):807– 820, 2011. 10 [20] Stefano M. Iacus. Simulation and inference for stochastic differential equations . Springer Series in Statistics. Springer, New York, 2008. With R examples. [21] Mathieu Kessler. Estimation of an ergodic diffusion from discrete observations. Scand. J. Statist. , 24(2):211–229, 1997. [22] Yury A. Kutoyants. Statistical inference for ergodic diffusion processes . Springer Series in Statistics. Springer-Verlag London, Ltd., London, 2004. [23] Chenxu Li. Maximum-likelihood estimation for diffusion processes via closed-form density expansions. Ann. Statist. , 41(3):1350–1380, 2013. [24] Ming Lin, Rong Chen, and Per Mykland. On generating Monte Carlo samples of continuous diffusion bridges. J. Amer. Statist. Assoc. , 105(490):820–838, 2010. [25] Charles C. Margossian, Loucas Pillaud-Vivien, and Lawrence K. Saul. Variational inference for uncertainty quantification: an analysis of trade-offs. J. Mach. Learn. Res. , 26:1–41, 2025. [26] Chirag Modi, Charles C. Margossian, Yuling Yao, Robert M. Gower, David M. Blei, and Lawrence K. Saul. Variational inference with Gaussian score matching. In Advances in Neural Information Processing Systems (NeurIPS) 36 , pages 29935–29950, 2023. [27] Manfred Opper and Cédric Archambeau. The variational Gaussian approximation revisited. 
+
+Neural Comput. , 21(3):786–792, 2009. [28] Maziar Raissi, Paris Perdikaris, and George E Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. Journal of Computational physics , 378:686–707, 2019. [29] G. O. Roberts and O. Stramer. On inference for partially observed nonlinear diffusion models using the Metropolis-Hastings algorithm. Biometrika , 88(3):603–621, 2001. [30] Yang Song, Jascha Sohl-Dickstein, Diederik P Kingma, Abhishek Kumar, Stefano Ermon, and Ben Poole. Score-based generative modeling through stochastic differential equations. In 
+
+International Conference on Learning Representations , 2021. [31] Tobias Sutter, Arnab Ganguly, and Heinz Koeppl. A variational approach to path estimation and parameter inference of hidden diffusion processes. J. Mach. Learn. Res. , 17:Paper No. 190, 37, 2016. [32] Belinda Tzen and Maxim Raginsky. Neural stochastic differential equations: Deep latent gaussian models in the diffusion limit. arXiv preprint arXiv:1905.09883 , 2019. [33] Belinda Tzen and Maxim Raginsky. Theoretical guarantees for sampling and inference in generative models with latent diffusions. In Conference on Learning Theory , pages 3084–3114. PMLR, 2019. [34] Gavin A. Whitaker, Andrew Golightly, Richard J. Boys, and Chris Sherlock. Bayesian inference for diffusion-driven mixed-effects models. Bayesian Anal. , 12(2):435–463, 2017. [35] Gavin A. Whitaker, Andrew Golightly, Richard J. Boys, and Chris Sherlock. Improved bridge constructs for stochastic differential equations. Stat. Comput. , 27(4):885–900, 2017. [36] Nakahiro Yoshida. Estimation for diffusion processes from discrete observation. J. Multivariate Anal. , 41(2):220–242, 1992. 11 A Kolmogorov Forward and Backward Equations 
+
+The generator A of a diffusion process X(t) is given by 
+
+Af (x) = 
+
+> d
+
+X
+
+> i=1
+
+bi(x) ∂f (x)
+
+∂x i
+
++ 12
+
+> d
+
+X
+
+> i,j =1
+
+aij (x) ∂2f (x)
+
+∂x i∂x j
+
+, f ∈ C2(Rd, R), (18) with a(x) def 
+
+= σ(x)σ(x)⊤. For notational convenience, we suppress the SDE parameter κ.The dual A∗ is given by 
+
+A∗p(x) = −
+
+> d
+
+X
+
+> i=1
+
+∂∂x i
+
+ bi(x) p(x) + 12
+
+> d
+
+X
+
+> i,j =1
+
+∂2
+
+∂x i∂x j
+
+ aij (x) p(x), p ∈ C2(Rd, R). (19) 
+
+Kolmogorov equations: The Kolmogorov forward equation or Fokker–Planck equation describes the evolution of the probability density p(x, t ) of X(t), when X(0) ∼ p0
+
+∂tp(x, t ) = A∗p(x, t ) = −∇ x ·  b(x) p(x, t ) + 12 ∇x · ∇ x ·  a(x) p(x, t ), p(x, 0) = p0(x)
+
+The Kolmogorov backward equation describes the evolution of the conditional expectation 
+
+u(x, t ) := E[f (XT ) | Xt = x] : 
+
+and is given by 
+
+∂tu(x, t ) + Au(x, t ) = 0 , u(x, T ) = f (x). (20) which, as the name suggests, needs to be solved backwards in time. 
+
+Equation for transition Densities : Let p(t, x, t ′, ·) denote the transition density of X(t′) given 
+
+X(t) = x:
+
+P(Xt′ ∈ A | Xt = x) = 
+
+Z
+
+p(t, x, t ′, z ) dz. 
+
+Note that • for any fixed t, t ′ and z, p(t, ·, t ′, z ) is not necessarily a probability density function, i.e., Z
+
+p(t, x, t ′, z ) dx ̸ = 1; 
+
+• if p0 is the initial probability density of X(0) , then the density p(·, t ) of X(t) is of course given as p(x, t ) = R p0(y)p(0 , y, t, x ) dy. 
+
+Since the SDE considered in this note is time homogeneous, that is the driving functions b(·) and σ(·)
+
+do not depend on time variable t, p(t, x, t ′, z ) has the form p(t, x, t ′, z ) = p(t′ − t, x, z )
+
+It is easy to see from previous discussion that for any fixed (t0, x 0), p(t0, x 0, t, x ) satisfies the Kolmogorov forward equation 
+
+∂tp(t0, x 0, t, x ) = A∗p(t0, x 0, ·, ·)( t, x ), p(t0, x 0, t 0, x ) = δ(x − x0),
+
+and for any fixed (T, x T ), p(t, x, T, x T ) satisfies the Kolmogorov backward equation in [0 , T ]
+
+∂tp(t, x, T, x T ) + Axp(·, ·, T, x T )( t, x ) = 0 , p(T, x, T, z ) = δ(x − z).
+
+## B Auxiliary results and proofs 
+
+Girsanov theorem and KL divergence between diffusion laws. Consider two Itô diffusions on [0 , T ] with the same diffusion coefficient σ(x) ∈ Rd×d, which is assumed to be uniformly nondegenerate: 
+
+dX 0(t) = b0(X0(t)) dt + σ(X0(t)) dW (t), X(0) ∼ μ0,dX 1(t) = b1(X1(t)) dt + σ(X(1t)) dW (t), X(0) ∼ μ1.
+
+12 Let Π0 and Π1 denote the laws of X0 and X1 on C([0 , T ]; Rd). Assume that Π0 ≪ Π1, which holds under standard conditions (e.g., Novikov’s condition) when the diffusion coefficients coincide. Define the function 
+
+u(x) = σ(x)−1 b1(x) − b0(x).
+
+Then, by Girsanov’s theorem, the Radon–Nikodym derivative of Π1 with respect to Π0 is given by 
+
+dΠ1
+
+dΠ0
+
+(X) = dμ 1
+
+dμ 0
+
+(X(0)) exp 
+
+Z T
+
+> 0
+
+u(X(t)) ⊤dW (t) − 12
+
+Z T
+
+> 0
+
+∥u(X(t)) ∥2dt 
+
+!
+
+,
+
+where W (t) is the Π0-Brownian motion driving the first SDE. Taking expectation with respect to Π1 and using the fact that 
+
+fW (t) = W (t) −
+
+Z t
+
+> 0
+
+u(X(s)) ds 
+
+is a Brownian motion under Π1, we obtain 
+
+KL(Π 1 ∥ Π0) = EΠ1
+
+
+
+ln dΠ1
+
+dΠ0
+
+
+
+= KL( μ1 ∥ μ0) + 12 EΠ1
+
+"Z T
+
+> 0
+
+∥u(X1(t)) ∥2dt 
+
+#
+
+. (21) In particular, when the initial distributions coincide, the KL divergence reduces to 
+
+KL(Π 1 ∥ Π0) = 12 EΠ1
+
+"Z T
+
+> 0
+
+ b1(X1(t)) − b0(X1(t)) ⊤a−1(X1(t))  b1(X1(t)) − b0(X1(t)) dt 
+
+#
+
+,
+
+where a = σσ ⊤. This representation highlights that finiteness of the KL divergence requires the two diffusions to share the same diffusion coefficient, and expresses the discrepancy between path measures purely in terms of the drift mismatch. 
+
+Proof of Theorem 1. We have to work with KL-divergence of two SDEs in the path space. Notice that 
+
+KL( Q∥Π(κ)pre ) = 
+
+Z 
+
+> C([0 ,T ],Rd)
+
+"
+
+ln dQ dΠ(κ)post (· | y1: M0 )
+
+!
+
++ ln Π(κ)post (· | y1: M0 )
+
+dΠ(κ)pre 
+
+!# 
+
+dQ 
+
+= KL( Q∥Π(κ)post (· | y1: M0 )) + EQ
+
+" M0X
+
+> m=1
+
+ln ρobs (ym | X(tm)) 
+
+#
+
+− ℓ(κ | y1: M0 ),
+
+where for the last step we used (3). Rearranging shows for any Qℓ(κ | y1: M0 ) = KL( Q∥Π(κ)post (· | y1: M0 )) + ELBO( Q, κ | y1: M0 ) ⩾ ELBO( Q, κ | y1: M0 ),
+
+with the equality holding in the last step when Q = Π (κ)post (· | y1: M0 ).
+
+Therefore, when eQ = Law( eX), where eX is defined in (11) , is used as a variational approximation to the smoothing distribution Π(κ)post (· | y1: M0 ), ELBO is given by 
+
+ELBO( eQ, κ | y1: M0 ) = E eQ
+
+ M0X
+
+> m=1
+
+ln ρobs (ym | eX(tm)) − 12
+
+Z T
+
+> 0
+
+es(t, eX(t)) ⊤a−1( eX(t)) es(t, eX(t)) dt 
+
+
+
+.
+
+(22) 
+
+Proof of Proposition 1. First observe that 
+
+∂th(κ, x, t ) = ∂tw(κ, x, t )
+
+w(κ, x, t ) = − A(κ)w(κ, x, t )
+
+w(κ, x, t ) , t ∈ (tm, t m+1 ]. (23) Next, we have 
+
+A(κ)h(κ, x, t ) = A(κ)w(κ, x, t )
+
+w(κ, x, t ) − 12
+
+X
+
+> i,j
+
+aij (x) ∂xi w(κ, x, t )∂xj w(κ, x, t )
+
+w2(κ, x, t )
+
+13 = A(κ)w(κ, x, t )
+
+w(κ, x, t ) − 12
+
+X
+
+> i,j
+
+aij (x)∂xi h(κ, x, t )∂xj h(κ, x, t )= A(κ)w(κ, x, t )
+
+w(κ, x, t ) − 12 ∇Tx h(κ, x, t )a(x)∇xh(κ, x, t ).
+
+It follows from (23) that for each κ, the function h(κ, ·, ·) between observation times t ∈ (tm−1, t m]
+
+satisfies the backward PDE 
+
+∂th(κ, x, t ) + A(κ)h(κ, x, t ) + 12 ∇Tx h(κ, x, t )a(x)∇xh(κ, x, t ) = 0 , a = σσ ⊤
+
+with the boundary condition at tm given by 
+
+h(κ, x, t m) = ln ρobs (ym | x) + h(κ, x, t +
+
+> m
+
+).
+
+## C Numerical Verification against Exact PDE Solutions: 1D GBM & 1D Double Well 
+
+To validate the numerical accuracy of the proposed framework, we consider an one-dimensional Geometric Brownian Motion (GBM) and an one-dimensional Double Well equation, for each of which both the Kolmogorov equations and smoothing distributions are well understood. This example allows us to directly compare our proposed approximation with a ground-truth PDE-based solution. 
+
+Model. Both systems are governed by SDEs with drift b(x; θ) and isotropic diffusion σ(x) = σI .
+
+1D Geometric Brownian Motion. 
+
+dX (t) = θX (t) dt + σX (t) dW (t), σ = 0 .3.
+
+1D Double Well System. 
+
+dX (t) = κ(X(t) − X(t)3)dt + σdW (t), σ = 0 .5.
+
+Setup. We compare two approaches: • Finite Difference Method (FDM): A numerical solver for the Kolmogorov backward equation, which serves as a reference solution. • Proposed method: Our neural variational framework, which learns the log-likelihood function and corresponding score. 
+
+Data generation. In both cases, trajectories are simulated via Euler–Maruyama and subsampled at 5 time points: 
+
+ym = X(tm) + εm, εm ∼ N (0 , 0.22).
+
+1D GBM 1D Double Well Governing PDE Dimension 2 2
+
+Time horizon T = 0 .5 T = 5 
+
+Step size 0.001 0.05 
+
+Initial state 1.0 3.0
+
+Observation times 0.1, 0.2, 0.3, 0.4, 0.5 1.0, 2.0, 3.0, 4.0, 5.0
+
+Comparison of smoothings. Figure 4 compares the function w(x, t ) obtained from the PDE solver and the proposed approximation at multiple time points. The solid curves correspond to the FDM solution, while dashed curves represent the neural approximation. 14 (a) 1D GBM (b) 1D Double Well 
+
+Figure 4: Comparison of Smoothings 
+
+Parameter inference: Proposed method. We next estimate the drift parameter κ using the proposed variational method. Figure 5 shows the evolution of the estimate over iterations. Starting from an initial value far from the ground truth, the estimate converges rapidly toward κ = 1 .     
+
+> (a) 1D GBM with θtrue = 1 .0(b) 1D double well with κtrue = 1 .5
+
+Figure 5: Parameter inferences via our proposed method. 
+
+Parameter inference: PDE-based EM baseline. For comparison, we also perform parameter estimation using a PDE-based EM approach. Figure 6 shows the corresponding convergence behavior.      
+
+> (a) 1D GBM with θtrue = 1 .0(b) 1D double well with κtrue = 1 .5
+
+Figure 6: Parameter inferences via FDM-based method. 
+
+Discussion. The results demonstrate excellent agreement between the neural approximation and the PDE-based solution. In particular: • The Proposed method accurately reproduces the solution of the Kolmogorov backward equation. • The inferred parameter converges to the same value as the PDE-based EM method. 15 • The convergence behavior is stable and robust despite nonlinear dependence on the parame-ter. This example provides strong evidence that the proposed framework is capable of accurately approxi-mating both the smoothing distribution and the underlying parameter, even without explicitly solving the governing PDE. 16
