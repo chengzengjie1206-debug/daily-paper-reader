@@ -6,73 +6,66 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-05-13
-- 运行时间：2026-05-13 20:39:32 UTC
+- 最新运行日期：2026-05-14
+- 运行时间：2026-05-14 21:27:45 UTC
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
+- 本次总论文数：15
+- 精读区：4
 - 速读区：11
 
 ### 今日简报（AI）
-今日深度研读 17 篇前沿论文，重点聚焦 U-STS-LLM 在交通时空预测中的统一建模突破。
-满分佳作展示了大模型处理时空数据的巨大潜力，同时动态神经流为稀疏数据下的 SDE 推断提供了高效路径。
-建议优先关注大模型与时空任务的深度融合，并留意 Chronos-2 等预训练模型在时序分析中的最新表现。
-- 详情：[/202605/13/README](/202605/13/README)
+今日深度复盘 15 篇前沿论文，重点揭示了三阶段学习如何让简单模型在长程时间序列预测中实现性能飞跃。
+核心结论指出，优化 CSST 巡
+- 详情：[/202605/14/README](/202605/14/README)
 
 ### 精读区论文标签
-1. [U-STS-LLM A Unified Spatio-Temporal Steered Large Language Model for Traffic Prediction and Imputation](/202605/13/2605.11735v1-u-sts-llm-a-unified-spatio-temporal-steered-large-language-model-for-traffic-prediction-and-imputation)  
+1. [Three-Stage Learning Unlocks Strong Performance in Simple Models for Long-Term Time Series Forecasting](/202605/14/2605.13678v1-three-stage-learning-unlocks-strong-performance-in-simple-models-for-long-term-time-series-forecasting)  
    标签：评分：10.0/10、query:ts
-   evidence：交通预测与缺失值填补的统一模型
-2. [Variational Smoothing and Inference for SDEs from Sparse Data with Dynamic Neural Flows](/202605/13/2605.05606v1-variational-smoothing-and-inference-for-sdes-from-sparse-data-with-dynamic-neural-flows)  
+   evidence：长期时间序列预测的训练范式
+2. [Comparative analysis of missing data imputation methods for CSST survey: Impact on photometric redshift estimation performance](/202605/14/2605.13219v1-comparative-analysis-of-missing-data-imputation-methods-for-csst-survey-impact-on-photometric-redshift-estimation-performance)  
+   标签：评分：9.0/10、query:ts
+   evidence：评估包括 SAITS 在内的缺失数据插补方法
+3. [MILM: Large Language Models for Multimodal Irregular Time Series with Informative Sampling](/202605/14/2605.13711v1-milm-large-language-models-for-multimodal-irregular-time-series-with-informative-sampling)  
+   标签：评分：9.0/10、query:ts
+   evidence：使用LLM处理多模态不规则时间序列
+4. [NoRIN: Backbone-Adaptive Reversible Normalization for Time-Series Forecasting](/202605/14/2605.10823v1-norin-backbone-adaptive-reversible-normalization-for-time-series-forecasting)  
    标签：评分：8.0/10、query:ts
-   evidence：利用动态神经流从稀疏数据中推断SDE
-3. [Stable Long-Horizon PDE Forecasting via Latent Structured Spectral Propagators](/202605/13/2605.10154v1-stable-long-horizon-pde-forecasting-via-latent-structured-spectral-propagators)  
-   标签：评分：8.0/10、query:ts
-   evidence：随时间变化的物理系统的长程预测
-4. [One-Step Graph-Structured Neural Flows for Irregular Multivariate Time Series Classification](/202605/13/2605.10179v1-one-step-graph-structured-neural-flows-for-irregular-multivariate-time-series-classification)  
-   标签：评分：8.0/10、query:ts
-   evidence：用于不规则多变量时间序列的神经流模型
-5. [Fast Training of Mixture-of-Experts for Time Series Forecasting via Expert Loss Integration](/202605/13/2605.10330v1-fast-training-of-mixture-of-experts-for-time-series-forecasting-via-expert-loss-integration)  
-   标签：评分：8.0/10、query:ts
-   evidence：用于时间序列预测的先进混合专家模型
-6. [HEPA: A Self-Supervised Horizon-Conditioned Event Predictive Architecture for Time Series](/202605/13/2605.11130v1-hepa-a-self-supervised-horizon-conditioned-event-predictive-architecture-for-time-series)  
-   标签：评分：8.0/10、query:ts
-   evidence：多变量时间序列的自监督预测架构
+   evidence：最先进的预测归一化技术
 
 ### 速读区论文标签
-1. [Beyond Similarity: Temporal Operator Attention for Time Series Analysis](/202605/13/2605.11287v1-beyond-similarity-temporal-operator-attention-for-time-series-analysis)  
-   标签：评分：8.0/10、query:ts
-   evidence：为最先进的时间序列预测提出了一种新的注意力机制
-2. [Investigating simple target-covariate relationships for Chronos-2 and TabPFN-TS](/202605/13/2605.12200v1-investigating-simple-target-covariate-relationships-for-chronos-2-and-tabpfn-ts)  
-   标签：评分：8.0/10、query:ts
-   evidence：评估最先进的时间序列基础模型
-3. [PAIR-CI: Calibrated Conditional Independence Testing for Causal Discovery with Incomplete Data](/202605/13/2605.04838v1-pair-ci-calibrated-conditional-independence-testing-for-causal-discovery-with-incomplete-data)  
+1. [Spectral Transformer Neural Processes](/202605/14/2605.09498v1-spectral-transformer-neural-processes)  
    标签：评分：7.0/10、query:ts
-   evidence：将多重插补集成到不完整数据的因果发现中
-4. [Tyche: One Step Flow for Efficient Probabilistic Weather Forecasting](/202605/13/2605.06916v1-tyche-one-step-flow-for-efficient-probabilistic-weather-forecasting)  
+   evidence：用于时间序列的频率感知神经过程
+2. [DeepLévy: Learning Heavy-Tailed Uncertainty in Highly Volatile Time Series](/202605/14/2605.10364v1-deeplvy-learning-heavy-tailed-uncertainty-in-highly-volatile-time-series)  
    标签：评分：7.0/10、query:ts
-   evidence：基于单步流模型的高效概率天气预测
-5. [Incorporating Missing Data Considerations into Sample Size Calculations for Developing Clinical Prediction Models](/202605/13/2605.07312v1-incorporating-missing-data-considerations-into-sample-size-calculations-for-developing-clinical-prediction-models)  
+   evidence：灵活的多步预测
+3. [DeepLévy: Learning Heavy-Tailed Uncertainty in Highly Volatile Time Series](/202605/14/2605.10364v2-deeplvy-learning-heavy-tailed-uncertainty-in-highly-volatile-time-series)  
    标签：评分：7.0/10、query:ts
-   evidence：分析了缺失数据和插补方法对预测模型的影响
-6. [Transfer Learning for Dead Fuel Moisture Prediction Using Time-Warping Recurrent Neural Networks](/202605/13/2605.08379v1-transfer-learning-for-dead-fuel-moisture-prediction-using-time-warping-recurrent-neural-networks)  
+   evidence：针对高波动时间序列的深度概率预测
+4. [HEPA: A Self-Supervised Horizon-Conditioned Event Predictive Architecture for Time Series](/202605/14/2605.11130v2-hepa-a-self-supervised-horizon-conditioned-event-predictive-architecture-for-time-series)  
    标签：评分：7.0/10、query:ts
-   evidence：稀疏时间序列观测的迁移学习
-7. [Rolling-Origin Conformal Prediction under Local Stationarity and Weak Dependence](/202605/13/2605.08422v1-rolling-origin-conformal-prediction-under-local-stationarity-and-weak-dependence)  
+   evidence：针对多变量时间序列事件的自监督预测架构
+5. [Latent Chain-of-Thought Improves Structured-Data Transformers](/202605/14/2605.11262v1-latent-chain-of-thought-improves-structured-data-transformers)  
    标签：评分：7.0/10、query:ts
-   evidence：时间序列预测的符合预测方法
-8. [LGB+: A Macroeconomic Forecasting Road Test](/202605/13/2605.09740v1-lgb-a-macroeconomic-forecasting-road-test)  
+   evidence：用于时间序列和表格数据Transformer的隐式思维链
+6. [OverNaN: NaN-Aware Oversampling for Imbalanced Learning with Meaningful Missingness](/202605/14/2605.11525v1-overnan-nan-aware-oversampling-for-imbalanced-learning-with-meaningful-missingness)  
    标签：评分：7.0/10、query:ts
-   evidence：结合梯度提升与线性项的宏观经济预测
-9. [Bayesian Modelling of Nonstationary Extreme Values Using a Nonparametric Hawkes Process](/202605/13/2605.03331v1-bayesian-modelling-of-nonstationary-extreme-values-using-a-nonparametric-hawkes-process)  
+   evidence：针对不完整特征向量和有意义缺失值的NaN感知过采样
+7. [RareCP: Regime-Aware Retrieval for Efficient Conformal Prediction](/202605/14/2605.08857v1-rarecp-regime-aware-retrieval-for-efficient-conformal-prediction)  
    标签：评分：6.0/10、query:ts
-   evidence：非平稳极端事件预测的贝叶斯建模
-10. [Error analysis for learning fractional stochastic differential equations with applications in neural approximations](/202605/13/2605.04168v1-error-analysis-for-learning-fractional-stochastic-differential-equations-with-applications-in-neural-approximations)  
+   evidence：时间序列预测的不确定性量化
+8. [Parameter Estimation for Partially Observed Time-Changed SDEs](/202605/14/2605.09880v1-parameter-estimation-for-partially-observed-time-changed-sdes)  
    标签：评分：6.0/10、query:ts
-   evidence：从随机微分方程的离散观测中学习
-11. [Hedging Memory Horizons for Non-Stationary Prediction via Online Aggregation](/202605/13/2605.06541v1-hedging-memory-horizons-for-non-stationary-prediction-via-online-aggregation)  
+   evidence：部分观测到的时间变换SDE的参数估计
+9. [TimeClaw: A Time-Series AI Agent with Exploratory Execution Learning](/202605/14/2605.10038v1-timeclaw-a-time-series-ai-agent-with-exploratory-execution-learning)  
    标签：评分：6.0/10、query:ts
-   evidence：时间序列分布偏移下的在线预测
+   evidence：用于时序预测和推理的AI智能体
+10. [QuantWeather: Quantile-Aware Probabilistic Forecasting for Subseasonal Precipitation](/202605/14/2605.10297v1-quantweather-quantile-aware-probabilistic-forecasting-for-subseasonal-precipitation)  
+   标签：评分：6.0/10、query:ts
+   evidence：次季节降水的概率预测
+11. [Generative Diffusion Prior Distillation for Long-Context Knowledge Transfer](/202605/14/2605.11414v1-generative-diffusion-prior-distillation-for-long-context-knowledge-transfer)  
+   标签：评分：6.0/10、query:ts
+   evidence：部分观测时间序列分类器的知识迁移
 
 
 <div class="dpr-home-promo-card">
