@@ -1,0 +1,1408 @@
+Title: Exactness Matters for Physical Rule Enforcement
+
+URL Source: https://arxiv.org/pdf/2605.08285v1
+
+Published Time: Tue, 12 May 2026 00:10:35 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+# Exactness Matters for Physical Rule Enforcement 
+
+Bum Jun Kim ∗
+
+The University of Tokyo, Japan 
+
+bumjun.kim@weblab.t.u-tokyo.ac.jp 
+
+Abstract 
+
+Autoregressive scientific forecasters often enforce physical or structural constraints by repairing each predicted state before feeding it back into the model. However, it remains unclear when stronger physical rule enforcement becomes reliable and when it becomes a source of distribution shift. We study this question through operator exactness, meaning whether the repair map is the identity on the target manifold and is aligned with the target geometry. We compare raw forecasting, post hoc repair, and in-loop repair across periodic incompressible Navier–Stokes, non-periodic CFDBench flows, and a hierarchical-forecasting support task. In the exact periodic regime, Fourier projection substantially improves rollout accuracy. On the NS-128 benchmark, a strong Raw-FNO has a final-step rollout MSE at horizon 100 of (9 .390 ± 6.290) × 10 −5, and post hoc and in-loop projection reduce it to (1 .130 ± 0.165) × 10 −6 and (5 .370 ± 0.113) × 10 −7. However, once an exact projection is unavailable and only approximate boundary-preserving cleanup is available, the ordering changes. Across cavity, tube, dam, and cylinder flow, stronger Poisson-based cleanup can reduce divergence while worsening rollout error; target-distortion MSE predicts this harm far better than a linear-system residual. Controlled mismatch, screened cleanup, adaptive gating, and external-backbone checks show that the best approximate-regime operating point can be raw or near-identity. Hierarchical forecasting gives the same broader pattern. Exact forecast reconciliation is a stable baseline, whereas blended top-down repair, a validation-tuned interpolation toward historical-proportion top-down reconciliation, is dataset-dependent. Thus, constraint enforcement should be benchmarked by operator–data alignment before enforcement strength. Use in-loop projection when the operator is exact, and validate approximate cleanup strength using rollout metrics otherwise. 
+
+1 Introduction 
+
+Autoregressive scientific forecasting is often stabilized by a simple repair loop using a physical rule. A model first predicts the next state; a projection or cleanup operator then repairs that prediction so that it satisfies a known physical or structural rule; the repaired state is finally fed back into the next prediction step. In incompressible flow, as an example, the rule is the divergence-free constraint 
+
+∇ · u = 0 , and the repair loop is especially tempting because small compressible components can accumulate during rollout, corrupt transport, and distort long-horizon energy and vorticity statistics. This stabilization benefit is why learned-simulator papers increasingly report long-horizon stability and physical consistency in addition to one-step error [ 21 , 36 , 6, 38 , 25 , 22 ]. Nevertheless, as we show in Section 4, overly aggressive enforcement can become a recurring source of distribution shift when the repair operator is only approximate. We study when this repair loop is a reliable improvement. Our conclusion is that reliability depends on whether the repair operator leaves valid benchmark targets unchanged. If the operator is exact 
+
+> ∗Corresponding author. Preprint.
+> arXiv:2605.08285v1 [cs.LG] 8 May 2026
+
+## Exact Operator Approximate Operator    
+
+> Lands ON target manifold Lands OFF target manifold
+> drift
+> rollout time → rollout time →
+> target manifold target manifold
+
+Error stays bounded Drift accumulates    
+
+> raw projected raw cleaned
+
+✅ ⚠Figure 1: Conceptual split between exact and approximate constraint operators in autoregressive rollout. The left side shows the exact case: projected states remain on the target manifold, allowing constraint correction to keep rollout error bounded. The right side shows the approximate case: the cleaned state can land off the target manifold, so repeated correction may accumulate drift even while it reduces the measured constraint violation. on the target manifold, then it leaves valid targets unchanged and removes only components that the benchmark regards as irrelevant. In this regime, projection is a strong and often mandatory baseline. For periodic Navier–Stokes, Fourier projection maps predictions back into the divergence-free subspace without moving divergence-free targets. However, this practice can cause failure when the available constraint operator is only approximate. This approximate regime is not a corner case. Soft residual penalties, learned pressure or projection modules, and boundary-dependent fractional-step or projection schemes have all been used to impose incompressibility or related physical structures in practice [ 31 , 41 , 24 , 17 , 7 , 14 ]. Non-periodic benchmarks with copied boundaries, complex domains, or discrete pressure cleanups may not admit the exact periodic projector used above. The key risk is that an alternative, such as a copied-boundary Poisson solve, may improve the visible constraint residual without preserving the data manifold. It can reduce measured divergence while still perturbing physically valid target states or shifting the autoregressive state distribution seen by the model. Solving this approximate cleanup more aggressively then makes the chosen operator more faithful, but it does not make the operator better aligned with the data. Stronger enforcement can therefore worsen rollout error even as the constraint residual improves. Figure 1 summarizes this exact-versus-approximate split, which is the main subject of our study. This split is not merely conceptual. It appears empirically in rollout evaluations and is supported by the corresponding exactness and distortion analyses in Section 4 and Appendix A. On strong periodic velocity benchmarks, most of the gain comes not from a bespoke decoder but from applying this exact projection to each predicted state before feeding it into the next step. This exact-projection result changes the benchmarking standard. Any new constrained architecture must be compared not only to raw forecasting but also to post hoc and in-loop projection. Our main claim therefore concerns baseline quality under exact and approximate constraint operators, with architecture comparisons used to test whether the regime split persists across different backbones. We then test, through a focused study using the official splits for the non-periodic cavity, tube, dam, and cylinder subsets of the CFDBench CFD benchmark introduced by Luo et al. [27] , what survives once the exact periodic geometry is removed. Our CFDBench study includes stronger-solver negative controls, screened and geometry-aware cleanup families, long-horizon reevaluations of dam and cylinder flow, controlled mismatch sweeps, adaptive test-time cleanup, and a frozen U-Net transfer check. Appendix E extends the evidence with hierarchical-forecasting experiments on five public datasets. Together, these results define an empirical regime analysis of exact and approximate constraint operators, centered on the baseline rule rather than on a new forecasting architecture. 2Contributions. We identify a regime split in constraint enforcement under strong autoregressive baselines. For periodic Navier–Stokes (NS-128), exact in-loop projection is the dominant interven-tion, and post hoc projection is a mandatory comparator; on non-periodic CFDBench, this ordering breaks once cleanup is only approximate. Mechanism diagnostics, including stronger-solver controls, target-distortion measurements, screened sweeps, and controlled mismatch experiments, show that approximate-regime failures are driven by operator mismatch rather than by the Poisson residual. Appendix E gives a compact non-CFD check in which exact reconciliation is the lowest-variance baseline across five public hierarchies, while blended top-down repair, a validation-tuned partial interpolation toward historical-proportion top-down reconciliation, can help or hurt. These results yield a practical guideline. Use in-loop projection when the operator is exact and orthogonal; other-wise, benchmark exact-on-target operators when available, and validate approximate cleanup strength using held-out rollout metrics. Our evidence is strongest for two-dimensional (2D) incompressible forecasting, with the hierarchical study serving as supporting structured-prediction evidence. 
+
+2 Related Work 
+
+Operator learning and neural simulators. The Fourier neural operator (FNO) of Li et al. [23] remains a standard backbone for periodic partial differential equation (PDE) forecasting, while the DeepONet line of Lu et al. [26] provides a second canonical operator-learning family. U-Net-style encoder-decoder models remain competitive in scientific surrogate modeling because of their strong locality bias, and convolutional-network fluid surrogates remain important baselines in learned fluid simulation [ 34 , 19 ]. Learned simulators based on message passing and graph networks emphasize geometry and conservation structure [ 36 , 30 , 6], while recent rollout-focused PDE work makes long-horizon stability itself a first-class evaluation target [ 25 ]. Our goal here is not to propose yet another backbone family but to identify the strongest constraint-centric intervention that all of them should be benchmarked against. Hybrid neural and solver surrogates and physics-constrained autoregressive PDE models also increasingly couple learned predictors to explicit numerical structure rather than relying on fitting raw data alone [41, 37, 10, 12]. 
+
+Physics constraints for incompressible dynamics. Soft penalties, residual losses, stream-function parameterizations, projection layers, and explicit test-time constraint solvers are all common ways to encode incompressibility or related physical structure [ 31 , 41 , 24 , 35 , 17 ]. The problem is less the existence of these techniques than the standard for evaluating them. If post hoc projection is omitted or if a new constrained decoder is only compared to raw forecasting, then empirical conclusions are difficult to interpret. Our adaptive-cleanup and risk–coverage analyses also connect this literature to a broader structured-prediction issue: constraint enforcement must be judged by both feasibility and test-time decision making [11]. 
+
+Constraint repair beyond CFD. Forecast reconciliation in hierarchical time series provides a clean non-CFD instance of exact and approximate repair. Coherent forecasts lie in the column space of a known summing matrix, yielding exact reconciliation operators such as ordinary least squares (OLS) and minimum-trace reconciliation together with exact-but-nonorthogonal bottom-up aggregation, while top-down operators are generally mismatched to the target manifold [ 16 , 43 , 29 , 3]. Classical top-down and bottom-up heuristics remain important comparators in that literature [ 13 , 2 ]. Recent probabilistic, quantile, temporal, and softly coherent variants extend the same coherence issue into modern machine-learning forecasting pipelines [ 39 , 32 , 15 , 33 , 18 , 42 ]. This literature is useful here because it isolates constraint-operator exactness outside fluid dynamics. 
+
+Benchmarks beyond periodic NS. Most projection-centric empirical claims are easiest to make on periodic 2D velocity benchmarks. CFDBench, introduced by Luo et al. [27] , provides a stronger com-plementary stress test with varied boundary conditions, physical properties, and domain geometries across classic CFD problems. Recent benchmark work on autoregressive PDE emulators likewise emphasizes rollout-aware evaluation rather than one-step accuracy alone [ 22 ]. We use CFDBench’s cavity-flow, tube-flow, dam-break, and cylinder-flow subsets to test what remains true once exact Fourier-space projection is no longer available. 33 Method 
+
+3.1 Forecasting Setup 
+
+Given an input history 
+
+ut−Tin +1: t ∈ RTin ×2×H×W , (1) a backbone bθ predicts residual updates 
+
+∆ ˜ ut+1: t+K = bθ (ut−Tin +1: t), (2) and the state evolves through 
+
+˜ut+s = ˆ ut+s−1 + α∆ ˜ ut+s, (3) 
+
+ˆut+s = T ( ˜ ut+s), for s = 1 , . . . , K, (4) where α ∈ (0 , 1) is a learned residual scale and T is either the identity, an exact divergence-free projector, or an approximate boundary-aware cleanup operator. 
+
+Terminology. Throughout the paper, exactness is an operator–data property, not a statement about how accurately an internal numerical system is solved. A repair operator T is exact for a benchmark target set M when T (y) = y for every valid target y ∈ M ; approximate cleanup means that this identity can fail on benchmark-valid targets, even if the cleanup maps many inputs closer to the constraint set. Under this terminology, the Direct CFDBench variant is an exact solve of its boundary-aware Poisson system, but it remains an approximate cleanup operator when that boundary-aware system is not exact-on-target for the benchmark velocity fields. 
+
+3.2 Exact Periodic Projection 
+
+For periodic 2D velocity fields u = ( u, v ), we implement the exact projector in Fourier space. The Fourier-space implementation is the periodic spectral version of the classical projection viewpoint for incompressible flow [ 9 , 40 ]. Let ¯u denote the spatial mean of u, and write k = ( kx, k y ) for the two-dimensional Fourier wavevector. Define the Fourier-space vorticity by 
+
+ˆω(k) = ik x ˆv(k) − ik y ˆu(k), (5) and define the stream function by 
+
+ˆψ(k) = ˆω(k)
+
+∥k∥22
+
+for k̸ = 0 , ˆψ(0) = 0 . (6) The projected velocity is then 
+
+Πdiv (u) = ¯ u + ( ∂y ψ, −∂xψ), (7) which preserves the zero Fourier mode and satisfies ∇ · Πdiv (u) = 0 up to numerical precision. This exact periodic projector is orthogonal with respect to the L2 geometry of the periodic benchmark. If y = Π div (y), then, for any raw prediction ˜u,
+
+∥Πdiv ( ˜ u) − y∥22 = ∥ ˜u − y∥22 − ∥ (I − Πdiv ) ˜ u∥22 ≤ ∥ ˜u − y∥22. (8) Equation 8 explains why post hoc projection is already a strong baseline under the exact periodic projector. Any difference between projecting both the target and the autoregressive state and projecting only the autoregressive state is therefore a separate training-dynamics issue rather than a consequence of the orthogonal-projection identity itself, and in our exact periodic experiments, it is empirically only a second-order effect. In Appendix A, Proposition 1 proves the general version of Equation 8. Projection onto a subspace containing the target cannot increase the squared error. 
+
+3.3 Boundary-Preserving Approximate Cleanup 
+
+However, for non-periodic cavity, tube, dam, and cylinder flow, exact spectral projection is unavailable. We therefore use training-matched boundary-preserving approximate cleanup operators, denoted 
+
+eΠbc , which are boundary-constrained Chorin–Temam-style cleanup maps rather than exact Leray 4projectors. These maps copy boundary velocities and update only interior velocities using a Poisson or screened Poisson pressure solve, so copying raw boundary values can break both exact divergence annihilation and idempotence on the full velocity field. We study a boundary-aware Poisson–Hodge family, including Jacobi, MG, SOR, CG, and Direct variants, and a screened family that weakens the pressure response. Appendix D.1 gives the full discrete stencil, solver definitions, and screened-family protocol. 
+
+Approximate-regime bias decomposition. Unlike Πdiv , the boundary-preserving approximate cleanup operator eΠbc is not orthogonal. Equation 8 does not apply, and neither post hoc nor in-loop cleanup is guaranteed to improve one-step MSE. A useful decomposition for any approximate cleanup operator eΠ and target y is 
+
+∥eΠ( x) − y∥22 = ∥eΠ( x) − eΠ( y)∥22 + ∥eΠ( y) − y∥22 + 2 ⟨eΠ( x) − eΠ( y), eΠ( y) − y⟩. (9) The second term is the target-distortion term, while the third cross-term can have either sign. Writing the in-loop dynamics as xt+1 = eΠ( F (xt)) , with a target trajectory (yt) and error et = xt − yt, one generic perturbation bound is 
+
+∥et+1 ∥ ≤ L∥et∥ + ∥eΠ( F (yt)) − F (yt)∥ + δt, (10) where L is a local Lipschitz factor of eΠ ◦ F and δt = ∥F (yt) − yt+1 ∥ is the model’s intrinsic one-step prediction error on the target trajectory. If F (yt) stays near the target manifold, the middle term is controlled by the local operator bias near that manifold. Equation 10 is deliberately simple, but it captures our empirical observation. Lowering the linear-system residual only means that the chosen operator is solved more faithfully; it does not guarantee that the operator itself is aligned with the benchmark manifold. This operator-alignment gap is exactly why the non-periodic CFDBench benchmarks are scientifically useful. They test what remains true once the clean periodic geometry is removed. For the non-periodic experiments, we apply all cleanup operators in physical velocity units, and only then map them back into the normalized model space. Conceptually, physical-space cleanup is the cleaner choice because CFDBench tube, dam, and cylinder have nonzero mean flow, so a cleanup operator defined in normalized coordinates changes both the copied boundary values and the effective correction magnitude. Empirically, however, a dedicated negative-control ablation shows that under our canonical velocity-component normalization, the frame choice changes final-horizon rollout MSE by at most 0.14% relative. We therefore use physical-space cleanup as protocol hygiene rather than as a hidden source of gains. 
+
+Theory appendix. Appendix A formalizes the mechanism separating exact and approximate opera-tors used throughout the experiments, including exact-on-target repair, solver residual, trajectorywise target distortion, and controlled mismatch. 
+
+3.4 Forecasting Variants 
+
+We compare raw forecasting, post hoc repair, in-loop repair, constraint-aware projection, soft-divergence training, and adaptive blended cleanup as experimental variants. Appendix C gives the full variant definitions, objective, operator list, and matched-budget protocol. 
+
+3.5 Divergence-Gated Adaptive Cleanup 
+
+Approximate projection helps because it removes compressible components, but it hurts because it distorts states away from the training manifold. This trade-off suggests that the right action outside the exact regime is often neither to skip cleanup entirely nor to apply it at full strength. We therefore evaluate an adaptive blended cleanup that uses predicted root-mean-square (RMS) divergence as a risk score: 
+
+d( ˜ u) = ∥∇ · h ˜u∥rms , γ( ˜ u) = min {(d( ˜ u)/τ )q , 1}, ˆuada = ˜ u + γ( ˜ u)( P( ˜ u) − ˜u), (11) where τ > 0 and q > 0. When d( ˜ u) is small, the model stays close to the raw forecast; when it is large, the update approaches full post hoc cleanup. We instantiate P with the Jacobi family and with the screened family for the main deployment study, use Direct only as a stronger-operator stress test, and report additional GeoScreened deployment variants in Appendix D. We tune the threshold τ and exponent q once per dataset on the validation split, sweep those parameters to assess sensitivity, and then evaluate the selected rule on the held-out test trajectories. The method requires no retraining and directly operationalizes the safety motivation for using divergence as a warning signal. 5Table 1: Main capacity- and compute-matched NS-128 FNO study. Exact in-loop projection is the dominant intervention on the strongest periodic benchmark. Smaller values are better in every numeric column. Variant Test MSE Rollout MSE-AUC Rollout MSE@100 Rollout Div@100 Latency (ms) Raw-FNO (5 .810 ± 3.600) × 10 −8 (4 .210 ± 2.750) × 10 −5 (9 .390 ± 6.290) × 10 −5 (2 .900 ± 1.030) × 10 −2 8.75 ± 0.25                                                                                             
+
+> PostHoc-FNO (1 .570 ±0.305) ×10 −9(6 .200 ±0.749) ×10 −7(1 .130 ±0.165) ×10 −6(2 .670 ±0.134) ×10 −511 .39 ±0.26
+> Proj-FNO (8 .270 ±0.577) ×10 −10 (3 .130 ±0.029) ×10 −7(5 .370 ±0.113) ×10 −7(2 .100 ±0.083) ×10 −511 .49 ±0.13
+> CAP-FNO (8 .150 ±0.244) ×10 −10 (3 .180 ±0.126) ×10 −7(5 .410 ±0.243) ×10 −7(2 .150 ±0.252) ×10 −511 .42 ±0.08
+> SoftDiv-FNO (1 .550 ±1.110) ×10 −7(1 .000 ±0.542) ×10 −4(2 .360 ±1.370) ×10 −4(4 .550 ±1.100) ×10 −28.69 ±0.24
+
+4 Experiments 
+
+Datasets. We use three main experiment groups in the main text. The exact periodic main track uses periodic NS-128 with a matched FNO family trained for 18 epochs and evaluated out to 200 rollout steps. The approximate official CFDBench tracks cover cavity, tube, dam, and cylinder under the official splits with matched raw and projected FNO recipes and 20-step rollout evaluation, and dam together with cylinder additionally include 60-step long-horizon reevaluations. Additional approximate-regime experiments add stronger-solver negative controls, adaptive cleanup, controlled mismatch sweeps, the validation-to-deployment protocol below, and the appendix-only geometry-aware, projection-frame, and external-backbone studies collected in Appendix D. Appendix E adds a real-data hierarchical forecasting support track using public Traffic, Labour, TourismLarge, Old-TourismLarge, and Wiki2 hierarchies from the HierarchicalForecast benchmark collection introduced by Olivares et al. [28] . That track uses long-horizon autoregressive gated recurrent unit (GRU) models following Cho et al. [8] , exact OLS and bottom-up reconciliation, and a validation-tuned blended top-down family. 
+
+Metrics. We report one-step test MSE, rollout MSE averaged over the horizon, rollout MSE at the final horizon, rollout divergence (Div), stable-rollout length, blow-up rate, and latency where relevant. Unless otherwise noted, numerical entries are reported as mean ± standard deviation. We denote final-horizon quantities by MSE@ Teval and Div@ Teval , reserving H and W for spatial grid height and width; concrete tables use numeric horizons such as MSE@20, MSE@60, and MSE@100. This rollout-aware reporting follows the recent shift in neural PDE evaluation toward explicit long-horizon stress tests and autoregressive benchmark protocols [ 25 , 22 ]. Appendix E additionally reports coherence RMS and target-distortion MSE for the hierarchical forecasting support track. Mechanism analysis adds target-distortion diagnostics, divergence-ranked risk–coverage curves, distortion and rollout correlations, controlled mismatch sweeps over cleanup strength, and the appendix-only geometry-aware and projection-frame analyses in Appendix D. 
+
+Recipe. Appendix G gives the full reproducibility recipe, covering optimizer, hardware, launch, artifact management, compute, latency, validation model selection, and random-initialization details, including the initialization counts and subset conventions. It also includes the cost comparison used to rule out hidden capacity or training-cost explanations for the main exact-regime ordering and the tuned cylinder cleanup comparison so that the body can focus on dataset scope, the metric definitions above, and fairness-critical comparisons. 
+
+4.1 Main Evidence Across Regimes 
+
+The clearest evidence comes from the exact periodic regime. Table 1 shows that Raw FNO is already strong on NS-128, with test MSE (5 .810 ± 3.600) × 10 −8, so projection is not beating a weak baseline. Yet exact cleanup is still decisive, matching Theorem 2. Post hoc projection reduces rollout MSE@100 from (9 .390 ±6.290) ×10 −5 to (1 .130 ±0.165) ×10 −6, and in-loop projection reduces it again to (5 .370 ± 0.113) × 10 −7, with CAP statistically tied to Proj-FNO as expected under the exact orthogonal-projector setting. SoftDiv is a tuned negative control rather than a contender. Despite matched compute, it remains worse than raw FNO and far worse than exact projection. In the approximate regime, the screened and controlled-mismatch experiments already show that operator family matters more than solving the original discrete constraint harder. Mild screened or geometry-aware cleanup can help, but stronger cleanup often moves the trajectory off the learned rollout manifold. The validation-to-deployment protocol below turns this approximate-regime 610 −5         
+
+> 10 −4 10 −3 10 −2 10 −1
+> Rollout divergence @200
+> 10 −6
+> 10 −5
+> 10 −4
+> Rollout MSE @200
+> 10 010 1
+> Normalized rollout divergence (Raw = 1)
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> 10 5
+> 10 6
+> Normalized rollout MSE (Raw = 1)
+> 0.6 0.7 0.8 0.9 1.0
+> Normalized divergence
+> 1.00
+> 1.25
+> 1.50
+> 1.75
+> 2.00
+> Normalized MSE
+
+Figure 2: Regime split between exact and approximate constraint enforcement. Exact projection behaves like a benign inductive bias on the periodic manifold, while approximate cleanup produces an accuracy–consistency frontier whose shape depends on operator family and dataset. In every subplot, lower divergence and lower error are better. Table 2: Constraint-operator diagnostics on held-out targets. Exact FFT projection is nearly identity, whereas approximate cleanup trades constraint-solve strength against target distortion; measured full-domain divergence need not decrease for every copied-boundary operator. GT divergence before cleanup is reported once per dataset block because it is shared by all operators; lower values are better in all numeric columns. 
+
+Operator GT div after GT distortion MSE Relative system residual Distortion relative to energy (%) 
+
+NS-128 exact periodic, GT div before = (2 .263 ± 0.450) × 10 −6
+
+FFT projection (2 .787 ± 0.521) × 10 −6 (8 .126 ± 4.079) × 10 −12 not applicable 0.00 
+
+Cavity approximate boundary-aware, GT div before = (1 .840 ± 1.190) × 10 −1
+
+Jacobi-10 (6 .400 ± 5.800) × 10 −2 (1 .200 ± 1.500) × 10 −2 (1 .954 ± 0.822) × 10 −1 0.19 
+
+MG-2 (6 .000 ± 5.600) × 10 −2 (1 .500 ± 1.700) × 10 −2 (1 .666 ± 0.694) × 10 −1 0.25 
+
+SOR-10 (8 .100 ± 8.400) × 10 −2 (3 .000 ± 3.900) × 10 −2 (2 .081 ± 1.369) × 10 −1 0.66 
+
+CG-10 (8 .200 ± 8.300) × 10 −2 (3 .800 ± 5.300) × 10 −2 (1 .984 ± 1.011) × 10 −1 0.94 
+
+Direct (6 .200 ± 6.800) × 10 −2 (4 .900 ± 7.100) × 10 −2 (4 .440 ± 2.765) × 10 −6 1.25 
+
+Tube approximate boundary-aware, GT div before = (5 .300 ± 2.200) × 10 −2
+
+Jacobi-20 (3 .800 ± 2.100) × 10 −2 (5 .928 ± 2.283) × 10 −4 (2 .968 ± 2.024) × 10 −1 0.25 
+
+MG-2 (3 .700 ± 1.900) × 10 −2 (5 .235 ± 2.066) × 10 −4 (3 .237 ± 1.912) × 10 −1 0.22 
+
+SOR-20 (5 .300 ± 1.500) × 10 −2 (2 .602 ± 2.677) × 10 −3 (5 .563 ± 4.560) × 10 −1 0.85 
+
+CG-20 (5 .900 ± 1.900) × 10 −2 (9 .616 ± 1.087) × 10 −3 (5 .357 ± 4.229) × 10 −1 2.98 
+
+Direct (5 .400 ± 2.800) × 10 −2 (1 .300 ± 1.400) × 10 −2 (2 .945 ± 2.568) × 10 −5 4.18 
+
+Dam approximate boundary-aware, GT div before = (6 .600 ± 1.000) × 10 −2
+
+Jacobi-20 (3 .200 ± 0.500) × 10 −2 (2 .136 ± 0.645) × 10 −3 (3 .244 ± 0.360) × 10 −1 0.96 
+
+Direct (4 .400 ± 0.700) × 10 −2 (1 .000 ± 0.700) × 10 −2 (1 .173 ± 0.335) × 10 −5 4.05 
+
+observation into an operating rule, while Appendix D reports aligned external-backbone and geometry-aware extensions. Together, these results center our study on baseline quality and operator exactness rather than on proposal-side novelty. Figure 2 compresses this split. In the exact regime, projection moves the frontier sharply toward lower divergence and lower error. By contrast, in the approximate regime, the frontier bends. Mild screened or geometry-aware cleanup can help, but stronger cleanup frequently moves the trajectory off the learned rollout manifold. 
+
+4.2 Mechanism Evidence: Distortion, Not Residual, Explains the Reversal 
+
+The core mechanism is visible directly on held-out targets in Table 2. Exact fast Fourier transform (FFT) projection is essentially the identity on periodic ground truth, while approximate cleanup operators are qualitatively different. They often reduce divergence, but, under copied-boundary stencils, the measured full-domain divergence need not decrease for every operator, and they can perturb target states non-negligibly on cavity, tube, and dam. Direct is the cleanest stress test for Proposition 4; it drives the linear-system residual near zero while producing larger target distortion than weaker approximate operators. 7Table 3: Across approximate-regime operator sweeps, target distortion explains rollout harm much better than solver residual. All correlations use the same 12 saved sweep points. Predictor Pearson rP Spearman ρ
+
+GT distortion MSE 0.905 0.909 
+
+GT distortion relative to energy 0.162 0.329 
+
+Poisson residual −0.387 −0.427 
+
+Table 4: Controlled mismatch study on the hardest long-horizon rows. The best point is raw or a very mild blend, not full cleanup. Smaller values are better in the three MSE columns. Dataset Operator Best α Best final-step MSE Mild α = 0 .10 Full α = 1 .0                                                                    
+
+> Dam @60 Screened16 0(2 .280 ±0.122) ×10 −4(2 .320 ±0.138) ×10 −4(6 .130 ±0.437) ×10 −4
+> Dam @60 GeoScreened+Taper2 0(2 .280 ±0.122) ×10 −4(2 .320 ±0.136) ×10 −4(5 .580 ±0.396) ×10 −4
+> Cylinder @60 Screened16 0(5 .300 ±3.400) ×10 −3(5 .400 ±3.600) ×10 −3(1 .270 ±0.480) ×10 −2
+> Cylinder @60 GeoScreened+Taper2 0.1 (5 .300 ±3.600) ×10 −3(5 .300 ±3.600) ×10 −3(8 .900 ±5.200) ×10 −3
+
+Table 3 uses the mean-squared-error version of the target-distortion quantity appearing in Theorem 5. Across the saved approximate-regime sweeps, ground-truth distortion MSE tracks rollout harm strongly, with Pearson rP = 0 .905 and Spearman ρ = 0 .909 , while the relative Poisson residual is negatively correlated with rollout quality. Once the operator is approximate, solving the chosen system more aggressively is not the right default intervention. Appendix D.5 gives the corresponding spatial solver-family mechanism board on a held-out cylinder wake snapshot. Appendix D.2 reports the dense screened-family sweep behind this near-identity reading. We next test the same mechanism at the rollout level through an intervention motivated by Proposition 8, blending raw and cleaned states without retraining as ˜uα = (1 − α)uraw + αuclean . The result is decisive in Table 4. In the matched comparison using the screened operator with λ = 16 (Screened16) and a two-cell post hoc taper (Taper2), Dam@60 is minimized at α = 0 for both Screened16 and GeoScreened+Taper2, while Cylinder@60 prefers α = 0 for Screened16 and a barely blended 
+
+α = 0 .1 for GeoScreened+Taper2. Full cleanup is consistently worse. The approximate-regime sweet spot therefore stays at the raw forecast or very near the identity map rather than at strong cleanup. Appendix D.3 reports the corresponding controlled-mismatch curves, and Appendix D.5 reports case-level response-atlas and cylinder alignment-flip diagnostics for the same approximate-regime mechanism. 
+
+Validation-to-deployment protocol. Table 5 makes this protocol concrete on the hardest long-horizon non-periodic rows. Operationally, the protocol starts from one strong raw checkpoint trained under the full benchmark recipe. It then evaluates a small menu of deployment candidates in physical units on validation rollouts, including Raw, adaptive screened and GeoScreened variants, tuned post hoc screened and GeoScreened cleanup, and Direct as a strong-solver anchor. The selected rule is the one with the lowest validation final-horizon rollout MSE for each dataset, and the test report includes that selected rule together with Raw and Direct anchors. The repeated-run robustness extension summarized in Appendix G leaves the selected rule unchanged. On the official-split Dam@60 and Cylinder@60 rows, validation keeps the raw forecast rather than any always-clean intervention, exactly matching the controlled-mismatch story that the optimal point is raw or nearly raw. On the geometry holdouts, validation shifts to milder approximate operators instead, with PostHoc-Screened at λ = 16 on Dam and AdaBlend-GeoScreened at τ = 0 .60 and 
+
+q = 1 .0 on Cylinder. Across all four validation-selected deployment rows, Direct is never selected; validation chooses either Raw or a milder screened or GeoScreened operator. Thus, in the approximate regime, the deployment baseline should be selected from among opera-tor families and strengths using rollout validation metrics, rather than defaulting to the strongest physically motivated solve. Appendix D.6 restates this as a compact validation checklist, while the supporting geometry-aware variants, external-backbone validation, and projection-frame ablation in Appendix D refine the operating rule without changing its basic selection logic. 8Table 5: Validation-to-deployment protocol on the four hardest approximate-regime rows. The official-split Dam and Cylinder rows keep the raw forecast, while the geometry holdouts select milder approximate operators rather than Direct cleanup. Smaller values are better in the three MSE columns. Setting Validation-selected rule Hyperparameters Selected final-step MSE Raw final-step MSE Direct final-step MSE Dam (official split) Raw none (2 .400 ± 0.191) × 10 −4 (2 .400 ± 0.191) × 10 −4 (3 .020 ± 0.240) × 10 −2                                                       
+
+> Cylinder (official split) Raw none (4 .400 ±2.800) ×10 −3(4 .400 ±2.800) ×10 −3(2 .380 ±0.328) ×10 −1
+> Dam geometry holdout PostHoc-Screened λ= 16 (3 .540 ±0.470) ×10 −2(3 .720 ±0.520) ×10 −2(5 .210 ±0.400) ×10 −2
+> Cylinder geometry holdout AdaBlend-GeoScreened τ= 0 .60 ,q= 1 .0(1 .910 ±0.480) ×10 −2(2 .210 ±0.550) ×10 −2(9 .040 ±2.660) ×10 −2
+
+5 Discussion 
+
+In summary, if an exact orthogonal projector matches the benchmark manifold, in-loop projection is the mandatory baseline and usually the dominant intervention. We verified this claim against strong raw baselines, matched compute, long-horizon metrics, repeated-run checks, and external-backbone checks. The controlled mismatch study makes the approximate-regime claim materially stronger than a simple operator-family comparison. It turns the diagnostic story into a causal one. As soon as a mismatched operator is blended in more aggressively, rollout error rises even while divergence falls, exactly the sign pattern allowed by Proposition 8. Combined with the distortion and residual analysis, the controlled-mismatch evidence isolates the failure mode as operator-induced state distortion rather than insufficient linear-system convergence. The broader lesson is about operator–data alignment in structured prediction, not only incompressible flow. Appendix E provides supporting hierarchical-forecasting evidence. Exact coherent reconcilia-tion transfers as a stable low-risk baseline across Traffic, Labour, TourismLarge, OldTourismLarge, and Wiki2, while the blended top-down family spans the full range from catastrophic to dominant depending on the dataset. This hierarchical evidence is the broader structured-prediction analogue of the CFD finding. Exactness determines whether constraint enforcement acts as a benign inductive bias or as a repeated off-manifold perturbation in autoregressive forecasting. Once the operator is approximate, there is no universal monotone relation between stronger repair and better rollout. Exact constraints can act like a benign inductive bias, but approximate constraints can also act like a recurring source of distribution shift or, more rarely, like a powerful task-specific prior. This operator-dependent ambiguity is why strong baselines matter so much here. A weak raw model, a short training recipe, or a low-quality long-horizon evaluation can make approximate cleanup look either better or worse than it really is. The evaluation suite used here is designed to reduce that ambiguity while staying within a deliberately limited scope. The strongest evidence remains on 2D incompressible forecasting, and the hierarchical support track broadens the setting without claiming a full map of structured prediction. 
+
+6 Conclusion 
+
+We establish a regime-level evaluation rule for constraint enforcement in autoregressive forecasting. When the constraint operator is exact on the target manifold and orthogonal with respect to the benchmark geometry, as in periodic NS-128, exact projection substantially improves rollout accuracy. Post hoc projection is a mandatory comparator, and in-loop projection is the primary baseline. When exactness is unavailable, as in boundary-aware CFDBench cleanup, stronger enforcement is no longer a safe default. The decisive quantity is not how accurately a Poisson system is solved but how much the chosen operator distorts target trajectories and the learned rollout distribution. Our screened-family sweeps, stronger-solver controls, controlled mismatch experiments, adaptive cleanup tests, and external-backbone checks all support the same deployment rule. Compare operator families in physical units, validate cleanup strength using rollout metrics, and keep raw or near-identity forecasts as serious candidates. The hierarchical forecasting appendix shows the same logic beyond CFD. Exact reconciliation is a stable baseline, while approximate repair can be harmful or beneficial depending on the dataset. Constraint enforcement should therefore be benchmarked by operator–data alignment first and enforcement strength second. 9References 
+
+[1] Rong An. Error Analysis of a New Fractional-Step Method for the Incompressible Navier-Stokes Equations with Variable Density. J. Sci. Comput. , 84(1):3, 2020. [2] George Athanasopoulos, Roman A Ahmed, and Rob J Hyndman. Hierarchical forecasts for Australian domestic tourism. International Journal of Forecasting , 25(1):146–166, 2009. [3] George Athanasopoulos, Rob J Hyndman, Nikolaos Kourentzes, and Anastasios Panagiotelis. Forecast reconciliation: A review. International Journal of Forecasting , 40(2):430–456, 2024. [4] John B Bell, Phillip Colella, and Harland M Glaz. A second-order projection method for the incompressible Navier-Stokes equations. Journal of computational physics , 85(2):257–283, 1989. [5] Harsh Bhatia, Gregory Norgard, Valerio Pascucci, and Peer-Timo Bremer. The Helmholtz-Hodge Decomposition - A Survey. IEEE Trans. Vis. Comput. Graph. , 19(8):1386–1404, 2013. [6] Johannes Brandstetter, Daniel E. Worrall, and Max Welling. Message Passing Neural PDE Solvers. In ICLR , 2022. [7] David L Brown, Ricardo Cortez, and Michael L Minion. Accurate projection methods for the incompressible Navier–Stokes equations. Journal of computational physics , 168(2):464–499, 2001. [8] Kyunghyun Cho, Bart van Merrienboer, Çaglar Gülçehre, Dzmitry Bahdanau, Fethi Bougares, Holger Schwenk, and Yoshua Bengio. Learning Phrase Representations using RNN Encoder-Decoder for Statistical Machine Translation. In EMNLP , pages 1724–1734, 2014. [9] Alexandre Joel Chorin. Numerical solution of the Navier-Stokes equations. Mathematics of computation , 22(104):745–762, 1968. [10] Filipe de Avila Belbute-Peres, Thomas D. Economon, and J. Zico Kolter. Combining Differ-entiable PDE Solvers and Graph Neural Networks for Fluid Flow Prediction. In ICML , pages 2402–2411, 2020. [11] Yonatan Geifman and Ran El-Yaniv. Selective Classification for Deep Neural Networks. In 
+
+NIPS , pages 4878–4887, 2017. [12] Nicholas Geneva and Nicholas Zabaras. Modeling the dynamics of PDE systems with physics-constrained deep auto-regressive networks. J. Comput. Phys. , 403, 2020. [13] Charles W Gross and Jeffrey E Sohl. Disaggregation methods to expedite product line forecast-ing. Journal of forecasting , 9(3):233–254, 1990. [14] Jean-Luc Guermond, Peter Minev, and Jie Shen. An overview of projection methods for incompressible flows. Computer methods in applied mechanics and engineering , 195(44-47): 6011–6045, 2006. [15] Xing Han, Sambarta Dasgupta, and Joydeep Ghosh. Simultaneously Reconciled Quantile Forecasting of Hierarchically Related Time Series. In AISTATS , pages 190–198, 2021. [16] Rob J. Hyndman, Roman A. Ahmed, George Athanasopoulos, and Han Lin Shang. Optimal combination forecasts for hierarchical time series. Comput. Stat. Data Anal. , 55(9):2579–2589, 2011. [17] Xiaowei Jin, Shengze Cai, Hui Li, and George Em Karniadakis. NSFnets (Navier-Stokes flow nets): Physics-informed neural networks for the incompressible Navier-Stokes equations. J. Comput. Phys. , 426:109951, 2021. [18] Harshavardhan Kamarthi, Lingkai Kong, Alexander Rodríguez, Chao Zhang, and B. Aditya Prakash. When Rigidity Hurts: Soft Consistency Regularization for Probabilistic Hierarchical Time Series Forecasting. In KDD , pages 1057–1072, 2023. 10 [19] Byungsoo Kim, Vinicius C. Azevedo, Nils Thuerey, Theodore Kim, Markus H. Gross, and Barbara Solenthaler. Deep Fluids: A Generative Network for Parameterized Fluid Simulations. 
+
+Comput. Graph. Forum , 38(2):59–70, 2019. [20] John Kim and Parviz Moin. Application of a fractional-step method to incompressible Navier-Stokes equations. Journal of computational physics , 59(2):308–323, 1985. [21] Dmitrii Kochkov, Jamie A Smith, Ayya Alieva, Qing Wang, Michael P Brenner, and Stephan Hoyer. Machine learning–accelerated computational fluid dynamics. Proceedings of the National Academy of Sciences , 118(21):e2101784118, 2021. [22] Felix Koehler, Simon Niedermayr, Rüdiger Westermann, and Nils Thuerey. APEBench: A Benchmark for Autoregressive Neural Emulators of PDEs. In NeurIPS , 2024. [23] Zongyi Li, Nikola Borislavov Kovachki, Kamyar Azizzadenesheli, Burigede Liu, Kaushik Bhattacharya, Andrew M. Stuart, and Anima Anandkumar. Fourier Neural Operator for Parametric Partial Differential Equations. In ICLR , 2021. [24] Zongyi Li, Hongkai Zheng, Nikola B. Kovachki, David Jin, Haoxuan Chen, Burigede Liu, Kamyar Azizzadenesheli, and Anima Anandkumar. Physics-Informed Neural Operator for Learning Partial Differential Equations. CoRR , abs/2111.03794, 2021. [25] Phillip Lippe, Bas Veeling, Paris Perdikaris, Richard E. Turner, and Johannes Brandstetter. PDE-Refiner: Achieving Accurate Long Rollouts with Neural PDE Solvers. In NeurIPS , 2023. [26] Lu Lu, Pengzhan Jin, Guofei Pang, Zhongqiang Zhang, and George Em Karniadakis. Learning nonlinear operators via DeepONet based on the universal approximation theorem of operators. 
+
+Nat. Mach. Intell. , 3(3):218–229, 2021. [27] Yining Luo, Yingfa Chen, and Zhen Zhang. CFDBench: A large-scale benchmark for machine learning methods in fluid dynamics. arXiv preprint arXiv:2310.05963 , 2023. [28] Kin G. Olivares, Federico Garza, David Luo, Cristian Challu, Max Mergenthaler, and Artur Dubrawski. HierarchicalForecast: A Reference Framework for Hierarchical Forecasting in Python. CoRR , abs/2207.03517, 2022. [29] Anastasios Panagiotelis, George Athanasopoulos, Puwasala Gamakumara, and Rob J Hyndman. Forecast reconciliation: A geometric view with new insights on bias correction. International Journal of Forecasting , 37(1):343–359, 2021. [30] Tobias Pfaff, Meire Fortunato, Alvaro Sanchez-Gonzalez, and Peter W. Battaglia. Learning Mesh-Based Simulation with Graph Networks. In ICLR , 2021. [31] Maziar Raissi, Paris Perdikaris, and George E. Karniadakis. Physics-informed neural networks: A deep learning framework for solving forward and inverse problems involving nonlinear partial differential equations. J. Comput. Phys. , 378:686–707, 2019. [32] Syama Sundar Rangapuram, Lucien D. Werner, Konstantinos Benidis, Pedro Mercado, Jan Gasthaus, and Tim Januschowski. End-to-End Learning of Coherent Probabilistic Forecasts for Hierarchical Time Series. In ICML , pages 8832–8843, 2021. [33] Syama Sundar Rangapuram, Shubham Kapoor, Rajbir-Singh Nirwan, Pedro Mercado, Tim Januschowski, Yuyang Wang, and Michael Bohlke-Schneider. Coherent Probabilistic Forecast-ing of Temporal Hierarchies. In AISTATS , pages 9362–9376, 2023. [34] Olaf Ronneberger, Philipp Fischer, and Thomas Brox. U-Net: Convolutional Networks for Biomedical Image Segmentation. In MICCAI (3) , pages 234–241, 2015. [35] Yulia Rubanova, Alvaro Sanchez-Gonzalez, Tobias Pfaff, and Peter W. Battaglia. Constraint-based graph network simulator. In ICML , pages 18844–18870, 2022. [36] Alvaro Sanchez-Gonzalez, Jonathan Godwin, Tobias Pfaff, Rex Ying, Jure Leskovec, and Peter W. Battaglia. Learning to Simulate Complex Physics with Graph Networks. In ICML ,pages 8459–8468, 2020. 11 [37] Connor Schenck and Dieter Fox. SPNets: Differentiable Fluid Dynamics for Deep Neural Networks. In CoRL , pages 317–335, 2018. [38] Kimberly L. Stachenfeld, Drummond Buschman Fielding, Dmitrii Kochkov, Miles D. Cranmer, Tobias Pfaff, Jonathan Godwin, Can Cui, Shirley Ho, Peter W. Battaglia, and Alvaro Sanchez-Gonzalez. Learned Simulators for Turbulence. In ICLR , 2022. [39] Souhaib Ben Taieb, James W. Taylor, and Rob J. Hyndman. Coherent Probabilistic Forecasts for Hierarchical Time Series. In ICML , pages 3348–3357, 2017. [40] Roger Temam. Sur l’approximation de la solution des équations de Navier-Stokes par la méthode des pas fractionnaires (I). Archive for Rational Mechanics and Analysis , 32(2):135–153, 1969. [41] Jonathan Tompson, Kristofer Schlachter, Pablo Sprechmann, and Ken Perlin. Accelerating Eulerian Fluid Simulation With Convolutional Networks. In ICML , pages 3424–3433, 2017. [42] Asterios Tsiourvas, Wei Sun, Georgia Perakis, Pin-Yu Chen, and Yada Zhu. Learning Optimal Projection for Forecast Reconciliation of Hierarchical Time Series. In ICML , pages 48713– 48727, 2024. [43] Shanika L Wickramasuriya, George Athanasopoulos, and Rob J Hyndman. Optimal forecast reconciliation for hierarchical and grouped time series through trace minimization. Journal of the American Statistical Association , 114(526):804–819, 2019. 
+
+Appendix Table of Contents 
+
+A Theoretical Analysis 13 B Exact Periodic Projection Code 17 C Forecasting Variant Details 18 D Approximate-Regime Extensions 19 
+
+D.1 Boundary-Preserving Approximate Cleanup Details . . . . . . . . . . . . . . . . . 19 D.2 Dense Screened-Shift Sweep . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20 D.3 Controlled Mismatch Details . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 20 D.4 Geometry-Aware Evaluator-Side Variants . . . . . . . . . . . . . . . . . . . . . . 20 D.5 Qualitative Mechanism Diagnostics . . . . . . . . . . . . . . . . . . . . . . . . . 21 D.6 Constructive Rule in the Approximate Regime . . . . . . . . . . . . . . . . . . . . 22 
+
+E Hierarchical Forecasting Support 24 
+
+E.1 Task Setup . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24 E.2 Results on Real Data . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 26 
+
+F Limitations 27 G Reproducibility 27 H List of Notation 28 
+
+12 A Theoretical Analysis 
+
+The following results formalize the mechanism separating exact and approximate operators used throughout the experiments. Theorem 2 shows that exact-on-target repair removes additive target distortion. Proposition 4 shows that solver residual controls only implementation error around a fixed operator. Theorem 5 shows that trajectorywise target distortion enters rollout bounds directly. Proposition 8 shows why raw or near-raw cleanup can be optimal when the cleanup direction is misaligned with the target. 
+
+Proposition 1 (Orthogonal projection identity) . Let H be a finite-dimensional real inner product space, let M ⊂ H be a linear subspace, and let P : H → M be the orthogonal projector onto M.Then, for every x ∈ H and y ∈ M , we have 
+
+∥P x − y∥2 = ∥x − y∥2 − ∥ (I − P )x∥2 ≤ ∥ x − y∥2. (12) 
+
+Applied to the periodic divergence-free subspace with P = Π div , the projection identity is Equation 8. 
+
+Proof. Because P is the orthogonal projector, P x − y ∈ M and (I − P )x ∈ M ⊥. Since 
+
+x − y = ( P x − y) + ( I − P )x, (13) the two summands are orthogonal. The Pythagorean theorem therefore gives 
+
+∥x − y∥2 = ∥P x − y∥2 + ∥(I − P )x∥2, (14) which rearranges to Equation 12. The inequality follows because the last term is nonnegative. 
+
+Theorem 2 (Exact-on-target repair removes additive target distortion) . Let H be a finite-dimensional real inner product space, let M ⊂ H be a target set, and let T : H → H satisfy 
+
+T (y) = y for every y ∈ M . (15) 
+
+Assume that T is LT -Lipschitz on H. Then, for every x ∈ H and every y ∈ M ,
+
+∥T (x) − y∥ = ∥T (x) − T (y)∥ ≤ LT ∥x − y∥. (16) 
+
+In particular, if LT ≤ 1, then post hoc repair with T cannot worsen one-step error to any target on 
+
+M.Now, let F : H → H be a predictor, let (yt)t≥0 ⊂ M be a target trajectory, and define the repaired rollout xt+1 = T (F (xt)) . If F is LF -Lipschitz and δt := ∥F (yt) − yt+1 ∥, then the rollout error satisfies 
+
+∥xt+1 − yt+1 ∥ ≤ LT LF ∥xt − yt∥ + LT δt. (17) 
+
+Consequently, for every t ≥ 1,
+
+∥xt − yt∥ ≤ (LT LF )t∥x0 − y0∥ +
+
+> t−1
+
+X
+
+> s=0
+
+(LT LF )t−1−sLT δs. (18) 
+
+If LT LF < 1 and δt ≤ ¯δ for all t, then 
+
+lim sup 
+
+> t→∞
+
+∥xt − yt∥ ≤ LT ¯δ
+
+1 − LT LF
+
+. (19) 
+
+Proof. Equation 16 follows immediately from Equation 15 and the Lipschitz property: 
+
+∥T (x) − y∥ = ∥T (x) − T (y)∥ ≤ LT ∥x − y∥. (20) For the rollout recursion, because yt+1 ∈ M , Equation 15 gives T (yt+1 ) = yt+1 . Therefore, 
+
+∥xt+1 − yt+1 ∥ = ∥T (F (xt)) − T (yt+1 )∥ (21) 
+
+≤ LT ∥F (xt) − yt+1 ∥ (22) 
+
+≤ LT ∥F (xt) − F (yt)∥ + LT ∥F (yt) − yt+1 ∥ (23) 
+
+≤ LT LF ∥xt − yt∥ + LT δt, (24) 13 which is Equation 17. Iterating this affine recursion gives Equation 18, and the steady-state bound Equation 19 follows from the geometric series. 
+
+Corollary 3 (Automatic exactness for linear idempotent repair) . Let M be a linear subspace of H.If T : H → H is linear and idempotent with range( T ) = M, then T (y) = y for every y ∈ M .Thus, Equation 15 holds automatically. The optimal Lipschitz constant is ∥T ∥op , the operator norm induced by the norm defined by the chosen inner product. Orthogonal projection onto a nonzero target subspace has ∥T ∥op = 1 , with the zero-subspace projector as the degenerate norm-zero case, while exact-but-nonorthogonal repair operators can have ∥T ∥op > 1 without introducing any additive target-distortion term. 
+
+Proof. For any y ∈ M , there exists z with y = T z , so T y = T 2z = T z = y. For linear maps, the optimal Lipschitz constant with respect to the induced norm is ∥T ∥op .
+
+Remark 1. Theorem 2 and Corollary 3 give the abstract version of our exact-regime rule. Exact-but-nonorthogonal operators do not enjoy the Pythagorean identity from the periodic FFT projector, but they still avoid the additive operator-bias term that appears in approximate cleanup bounds. Their risk is conditioning through ∥T ∥op , not target distortion. This absence of target distortion is why exact bottom-up reconciliation is still a principled baseline even though it is not an orthogonal projector. 
+
+Proposition 4 (Poisson residual controls only solver error around the chosen operator) . Let Aλ ∈
+
+Rn×n be symmetric positive definite, let μλ := λmin (Aλ) > 0, and let D ∈ Rn×N together with 
+
+G ∈ RN ×n define the cleanup family Q⋆(x) := x − Gp ⋆(x), where Aλp⋆(x) = −Dx . Let p(x)
+
+be any approximate linear-system solve with residual r(x) := −Dx − Aλp(x), and define the implemented cleanup Q(x) := x − Gp (x). Then, for every x ∈ RN ,
+
+p(x) − p⋆(x) = −A−1 
+
+> λ
+
+r(x), (25) 
+
+Q(x) − Q⋆(x) = GA −1 
+
+> λ
+
+r(x), (26) 
+
+∥Q(x) − Q⋆(x)∥2 ≤ ∥G∥2
+
+μλ
+
+∥r(x)∥2, (27) 
+
+∥DQ (x) − DQ ⋆(x)∥2 ≤ ∥DG ∥2
+
+μλ
+
+∥r(x)∥2. (28) 
+
+Moreover, for every target y ∈ RN ,
+
+|∥ Q(x) − y∥2 − ∥ Q⋆(x) − y∥2| ≤ ∥G∥2
+
+μλ
+
+∥r(x)∥2, (29) 
+
+and in particular 
+
+∥Q(y) − y∥2 ≥ ∥ Q⋆(y) − y∥2 − ∥G∥2
+
+μλ
+
+∥r(y)∥2. (30) 
+
+Consequently, if a sequence of stronger solves pk satisfies ∥rk(x)∥2 → 0 for every x, then Qk(x) →
+
+Q⋆(x) pointwise. A lower linear-system residual therefore shrinks the residual-controlled upper bound on the implementation gap, and residual convergence makes the implementation pointwise faithful to the same operator family Q⋆; it does not remove any intrinsic target distortion already present in Q⋆.
+
+Proof. By the definitions of p⋆(x) and r(x),
+
+Aλ(p⋆(x) − p(x)) = −Dx − Aλp(x) = r(x), (31) which proves Equation 25. Substituting into the velocity update gives 
+
+Q(x) − Q⋆(x) = −G(p(x) − p⋆(x)) = GA −1 
+
+> λ
+
+r(x), (32) which is Equation 26. Since Aλ is symmetric positive definite, 
+
+∥A−1 
+
+> λ
+
+∥2 = 1
+
+μλ
+
+. (33) 14 Therefore, 
+
+∥Q(x) − Q⋆(x)∥2 ≤ ∥ G∥2∥A−1 
+
+> λ
+
+∥2∥r(x)∥2 = ∥G∥2
+
+μλ
+
+∥r(x)∥2, (34) 
+
+∥DQ (x) − DQ ⋆(x)∥2 ≤ ∥ DG ∥2∥A−1 
+
+> λ
+
+∥2∥r(x)∥2 = ∥DG ∥2
+
+μλ
+
+∥r(x)∥2, (35) which proves Equations 27 and 28. The reverse triangle inequality then yields 
+
+|∥ Q(x) − y∥2 − ∥ Q⋆(x) − y∥2| ≤ ∥ Q(x) − Q⋆(x)∥2, (36) and Equation 29 follows from the previous bound. Setting x = y gives Equation 30. Finally, if 
+
+∥rk(x)∥2 → 0, then Equation 27 implies ∥Qk(x) − Q⋆(x)∥2 → 0 for every x.
+
+Remark 2. Proposition 4 is the formal version of our stronger-solver negative controls. Direct, CG, SOR, MG, and Jacobi can all be compared to the exact application of their own underlying operator family. Lower residual only shrinks the residual-controlled bound in Equation 27; it does not change the target-distortion floor in Equation 30. The residual-distortion separation is exactly why a near-exact solve of a mismatched operator can still lose to a milder screened or geometry-aware family. 
+
+Theorem 5 (Trajectorywise target distortion enters rollout bounds) . Let H be a finite-dimensional real inner product space, let M ⊂ H be a target set, and let F : H → H be an LF -Lipschitz predictor. For i ∈ { 1, 2}, let Ti : H → H be an Li-Lipschitz cleanup operator. Consider a target trajectory (yt)t≥0 ⊂ M and the repaired rollouts x(i) 
+
+> t+1
+
+= Ti(F (x(i) 
+
+> t
+
+)) , with e(i) 
+
+> t
+
+:= x(i) 
+
+> t
+
+− yt. Define the raw model’s one-step target error as δt := ∥F (yt) − yt+1 ∥ and the target-distortion sequence along that trajectory as βi,t := ∥Ti(yt) − yt∥, t ≥ 0. Then, for every t ≥ 0 and each i ∈ { 1, 2},
+
+∥e(i)
+
+> t+1
+
+∥ ≤ LiLF ∥e(i) 
+
+> t
+
+∥ + Liδt + βi,t +1 . (37) 
+
+Consequently, if b(i)0 ≥ ∥ e(i)0 ∥ and 
+
+b(i) 
+
+> t+1
+
+:= LiLF b(i) 
+
+> t
+
++ Liδt + βi,t +1 , (38) 
+
+then ∥e(i) 
+
+> t
+
+∥ ≤ b(i) 
+
+> t
+
+for all t ≥ 0.
+
+Proof. Fix i ∈ { 1, 2}. Using the rollout definition, we add and subtract Ti(F (yt)) and Ti(yt+1 ),obtaining 
+
+∥e(i)
+
+> t+1
+
+∥ = ∥Ti(F (x(i) 
+
+> t
+
+)) − yt+1 ∥ (39) 
+
+≤ ∥ Ti(F (x(i) 
+
+> t
+
+)) − Ti(F (yt)) ∥ + ∥Ti(F (yt)) − Ti(yt+1 )∥ + ∥Ti(yt+1 ) − yt+1 ∥ (40) 
+
+≤ Li∥F (x(i) 
+
+> t
+
+) − F (yt)∥ + Li∥F (yt) − yt+1 ∥ + βi,t +1 (41) 
+
+≤ LiLF ∥e(i) 
+
+> t
+
+∥ + Liδt + βi,t +1 , (42) which proves Equation 37. The recursion in Equation 38 therefore upper-bounds the true error by induction on t.
+
+Corollary 6 (Smaller target distortion gives a tighter autoregressive bound) . Under the setup of Theorem 5, assume 
+
+b(1) 0 ≤ b(2) 0 ,L1 ≤ L2,β1,t ≤ β2,t for every t ≥ 1.
+
+(43) 
+
+Then we have 
+
+b(1)  
+
+> t
+
+≤ b(2)  
+
+> t
+
+for all t ≥ 0. (44) 
+
+Thus, under matched raw dynamics, any operator family with no larger Lipschitz factor and no larger trajectorywise target distortion along the same target path has a uniformly tighter autoregressive bound at every horizon. 
+
+15 Proof. The claim follows by induction. It holds at t = 0 by assumption. If it holds at time t, then 
+
+b(1)  
+
+> t+1
+
+= L1LF b(1)  
+
+> t
+
++ L1δt + β1,t +1 (45) 
+
+≤ L2LF b(1)  
+
+> t
+
++ L2δt + β2,t +1 (46) 
+
+≤ L2LF b(2)  
+
+> t
+
++ L2δt + β2,t +1 (47) 
+
+= b(2) 
+
+> t+1
+
+, (48) which closes the induction. 
+
+Corollary 7 (Uniform distortion and steady-state bounds) . Under the setup of Theorem 5, if the distortion is uniformly bounded on the whole target set, 
+
+βi := sup 
+
+> y∈M
+
+∥Ti(y) − y∥ < ∞, (49) 
+
+then βi,t ≤ βi for every t, and therefore 
+
+∥e(i)
+
+> t+1
+
+∥ ≤ LiLF ∥e(i) 
+
+> t
+
+∥ + Liδt + βi. (50) 
+
+Finally, if LiLF < 1, δt ≤ ¯δ for all t, and βi,t ≤ ¯βi for all t, then 
+
+lim sup 
+
+> t→∞
+
+∥e(i) 
+
+> t
+
+∥ ≤ Li ¯δ + ¯βi
+
+1 − LiLF
+
+. (51) 
+
+Under Equation 49, one may take ¯βi = βi. Exact-on-target operators are the special case ¯βi = 0 .
+
+Proof. If Equation 49 holds, then βi,t +1 ≤ βi for every t, and Equation 50 follows immediately from Equation 37. Finally, if δt ≤ ¯δ, βi,t ≤ ¯βi, and LiLF < 1, then Equation 37 yields the scalar affine recursion 
+
+∥e(i)
+
+> t+1
+
+∥ ≤ LiLF ∥e(i) 
+
+> t
+
+∥ + ( Li ¯δ + ¯βi). (52) Iterating this recursion and summing the geometric series gives Equation 51. 
+
+Remark 3. Theorem 5 uses a trajectorywise formulation rather than a bare global supremum. For a nonexact linear operator on an unbounded target subspace, the quantity in Equation 49 is typically infinite. The right object for our rollout diagnostics is therefore the distortion actually seen along the benchmark trajectory, with the uniform bound kept only as a stronger corollary when the target set is bounded or the operator is exact on it. Under this formulation, the message stays the same: once the raw predictor F and rollout regime are fixed, the operator family enters the bound through a Lipschitz factor and a target-distortion term, while Proposition 4 says that linear-system residual only measures how closely we implement a chosen operator family. 
+
+Proposition 8 (Controlled-mismatch optimum) . Let H be a finite-dimensional real inner product space, let x ∈ H be a raw forecast, let y ∈ H be the corresponding target, and let Q : H → H 
+
+be any cleanup operator. Define the cleanup increment c := Q(x) − x and the blended controlled-mismatch family xα := (1 − α)x + αQ (x) = x + αc , α ∈ [0 , 1] . Then the one-step squared error 
+
+ϕ(α) := ∥xα − y∥2 is the convex quadratic 
+
+ϕ(α) = ∥x − y∥2 + 2 α⟨x − y, c ⟩ + α2∥c∥2. (53) 
+
+If c̸ = 0 , the minimizing blend strength is therefore 
+
+α⋆ = clip [0 ,1] (− ⟨x − y, c ⟩∥c∥2 ), (54) 
+
+while every α ∈ [0 , 1] is optimal when c = 0 .Several immediate consequences follow. If c̸ = 0 and ⟨x − y, c ⟩ ≥ 0, then α⋆ = 0 , so raw forecasting is the unique optimizer, and every nonzero amount of cleanup worsens the one-step MSE. Full cleanup is no worse than raw forecasting if and only if 2⟨x − y, c ⟩ + ∥c∥2 ≤ 0, and it is strictly better if and only if the inequality is strict. 
+
+16 Proof. Set e := x − y. Since xα − y = e + αc , expanding the square gives 
+
+ϕ(α) = ∥e + αc ∥2 = ∥e∥2 + 2 α⟨e, c ⟩ + α2∥c∥2, (55) which is Equation 53. If c̸ = 0 , the blend objective is a strictly convex quadratic, so its unconstrained minimizer is −⟨ e, c ⟩/∥c∥2. Clipping to [0 , 1] yields Equation 54. The raw-optimality claim is then immediate, and the full-cleanup condition follows from 
+
+ϕ(1) − ϕ(0) = 2 ⟨x − y, c ⟩ + ∥c∥2. (56) 
+
+Corollary 9 (Controlled mismatch under orthogonal projection) . In the setup of Proposition 8, suppose Q = P is the orthogonal projector onto a closed subspace M ⊂ H and y ∈ M . Then, 
+
+ϕ(α) = ∥P x − y∥2 + (1 − α)2∥(I − P )x∥2, (57) 
+
+so α = 1 is a minimizer, uniquely unless x ∈ M ; when x ∈ M , every α ∈ [0 , 1] is optimal. 
+
+Proof. Decompose 
+
+x − y = ( P x − y) + ( I − P )x. (58) Because y ∈ M and P is the orthogonal projector onto M, the first term lies in M and the second lies in M⊥; hence, they are orthogonal. Moreover, c = P x − x = −(I − P )x, so 
+
+xα − y = ( P x − y) + (1 − α)( I − P )x. (59) Taking norms and using orthogonality proves Equation 57. The right-hand side is minimized at α = 1 ,and the minimizer is unique unless (I − P )x = 0 , in which case every α ∈ [0 , 1] is optimal. 
+
+Remark 4. Proposition 8 turns the controlled-mismatch experiment into a precise diagnostic. Because the true residual is y−x, any improvement from some nonzero cleanup strength requires ⟨y−x, c ⟩ > 0,equivalently ⟨x − y, c ⟩ < 0. Corollary 9 gives the exact orthogonal regime: the cleanup increment is 
+
+c = P x − x = −(I − P )x, so full cleanup cancels the orthogonal-to-subspace component (I − P )x.In the approximate regime, this sign is not fixed, which is exactly why the best empirical operating point can move to α = 0 or a very mild blend. 
+
+B Exact Periodic Projection Code 
+
+Listing 1 gives the compact PyTorch implementation of the exact periodic projection used in the NS-128 track. 
+
+> import math import torch def spectral_grids( height: int, width: int, device: torch.device, domain_size: float = 2 * math.pi, ): dx = domain_size / width dy = domain_size / height kx = 2 * math.pi * torch.fft.rfftfreq(width, d=dx) ky = 2 * math.pi * torch.fft.fftfreq(height, d=dy) ky_grid, kx_grid = torch.meshgrid(ky, kx, indexing="ij") return kx_grid.to(device), ky_grid.to(device) def curl_from_streamfunction( stream: torch.Tensor, domain_size: float = 2 * math.pi, ) -> torch.Tensor: flat_stream = stream.reshape(-1, *stream.shape[-2:]) height, width = flat_stream.shape[-2:] kx, ky = spectral_grids(height, width, flat_stream.device, domain_size) stream_hat = torch.fft.rfft2(flat_stream.float()) u_hat = 1j * ky * stream_hat v_hat = -1j * kx * stream_hat u = torch.fft.irfft2(u_hat, s=(height, width))
+
+17 v = torch.fft.irfft2(v_hat, s=(height, width)) velocity = torch.stack([u, v], dim=1) return velocity.reshape(*stream.shape[:-2], 2, height, width).to(stream.dtype) def periodic_hodge_projection( velocity: torch.Tensor, domain_size: float = 2 * math.pi, ) -> torch.Tensor: """Project periodic 2D velocity fields onto the divergence-free subspace.""" if velocity.shape[-3] != 2: raise ValueError("velocity must have shape (..., 2, H, W)") original_dtype = velocity.dtype leading = velocity.shape[:-3] flat = velocity.reshape(-1, *velocity.shape[-3:]) height, width = flat.shape[-2:] kx, ky = spectral_grids(height, width, flat.device, domain_size) u = flat[:, 0].float() v = flat[:, 1].float() u_hat = torch.fft.rfft2(u) v_hat = torch.fft.rfft2(v) k_sq = kx.square() + ky.square() k_sq = k_sq.clone() k_sq[0, 0] = 1.0 vort_hat = 1j * kx * v_hat - 1j * ky * u_hat stream_hat = vort_hat / k_sq stream_hat[..., 0, 0] = 0.0 # Real-valued spectral derivatives use the standard zero-Nyquist convention. if height % 2 == 0: stream_hat[..., height // 2, :] = 0.0 if width % 2 == 0: stream_hat[..., :, width // 2] = 0.0 stream = torch.fft.irfft2(stream_hat, s=(height, width)) projected = curl_from_streamfunction(stream, domain_size) mean_velocity = flat.mean(dim=(-2, -1), keepdim=True) return (projected + mean_velocity).reshape(*leading, 2, height, width).to(original_dtype) 
+
+Listing 1: Exact periodic Hodge projection for velocity tensors with shape (..., 2, H, W) .
+
+C Forecasting Variant Details 
+
+On the periodic NS-128 main track, the raw baseline (Raw) uses no projection. The post hoc projection baseline (PostHoc) trains raw and projects each prediction only at evaluation time before feeding it back. The soft-divergence training variant (SoftDiv) optimizes 
+
+Lsoft = Lvel + λdiv ∥∇ · ˆu∥22 + Lω + Lspec . (60) The projected-rollout variant (Proj) projects every predicted state during rollout, and constraint-aware projection (CAP) projects both the autoregressive state and the training target. On the non-periodic CFDBench tracks, we use adaptive blended cleanup (AdaBlend) to denote the gated variant and include Raw and the Dirichlet-Poisson cleanup baselines AdaBlend-Jacobi, PostHoc-Jacobi, PostHoc-MG, PostHoc-SOR, Proj-Jacobi, Proj-SOR, PostHoc-CG, and Proj-CG. We also add the screened family AdaBlend-Screened, PostHoc-Screened, and Proj-Screened. The projected models are trained with the same operator family and iteration budget used at evaluation time, so the comparison is training-matched rather than an evaluator-only sweep. We use matched budgets of k = 10 for cavity and k = 20 for tube, choose the MG V-cycle count by validation search under the same rollout protocol, and use λ = 8 for the main screened-family training runs across the non-periodic experiments. Appendix D reports additional evaluation-only replicated-boundary, tapered, and GeoScreened stress tests together with the corresponding GeoScreened adaptive variants on the hardest rows. 18 D Approximate-Regime Extensions 
+
+D.1 Boundary-Preserving Approximate Cleanup Details 
+
+For non-periodic cavity, tube, dam, and cylinder flow, exact spectral projection is unavailable. We therefore use training-matched boundary-preserving approximate cleanup operators. The resulting Poisson solves are approximate, boundary-constrained members of the classical Chorin–Temam projection family rather than exact Leray projectors [ 7 , 14 , 20 , 4 , 1]. Let ˜u be the raw predicted velocity. Throughout this discrete cleanup description, we use unit grid spacing; with physical spacings ∆x, ∆y, the corresponding difference quotients include the usual 1/∆x and 1/∆y factors. The interior discrete divergence Dh ≡ ∇· h is 
+
+(∇ · h ˜u)i,j = ˜ ui,j − ˜ui,j −1 + ˜ vi,j − ˜vi−1,j . (61) We solve the positive Dirichlet pressure system on interior cells, 
+
+Ap = −∇ · h ˜u,A := −∆h = 4 I − S+ 
+
+> x
+
+− S− 
+
+> x
+
+− S+ 
+
+> y
+
+− S− 
+
+> y
+
+, (62) where the pressure has zero-Dirichlet boundary values and S± 
+
+> x
+
+and S± 
+
+> y
+
+are interior shift operators under this boundary convention. The interior velocities are then updated by forward differences, with boundary values copied from the raw prediction: 
+
+ˆui,j = ˜ ui,j − (pi,j +1 − pi,j ), (63) 
+
+ˆvi,j = ˜ vi,j − (pi+1 ,j − pi,j ), (64) Equivalently, with Gint denoting this interior-only forward-gradient update, the velocity map is 
+
+ˆu = ˜ u − Gint p. Because the boundary velocities are copied, DhGint ̸ = −A on divergence stencils that touch copied boundary velocity values; even an exact solve of Ap = −Dh ˜u need not make the full interior divergence exactly zero. We denote the resulting operator by eΠbc . Despite the eΠ notation, these boundary-aware maps are cleanup operators rather than exact projections in the algebraic sense. Copying raw boundary values generally breaks both exact divergence annihilation and idempotence on the full velocity field. 
+
+Boundary-aware Poisson–Hodge family. We study two approximate operator families. The first is the boundary-aware Poisson–Hodge family. It includes a fixed-budget Jacobi iteration, a geometric multigrid V-cycle that we abbreviate as MG and equip with bilinear restriction, prolongation, and Jacobi smoothing, a red-black successive over-relaxation iteration that we abbreviate as SOR and pair with a finite-budget damped relaxation factor, and a matrix-free conjugate-gradient solve that we abbreviate as CG for this same positive Dirichlet system, 
+
+Ap = −∇ · h ˜u. (65) The fifth member of this family is an exact discrete-Dirichlet solve for this same pressure operator, implemented by diagonalizing A in the separable sine basis. Writing the interior pressure as P ∈
+
+R(H−2) ×(W −2) and the orthonormal type-I discrete sine transform (DST-I) matrices as SH−2 ∈
+
+R(H−2) ×(H−2) and SW −2 ∈ R(W −2) ×(W −2) , we solve 
+
+bR = −SH−2(∇ · h ˜u)int S⊤ 
+
+> W−2
+
+, (66) 
+
+bPij = bRij 
+
+λ(H) 
+
+> i
+
++ λ(W )
+
+> j
+
+, (67) 
+
+P = S⊤ 
+
+> H−2
+
+bP S W −2, (68) where λ(H) 
+
+> i
+
+and λ(W ) 
+
+> j
+
+are the one-dimensional Dirichlet eigenvalues for i = 1 , . . . , H − 2 and 
+
+j = 1 , . . . , W − 2. We refer to the resulting direct cleanup operator as Direct. Jacobi, MG, SOR, CG, and Direct therefore share the same boundary-aware discrete Poisson operator but differ in how aggressively they solve it, letting us separate solver under-convergence from operator mismatch in the approximate regime. 19 Table 6: Dense screened-shift sweep. As operator mismatch grows, the best screened cleanup shifts toward larger λ and behavior closer to the identity, while the raw reference can still remain best overall on the hardest rows. Smaller values are better in the metric columns. Dataset Best screened shift with λ > 0 Raw rollout MSE@20 Best screened PostHoc rollout MSE@20 GT distortion MSE CFDBench cavity 16 (2 .190 ± 0.170) × 10 −1 (2 .160 ± 0.160) × 10 −1 1.223 × 10 −4                                          
+
+> CFDBench tube 1(3 .200 ±0.900) ×10 −2(2 .900 ±0.091) ×10 −21.280 ×10 −4
+> CFDBench dam 64 (2 .476 ±0.118) ×10 −4(2 .499 ±0.108) ×10 −47.469 ×10 −7
+> CFDBench cylinder 64 (2 .000 ±0.863) ×10 −3(2 .000 ±0.894) ×10 −33.430 ×10 −6
+
+Screened family. The second family is a screened variant related to the Helmholtz–Hodge cleanup perspective of Bhatia et al. [5]. Instead of solving the pure Poisson system, we solve 
+
+(A + λI )p = −∇ · h ˜u, (69) with the same boundary-aware stencil and interior-only update ˆu = ˜ u − Gint p. Equation 69 shrinks the pressure response as the screened shift λ increases, tending to make the cleanup milder and, in our sweeps, trading divergence removal against lower target distortion. In the main training-matched comparisons, we use a fixed screened shift λ = 8 and the same training and evaluation iteration budgets as the Jacobi family, so this comparison isolates operator family rather than compute budget. Separately, we run evaluator-side post hoc sweeps over λ ∈ { 1, 2, 4, 8, 16 , 32 , 64 } on the raw CFDBench checkpoints to test whether the family-level conclusion depends on a single screened setting, and we also run a validation-selected retraining study that chooses λ on held-out rollout mean squared error (MSE) area under the curve (AUC), abbreviated MSE-AUC, before retraining the screened projected baseline on the official CFDBench splits. The following subsections report the dense screened-shift sweep, controlled-mismatch details, boundary-strip audit, and tapered and geometry-aware screened (GeoScreened) evaluator-side variants used in additional approximate-regime stress tests. 
+
+D.2 Dense Screened-Shift Sweep 
+
+The dense screened-family sweep already suggested that the useful operators are the ones that stay closest to the identity map on the hardest rows. Table 6 shows the pattern cleanly. Tube prefers strong cleanup, cavity sits on a broad intermediate plateau, and the hardest dam and cylinder rows move back toward the raw frontier as screening weakens toward the identity, with Raw still remaining slightly best overall. The table therefore reports the best screened shift among λ > 0 together with the separate raw reference. 
+
+D.3 Controlled Mismatch Details 
+
+Figure 3 shows the full controlled-mismatch curves corresponding to Table 4. The curves make the trade-off behind the table explicit. On Dam@60, both cleanup families move almost immediately away from the raw optimum as α increases. Final-step rollout MSE rises while the cleaned state becomes more divergence-suppressed. Cylinder@60 shows the same pattern for Screened16, and the GeoScreened+Taper2 exception is deliberately small, with only a shallow near-identity minimum at α = 0 .1 before the curve turns upward. Thus, the controlled blend is not selecting a hidden stronger projection; it is exposing that the approximate cleanup direction is mostly misaligned with the rollout-error direction on these long-horizon non-periodic rows. This controlled-mismatch pattern is the visual counterpart of Proposition 8. Once the cleanup increment has the wrong or only weakly favorable alignment with the target residual, increasing enforcement strength can monotonically improve the measured constraint residual while worsening the forecasting objective. 
+
+D.4 Geometry-Aware Evaluator-Side Variants Boundary taper. The boundary-strip diagnostics in Table 7 suggest a third, explicitly geometry-aware evaluator-side variant. Let Pλ denote the validation-selected screened cleanup, and let d(i, j )
+
+be the distance from cell (i, j ) to the domain boundary in grid cells. We define a boundary-taper mask 
+
+Mw(i, j ) = clip(( d(i, j ) − 1) /w, 0, 1) , for w > 0, (70) and apply the tapered cleanup 
+
+ˆutaper = ˜ u + Mw ⊙ (Pλ( ˜ u) − ˜u). (71) 20 0.00 0.25 0.50 0.75 1.00       
+
+> Cleanup blend α
+> 2
+> 3
+> 4
+> 5
+> 6
+> 7
+> Rollout MSE @60 ( ×10 −4 )
+> Dam @60
+> Screened16
+> GeoScreened+Taper2
+> 0.00 0.25 0.50 0.75 1.00
+> Cleanup blend α
+> 0.0
+> 2.5
+> 5.0
+> 7.5
+> 10.0
+> 12.5
+> 15.0
+> 17.5
+> 20.0
+> Rollout MSE @60 ( ×10 −3 )
+> Cylinder @60
+> Screened16
+> GeoScreened+Taper2
+
+Figure 3: Controlled mismatch curves for CFDBench Dam@60 and Cylinder@60, namely the 60-step dam and cylinder long-horizon rows. Increasing cleanup strength lowers divergence but usually worsens rollout error once the operator is mismatched to the data manifold. Table 7: Boundary-strip diagnostics on held-out targets under a boundary-focused audit. Stronger cleanup suppresses core divergence more aggressively, but it can also concentrate mismatch near the boundary-adjacent strip, motivating tapered and geometry-aware variants. The distortion column is measured in this strip-audit protocol and is therefore not intended to numerically match the global projector-distortion audit in Table 2. Smaller values are better, except for the strip-to-core ratio, where larger values indicate stronger boundary concentration. Operator regime Boundary-audit distortion MSE Boundary-strip div RMS Core div RMS Strip-to-core ratio Cavity Jacobi-10 (7 .167 ± 9.759) × 10 −3 0.122 ± 0.125 (3 .400 ± 3.400) × 10 −2 (3 .600 ± 0.500) × 10 0
+
+Cavity Direct (2 .700 ± 5.500) × 10 −2 0.170 ± 0.209 (8 .139 ± 9.159) × 10 −7 (2 .059 ± 0.238) × 10 5
+
+Cavity Screened8-10 (2 .352 ± 3.041) × 10 −4 0.179 ± 0.106 (1 .190 ± 0.660) × 10 −1 (1 .500 ± 0.200) × 10 0
+
+Tube Jacobi-20 (6 .098 ± 5.333) × 10 −4 0.123 ± 0.080 (1 .600 ± 1.100) × 10 −2 (1 .190 ± 0.810) × 10 1
+
+Tube Direct (1 .400 ± 2.000) × 10 −2 0.210 ± 0.105 (1 .633 ± 1.407) × 10 −6 (1 .848 ± 0.867) × 10 5
+
+Tube Screened8-20 (1 .207 ± 0.801) × 10 −5 0.145 ± 0.088 (2 .600 ± 1.600) × 10 −2 (7 .700 ± 5.700) × 10 0
+
+Dam Jacobi-20 (2 .154 ± 0.644) × 10 −3 0.092 ± 0.010 (2 .300 ± 0.600) × 10 −2 (4 .100 ± 0.700) × 10 0
+
+Dam Direct (1 .000 ± 0.700) × 10 −2 0.178 ± 0.027 (8 .473 ± 3.723) × 10 −7 (2 .282 ± 0.483) × 10 5
+
+Dam Screened8-20 (2 .768 ± 0.790) × 10 −5 0.069 ± 0.013 (5 .900 ± 0.900) × 10 −2 (1 .200 ± 0.200) × 10 0
+
+Cylinder Jacobi-20 (1 .600 ± 2.600) × 10 −2 0.365 ± 0.250 (7 .100 ± 3.300) × 10 −2 (5 .000 ± 1.600) × 10 0
+
+Cylinder Direct (1 .000 ± 1.320) × 10 −1 0.548 ± 0.309 (2 .086 ± 0.962) × 10 −6 (2 .710 ± 0.860) × 10 5
+
+Cylinder Screened8-20 (1 .319 ± 2.676) × 10 −4 0.335 ± 0.270 (1 .340 ± 0.750) × 10 −1 (2 .400 ± 0.600) × 10 0
+
+In the main tapered evaluation, we use the validation-selected screened shift together with w = 1 , so the first interior ring is left uncorrected, and deeper interior cells retain the screened update. This intentionally weak, evaluation-only taper tests whether the measured boundary-strip mismatch can be turned into a practical accuracy gain on the hardest non-periodic cases. 
+
+GeoScreened family. The same diagnosis suggests a stronger geometry-aware family that weakens the cleanup within the solve instead of only after the solve. Using the same distance mask, we define a spatially varying screened shift 
+
+λw(i, j ) = λbdry + ( λcore − λbdry )Mw(i, j ), where λbdry ≥ λcore ≥ 0, (72) and solve (A + Λ w)p = −∇ · h ˜u,
+
+(Λ wp)i,j = λw(i, j )pi,j . (73) We refer to the resulting cleanup as the GeoScreened family with boundary shift λbdry , core shift 
+
+λcore , and taper width w. When λbdry = λcore , Equation 73 reduces to the global screened family. We select these three parameters on validation rollouts and then optionally compose the selected GeoScreened operator with the same two-cell post hoc taper. 
+
+D.5 Qualitative Mechanism Diagnostics 
+
+Figure 4 shows the same residual and distortion failure mode on an actual held-out cylinder wake snapshot. The milder screened family leaves more divergence but preserves the recirculation structure 21 Ground Truth         
+
+> held-out target
+> Raw
+> MSE 3.9 × 10 −3
+> Div 0.549
+> Screened
+> MSE 5.1 × 10 −3
+> Div 0.503
+> Jacobi
+> MSE 1.08 × 10 −1
+> Div 0.364
+> Direct
+> MSE 3.72 × 10 −1
+> Div 0.418
+> Wake vorticity Divergence map Velocity error
+
+Figure 4: Spatial solver-family mechanism board for a held-out CFDBench cylinder wake snapshot, organized to make the stronger-solver negative control visible. Columns compare Raw, Screened, Jacobi, and Direct against the ground truth; rows show wake vorticity, divergence, and velocity error. The useful qualitative contrast is not only between Raw and Direct. Screened leaves substantially more divergence than Jacobi or Direct, yet it preserves the recirculation structure and stays near the raw error level. Jacobi and Direct both reduce divergence relative to Raw, but both visibly overcorrect the wake and spread much larger error. The solver-family board is the spatial companion to Proposition 4. On the approximate cylinder row, solving the Dirichlet family more faithfully does not recover the right operating point, whereas the milder screened family stays closer to the benchmark manifold. and stays near the raw error level, whereas Jacobi and Direct reduce divergence more aggressively while overcorrecting the wake and spreading much larger velocity error. Figures 5 and 6 turn the aggregate pattern into case-level diagnostics. The response atlas shows that the approximate-regime split appears in the direction each real trajectory moves in the error– divergence plane, while the paired cylinder comparison shows that the same problem family can flip from cases where Raw is best to cases where mild cleanup is best when the evaluation manifold changes. 
+
+D.6 Constructive Rule in the Approximate Regime Validation protocol. In this paper, validating approximate cleanup strength means selecting both a cleanup family and a cleanup strength based on held-out autoregressive rollout accuracy, not choosing the operator with the smallest constraint residual. Each candidate operator should first be audited on held-out targets in the original physical units, measuring target-distortion MSE ∥eΠ( y) − y∥22 together with divergence or coherence reduction. This audit is necessary because a low linear-system residual can still correspond to a mismatched operator that moves benchmark-valid targets. Raw should remain an explicit deployment candidate, and the comparison should include a strong-solver anchor such as Direct. Raw tests whether cleanup is needed at all, while Direct tests whether solving the nominal constraint harder is actually beneficial. When exact-on-target operators are available, they should be benchmarked before approximate alternatives. When only approximate cleanup is available, the validation menu should span a small family of strengths, including mild or screened operators, blended operators, and adaptive gates. Cleanup hyperparameters should then be tuned only on validation rollouts under the same horizon and metric used for deployment, such as final-horizon rollout MSE or rollout MSE-AUC, rather than by divergence, Poisson residual, or one-step error alone. The selected test rule should be reported together with Raw and strong-cleanup anchors, including both rollout error and constraint violation, 22 10 2 10 1  
+
+> 10 2
+> 10 1
+> 10 0
+> Final-step rollout MSE
+
+Cavity@20       
+
+> 10 1
+> 3 × 10 2
+> 4 × 10 26 × 10 2
+> 10 1
+
+Tube@20        
+
+> 10 210 1
+> 10 4
+> 10 3
+> 10 2
+> 10 1
+
+Dam@60  
+
+> 10 1
+
+Final-step div RMS   
+
+> 10 2
+> 10 1
+> 10 0
+> Final-step rollout MSE
+
+Cylinder@60  
+
+> 10 1
+
+Final-step div RMS   
+
+> 10 2
+> 10 1
+> 10 0
+
+Cylinder-Geo@60 
+
+> Screened16
+> both better 5/7; div-only 2/7
+> Direct div-only 6/7
+> Screened16
+> both better 2/2; div-only 0/2
+> Direct div-only 2/2
+> GeoScreened+Taper2
+> both better 0/22; div-only 22/22
+> Direct div-only 22/22
+> GeoScreened+Taper2
+> both better 3/18; div-only 15/18
+> Direct div-only 18/18
+> Screened8
+> both better 11/20; div-only 9/20
+> Direct div-only 20/20
+
+Raw Mild 
+
+Mild Direct 
+
+Raw endpoint 
+
+Mild endpoint 
+
+Direct endpoint Figure 5: Case-level response atlas in the final-step error–divergence plane, averaged over seeds 42, 123, and 456. Each polyline is one actual trajectory traced from its Raw endpoint to the dataset-tuned mild operator and then to Direct. The callouts keep the count breakdown compact. Cases improving both metrics have lower final-step MSE and lower divergence relative to Raw, while divergence-only improvements reduce divergence but increase MSE. The aggregate pattern is the point. Tube@20 moves to the corner where both metrics improve under mild cleanup, official-split Dam@60 and Cylinder@60 mostly show divergence-only improvements, and Cylinder-Geo@60 flips back toward improvements in both metrics before Direct turns all cases upward in error. This figure therefore makes our main approximate-regime claim visible on a full set of real cases. so that the result shows whether cleanup improves accuracy, only improves feasibility, or trades one for the other. A raw or near-identity selection is therefore a valid approximate-regime outcome. It indicates that the available cleanup direction is not aligned well enough with the benchmark manifold at that horizon. 
+
+External U-Net validation. The same evidence also yields a constructive rule in the approximate regime. Cleanup should not be abandoned outright; family and strength should be chosen explicitly. The screened and GeoScreened families are the best post hoc operating points in our study because they weaken cleanup in a controlled way. This operating-point advantage is visible in the external U-Net validation results in Table 8. On cavity and tube, mild screened cleanup stays on or near the raw frontier, while Jacobi and Direct overclean. Table 8 shows that, on Dam@60 and Cylinder@60, GeoScreened+Taper2 becomes the strongest cleanup-only point, reaching (6 .570 ± 0.850) × 10 −4
+
+and (3 .800 ± 0.270) × 10 −3, respectively, far below Jacobi and Direct. The fairness objection is still important because approximate-regime post hoc gains could reflect a train–test mismatch. The tuned cylinder rows in Table 10 show that this concern is only partially valid. On the short-horizon tuned cylinder row, matched projected screened training can indeed beat Raw-FNO, reaching (1 .409 ± 0.028) × 10 −3 compared with (1 .642 ± 0.863) × 10 −3. However, this tuned-cylinder win is a bounded exception, not a reversal of the main claim. On the harder long-horizon rows for dam and cylinder, the best operating point still stays with raw or very mild post hoc cleanup. Our approximate-regime recommendation is therefore specific. Compare operator families in velocity space, validate cleanup strength explicitly, and expect the winning operator to be much milder than the strongest physically motivated solve. 23 10 20 30 40 50 60 
+
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> Official Cylinder @60
+
+Per-step rollout MSE     
+
+> 0.20 0.25 0.30 0.35 0.40
+> Per-step divergence RMS
+> 10 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> Per-step rollout MSE
+
+Error-divergence phase portrait                 
+
+> 10 20 30 40 50 60
+> Rollout step
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> Cylinder-Geo @60
+> 0.050 0.075 0.100 0.125 0.150 0.175
+> Per-step divergence RMS
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> Per-step rollout MSE
+> Raw Screened16 Screened8 Taper-1 Taper-2 Geo+Taper2 Direct
+
+Figure 6: Within-benchmark regime comparison on cylinder flow from the shared seed-42 artifacts. Top row: official-split Cylinder@60 trajectory 1 with the screened curve labeled Screened16. Bottom row: geometry-holdout Cylinder-Geo@60 trajectory 17 with the screened curve labeled Screened8. Left: per-step rollout MSE. Right: the same trajectories traced through the error–divergence plane. In the official-split case, stronger cleanup moves the rollout toward lower divergence but sharply higher error. The Screened16, Taper2, GeoScreened+Taper2, and Direct endpoints all sit above Raw in final-step MSE. On the geometry-holdout case, the ordering flips. Screened8 improves over Raw, Taper2 and GeoScreened+Taper2 remain nearby, and Direct still overcleans. This paired figure turns our main claim into a within-benchmark qualitative comparison. Cleanup strength alone does not determine success; operator alignment with the evaluation manifold does. A final protocol check concerns coordinate-frame choice. Because the non-periodic cleanup operator is implemented in physical velocity units, one could worry that the approximate-regime ordering is really a coordinate-frame artifact. A dedicated normalized and physical frame ablation on post hoc Jacobi and Screened8 shows otherwise. Across cavity, tube, dam, and cylinder, the largest relative change in final-horizon rollout MSE is only 0.14% on tube under Screened8, and most rows move by less than 0.06% . We therefore use physical-space cleanup for conceptual consistency, but the main regime split between exact and approximate operators is not driven by this implementation choice. 
+
+E Hierarchical Forecasting Support 
+
+E.1 Task Setup 
+
+As a compact real-data support study outside CFD, we consider autoregressive hierarchical forecasting and test whether the same exact-versus-approximate operator split appears beyond fluid benchmarks. The hierarchical forecasting setup connects our operator-exactness theme to classical, probabilistic, and end-to-end reconciliation settings that are already well-studied outside CFD [ 39 , 29 , 32 , 3]. Let 
+
+xt ∈ Rm denote the vector of all hierarchy nodes at time t, and let S ∈ { 0, 1}m×b be the summing matrix that maps bottom-level series zt ∈ Rb to the full hierarchy: 
+
+xt = Sz t,
+
+C = {Sz : z ∈ Rb}. (74) The coherent target manifold is therefore the column space C of S. We train a strong autoregressive gated recurrent unit model following Cho et al. [8] to forecast all hierarchy levels jointly on the 24 Table 8: Frozen U-Net external validation on the official CFDBench suite. Each cell reports final-horizon rollout MSE on the first line and final-horizon rollout Div on the second line. The upper block reports raw, mild screened cleanup, and GeoScreened cleanup, while the lower block reports stronger-cleanup anchors. All non-raw variants are post hoc cleanup operators. 
+
+Raw and mild cleanup variants 
+
+Dataset Raw Screened16 Screened16+Taper2 GeoScreened GeoScreened+Taper2 
+
+Official suite 
+
+Cavity 
+
+(2 .910 ± 0.370) × 10 −1
+
+(2 .010 ± 0.076) × 10 −1
+
+(2 .910 ± 0.370) × 10 −1
+
+(1 .240 ± 0.032) × 10 −1
+
+(2 .910 ± 0.370) × 10 −1
+
+(1 .400 ± 0.039) × 10 −1
+
+(2 .910 ± 0.370) × 10 −1
+
+(1 .270 ± 0.032) × 10 −1
+
+(2 .910 ± 0.370) × 10 −1
+
+(1 .410 ± 0.040) × 10 −1
+
+Tube 
+
+(2 .100 ± 0.360) × 10 −2
+
+(6 .200 ± 0.220) × 10 −2
+
+(2 .000 ± 0.370) × 10 −2
+
+(5 .100 ± 0.230) × 10 −2
+
+(2 .000 ± 0.360) × 10 −2
+
+(5 .900 ± 0.200) × 10 −2
+
+(2 .000 ± 0.360) × 10 −2
+
+(5 .300 ± 0.220) × 10 −2
+
+(2 .000 ± 0.360) × 10 −2
+
+(6 .000 ± 0.190) × 10 −2
+
+Dam 
+
+(3 .330 ± 0.200) × 10 −4
+
+(6 .700 ± 0.042) × 10 −2
+
+(4 .280 ± 0.270) × 10 −4
+
+(5 .200 ± 0.067) × 10 −2
+
+(4 .150 ± 0.280) × 10 −4
+
+(5 .400 ± 0.074) × 10 −2
+
+(4 .190 ± 0.280) × 10 −4
+
+(5 .300 ± 0.070) × 10 −2
+
+(4 .150 ± 0.280) × 10 −4
+
+(5 .500 ± 0.074) × 10 −2
+
+Cylinder 
+
+(2 .260 ± 0.180) × 10 −3
+
+(1 .720 ± 0.009) × 10 −1
+
+(3 .040 ± 0.370) × 10 −3
+
+(1 .320 ± 0.002) × 10 −1
+
+(2 .340 ± 0.390) × 10 −3
+
+(1 .500 ± 0.006) × 10 −1
+
+(2 .410 ± 0.400) × 10 −3
+
+(1 .440 ± 0.005) × 10 −1
+
+(2 .310 ± 0.400) × 10 −3
+
+(1 .520 ± 0.006) × 10 −1
+
+Long-horizon stress rows 
+
+Dam@60 
+
+(2 .590 ± 0.320) × 10 −4
+
+(6 .600 ± 0.075) × 10 −2
+
+(7 .180 ± 0.970) × 10 −4
+
+(4 .200 ± 0.076) × 10 −2
+
+(6 .660 ± 0.880) × 10 −4
+
+(4 .500 ± 0.090) × 10 −2
+
+(6 .840 ± 0.890) × 10 −4
+
+(4 .400 ± 0.081) × 10 −2
+
+(6 .570 ± 0.850) × 10 −4
+
+(4 .600 ± 0.086) × 10 −2
+
+Cylinder@60 
+
+(2 .620 ± 0.081) × 10 −3
+
+(1 .720 ± 0.014) × 10 −1
+
+(6 .140 ± 0.090) × 10 −3
+
+(1 .170 ± 0.006) × 10 −1
+
+(4 .060 ± 0.220) × 10 −3
+
+(1 .400 ± 0.008) × 10 −1
+
+(4 .200 ± 0.250) × 10 −3
+
+(1 .310 ± 0.003) × 10 −1
+
+(3 .800 ± 0.270) × 10 −3
+
+(1 .440 ± 0.009) × 10 −1
+
+Strong-cleanup anchors 
+
+Dataset Raw Jacobi Direct 
+
+Official suite 
+
+Cavity 
+
+(2 .910 ± 0.370) × 10 −1
+
+(2 .010 ± 0.076) × 10 −1
+
+(3 .190 ± 0.380) × 10 −1
+
+(3 .800 ± 0.380) × 10 −2
+
+(3 .420 ± 0.400) × 10 −1
+
+(3 .700 ± 0.710) × 10 −2
+
+Tube 
+
+(2 .100 ± 0.360) × 10 −2
+
+(6 .200 ± 0.220) × 10 −2
+
+(4 .000 ± 0.730) × 10 −2
+
+(2 .400 ± 0.350) × 10 −2
+
+(1 .070 ± 0.190) × 10 −1
+
+(4 .900 ± 0.600) × 10 −2
+
+Dam 
+
+(3 .330 ± 0.200) × 10 −4
+
+(6 .700 ± 0.042) × 10 −2
+
+(7 .460 ± 0.150) × 10 −3
+
+(2 .000 ± 0.016) × 10 −2
+
+(1 .400 ± 0.025) × 10 −2
+
+(2 .600 ± 0.018) × 10 −2
+
+Cylinder 
+
+(2 .260 ± 0.180) × 10 −3
+
+(1 .720 ± 0.009) × 10 −1
+
+(5 .600 ± 0.210) × 10 −2
+
+(7 .000 ± 0.059) × 10 −2
+
+(7 .500 ± 0.180) × 10 −2
+
+(1 .130 ± 0.044) × 10 −1
+
+Long-horizon stress rows 
+
+Dam@60 
+
+(2 .590 ± 0.320) × 10 −4
+
+(6 .600 ± 0.075) × 10 −2
+
+(1 .200 ± 0.064) × 10 −2
+
+(1 .100 ± 0.004) × 10 −2
+
+(2 .000 ± 0.100) × 10 −2
+
+(1 .300 ± 0.098) × 10 −2
+
+Cylinder@60 
+
+(2 .620 ± 0.081) × 10 −3
+
+(1 .720 ± 0.014) × 10 −1
+
+(1 .710 ± 0.210) × 10 −1
+
+(5 .100 ± 0.270) × 10 −2
+
+(2 .200 ± 0.018) × 10 −1
+
+(9 .300 ± 1.100) × 10 −2
+
+public Traffic, Labour, TourismLarge, OldTourismLarge, and Wiki2 benchmarks as packaged in the HierarchicalForecast collection introduced by Olivares et al. [28] , then compare three operator families on the predicted states. The exact OLS reconciliation is the orthogonal projector 
+
+Πols = S(S⊤S)−1S⊤. (75) We also include the exact-but-nonorthogonal bottom-up repair 
+
+Πbu = SG bu , (76) where Gbu extracts the model’s bottom-level forecasts from the full hierarchy vector. The approximate comparator starts from the full-strength top-down operator built from historical mean proportions ¯p ∈ Rb with 1⊤ ¯p = 1 . Let eroot ∈ Rm denote the selector for the root node, so that xroot = e⊤
+
+root x. Then 
+
+eΠtd (x) = S ¯pe ⊤
+
+root x. (77) We also evaluate a blended variant, 
+
+eΠtd ,α (x) = x + α(eΠtd (x) − x), (78) with α selected on the validation split. 
+
+Proposition 10 (Exactness of hierarchical reconciliation operators) . Assume that S has full column rank, that Gbu S = Ib, and that the root row satisfies e⊤
+
+root S = 1⊤. Then 
+
+Πols x = x and Πbu x = x for every x ∈ C . (79) 25 The full-strength top-down operator eΠtd maps every input into C, but, for a coherent point x = Sz , it satisfies eΠtd (x) = x if and only if z = ( 1⊤z)¯ p. Thus, top-down reconciliation is generally not exact on C and can distort coherent targets. 
+
+Proof. Let x = Sz ∈ C . For OLS reconciliation, 
+
+Πols x = S(S⊤S)−1S⊤Sz = Sz = x, (80) where full column rank makes S⊤S invertible. For bottom-up reconciliation, 
+
+Πbu x = SG bu Sz = Sz = x, (81) using Gbu S = Ib.For any input x, eΠtd (x) = S(¯ pe ⊤
+
+> root
+
+x) lies in range( S) = C, so the full-strength top-down output is coherent. If x = Sz is already coherent, then 
+
+eΠtd (Sz ) = S ¯pe ⊤
+
+> root
+
+Sz = S ¯p1⊤z. (82) Because S has full column rank, the top-down expression equals Sz exactly when z = ( 1⊤z)¯ p.Coherent targets whose bottom-level proportions differ from ¯p are therefore moved by eΠtd .These are operator-level exactness statements with respect to the abstract coherent manifold C;the diagnostics reported below are therefore empirical benchmark measurements rather than literal numerical identity checks in the periodic-FFT sense. For general inputs x and α < 1, the blended top-down operator no longer guarantees coherence, so it is a validation-tuned interpolation toward top-down rather than an exact repair. All hierarchical operators are applied in original value units and only then renormalized for the model, mirroring the physical-space protocol used in the non-periodic CFD study. 
+
+E.2 Results on Real Data 
+
+Hierarchical forecasting provides a real-data testbed outside fluid forecasting. Table 9 evaluates five public hierarchical forecasting benchmarks. A strong autoregressive GRU predicts all hierarchy levels jointly, and we compare operator-level exact coherent reconciliation given by OLS and bottom-up with a validation-tuned blended top-down family. Proposition 10 gives the exactness proof. For coherent targets x ∈ C , OLS and bottom-up satisfy Π( x) = x. The small nonzero OLS and Bottom-Up distortion and coherence values reported in Table 9 are coordinate-transform and finite-precision effects of denormalization and renormalization in the evaluation pipeline rather than counterexamples to exactness. The experiment therefore evaluates benchmark-aligned linear repairs, with the exact families serving as the mathematically aligned baseline and the top-down family as the intentionally inexact comparator. Table 9 shows that the hierarchical evidence does not reduce to a universal ordering. Across Traffic, Labour, TourismLarge, OldTourismLarge, and Wiki2, exact reconciliation is the most stable family. Bottom-Up or Proj-OLS gives the best exact baseline on every dataset and avoids the catastrophic failures seen for approximate top-down repair. The tuned top-down family is highly dataset-dependent. It worsens Traffic and is catastrophic on Labour, where rollout MSE rises to (3 .740 ±0.288) ×10 3, but it becomes decisively best on Wiki2, reducing rollout MSE from Raw-GRU’s (3 .170 ±0.251) ×10 8 to 
+
+(1 .610 ± 0.112) × 10 8. TourismLarge and OldTourismLarge lie between these extremes. Bottom-Up remains best, while tuned top-down improves over Raw-GRU but stays worse than the best exact operator. Thus, the support study reinforces the main claim. Exact benchmark-aligned operators are the mandatory low-risk baseline, while approximate operators must be validated dataset by dataset. This heterogeneity makes the broader point sharper. Exact coherent reconciliation is the safest cross-dataset baseline. It never catastrophically fails across the five benchmarks, and exact Bottom-Up or Proj-OLS is the best exact baseline on all five of them. The blended top-down family has both the highest downside and, on Wiki2, the highest upside. What transfers is therefore not a blanket claim that top-down is always harmful but the more operational lesson that benchmark-aligned exact operators should be the mandatory baseline, while approximate operators must be treated as a separate family whose strength and even sign of benefit are dataset-dependent. In-loop OLS training remains mixed rather than uniformly dominant, matching our main framing. The durable lesson is about baseline quality and operator exactness, not about a universal rule that training with the operator in the loop is always best outside the clean periodic setting. 26 Table 9: Real-data hierarchical forecasting study on five public hierarchies. The OLS and Bottom-Up reconciliation family is the lowest-variance baseline across datasets, while the tuned blended top-down family ranges from harmful to dominant depending on the benchmark. Smaller values are better in every numeric column. Dataset Variant Rollout MSE Last-step MSE Constraint RMS Target distortion Traffic Raw-GRU (3 .663 ± 0.374) × 10 2 (4 .588 ± 0.754) × 10 2 (3 .695 ± 0.576) × 10 0 0
+
+PostHoc-OLS (3 .216 ± 0.373) × 10 2 (4 .097 ± 1.099) × 10 2 (2 .000 ± 0.013) × 10 −2 (4 .450 ± 0.000) × 10 −4
+
+PostHoc-Bottom-Up (3 .040 ± 0.311) × 10 2 (3 .696 ± 0.878) × 10 2 (1 .800 ± 0.007) × 10 −2 (9 .250 ± 0.000) × 10 −6
+
+PostHoc-Top-Down (4 .037 ± 0.648) × 10 2 (7 .321 ± 1.770) × 10 2 (1 .990 ± 0.161) × 10 0 (2 .240 ± 0.000) × 10 −1
+
+Proj-OLS (3 .035 ± 0.481) × 10 2 (4 .010 ± 1.524) × 10 2 (2 .000 ± 0.011) × 10 −2 (4 .450 ± 0.000) × 10 −4
+
+Labour Raw-GRU (9 .343 ± 2.164) × 10 2 (1 .830 ± 0.554) × 10 3 (8 .772 ± 1.488) × 10 0 0
+
+PostHoc-OLS (8 .157 ± 2.223) × 10 2 (1 .510 ± 0.558) × 10 3 (3 .180 ± 0.022) × 10 −4 (4 .560 ± 0.000) × 10 −8
+
+PostHoc-Bottom-Up (7 .657 ± 1.475) × 10 2 (1 .390 ± 0.307) × 10 3 (2 .050 ± 0.032) × 10 −4 (7 .800 ± 0.000) × 10 −9
+
+PostHoc-Top-Down (3 .740 ± 0.288) × 10 3 (8 .380 ± 0.951) × 10 3 (8 .360 ± 1.855) × 10 0 (1 .921 ± 0.000) × 10 2
+
+Proj-OLS (6 .007 ± 0.696) × 10 2 (9 .824 ± 1.099) × 10 2 (3 .200 ± 0.030) × 10 −4 (4 .560 ± 0.000) × 10 −8
+
+TourismLarge Raw-GRU (1 .890 ± 0.111) × 10 5 (2 .270 ± 0.291) × 10 5 (1 .115 ± 0.056) × 10 2 0
+
+PostHoc-OLS (2 .230 ± 0.086) × 10 5 (2 .830 ± 0.411) × 10 5 (2 .360 ± 0.038) × 10 −1 (7 .800 ± 0.000) × 10 −2
+
+PostHoc-Bottom-Up (1 .550 ± 0.068) × 10 5 (1 .660 ± 0.261) × 10 5 (2 .610 ± 0.033) × 10 −1 (6 .600 ± 0.000) × 10 −3
+
+PostHoc-Top-Down (1 .710 ± 0.151) × 10 5 (1 .210 ± 0.298) × 10 5 (8 .402 ± 0.388) × 10 1 (1 .084 ± 0.000) × 10 2
+
+Proj-OLS (1 .620 ± 0.060) × 10 5 (1 .360 ± 0.077) × 10 5 (2 .350 ± 0.006) × 10 −1 (7 .800 ± 0.000) × 10 −2
+
+OldTourismLarge Raw-GRU (1 .800 ± 0.086) × 10 5 (2 .220 ± 0.368) × 10 5 (1 .115 ± 0.049) × 10 2 0
+
+PostHoc-OLS (2 .170 ± 0.115) × 10 5 (2 .920 ± 0.488) × 10 5 (2 .370 ± 0.042) × 10 −1 (7 .800 ± 0.000) × 10 −2
+
+PostHoc-Bottom-Up (1 .470 ± 0.090) × 10 5 (1 .570 ± 0.335) × 10 5 (2 .640 ± 0.046) × 10 −1 (6 .600 ± 0.000) × 10 −3
+
+PostHoc-Top-Down (1 .640 ± 0.094) × 10 5 (1 .080 ± 0.271) × 10 5 (8 .352 ± 0.320) × 10 1 (1 .084 ± 0.000) × 10 2
+
+Proj-OLS (1 .590 ± 0.032) × 10 5 (1 .270 ± 0.100) × 10 5 (2 .310 ± 0.029) × 10 −1 (7 .800 ± 0.000) × 10 −2
+
+Wiki2 Raw-GRU (3 .170 ± 0.251) × 10 8 (4 .320 ± 0.599) × 10 8 (3 .950 ± 0.479) × 10 3 0
+
+PostHoc-OLS (3 .030 ± 0.200) × 10 8 (4 .090 ± 0.516) × 10 8 (2 .604 ± 0.220) × 10 0 (1 .329 ± 0.000) × 10 1
+
+PostHoc-Bottom-Up (3 .130 ± 0.201) × 10 8 (4 .190 ± 0.488) × 10 8 (2 .404 ± 0.251) × 10 0 (1 .601 ± 0.000) × 10 1
+
+PostHoc-Top-Down (1 .610 ± 0.112) × 10 8 (1 .670 ± 0.224) × 10 8 (3 .199 ± 5.985) × 10 1 (9 .330 ± 1.790) × 10 7
+
+Proj-OLS (2 .770 ± 0.031) × 10 8 (3 .270 ± 0.039) × 10 8 (2 .885 ± 0.163) × 10 0 (1 .329 ± 0.000) × 10 1
+
+Table 10: Cost comparison for the exact-regime and tuned cylinder settings. Evaluation-time cleanup baselines reuse the source checkpoint’s training cost, while projected retraining pays its extra cost explicitly. Smaller values are better in every numeric column. Track Variant Params Train hours Latency (ms) Final-step rollout MSE NS-128 exact Raw-FNO 18 .90 M 0.84 ± 0.08 8.75 ± 0.25 (9 .389 ± 6.291) × 10 −5
+
+NS-128 exact SoftDiv-FNO 18 .90 M 0.84 ± 0.07 8.69 ± 0.24 (2 .361 ± 1.371) × 10 −4
+
+NS-128 exact PostHoc-FNO 18 .90 M 0.84 ± 0.08 11 .39 ± 0.26 (1 .133 ± 0.165) × 10 −6
+
+NS-128 exact Proj-FNO 18 .90 M 0.88 ± 0.08 11 .49 ± 0.13 (5 .370 ± 0.113) × 10 −7
+
+NS-128 exact CAP-FNO 18 .90 M 0.88 ± 0.08 11 .42 ± 0.08 (5 .406 ± 0.243) × 10 −7
+
+Cylinder-20 tuned Raw-FNO 6.44 M 0.49 ± 0.00 5.50 ± 0.01 (1 .642 ± 0.863) × 10 −3
+
+Cylinder-20 tuned AdaBlend-Screened-Tuned 6.44 M 0.49 ± 0.00 11 .79 ± 0.05 (2 .540 ± 1.009) × 10 −3
+
+Cylinder-20 tuned PostHoc-Screened-Tuned 6.44 M 0.49 ± 0.00 not reported (3 .164 ± 0.872) × 10 −3
+
+Cylinder-20 tuned Proj-Screened-Tuned 6.44 M 0.64 ± 0.00 12 .00 ± 0.36 (1 .409 ± 0.028) × 10 −3
+
+F Limitations 
+
+The strongest evidence is still on 2D velocity benchmarks. The hierarchical forecasting experiments broaden our coverage outside CFD, but they remain compact. We do not claim to have mapped the full structured-prediction design space outside CFD. CFDBench also broadens the non-periodic regime substantially without exhausting it, and richer geometry-aware or mesh-aware families may move the frontier further. 
+
+G Reproducibility 
+
+Table 10 makes the cost structure explicit. On the exact NS-128 FNO track, Raw, SoftDiv, PostHoc, Proj, and CAP all use the same 18 .9M-parameter backbone and nearly identical train hours, so the main exact-regime ordering is not a hidden capacity effect. The tuned cylinder cleanups show the complementary fairness point. AdaBlend-Screened-Tuned and PostHoc-Screened-Tuned reuse the raw checkpoint exactly, whereas Proj-Screened-Tuned raises training time from 0.49 to 0.64 hours because it retrains with the projected operator in the loop. 27 Training and Systems Details. All CFD backbones use AdamW, cosine decay, mixed precision, and validation-based checkpoint selection on four NVIDIA A100 GPU accelerators. We use PyTorch for training and evaluation. Appendix E uses an autoregressive GRU recipe for the hierarchical forecasting support track but keeps the same long-horizon validation protocol. For the long-trajectory cylinder benchmark, we subsample only the training windows with stride 16 while keeping validation and test rollout evaluation at stride 1, so the stronger cylinder recipe remains compute-matched without weakening the evaluation protocol. 
+
+Random Initialization Protocol. The main CFD experiment blocks in the main text, including the exact-regime tables, projector diagnostics, screened-family sweep, and frozen U-Net validation, use three random initializations unless noted otherwise in the underlying analysis ledger. The hierarchical forecasting study uses five random initializations on each of the five public hierarchies. The validation-to-deployment protocol on the four hardest approximate-regime rows also uses five random initializations per setting as a robustness extension. Table 4 uses the common three-run subset shared across all controlled-mismatch cleanup strengths so that the blends are compared on identical underlying checkpoints. The larger five-run deployment extension keeps the selected validation rule unchanged on all four hardest rows. 
+
+H List of Notation 
+
+Table 11: Notation summary. 
+
+Symbol Meaning 
+
+R, H, M real field, abstract state space, target manifold 
+
+u = ( u, v ) two-dimensional velocity field 
+
+˜u, ˆu, y raw prediction, cleaned prediction, target velocity 
+
+xt, y t, e t rollout state, target state, rollout error 
+
+t, s, K, T in , T eval time index, rollout step, model rollout length, input length, evaluation horizon 
+
+H spatial grid height 
+
+W spatial grid width 
+
+bθ , ∆ ˜ u, F neural backbone, residual update, abstract predictor 
+
+α, α ⋆ residual or blend weight, optimal blend 
+
+T , T, Q, Q ⋆ rollout repair operator, abstract cleanup, exact family member 
+
+Πdiv , eΠbc , eΠ exact periodic projector, boundary-aware cleanup, generic approximate cleanup 
+
+P, Pλ selected post hoc cleanup, screened cleanup 
+
+∇· , ∇· h, ∇h, ∆h continuous divergence, discrete divergence, gradient, and Laplacian 
+
+k = ( kx, k y ),b·, ¯u Fourier wavevector, Fourier coefficient, spatial mean 
+
+ω, ψ vorticity, stream function 
+
+p, P, A, A λ, λ pressure, pressure matrix, Poisson operator, screened shift 
+
+S± 
+
+> x
+
+, S ± 
+
+> y
+
+, S H−2, S W −2 grid shifts, DST-I matrices 
+
+λ(H) 
+
+> i
+
+, λ (W ) 
+
+> j
+
+, μ λ Dirichlet eigenvalues, smallest eigenvalue 
+
+D, G, r (x) abstract divergence, gradient, linear-system residual 
+
+Lsoft , Lvel , Lω , Lspec soft-divergence, velocity, vorticity, spectrum losses 
+
+λdiv , k divergence penalty weight, cleanup iteration budget 
+
+d( ˜ u), γ, τ, q divergence score, adaptive gate, threshold, gate exponent 
+
+Mw , d (i, j ), w, ⊙ taper mask, boundary distance, taper width, pointwise product 
+
+λw , Λw , λ bdry , λ core spatial, diagonal, boundary, and core screened shifts 
+
+L, L T , L F , L i Lipschitz constants 
+
+δt, β i,t , β i raw one-step error, trajectory, and uniform target distortion 
+
+b(i) 
+
+> t
+
+, ¯δ, ¯β error-bound sequence, uniform error and distortion bounds 
+
+c, x α, ϕ (α) cleanup increment, blended forecast, blend-error curve 
+
+I, ∥ · ∥ 2, ⟨· , ·⟩ , (·)⊤ identity, Euclidean norm, inner product, transpose 
+
+S, z t, m, b, C hierarchy summing matrix, bottom series, node counts, coherent manifold 
+
+Πols , Πbu , eΠtd , eΠtd ,α OLS, bottom-up, top-down, blended top-down reconciliation 
+
+Gbu , ¯p, e root bottom extractor, historical proportions, root selector 
+
+rP, ρ, n Pearson correlation, Spearman correlation, sample count 
+
+MSE@ Teval , Div@ Teval , AUC final-step error, final-step divergence, rollout area metric 
+
+28
