@@ -1,0 +1,1661 @@
+Title: Emputation: Identification-Guided Neural Imputation Framework
+
+URL Source: https://arxiv.org/pdf/2607.05279v1
+
+Published Time: Tue, 07 Jul 2026 03:32:58 GMT
+
+Number of Pages: 52
+
+Markdown Content:
+# Emputation: Identification-Guided Neural Imputation Framework 
+
+Yanjiao Yang, Yikun Zhang, Xinwei Shen, Yen-Chi Chen ∗
+
+Department of Statistics, University of Washington July 7, 2026 
+
+Abstract 
+
+We propose Emputation, a deep generative framework for learning imputation models. Emputation targets the extrapolation distribution of missing variables given observed variables, and training is guided by specific missingness assumptions that guarantee identification of the target distribution. The training objective, called the emputation risk, is an energy-score-based risk in which the identification assumption determines how observed entries are masked and which observations contribute to training. The resulting framework enables direct conditional sampling for multiple imputation. We show that the population minimizer of the emputation risk recovers the target extrapolation distribution under a broad class of identification assumptions, including several missing-not-at-random assumptions. Simulations show strong perfor-mance under both pointwise and distributional evaluation metrics, and an application to an Alzheimer’s disease dataset demonstrates its practical value. 
+
+Keywords: generative models, pattern-mixture models, energy score, multiple imputation, missing-not-at-random 
+
+> ∗
+
+The authors gratefully acknowledge NSF Grant DMS-2141808 (CAREER), 2310578 and NIH Grant U24 AG072122 
+
+1
+
+> arXiv:2607.05279v1 [stat.ME] 6 Jul 2026
+
+# 1 Introduction 
+
+Missing data are prevalent in real-world datasets and arise in a wide range of scientific domains (Hirano et al. 2001, Vansteelandt et al. 2006, Sterne et al. 2009). If handled improperly, missingness can lead to biased estimation, loss of efficiency, and unreliable downstream analyses (Little & Rubin 2019). Imputation is a popular strategy for handling missing data (Van Buuren 2018, Rubin 2018, Carpenter et al. 2023) because once a complete dataset is obtained, downstream analyses can proceed using conventional methods. The idea of imputation is simple: one trains a model that (stochastically) fills in the missing entries according to both a missing data assumption, which identifies the distribution of the missing values from the observed data, and a modeling assumption, which specifies how this distribution is estimated. In the statistics community, an imputation model is typically constructed by choosing a reasonable missing data assumption and a relatively simple model. This approach often leads to an interpretable imputation model (Van Buuren & Oudshoorn 1999, Molenberghs et al. 1998, Daniels et al. 2023), but it may not capture the complexity of the underlying distribution. In contrast, the modern machine learning community focuses on training deep generative models that can approximate the underlying distribution accurately. However, the training objectives in these models often do not explicitly encode the identifying missing data assumption, and many empirical evaluations are conducted under missing completely at random or related masking schemes (Yoon et al. 2018, Li et al. 2019). In this paper, we aim to bridge the gap between these two communities. We propose emputation , a deep generative modeling framework where the training objective is guided by a missing data assumption in the form of a pattern mixture model (Little 1993, Daniels & Hogan 2008). 21.1 Overview of Emputation 
+
+We now provide an overview of our proposed framework. The name emputation combines 
+
+engression (Shen & Meinshausen 2025) and imputation . In imputation, missing values are replaced by draws from a statistical model, enabling standard complete-data workflows to be applied. Engression, which we review in Section 2, is a neural network-based generative modeling framework for distributional regression based on the energy score. Emputation is formulated as an empirical risk minimization problem, where the training objective (which we call the emputation risk ) is built on three ingredients: (1) the energy score, which targets distributional learning; (2) a masking strategy, where observed entries are strategically masked and reconstructed during training; and (3) a selection criterion, which selects a subset of observations for masking according to their response patterns. Once the neural network is trained by minimizing the emputation risk, missing entries can be imputed directly by sampling from the learned model. What distinguishes emputation from many existing deep generative imputation methods is that the emputation risk is not merely a heuristic training objective, but is guided by a chosen missing data assumption. This is achieved by masking and selecting the right target variables and individuals. 
+
+1.2 Related Work 
+
+Since the literature on missing data is vast, we focus our review on two lines of work most relevant to our emputation framework: pattern mixture models and deep generative imputation. 
+
+Pattern mixture models. Pattern mixture (PM) models factorize the joint distribution of the data and response pattern into the marginal distribution of the missingness indicators and the pattern-specific data distribution (Little 1993). Because the extrapolation density 3(i.e. , the conditional density of missing variables given the observed ones and response pattern) is unidentifiable, identification requires restrictions that relate missing components to observed variables. Notable examples include complete-case missing value (CCMV; Little 1993, Tchetgen et al. 2018), available-case missing value (ACMV; Molenberghs et al. 1998), nearest-case missing value (NCMV; Daniels & Hogan 2008) assumptions, or more general pattern-borrowing restrictions (Daniels et al. 2023) and pattern graphs (Chen 2022). Existing work has developed identification theory and Bayesian inference under these restrictions (Thijs et al. 2002, Linero & Daniels 2018). Nevertheless, less attention has been given to how these identifying restrictions within PM models can be translated into scalable training objectives of deep generative models for imputation. 
+
+Deep generative models for imputation. Recent imputation methods have increas-ingly adopted deep generative models to handle complex dependence structures in large data, including variational autoencoder (VAE)-based methods (Mattei & Frellsen 2019, Nazabal et al. 2020), generative adversarial network (GAN)-based methods (Yoon et al. 2018, Li et al. 2019), and diffusion-based methods (Tashiro et al. 2021, Ouyang et al. 2023, Zhang et al. 2025). Much of this literature is developed under missing completely at random (MCAR) or missing at random (MAR) assumptions, although recent work has extended deep generative imputation to missing not at random (MNAR) settings through latent variable models with variational inference (Ipsen et al. 2021, Ma & Zhang 2021, Ghalebikesabi et al. 2021). Despite this progress, direct conditional sampling of missing values given observed entries is often nontrivial (Mattei & Frellsen 2019, Richardson et al. 2020), and imputation performance is most commonly evaluated through pointwise accuracy metrics such as RMSE, with limited attention to distributional alignment. 42 Emputation 
+
+2.1 Background and Notation 
+
+Let X ∈ Rd denote the study variables subject to missingness and R ∈ { 0, 1}d denote the response vector of X, where Rj = 1 if Xj is observed and Rj = 0 otherwise. Let 
+
+¯R = 1 d − R be the complement (flipping 0 and 1) of pattern R, where 1d is the complete-case response pattern. For notational convenience, we write R = r as shorthand for 
+
+(R1, . . . , R d) = ( r1, . . . , r d). We use Xr = ( Xj : rj = 1) to denote the observed entries under response pattern R = r, and X¯r to denote the missing variables under that pattern. With this notation, an observation can be expressed as (XR, R ). We assume the observed data consist of n independent and identically distributed (i.i.d.) observations {(Xi, Ri , Ri)}ni=1 .The boldface notation, such as Xi ∈ Rd and Ri ∈ { 0, 1}d, is used for highlighting the i-th observation in the observed data. We use I(·) to denote the indicator function. We further define the size of pattern r as |r| = ∑dj=1 rj . In particular, the size of the complete-case pattern is d, i.e., |1d| = d. For two response patterns r1, r 2, we define r1 > r 2
+
+if r1,j ≥ r2,j for all j ∈ { 1, . . . , d }, with strict inequality for at least one coordinate. Thus, when r1 > r 2, the variables observed under pattern r2 form a strict subset of those observed under pattern r1. Let R = {r̸ = 1 d : p(R = r) > 0} denote the collection of incomplete response patterns with positive probability, and assume p(R = 1 d|X) > 0 almost surely. The probability model for missing data can be characterized through the joint distribution of 
+
+(X, R ). Under the pattern mixture model factorization (Little 1993), the joint distribution 
+
+p(x, r ) decomposes into p(x, r ) = p(x¯r|xr, r )p(xr, r ). Using the above notation, x¯r refers to missing variables and xr refers to observed variables under response pattern R = r.Here, p(xr, r ) is the observed-data distribution and is identifiable from the data, whereas 
+
+p(x¯r|xr, r ) is known as the extrapolation density/distribution (Little 1993, Daniels & Hogan 52008) characterizing the conditional distribution of the missing components given the observed components under the response pattern R = r. This extrapolation density is not identifiable from the observed data without additional assumptions. An imputation model can be viewed as a model for the extrapolation density p(x¯r|xr, r ).From the distributional perspective, an imputation model is inherently generative, because once the conditional distribution is learned, missing values can be generated by sampling from the fitted model. 
+
+2.2 Engression 
+
+Engression (Shen & Meinshausen 2025) is a generative modeling framework for distributional regression that extends classical regression from estimating the conditional mean to learning the conditional distribution of response Y ∈ Rq given covariates X ∈ Rd. The learning procedure starts with modeling Y = f (X, ϵ ), where ϵ ∈ Rq is a random noise vector from a fixed distribution such as N (0 , Iq) with identity matrix Iq ∈ Rq×q and f is parameterized by a neural network. In particular, f is trained using the energy score, a strictly proper scoring rule (Gneiting & Raftery 2007). For a distribution P and observation y, the energy score is ES (P, y ) = 12E ∥Y − Y ′∥ − E ∥Y − y∥ , (1) where Y and Y ′ are independent draws from P . The second term encourages the generated samples to stay close to the observed responses, while the first term prevents distributional collapse. At the population level, engression minimizes the expected negative energy score: 
+
+L(f ) = E
+
+> [
+
+∥f (X, ϵ ) − Y ∥ − 12 ∥f (X, ϵ ) − f (X, ϵ ′)∥
+
+> ]
+
+, (2) 6where ϵ, ϵ ′ ∼ N (0 , Iq). Given an i.i.d. sample {(Xi, Yi)}ni=1 and independent noise draws 
+
+{ϵi,b ∼ N (0 , Iq)}Bb=1 , the empirical risk of engression is ̂
+
+L(f ) = 1
+
+n 
+
+> n∑
+> i=1
+> 
+
+1
+
+B
+
+> B∑
+> b=1
+
+∥Yi − f (Xi, ϵ i,b )∥ − 12B(B − 1) 
+
+> B∑
+> b,b ′=1
+
+∥f (Xi, ϵ i,b ) − f (Xi, ϵ i,b ′ )∥ 
+
+> 
+
+,
+
+(3) which can be optimized using standard optimization methods. Here, B is the number of Monte Carlo draws used to approximate the population risk. Once a model ̂ f has been trained, generating Y from any given covariate x can be done by ̂ Y =̂ f (x, ϵ ), where 
+
+ϵ ∼ N (0 , Iq).The high-level idea of how engression works is apparent in the one-dimensional case. When 
+
+Y ∈ R, the minimizer of the population L(f ) in (2) is the inverse conditional cumulative distribution function (CDF) of Y given X = x:
+
+f ∗(x, ϵ ) = F −1  
+
+> Y|X
+
+(Φ( ϵ) | x),
+
+where Φ is the CDF of N (0 , 1) so that Φ( ϵ) is a uniform random variable over [0 , 1] . Thus, the estimator ̂ f can be viewed as an approximation of the conditional inverse CDF with a neural network. 
+
+2.3 Emputation Methodology 
+
+Emputation is an imputation framework that learns the extrapolation density by combining engression and missing data assumptions in the form of a pattern mixture model. 
+
+Emputation model. Consider a model class F consisting of vector-valued functions f :
+
+Rd × { 0, 1}d → Rd. Each function (x, r ) 7 → f (x, r ) takes as input a completed d-dimensional vector x and a response pattern r. For an incomplete observation (XR, R ) = ( xr, r ) with 
+
+r̸ = 1 d, we construct an input vector for f by keeping the observed components xr in their original coordinates and replacing the missing components by random noise ϵ¯r ∼ N (0 , I|¯r|),7observation 
+
+model input 
+
+target 
+
+X1
+
+?
+
+X3
+
+?     
+
+> r= (1 ,0,1,0) ∈ R
+
+X1
+
+ϵ2
+
+X3
+
+ϵ4
+
+1
+
+0
+
+1
+
+0
+
+> noise-imputed observation
+> response indicator ̂
+
+X1̂
+
+X2̂
+
+X3̂
+
+X4
+
+X2
+
+X4
+
+Figure 1: Emputation model architecture. For r = (1 , 0, 1, 0) ∈ R , observed coordinates 
+
+X1 and X3 are kept in their original positions, while the missing coordinates are replaced by independent noise variables ϵ2 and ϵ4. The resulting noise-imputed observation and the response indicator r = (1 , 0, 1, 0) are concatenated and then passed through the neural network. Only the imputed outputs corresponding to the missing entries under r, namely ̂
+
+X2 and ̂ X4, are kept. and then appending the pattern r. For example, if d = 4 and r = (1 , 0, 1, 0) , the input vector is (xr, ϵ ¯r, r ) = ( x1, ϵ 2, x 3, ϵ 4, 1, 0, 1, 0) , where ϵ2 and ϵ4 are independent draws from the standard Gaussian distribution. Figure 1 illustrates this construction. Throughout the paper, we use Gaussian noise as the default reference distribution, although other fixed noise distributions, such as the uniform distribution, are applicable as well. The missing components in the incomplete observation are then imputed by ̂ X¯r = [ f (xr, ϵ ¯r, r )] ¯r, where 
+
+[f (z)] ¯r = ( fj (z) : rj = 0) denotes the coordinates corresponding to the missing entries under pattern r. In other words, we impute the missing variables x¯r by the random vector ̂ X¯r
+
+similar to how engression generates a new response variable. Thus, for each f , the random output ̂ X¯r induces a conditional distribution (or density), denoted by pf (·| xr, r ).8In practice, to make the model class F operational, we constrain F to a class of functions parameterized by a neural network. Specifically, each f ∈ F is written as fθ(z) with 
+
+fθ(z) = hL ◦ σ ◦ hL−1 ◦ · · · ◦ σ ◦ h1(z), (4) where z = ( xr, ϵ ¯r, r ), hℓ(u) = Wℓu + ηℓ is an affine map, with h1 : Rd × { 0, 1}d → Rq1 ,
+
+hℓ : Rqℓ−1 → Rqℓ for ℓ = 2 , . . . , L − 1, and hL : RqL−1 → Rd. The parameter θ =(W1, . . . , W L, η 1, . . . , η L) includes all weight matrices and bias vectors. The activation function σ(·) is applied componentwise and a typical choice is the ReLU activation function 
+
+σ(t) = max {0, t }.Once f is parameterized as fθ, learning f amounts to estimating the underlying parameter 
+
+θ, and the fitted imputation model is the neural network model ̂ f = f̂ θ. Note that ̂ f is a single neural network model that works for the extrapolation density p(x¯r|xr, r ) across every response pattern r. The key is to include the pattern vector r as part of the input to the neural network and properly construct the masked pattern and selection function according to the target missing data assumption, as described below. 
+
+Emputation risk. The key of emputation is to construct a risk function whose population minimizer f ∗ satisfies pf ∗ (x¯r|xr, r ) = p(x¯r|xr, r ) under the chosen missing data assumption. Given i.i.d. observations {Xi, Ri}ni=1 , we train f by the following empirical emputation risk minimization ̂
+
+f = arg min   
+
+> f∈F ̂
+
+L(f ) with ̂ L(f ) = 1
+
+n
+
+> n∑
+> i=1
+
+ℓ(f |Xi, Ri , Ri) (5) where the loss for observation i is defined by summing the approximated (negative) energy score losses over incomplete response patterns r ∈ R :
+
+ℓ(f |Xi, Ri , Ri) = ∑
+
+> r∈R
+
+Sr(Ri)
+
+> 
+
+1
+
+B
+
+> B∑
+> b=1
+> ∥∥∥
+
+Xi,M r (Ri) − [f (Xi,r , ϵ i, ¯r,b , r )] Mr (Ri)
+
+> ∥∥∥
+
+− 12B(B − 1) 
+
+> B∑
+> b,b ′=1
+> ∥∥∥
+
+[f (Xi,r , ϵ i, ¯r,b , r )] Mr (Ri) − [f (Xi,r , ϵ i, ¯r,b ′ , r )] Mr (Ri)
+
+> ∥∥∥
+
+.
+
+(6) 9Table 1: Masked pattern Mr(Ri) and selection function Sr(Ri) under different missing data assumptions. Section Assumption Masked pattern Mr(Ri) Selection function Sr(Ri)                                       
+
+> Nonmonotone Section 3.1 MCAR Ri−r|Ri−r|−1I(r < Ri)
+> Section 3.2 CCMV ¯r|¯r|−1I(Ri= 1 d)
+> Section 3.3 Tree graph PA (r)−r|PA (r)−r|−1I(Ri=PA (r))
+> Monotone Section 4.1 m-ACMV |r|+ 1 I(|Ri| ≥ | r|+ 1)
+> Section 4.2 m-CCMV |r|+ 1 I(|Ri|=d)
+> Section 4.2 m-NCMV |r|+ 1 I(|Ri|=|r|+ 1)
+
+Here, for each target pattern r, the loss uses two key ingredients that incorporate the knowledge of a missing data assumption: the masked pattern Mr(Ri) ∈ { 0, 1}d specifies which observed coordinates of observation i are temporarily treated as targets to be reconstructed; the selection function Sr(Ri) ∈ R≥0 determines whether, and with what weight, observation i contributes to the loss for pattern r. The noise vectors ϵi, ¯r,b ∈ R|¯r| are independent draws from N (0 , I|¯r|) for each i and b.The key distinction between emputation and a generic imputation method is that the masked pattern Mr and the selection function Sr are not arbitrary design choices. Instead, they encode the identifying restriction imposed by the chosen missing data assumption. Different assumptions lead to different choices of Mr and Sr. Moreover, they are dependent in the sense that whenever Sr(Ri) > 0, the coordinates selected by Mr(Ri) need to be observed for observation i.Table 1 summarizes the choices of Mr and Sr for the missing data assumptions considered in this paper, which are detailed in the following sections. In the pattern mixture model framework, the masked pattern and selection function are constructed by how the extrapo-10 lation density is identified. For instance, under the CCMV assumption, the extrapolation density is identified using complete cases ( R = 1 d). Thus, for a target pattern r, we mask the variables in complete cases that would be missing under pattern r, corresponding to Mr(Ri) = 1 d − r = ¯r. The selection function involves the complete-case indicator 
+
+I(Ri = 1 d), along with an inverse weight for the number of masked variables, leading to 
+
+Sr(Ri) = 1 
+
+> |¯r|
+
+I(Ri = 1 d). See Section 3.2 for more details. 
+
+Remark 2.1. In this paper, we use neural networks to parameterize the emputation model because of the flexibility and expressiveness. The proposed framework, however, is not restricted to neural networks. More generally, the emputation framework can be implemented with other flexible distributional learners that induce a conditional distribution for the missing variables and support sampling from that distribution. Nonparametric methods, for instance, kernel methods or tree-based methods may also be incorporated with suitable modifications. In such extensions, the masked pattern and selection function would still be determined by the identification assumption. Therefore, the framework would target the same extrapolation density, while the choice of learner would only affect how this density is estimated in practice. 
+
+Remark 2.2. The emputation risk is built on the energy score, reflecting our view of imputation as a distributional learning problem rather than merely a prediction task, as also emphasized by Van Buuren (2018), Näf et al. (2024). In particular, minimizing a pointwise prediction loss, such as mean squared error, generally targets a conditional mean (Yang et al. 2025), whereas a good imputation method should be “distributional or stochastic” (Näf 2026). In this paper, we focus on the energy score and develop the emputation framework under this choice. Extensions to other scoring rules are left for future work, as discussed in Section 8. 
+
+11 3 Emputation Under Nonmonotone Missingness 
+
+Nonmonotone missingness is a common and general scenario in missing data problems, where variables may be missing in arbitrary patterns. In this section, we illustrate how emputation applies to several well-established assumptions for nonmonotone missingness, including the MCAR and CCMV assumptions and tree graph restrictions (Suen & Chen 2026). 
+
+3.1 Emputation under MCAR 
+
+MCAR assumes that the missingness R is independent of the data X, namely, R ⊥ X.Under MCAR, we write the extrapolation density as 
+
+p(x¯r|xr, r ) = p(x¯r|xr, r ′) = p(x¯r|xr)
+
+for any response patterns r and r′ with positive probability. In particular, for patterns with more observed entries r′ > r , MCAR implies the identified (partial) extrapolation density: 
+
+p(xr′−r|xr, r ) = p(xr′−r|xr, r ′). (7) The above equation suggests that, to train the imputation model p(x¯r|xr, r ), we can use any observation with response pattern Ri > r and mask the additionally observed variables 
+
+xRi−r when constructing the loss. As a result, under MCAR, our masked pattern is Mr(Ri) = Ri −r and the selection function 
+
+Sr(Ri) = I(r < Ri)/|Ri − r|. The empirical objective function is ̂
+
+L(f ) = 1
+
+n 
+
+> n∑
+> i=1
+> ∑
+> r<
+
+Ri
+
+1
+
+|Ri − r|
+
+> 
+
+1
+
+B
+
+> B∑
+> b=1
+> ∥∥∥
+
+Xi, Ri−r − [f (Xi,r , ϵ i, ¯r,b , r )] Ri−r
+
+> ∥∥∥
+
+− 12B(B − 1) 
+
+> B∑
+> b,b ′=1
+> ∥∥∥
+
+[f (Xi,r , ϵ i, ¯r,b , r )] Ri−r − [f (Xi,r , ϵ i, ¯r,b ′ , r )] Ri−r
+
+> ∥∥∥
+
+.
+
+(8) This construction allows partially observed units to contribute to the training. Its validity relies on MCAR and the strict propriety of the energy score, as formalized below. 12 Theorem 3.1. Let f ∗ be the population risk minimizer of the MCAR emputation risk 
+
+(8) , i.e. , f ∗ = arg min f ∈F E[̂ L(f )] . For any response pattern r ∈ R and a given (xr, r ), let ̂
+
+X¯r = [ f ∗(xr, ϵ ¯r, r )] ¯r be the output from f ∗, where ϵ¯r is an independent standard Gaussian noise vector. Under MCAR, the density of ̂ X¯r satisfies pf ∗ (x¯r|xr, r ) = p(x¯r|xr).
+
+Theorem 3.1 shows that the population minimizer f ∗ induced by (8) recovers the target extrapolation density under MCAR. By incorporating partially observed samples into training, the MCAR emputation risk exploits all available observed entries rather than discarding incomplete cases, improving efficiency without sacrificing imputation validity. 
+
+3.2 Emputation under CCMV 
+
+While MCAR provides a useful benchmark, it is often too restrictive for real-world datasets. In this section, we extend emputation to a popular MNAR scenario: the CCMV assumption (Little 1993), also referred to as extended MAR (EMAR) in Näf et al. (2024). Under CCMV, the extrapolation density is identified by the corresponding conditional distribution among complete cases: 
+
+p(x¯r|xr, r ) = p(x¯r|xr, R = 1 d). (9) Since the extrapolation density for each incomplete pattern is identical to the density for complete cases, our selection function Sr(Ri) needs to restrict training to observations with Ri = 1 d. For a target pattern r, the variables to be masked among complete cases are precisely those that would be missing under pattern r, namely variables in ¯r. Thus, under CCMV, we set the masked pattern Mr(Ri) = 1 d − r = ¯r and the selection function 
+
+Sr(Ri) = I(Ri = 1 d)/|¯r|. Here, the factor |¯r| normalizes by the number of masked variables, preventing patterns with larger |¯r| from dominating the risk merely because more variables are masked. 13 The resulting empirical objective function is ̂
+
+L(f ) = 1
+
+n
+
+> n∑
+> i=1
+>  ∑
+> r∈R
+
+I(Ri = 1 d) 1
+
+|¯r|
+
+> 
+
+1
+
+B
+
+> B∑
+> b=1
+
+∥Xi, ¯r − [f (Xi,r , ϵ i, ¯r,b , r )] ¯r∥− 12B(B − 1) 
+
+> B∑
+> b,b ′=1
+
+∥[f (Xi,r , ϵ i, ¯r,b , r )] ¯r − [f (Xi,r , ϵ i, ¯r,b ′ , r )] ¯r∥
+
+> 
+
+.
+
+(10) The following theorem establishes its population target. 
+
+Theorem 3.2. Let ̂ L(f ) be defined as in (10) , and let f ∗ be the population minimizer f ∗ =
+
+argmin f E[̂ L(f )] . For any response pattern r ∈ R and a given (xr, r ), let ̂ X¯r = [ f ∗(xr, ϵ ¯r, r )] ¯r
+
+be the output from f ∗, where ϵ¯r is an independent standard Gaussian noise vector. Then the density of ̂ X¯r satisfies pf ∗ (x¯r|xr, r ) = p(x¯r|xr, R = 1 d).
+
+Theorem 3.2 shows that the population minimizer of the CCMV emputation risk recovers the correct extrapolation density implied by CCMV. Compared to the MCAR construction in Theorem 3.1, the form of the emputation risk changes only through the masked pattern 
+
+Mr and the selection function Sr. This illustrates the central principle of emputation: different missing data assumptions can be implemented by modifying the masking patterns and selection functions while keeping the same underlying energy-score learning framework. 
+
+3.3 Emputation for tree graphs 
+
+The MCAR and CCMV examples already illustrate the key principle behind emputation: the masked pattern Mr and selection function Sr are determined by how a missing data assumption identifies the extrapolation density. Once its identifying assumption is specified in the pattern mixture framework, we can translate its identification strategy into the associated Mr and Sr. To illustrate this idea beyond MCAR and CCMV, we consider the tree graph in Suen & Chen (2026), a special case of pattern graphs (Chen 2022). A tree graph is a directed graph G whose vertex set is R ∪ { 1d}. Each incomplete pattern r ∈ R 
+
+has a unique parent PA (r) ∈ R ∪ { 1d} satisfying PA (r) > r . The only exception is the 14 vertex 1d, which has no parent and acts as the root of the graph G. In this paper, we treat the tree graph as given, and discussion of tree graph selection techniques can be found in Suen & Chen (2026). Under a tree graph, each incomplete pattern r borrows information from its unique parent through a pattern mixture model assumption 
+
+p(x¯r|xr, R = r) = p(x¯r|xr, R = PA (r)) . (11) CCMV is a special case of tree graphs where every incomplete vertex has the same parent 
+
+PA (r) = 1 d. While (11) identifies the extrapolation density nonparametrically, the right-hand side may still involve variables that are unobserved under the parent pattern. It is thus unclear how to construct the masked pattern Mr and selection function Sr accordingly. To resolve this problem, we consider a path decomposition implied by (11) to construct the emputation risk. Under a tree graph G, every pattern r ∈ R is connected to the complete-case pattern by a unique path of arrows, denoted by r = γ0 ← γ1 ← · · · ← γKr = 1 d, where γk+1 = PA (γk)
+
+for k = 0 , . . . , K r − 1. For each directed arrow PA (γ) → γ, (11) implies 
+
+p(xPA (γ)−γ |xγ , R = γ) = p(xPA (γ)−γ |xγ , R = PA (γ)) , (12) where PA (γ) − γ indexes the coordinates that become observed when moving from γ to its parent PA (γ). Clearly, each factor p(xPA (γ)−γ |xγ , R = PA (γ)) is identifiable, provided 
+
+p(R = PA (γ)) > 0. Equations (11) and (12) imply that the extrapolation density factorizes along the unique path into 
+
+p(x¯r | xr, r ) =  
+
+> Kr−1∏
+> k=0
+
+p(xPA (γk )−γk | xγk , R = PA (γk)) = 
+
+> Kr−1∏
+> k=0
+
+p(xγk+1 −γk | xγk , R = γk+1 ).
+
+(13) Therefore, it suffices to train our imputation model for the one-step conditional distributions 15 under (12) , and the full extrapolation distribution is then obtained by sequential imputation along the path in (13). Equation (12) suggests setting the masked pattern to be Mr(Ri) = PA (r) − r and the selection function to Sr(Ri) = 1 
+
+> |PA (r)−r|
+
+I(Ri = PA (r)) . This choice ensures that only observations with response pattern Ri = PA (r) are used in training, and the masked coordinates are those observed in the parent pattern but not in pattern r. Then, the emputation risk under a tree graph G is ̂
+
+LG(f ) = 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+∑
+
+> r∈R
+
+I(Ri = PA (r)) 
+
+|PA (r) − r|
+
+
+
+1
+
+B
+
+> B
+
+∑
+
+> b=1
+
+∥∥∥Xi, PA (r)−r − [f (Xi,r , ϵ i, ¯r,b , r )] PA (r)−r
+
+∥∥∥
+
+− 12B(B − 1) 
+
+∑
+
+> b̸=b′
+
+∥∥∥[f (Xi,r , ϵ i, ¯r,b , r )] PA (r)−r − [f (Xi,r , ϵ i, ¯r,b ′ , r )] PA (r)−r
+
+∥∥∥.
+
+Theorem 3.3. Let f ∗ = arg min f E[̂ LG(f )] be the population risk minimizer of the tree graph 
+
+G. For any response pattern r ∈ R and a given (xr, r ), let ̂ XPA (r)−r = [ f ∗(xr, ϵ ¯r, r )] PA (r)−r
+
+be the output from f ∗, where ϵ¯r is an independent standard Gaussian noise vector. Then the density of ̂ XPA (r)−r satisfies pf ∗ (xPA (r)−r|xr, R = r) = p(xPA (r)−r|xr, R = PA (r)) .
+
+Under the tree graph, every pattern r ∈ R has a unique path r = γ0 ← γ1 ← · · · ← γKr = 1 d.Theorem 3.3 implies that the extrapolation density 
+
+pf ∗ (x¯r | xr, r ) :=  
+
+> Kr−1
+
+∏
+
+> k=0
+
+pf ∗ (xPA (γk )−γk | xγk , R = γk)= 
+
+> Kr−1
+
+∏
+
+> k=0
+
+p(xPA (γk )−γk | xγk , R = PA (γk)) 
+
+> (13)
+
+= p(x¯r | xr, r )
+
+recovers the true extrapolation density p(x¯r | xr, r ) for all r ∈ R .After training ̂ f , an incomplete observation (XR, R ) is imputed by iterating the following three steps until no missing entries are left: 1. Set γ = R and find its parent PA (γ) in the tree graph. 16 2. Impute the missing entries XPA (γ)−γ via ̂ XPA (γ)−γ = [ ̂ f (Xγ , ϵ ¯γ , γ )] PA (γ)−γ , where ϵ¯γ is an independent Gaussian noise vector with each element drawn from N (0 , 1) .3. Update R = PA (γ). Return to Step 1 if R̸ = 1 d.The above procedure is a sequential imputation scheme following the product formula in (13). 
+
+# 4 Emputation for Monotone Missingness 
+
+We next discuss how to implement emputation for monotone missingness under several conventional assumptions. Monotone missingness arises naturally in longitudinal studies and clinical trials with dropout, where once a variable is missing, all subsequent variables are also missing (Daniels & Hogan 2008). Namely, for any r ∈ R , if rj = 0 , then 
+
+rk = 0 for all k > j . In this setting, each response pattern r can be summarized by its dropout time |r|, so the observed data can be written as (X≤T , T ), where T = |R| ∈ {1, 2, ..., d } and X≤T = ( X1, . . . , X T ). For a sample of size n, the observed data are thereby 
+
+(X1,≤T1 , T1), · · · , (Xn, ≤Tn , Tn), where Ti = |Ri|. For a unit with dropout time T = t, the extrapolation density is p(x>t |x≤t, t ), which admits the sequential factorization 
+
+p(x>t |x≤t, t ) = 
+
+> d−1∏
+> s=t
+
+p(xs+1 |x≤s, t ). (14) This factorization is analogous to the tree graph’s factorization in (13) . Thus, identifying the extrapolation density reduces to identifying each component p(xs+1 |x≤s, t ) for s ≥ t.Different identifying assumptions correspond to different choices of the reference distribution (Daniels et al. 2023). To emphasize that these assumptions are specialized to monotone missingness, we use the prefix “m-”. We focus on three commonly used assumptions. 17 • Complete-case missing value (m-CCMV). Similar to CCMV, the m-CCMV assumption identifies each component using complete cases: 
+
+p(xs+1 |x≤s, T = t) = p(xs+1 |x≤s, T = d).
+
+• Available-case missing value (m-ACMV). Since m-CCMV relies only on complete cases, it discards observations in which Xs+1 is observed but later variables are missing. The m-ACMV assumption instead uses all available cases in which Xs+1 is observed: 
+
+p(xs+1 |x≤s, T = t) = p(xs+1 |x≤s, T ≥ s + 1) . (15) Molenberghs et al. (1998) showed that m-ACMV is equivalent to MAR under monotone missingness. 
+
+• Nearest-case missing value (m-NCMV). The m-NCMV assumption identifies each component using the nearest response pattern, namely the pattern with exactly one additional observed variable: 
+
+p(xs+1 |x≤s, T = t) = p(xs+1 |x≤s, T = s + 1) .
+
+Under all three assumptions, the right-hand side is an identifiable conditional distribution of the form p(xs+1 |x≤s, T = ω(s)) for some reference set ω(s) ⊂ { s + 1 , s + 2 , · · · , d } that depends on s but not on the original dropout time t. Therefore, under these assumptions, the imputation model only needs to learn the conditional distribution p(xs+1 |x≤s, T = ω(s)) 
+
+associated with each s = 1 , · · · , d − 1.
+
+4.1 Emputation under m-ACMV 
+
+We first show how the m-ACMV restriction can be incorporated into the emputation framework. This case is of particular interest because m-ACMV is equivalent to MAR under 18 monotone missingness (Molenberghs et al. 1998). The m-CCMV and m-NCMV cases can be derived in a similar manner. The m-ACMV assumption in (15) identifies the one-step extrapolation density as 
+
+p(xs+1 |x≤s, T = t) = p(xs+1 |x≤s, T ≥ s + 1) using observations with a dropout time T ≥ s + 1 . Since the target is a conditional density of variable Xs+1 , our masked pattern is Mr(Ri) ≡ Ms(Ti) = s + 1 ≡ | r| + 1 , and the selection function 
+
+Sr(Ri) ≡ Ss(Ti) = I(Ti ≥ s + 1) ≡ I(|Ri| ≥ | r| + 1) . For monotone missingness, we write the masked coordinate as Ms(Ti) ∈ { 2, · · · , d } for s = 1 , · · · , d − 1 and the selection function as Ss(Ti).While one could use the same vector-valued neural network imputation model f as in the nonmonotone setting of Section 3, monotone missingness allows a simpler parameterization. Since monotone response patterns are indexed by the dropout time s = |r|, we use s directly as an input coordinate to the imputation model. Specifically, let g : Rd × { 1, 2, · · · , d } → R
+
+be a neural network with a scalar output. Sampling from the conditional distribution 
+
+pg(xs+1 |x≤s, s ) is done by evaluating g(x≤s, ϵ >s , s ), where ϵ>s is an independent standard Gaussian noise vector. The empirical emputation risk under m-ACMV is ̂
+
+L(g) = 1
+
+n
+
+> n∑
+> i=1
+> d−1∑
+> s=1
+
+Ss(Ti)
+
+> 
+
+1
+
+B
+
+> B∑
+> b=1
+> ∣∣∣
+
+Xi,M s(Ti) − g(Xi, ≤s, ϵ i,>s,b , s )∣∣∣
+
+− 12B(B − 1) 
+
+> ∑
+> b̸=b′
+
+|g(Xi, ≤s, ϵ i,>s,b , s ) − g(Xi, ≤s, ϵ i,>s,b ′ , s )|
+
+> 
+
+= 1
+
+n
+
+> n∑
+> i=1
+> d−1∑
+> s=1
+
+I(Ti > s )
+
+> 
+
+1
+
+B
+
+> B∑
+> b=1
+
+|Xi,s +1 − g(Xi, ≤s, ϵ i,>s,b , s )|− 12B(B − 1) 
+
+> ∑
+> b̸=b′
+
+|g(Xi, ≤s, ϵ i,>s,b , s ) − g(Xi, ≤s, ϵ i,>s,b ′ , s )|
+
+> 
+
+(16) where the noise vectors {ϵi,>s,b }Bb=1 are independent draws from a standard Gaussian distribution N (0 , Id−s).19 Theorem 4.1. Let g∗ = arg min g E[̂ L(g)] be the population risk minimizer of the emputation risk. For any given (xr, r ) ≡ (x≤s, s ) with s = |r|, let ̂ Xs+1 = [ g∗(x≤s, ϵ >s , s )] be the output of g∗, where ϵ>s is an independent standard Gaussian noise vector. Then, the density of ̂ Xs+1 
+
+satisfies pg∗ (xs+1 |x≤s, T = s) = p(xs+1 |x≤s, T ≥ s + 1) , which is the target extrapolation density under m-ACMV. 
+
+Because of the sequential factorization in (14) , learning the one-step conditional distribution of Xs+1 given (x≤s, s ) determines the full extrapolation distribution. Thus, Theorem 4.1 establishes the valid population target of emputation under m-ACMV. After training ̂ g,an incomplete observation (X≤T , T ), where T = |R|, is imputed sequentially as in the tree graph procedure. Specifically, starting from s = T , we iterate the following two steps until no missing entries are left: 1. Impute the missing entry Xs+1 by ̂ Xs+1 =̂ g(X≤s, ϵ >s , s ), where ϵ>s is an independent standard Gaussian noise vector. 2. Update s ← s + 1 . If s < d , return to Step 1. This sequential procedure follows the factorization in (14) . Because m-ACMV is equivalent to MAR (Molenberghs et al. 1998) under monotone missing data, this construction under emputation offers a flexible neural network imputation model under MAR. 
+
+4.2 Emputation under m-CCMV and m-NCMV 
+
+The same construction applies to m-CCMV and m-NCMV by changing only the selection rule in the emputation risk. In all three monotone assumptions considered here, the masked coordinate remains Xs+1 . Thus, the masked coordinate is still Ms(Ti) = s + 1 , while the selection function changes according to the identifying assumption. Under m-CCMV, each extrapolation density is identified using complete cases, so the selection function is 
+
+Ss(Ti) = I(Ri = 1 d) = I(Ti = d). Under m-NCMV, each extrapolation density is identified 20 using the nearest available pattern, namely observations with exactly one additional observed variable. Hence, the selection function is Ss(Ti) = I(Ti = s + 1) .
+
+Corollary 4.2. Let g∗ be the population minimizer of the emputation risk under m-CCMV or m-NCMV. For any given (xr, r ) ≡ (x≤s, s ) with s = |r|, let ̂ Xs+1 = [ g∗(x≤s, ϵ >s , s )] be the output of g∗, where ϵ>s is an independent standard Gaussian noise vector. Then, the density of ̂ Xs+1 satisfies 
+
+pg∗ (xs+1 | x≤s, s ) = 
+
+> 
+
+p(xs+1 | x≤s, T = d), under the m-CCMV risk ,p(xs+1 | x≤s, T = s + 1) , under the m-NCMV risk .
+
+Corollary 4.2 shows that the emputation framework targets the appropriate extrapolation density under both m-CCMV and m-NCMV, together with the sequential factorization in (14) . Thus, as in the m-ACMV case, emputation accommodates different monotone missing-data assumptions by modifying the selection function while keeping the same masking structure and energy-score learning framework. 
+
+# 5 Selecting a Missing Data Assumption 
+
+The preceding sections show that the construction of the emputation risk is guided by the chosen missing data assumption. We now briefly discuss how such a missing data assumption may be selected in practice. Except for MCAR, the missing data assumptions considered in this paper, including CCMV, pattern graphs, and the monotone missingness assumptions considered above, are nonparametric identifying assumptions (Robins 1997, Vansteelandt et al. 2006, Daniels & Hogan 2008). As such, they do not impose testable restrictions on the observed-data distribution and therefore cannot be rejected using the observed data alone. This is a desirable property in the sense that these assumptions are weak and always compatible with the observed data. However, it is also a limitation that we 21 cannot purely use any data-driven criterion to select an assumption. Therefore, the choice of a missing data assumption relies primarily on our domain knowledge of the data-generating process and the missingness mechanism. For instance, although we introduce CCMV through the pattern mixture model formulation, it also admits a selection model representation and can be interpreted as a logit discrete choice model, as explained in Tchetgen et al. (2018). Thus, CCMV may be appropriate when complete cases provide a scientifically plausible reference distribution for incomplete cases. Tree graphs (Suen & Chen 2026) also admit a selection odds formulation and may be useful when the missingness mechanism is better represented by borrowing information along a structured hierarchy of response patterns rather than directly from complete cases. For monotone missingness, the choice among m-ACMV, m-CCMV, and m-NCMV depends on which observed patterns are considered plausible references for the missing values. The m-ACMV assumption is equivalent to MAR under monotone missingness (Molenberghs et al. 1998, Molenberghs & Kenward 2007). Therefore, when MAR is believed to be the actual missing mechanism, m-ACMV provides the corresponding emputation risk. The m-NCMV assumption has a nearest-donor interpretation, since it identifies each missing component using the nearest response pattern (Daniels et al. 2023). This assumption may be justified when individuals who drop out at adjacent times are expected to be similar, so that subjects dropping out at times t and t + 1 provide the most relevant donor information. In practice, we recommend using substantive knowledge to identify a small set of plausi-ble assumptions and then assessing the sensitivity of downstream conclusions across the corresponding emputation risks. We illustrate this strategy in the real-data application in Section 7. 22 Table 2: Datasets used in the simulation, with sample size n and number of variables d.        
+
+> Dataset nd
+> Concrete 1030 9Wine 4898 12 CCPP 9568 5
+
+# 6 Simulation Studies 
+
+We conduct simulation studies to evaluate the performance of emputation under different missing data assumptions. We compare it with mean imputation, Expectation–Maximization (EM) with a multivariate Gaussian model, multiple imputation by chained equations (MICE; Raghunathan et al. 2001, Van Buuren & Oudshoorn 1999), missForest (MF; Stekhoven & Bühlmann 2012), and the generative adversarial imputation network (GAIN; Yoon et al. 2018). Among deep generative imputation methods, we include GAIN as the main baseline because it is a representative deep generative approach for imputation. The experiments are conducted on three benchmark datasets from the UCI Machine Learning Repository: Concrete, Wine, and CCPP. These datasets vary in sample size and dimension, as summarized in Table 2. For each dataset, missing values are generated under MCAR and CCMV with an overall missingness rate of approximately 20%. Under MCAR, entries are independently set to missing. Under CCMV, response patterns are generated using the selection model described in the Supplementary Material. MCAR is included as a baseline mechanism because it is widely used in imputation simulation studies. We also include CCMV because it represents an MNAR setting aligned with the emputation framework. We focus on these two assumptions because other missing data restrictions are less straightforward to benchmark. For example, tree graph assumptions require specifying a graph structure over response 23 patterns, whereas monotone restrictions are designed for monotone dropout settings and are less suitable for the general nonmonotone missingness considered here. Additional details on the missingness generation process, along with results under MAR, 40% missingness, and varying complete-case proportions, are reported in the Supplementary Material. Results are averaged over 100 independent repetitions. For multiple imputation methods, we generate 10 imputed datasets. The MICE benchmark is implemented using the default methods in the R package mice , which uses predictive mean matching for continuous variables. The emputation model is implemented as a feedforward neural network with 
+
+L = 3 hidden layers, each of width 500, and is trained for 500 epochs using a learning rate of 10 −4. We set the number of Monte Carlo samples used to approximate the energy score to B = 2 , which we found to work well in practice. GAIN is trained for 1,000 iterations with a batch size of 128, a hint rate of 0.9, and α = 10 .We evaluate imputation performance using both pointwise and distributional criteria. To assess the preservation of dependence and distributional agreement, we report the mean absolute difference in correlations (MADC), energy distance, and squared maximum mean discrepancy (MMD 2). Details of the evaluation metrics and pointwise accuracy results are given in the Supplementary Material. The implementation code is available at https://github.com/yjyang00/emputation. 
+
+Results. Figure 2 reports the main simulation results under 20% missingness. Emputation achieves the strongest distributional performance in most settings. When the training risk matches the true missing data generation process, emputation attains the smallest energy distance and MMD 2 across all three datasets, as well as the smallest MADC in most cases. In contrast, mean imputation and GAIN often distort the target distribution, while MICE and missForest generally exhibit larger distributional discrepancies than emputation. 24 ccpp concrete wine            
+
+> Rel. MADC Rel. Energy Rel. MMD2
+> DGP: ccmv DGP: mcar DGP: ccmv DGP: mcar DGP: ccmv DGP: mcar
+> 0110
+> 0110 100 500
+> 0110 100 500 1 000 2 000
+> EM MICE missForest GAIN Mean Emputation (reference) Emputation (mismatched)
+
+Figure 2: Simulation under 20% missingness: performance of imputation methods in MADC, energy distance (relative to emputation), and MMD 2 (relative to emputation). The y-axis is shown on a logarithmic scale to accommodate the large variation across methods. The x-axis shows the missingness-generation process. The comparison between matched and mismatched emputation risks illustrates the role of the missing data assumption. As expected, the best performance is typically obtained when the training risk is aligned with the data-generating mechanism. Nevertheless, the mismatched emputation risk remains competitive in many cases, suggesting that the energy-score-based objective is reasonably robust to moderate misspecification of the working missing data assumption. 25 7 Real Data Application 
+
+We apply emputation to data from the National Alzheimer’s Coordinating Center (NACC). We use the Uniform Data Set (UDS), Neuropathology (NP) Data Set, and APOE genotype data, all publicly available upon request at https://naccdata.org. Our goal is to investigate predictors of cognitive resilience and resistance in the presence of Alzheimer’s disease (AD) neuropathology. Cognitive resilience refers to an individual’s ability to preserve cognition despite significant AD pathology, while cognitive resistance refers to an individual’s ability to maintain cognitive normality in the presence of low AD pathology. Understanding the demographic, genetic, and clinical correlates of these phenotypes may illuminate protective mechanisms against dementia. The analytic sample is restricted to participants with brain autopsy data ( NACCAUTP =1). To align clinical assessments with end-of-life cognitive status, only visits occurring within two years prior to death are retained, and the visit closest to death is selected for each participant. Death dates are approximated as the last day of the recorded month. Participants with unknown APOE genotype ( NACCAPOE =9) are excluded, as genotype is a fixed genetic attribute that is not reliably predictable from observed clinical or demographic variables. AD neuropathology is measured using the Alzheimer’s Disease Neuropathologic Change (ADNC) score, a four-level ordinal scale (0=not AD, 1=low, 2=intermediate, 3=high). For subjects with missing ADNC, the score is derived from Braak stage and CERAD neuritic plaque score following the semi-quantitative classification of Brenowitz et al. (2017). We consider demographic (age at death, sex, race, education), genetic (APOE ε4 and ε2 carrier status), and clinical variables (body mass index (BMI), systolic blood pressure, geriatric depression scale (GDS), and diuretic use) as predictors (Walker & Richardson 2023, Sin et al. 2023). The final analytic sample consists of 4,906 subjects, with characteristics across complete cases and incomplete cases summarized in Table 3. 26 Table 3: Characteristics by complete and incomplete case status. Age, education, and CDR Global Score are summarized by mean (SD); other variables are summarized by count (%).                             
+
+> Complete Incomplete
+> N= 1820 N= 3086
+> Age at death, y 82.86 (10.32) 79.76 (11.71) Female, n (%) 767 (42.1) 1459 (47.3) White, n (%) 1720 (94.5) 2921 (94.7) Education, y 15.51 (3.02) 15.44 (3.15) APOE ε4 carrier, n (%) 674 (37.0) 1401 (45.4) APOE ε2 carrier, n (%) 241 (13.2) 330 (10.7) ADNC, n (%) Not AD 188 (10.3) 334 (10.8) Low 715 (39.3) 714 (23.1) Intermediate 401 (22.0) 511 (16.6) High 516 (28.4) 1527 (49.5) CDR Global Score 0.97 (0.88) 2.23 (1.02)
+
+A central challenge is missingness in clinical covariates. Body mass index, systolic blood pressure, and geriatric depression scale have 40% to 50% missingness, and only approximately 36% of subjects are observed completely across these measures. To address missingness, we apply emputation under MCAR and CCMV and compare it with MICE and complete-case analysis. MICE is implemented using the default predictive mean matching method for variables subject to missingness. 
+
+Analysis model. We fit separate logistic regression models for cognitive resilience and resistance. The resilience model is restricted to subjects with intermediate or high ADNC (NPADNC ∈ { 2, 3}), where resilience is defined as cognitive normality, measured by a Clinical Dementia Rating (CDR) global score of zero ( CDRGLOB = 0 ), and non-resilience is defined as cognitive impairment ( CDRGLOB ≥ 0.5). The resistance model is restricted to those with low or 27 absent ADNC ( NPADNC ∈ { 0, 1}), with resistance defined as cognitive normality ( CDRGLOB =0) and non-resistance defined as cognitive impairment ( CDRGLOB ≥ 0.5). For complete-case analysis (CC), the logistic regression is fitted on the complete cases within each of the 
+
+B = 500 bootstrap replicates. For emputation, the bounded variables subject to missingness, including body mass index, systolic blood pressure, and geriatric depression scale, are first mapped to the real line using a logit transformation before imputation and then transformed back to their original scales using the inverse logit transformation after imputation. The emputation model is trained for 1000 epochs using a neural network with three hidden layers, each of width 500, and a learning rate of 10 −4. For MICE and emputation, 10 imputed datasets are drawn per bootstrap replicate and the logistic regression is fitted on each imputed dataset. Odds ratios (OR) and 95% bootstrap confidence intervals are reported for all three methods. 
+
+Results. Figure 3 displays estimated odds ratios and confidence intervals for the resilience and resistance models. In the resilience model, APOE ε4 carrier status is consistently associated with lower odds of cognitive resilience across all methods, in agreement with its established role as a genetic risk factor for AD (Farrer et al. 1997, Belloy et al. 2023). Female sex is associated with higher odds of resilience. The complete-case estimate is larger than those from MICE and emputation, which are closely aligned with each other. This discrepancy is consistent with the descriptive summary in Table 3 and may reflect a selection bias toward a “healthier” complete-case subsample, where complete cases are less cognitively impaired on average (mean CDR Global Score 0.97 vs. 2.23) and less likely to have high ADNC pathology (28.4% vs. 49.5%) compared to incomplete cases. Diuretic use shows positive associations with resilience under MICE and emputation, while the complete-case estimate is in the same direction but not statistically significant. In the resistance model, APOE ε4 carrier status is associated with lower odds of resistance. 28 Resilience Resistance            
+
+> 0.5 12480.5 12
+> GDS score Diuretic use Systolic BP BMI APOE e2 carrier APOE e4 carrier Education Race (White) Sex (Female) Age at death
+> Odds Ratio
+> Method CC MICE Emputation (CCMV) Emputation (MCAR)
+
+Figure 3: Odds ratios (ORs) and 95% confidence intervals for predictors of cognitive resilience (left) and cognitive resistance (right) under four missing-data analyses: complete-case analysis (CC), multiple imputation by chained equations (MICE), emputation under MCAR, and emputation under CCMV. Higher education is associated with higher odds of resistance, in line with the cognitive reserve hypothesis (Stern 2012). Diuretic use shows a positive association under MICE and both emputation specifications, which agrees with prior evidence from Sin et al. (2023). GDS score is associated with lower odds of resistance under MICE and emputation, with complete-case analysis showing the same direction but a wider confidence interval. BMI shows a weak positive association, with confidence intervals remaining close to one, suggesting limited evidence for a strong association. Overall, the main scientific findings are consistent across imputation methods and emputation specifications. In contrast, the discrepancies between imputation-based analyses and complete-case analysis highlight the potential impact of discarding incomplete observations. 29 Additional sensitivity analyses and data descriptions are provided in the Supplementary Material. 
+
+# 8 Conclusion 
+
+In this paper, we propose the emputation framework, which enables the training of a deep neural network model that recovers the correct imputation model under a missing data assumption. This framework offers insight into how to properly guide the training process of a neural network model using an identification assumption. Simulation studies demonstrate strong distributional performance relative to existing methods, and the Alzheimer’s disease application illustrates its use in a real-world setting. Several directions remain open for future work. First, the current framework covers MAR under monotone missingness through m-ACMV, but its connection to nonmonotone MAR remains unclear. Extending emputation to nonmonotone MAR as well as to other nonpara-metric identification assumptions would broaden the class of missing data assumptions that the framework can accommodate. Second, while the energy score provides a strictly proper scoring rule for distributional learning, other distributional objectives, such as other kernel scoring rules, could also be incorporated into the emputation framework. Understanding how the choice of scoring rule affects imputation performance and theoretical guarantees is a natural direction for further study. Third, it would be valuable to develop neural network models for selection models. The emputation framework can be viewed as a neural network model for pattern mixture identification, whereas selection models provide another common approach for MNAR problems and often offer more interpretable mechanisms (Diggle & Kenward 1994, Ipsen et al. 2021, Daniels et al. 2023). How to train neural generative imputation models under assumptions formulated through selection models remains an open problem. 30 References 
+
+Belloy, M. E., Andrews, S. J., Le Guen, Y., Cuccaro, M., Farrer, L. A., Napolioni, V. & Greicius, M. D. (2023), ‘APOE genotype and Alzheimer disease risk across age, sex, and population ancestry’, JAMA Neurology 80 (12), 1284–1294. Brenowitz, W. D., Keene, C. D., Hawes, S. E., Hubbard, R. A., Longstreth Jr, W., Woltjer, R. L., Crane, P. K., Larson, E. B. & Kukull, W. A. (2017), ‘Alzheimer’s disease neuropathologic change, Lewy body disease, and vascular brain injury in clinic-and community-based samples’, 
+
+Neurobiology of Aging 53 , 83–92. Carpenter, J. R., Bartlett, J. W., Morris, T. P., Wood, A. M., Quartagno, M. & Kenward, M. G. (2023), Multiple imputation and its application , John Wiley & Sons. Chen, Y.-C. (2022), ‘Pattern graphs: a graphical approach to nonmonotone missing data’, The Annals of Statistics 50 (1), 129–146. Daniels, M. J. & Hogan, J. W. (2008), Missing data in longitudinal studies: Strategies for Bayesian modeling and sensitivity analysis , Chapman and Hall/CRC. Daniels, M. J., Linero, A. & Roy, J. (2023), Bayesian nonparametrics for causal inference and missing data , Chapman and Hall/CRC. Diggle, P. & Kenward, M. G. (1994), ‘Informative drop-out in longitudinal data analysis’, Journal of the Royal Statistical Society Series C: Applied Statistics 43 (1), 49–73. Farrer, L. A., Cupples, L. A., Haines, J. L., Hyman, B., Kukull, W. A., Mayeux, R., Myers, R. H., Pericak-Vance, M. A., Risch, N. & Van Duijn, C. M. (1997), ‘Effects of age, sex, and ethnicity on the association between apolipoprotein E genotype and Alzheimer disease: a meta-analysis’, 
+
+JAMA 278 (16), 1349–1356. Ghalebikesabi, S., Cornish, R., Holmes, C. & Kelly, L. (2021), Deep generative missingness pattern-set mixture models, in ‘Proceedings of The 24th International Conference on Artificial Intelligence and Statistics’, Vol. 130 of Proceedings of Machine Learning Research , PMLR, pp. 3727–3735. Gneiting, T. & Raftery, A. E. (2007), ‘Strictly proper scoring rules, prediction, and estimation’, 
+
+Journal of the American Statistical Association 102 (477), 359–378. 
+
+31 Hirano, K., Imbens, G. W., Ridder, G. & Rubin, D. B. (2001), ‘Combining panel data sets with attrition and refreshment samples’, Econometrica 69 (6), 1645–1659. Ipsen, N. B., Mattei, P.-A. & Frellsen, J. (2021), not-MIWAE: Deep generative modelling with missing not at random data, in ‘International Conference on Learning Representations’. Li, S. C.-X., Jiang, B. & Marlin, B. (2019), MisGAN: Learning from incomplete data with generative adversarial networks, in ‘International Conference on Learning Representations’. Linero, A. R. & Daniels, M. J. (2018), ‘Bayesian approaches for missing not at random outcome data: the role of identifying restrictions’, Statistical Science 33 (2), 198. Little, R. J. (1993), ‘Pattern-mixture models for multivariate incomplete data’, Journal of the American Statistical Association 88 (421), 125–134. Little, R. J. & Rubin, D. B. (2019), Statistical analysis with missing data , John Wiley & Sons. Ma, C. & Zhang, C. (2021), Identifiable generative models for missing not at random data imputation, in ‘Advances in Neural Information Processing Systems’, Vol. 34, pp. 27645–27658. Mattei, P.-A. & Frellsen, J. (2019), MIWAE: Deep generative modelling and imputation of incomplete data sets, in ‘International Conference on Machine Learning’, Vol. 97, PMLR, pp. 4413–4423. Molenberghs, G. & Kenward, M. (2007), Missing data in clinical studies , John Wiley & Sons. Molenberghs, G., Michiels, B., Kenward, M. G. & Diggle, P. J. (1998), ‘Monotone missing data and pattern-mixture models’, Statistica Neerlandica 52 (2), 153–161. Näf, J. (2026), ‘A practical guide to modern imputation’. arXiv:2601.14796. Näf, J., Scornet, E. & Josse, J. (2024), ‘What is a good imputation under MAR missingness?’, 
+
+arXiv preprint arXiv:2403.19196 .Nazabal, A., Olmos, P. M., Ghahramani, Z. & Valera, I. (2020), ‘Handling incomplete heterogeneous data using VAEs’, Pattern Recognition 107 , 107501. Ouyang, Y., Xie, L., Li, C. & Cheng, G. (2023), MissDiff: Training diffusion models on tabular data with missing values, in ‘ICML 2023 Workshop on Structured Probabilistic Inference & Generative Modeling’. Raghunathan, T. E., Lepkowski, J. M., Van Hoewyk, J., Solenberger, P. et al. (2001), ‘A multivariate 
+
+32 technique for multiply imputing missing values using a sequence of regression models’, Survey Methodology 27 (1), 85–96. Richardson, T. W., Wu, W., Lin, L., Xu, B. & Bernal, E. A. (2020), MCFlow: Monte carlo flow models for data imputation, in ‘Proceedings of the IEEE/CVF conference on computer vision and pattern recognition’, pp. 14205–14214. Rizzo, M. & Szekely, G. (2022), ‘Energy: E-statistics: Multivariate inference via the energy of data’, R package version .Robins, J. M. (1997), ‘Non-response models for the analysis of non-monotone non-ignorable missing data’, Statistics in Medicine 16 (1), 21–37. Rubin, D. B. (2018), Multiple imputation, in ‘Flexible imputation of missing data, second edition’, Chapman and Hall/CRC, pp. 29–62. Shen, X. & Meinshausen, N. (2025), ‘Engression: extrapolation through the lens of distributional regression’, Journal of the Royal Statistical Society Series B: Statistical Methodology 87 (3), 653– 677. Sin, M.-K., Cheng, Y., Roseman, J. M., Latimer, C., Ahmed, A. & Zamrini, E. (2023), ‘Character-istics and predictors of Alzheimer’s disease resilience phenotype’, Journal of Clinical Medicine 
+
+12 (7), 2463. Stekhoven, D. J. & Bühlmann, P. (2012), ‘MissForest—non-parametric missing value imputation for mixed-type data’, Bioinformatics 28 (1), 112–118. Stern, Y. (2012), ‘Cognitive reserve in ageing and Alzheimer’s disease’, The Lancet Neurology 
+
+11 (11), 1006–1012. Sterne, J. A., White, I. R., Carlin, J. B., Spratt, M., Royston, P., Kenward, M. G., Wood, A. M. & Carpenter, J. R. (2009), ‘Multiple imputation for missing data in epidemiological and clinical research: potential and pitfalls’, BMJ 338 .Suen, D. & Chen, Y.-C. (2026), ‘Modeling multivariate missingness with tree graphs and conjugate odds’. arXiv:2602.16992. Székely, G. J. & Rizzo, M. L. (2013), ‘Energy statistics: A class of statistics based on distances’, 
+
+Journal of Statistical Planning and Inference 143 (8), 1249–1272. Tashiro, Y., Song, J., Song, Y. & Ermon, S. (2021), CSDI: Conditional score-based diffusion 
+
+33 models for probabilistic time series imputation, in ‘Advances in Neural Information Processing Systems’, Vol. 34, pp. 24804–24816. Tchetgen, E. J. T., Wang, L. & Sun, B. (2018), ‘Discrete choice models for nonmonotone nonig-norable missing data: Identification and inference’, Statistica Sinica 28 (4), 2069–2088. Thijs, H., Molenberghs, G., Michiels, B., Verbeke, G. & Curran, D. (2002), ‘Strategies to fit pattern-mixture models’, Biostatistics 3(2), 245–265. Van Buuren, S. (2018), Flexible Imputation of Missing Data , CRC Press. Van Buuren, S. & Oudshoorn, K. (1999), ‘Flexible multivariate imputation by MICE’, Leiden, The Netherlands: TNO Prevention Center pp. 1–20. Vansteelandt, S., Goetghebeur, E., Kenward, M. G. & Molenberghs, G. (2006), ‘Ignorance and uncertainty regions as inferential tools in a sensitivity analysis’, Statistica Sinica pp. 953–979. Walker, J. M. & Richardson, T. E. (2023), ‘Cognitive resistance to and resilience against mul-tiple comorbid neurodegenerative pathologies and the impact of APOE status’, Journal of Neuropathology & Experimental Neurology 82 (2), 110–119. Yang, Y., Suen, D. & Chen, Y.-C. (2025), ‘Masking criteria for selecting an imputation model’, 
+
+arXiv preprint arXiv:2511.10048 .Yoon, J., Jordon, J. & Schaar, M. (2018), GAIN: Missing data imputation using generative adversarial nets, in ‘International Conference on Machine Learning’, PMLR, pp. 5689–5698. Zhang, H., Fang, L., Wu, Q. & Yu, P. S. (2025), DiffPuter: An EM-driven diffusion model for missing data imputation, in ‘The Thirteenth International Conference on Learning Representations’. 
+
+34 Supplementary Materials for “Emputation: Identification-Guided Neural Imputation Framework” A Additional Simulation Details 
+
+This section provides additional details on the simulation studies reported in the main paper. We generate missingness under MCAR, CCMV, and MAR. For each mechanism, we consider two overall missingness levels, 20% and 40%. For the MCAR setting, we first randomly select a proportion cc = 20% of rows to remain fully observed. Among the remaining proportion 1 − cc = 0 .8 of rows, each entry is independently set to missing with probability ρ. Thus, the overall missing rate is approximately (1 − cc)ρ.We set ρ = 0 .25 for the 20% missingness setting and ρ = 0 .50 for the 40% missingness setting. For the CCMV setting, missingness is generated using a pattern graph (Chen 2022). The response pattern set consists of the complete-case pattern and a collection of pre-specified incomplete patterns. Under a pattern graph, the selection odds relative to the complete-case pattern are 
+
+p(R = r|X)
+
+p(R = 1 d|X) = p(R = r|Xr)
+
+p(R = 1 d|Xr) = Or(Xr) = exp( αr + βTr Xr)
+
+and the pattern-specific probabilities are 
+
+p(R = 1 d|X) = 
+
+> 
+
+1 + ∑ 
+
+> r̸=1 d
+
+Or(Xr)
+
+> 
+> −1
+
+, p(R = r|X) = p(R = 1 d|X)Or(Xr).
+
+Each row is then assigned a response pattern according to these probabilities. We set 
+
+αr = −4.0 for all r and each component of βr equal to 1 to obtain approximately 20% 35 missingness. For the 40% missingness setting, we set αr = −0.5 and each component of βr
+
+equal to 1. For the MAR setting, we use a sequential construction adapted from the MAR simulation in Yoon et al. (2018). We first randomly select a proportion cc = 0 .2 of rows to remain fully observed. Missingness is then introduced among the remaining rows. Let Nm = (1 − cc)N
+
+denote the number of rows subject to missingness, and define the adjusted missingness rate as ˜p m = pm 
+
+> 1−cc
+
+, where pm = 0 .20 or 0.40 is the overall missingness rate. The response pattern Ri = ( Ri1, . . . , Rid ) is generated sequentially for each row i = 1 , . . . , N m. For the first variable, we set p(Ri1 = 0) = ˜p m. For variable j > 1, the probability that Rij = 0 
+
+depends on the previously generated response indicators and their corresponding observed values: 
+
+p(Rij = 0) = ˜p mNm exp [
+
+− ∑ 
+
+> k<j
+
+{wkRik Xik + bk(1 − Rik )}]∑Nm 
+
+> ℓ=1
+
+exp [
+
+− ∑ 
+
+> k<j
+
+{wkRℓk Xℓk + bk(1 − Rℓk )}] ,
+
+where wk, b k ∼ Unif(0 , 1) . This construction thereby induces MAR missingness. We evaluate imputation performance from both pointwise and distributional perspectives. Let P denote the set of missing entries, let S = 100 be the number of Monte Carlo repetitions, and let K = 10 be the number of imputations per repetition. For repetition s
+
+and imputation k, let Ximp  
+
+> i,j,s,k
+
+denote the imputed value of entry (i, j ), and let Xtrue  
+
+> i,j
+
+denote the corresponding true value. The root mean squared error (RMSE) is defined as 
+
+RMSE = 1
+
+S 
+
+> S∑
+> s=1
+> √√√√√
+
+1
+
+|P| 
+
+> ∑
+> (i,j )∈P
+> (
+
+Xtrue  
+
+> i,j
+
+− 1
+
+K
+
+> K∑
+> k=1
+
+Ximp 
+
+> i,j,s,k
+> )2
+
+.
+
+The mean absolute error (MAE) is defined as 
+
+MAE = 1
+
+S
+
+> S∑
+> s=1
+
+1
+
+|P| 
+
+> ∑
+> (i,j )∈P
+> ∣∣∣∣∣
+
+Xtrue  
+
+> i,j
+
+− 1
+
+K
+
+> K∑
+> k=1
+
+Ximp  
+
+> i,j,s,k
+> ∣∣∣∣∣
+
+.
+
+36 The mean absolute difference in correlations (MADC) is defined as 
+
+MADC = 1
+
+S 
+
+> S∑
+> s=1
+> √√√√√
+
+2
+
+d(d − 1) 
+
+> ∑
+> i<j
+> ∣∣∣∣∣
+
+Ctrue  
+
+> i,j
+
+− 1
+
+K
+
+> K∑
+> k=1
+
+Cimp 
+
+> i,j,s,k
+> ∣∣∣∣∣
+
+.
+
+Here, Ctrue is the correlation matrix of the true complete data, and Cimp  
+
+> s,k
+
+is the correlation matrix of the kth imputed dataset in repetition s.Distributional agreement is assessed using the energy distance between the standardized true data and each imputed dataset. For two distributions P and Q, the energy distance (Székely & Rizzo 2013) is defined as ED β (P, Q ) = 2 E∥X − Y ∥β − E∥X − X′∥β − E∥Y − Y ′∥β
+
+where β ∈ (0 , 2) , X, X ′ are independent draws from P , and Y, Y ′ are independent draws from Q. We use β = 1 throughout, which corresponds to the standard energy distance. We can estimate it using a sample version through ̂
+
+ED (P, Q ) = 2
+
+nX · nY
+
+> ∑
+> i,j
+
+∥Xi − Yj ∥ − 1
+
+n2
+
+> X
+> ∑
+> i,j
+
+∥Xi − Xj ∥ − 1
+
+n2
+
+> Y
+> ∑
+> i,j
+
+∥Yi − Yj ∥.
+
+We report the average estimated energy distance over S simulations and K multiple imputations, 
+
+ε = 1
+
+S
+
+> S∑
+> s=1
+
+1
+
+K
+
+> K∑
+> k=1
+
+εs,k ,
+
+where εs,k denotes the estimated energy distance between the standardized true data and the k-th imputed dataset in the s-th simulation. Each εs,k is computed using the eqdist.e 
+
+function from the energy package (Rizzo & Szekely 2022), which returns n 
+
+> 2̂
+
+ED when both samples have equal size n, where ̂ ED is the standard sample energy distance estimator defined above. Since n is fixed and identical across all method comparisons, εs,k = n 
+
+> 2̂
+
+ED s,k 
+
+is a positive scaling of ̂ ED s,k , and therefore the rankings based on ε are equivalent to those based on ̂ ED = 1  
+
+> S
+> ∑Ss=1 1
+> K
+> ∑Kk=1 ̂
+
+ED s,k .37 We also compute the squared maximum mean discrepancy, denoted by MMD 2, using the 
+
+kmmd function from the kernlab package with a Gaussian kernel and automatic bandwidth selection: 
+
+MMD 2 = 1
+
+S
+
+> S∑
+> s=1
+
+1
+
+K
+
+> K∑
+> k=1
+
+MMD 2
+
+> s,k
+
+,
+
+where 
+
+MMD 2 
+
+> s,k
+
+= 1
+
+n(n − 1) 
+
+> ∑
+> i̸=j
+
+k(Xtrue  
+
+> i
+
+, X true  
+
+> j
+
+)+ 1
+
+n(n − 1) 
+
+> ∑
+> i̸=j
+
+k(Ximp 
+
+> i,s,k
+
+, X imp 
+
+> j,s,k
+
+)− 2
+
+n2
+
+> ∑
+> i,j
+
+k(Xtrue  
+
+> i
+
+, X imp 
+
+> j,s,k
+
+).
+
+Smaller values of all five metrics indicate better imputation performance. 
+
+# B Additional Simulation Results 
+
+This section reports additional simulation results that complement the simulation studies in the main paper, including results under higher missingness, MAR settings, varying complete-case proportions, and pointwise evaluation metrics. 
+
+B.1 Results Under 40% Missingness 
+
+Figure S1 reports the simulation results under 40% missingness in terms of MADC, energy distance, and MMD 2. The results are consistent with the findings in the main text. Emputation achieves the best distributional performance across datasets and missingness mechanisms. The matched emputation model generally outperforms the mismatched version, indicating the benefit of aligning the emputation risk with the missingness-generation mechanism, with larger gains observed for CCPP. For Wine, the mismatched version is occasionally slightly better under MCAR emputation, which may be due to a larger training sample. 38 ccpp concrete wine            
+
+> Rel. MADC Rel. Energy Rel. MMD2
+> DGP: ccmv DGP: mcar DGP: ccmv DGP: mcar DGP: ccmv DGP: mcar
+> 0110
+> 0110 100 500
+> 0110 100 500 1 000 2 000
+> EM MICE missForest GAIN Mean Emputation (reference) Emputation (mismatched)
+
+Figure S1: Simulation under 40% missingness: performance of imputation methods in MADC, energy distance relative to emputation, and MMD 2 relative to emputation. The y-axis is shown on a logarithmic scale to accommodate the large variation across methods. The x-axis shows the missingness-generation mechanism. 
+
+B.2 Additional MAR Results 
+
+Figure S2 shows results when missing data are generated under MAR, with approximately 20% and 40% missingness. Although neither emputation specification matches the MAR mechanism, emputation achieves the best performance in terms of energy distance and MMD 2
+
+across datasets. For MADC, emputation is also among the top-performing methods, with MICE and EM showing competitive results on the CCPP and Concrete data. Emputation models trained under MCAR and CCMV assumptions yield similar performance overall. In some cases, the MCAR-trained model performs slightly better, which is likely due to the 39 ccpp concrete wine         
+
+> Rel. MADC Rel. Energy Rel. MMD2
+> DGP: mar DGP: mar DGP: mar
+> 0110
+> 0110 100
+> 0110 100 500 1 000 2 000
+> EM MICE Mean missForest GAIN Emputation (train: mcar) Emputation (train: ccmv)
+
+(a) MAR (20%) ccpp concrete wine          
+
+> Rel. MADC Rel. Energy Rel. MMD2
+> DGP: mar DGP: mar DGP: mar
+> 0110
+> 0110 100
+> 0110 100 500 1 000
+> EM MICE Mean missForest GAIN Emputation (train: mcar) Emputation (train: ccmv)
+
+(b) MAR (40%) 
+
+Figure S2: Simulation under MAR: performance of imputation methods in MADC, energy distance, and MMD 2 (relative to emputation-MCAR). The y-axis is shown on a log scale. larger training sample size. Overall, these empirical results suggest that emputation can remain competitive under MAR. Theoretical guarantees for emputation under MAR are discussed as a future direction in the main paper. 
+
+B.3 Complete-Case Proportion 
+
+Since the CCMV emputation risk uses complete cases during training, we examine how the complete-case proportion affects imputation performance in terms of energy distance. We conduct this analysis under MAR, training emputation under both MCAR and CCMV assumptions. We vary the complete-case proportion from 5% to 60% and generate miss-ingness under MAR. MICE and EM are included as benchmark methods. Each setting is repeated over 100 independent iterations. The resulting confidence intervals are narrow and thus omitted from the figure for clarity. As shown in Figure S3, emputation remains competitive across a range of complete-case proportions and generally outperforms MICE and EM. The dependence on the complete-case proportion is most visible for Concrete, where performance improves as more complete 40 Concrete Wine CCPP                     
+
+> 5% 10% 20% 40% 60% 5% 10% 20% 40% 60% 5% 10% 20% 40% 60%
+> 2.5 5.0 7.5
+> 050 100 150
+> 3456
+> Complete case proportion
+> Energy distance
+> Method Emputation MICE EM Assumption MCAR CCMV
+
+Figure S3: Energy distance as a function of the complete-case proportion. Missingness is generated under MAR. cases are available. Interestingly, MICE does not necessarily improve monotonically as the complete-case proportion increases, and its energy distance even increases for Concrete and CCPP. This may be due to imputation model misspecification. In our implementation, MICE uses predictive mean matching. When the conditional relationships among variables are strongly nonlinear, as may be the case for Concrete and CCPP, increasing the amount of observed information does not necessarily improve performance in terms of energy distance if the working imputation model remains misspecified. In contrast, emputation uses a flexible neural-network-based model, which may partly explain its superior performance even though the MCAR and CCMV training assumptions are not the true MAR mechanism in this experiment. For Wine, MICE shows a slight decreasing trend as the complete-case proportion increases, which may reflect dataset-specific features, since it has the largest number of variables among the three datasets. Overall, these simulations suggest that a complete-case proportion of at least 20% may serve as a useful practical guideline for applying CCMV emputation. 41 B.4 Pointwise Accuracy 
+
+Table S1 and Table S2 report the results of pointwise metrics for 20% and 40% missingness, respectively. Overall, emputation and missForest consistently have the smallest RMSE and MAE across all settings. It is not surprising that missForest yields low RMSE and MAE. As a nonparametric imputation approach, missForest is trained by minimizing pointwise accuracy. However, missForest exhibits larger energy distance and MMD 2 than emputation in most settings. These results emphasize that strong pointwise accuracy does not necessarily imply distribution alignment, whereas emputation directly targets distributional learning. Table S1: Pointwise accuracy under 20% missingness simulation. Within each row, the smallest two values for RMSE and MAE are shown in bold. DGP denotes the missing data generation process. Emp-MCAR and Emp-CCMV denote emputation trained with the MCAR and CCMV emputation risks, respectively. Competing methods include Expectation-Maximization (EM), GAIN, missForest, MICE, and mean imputation (Mean). RMSE MAE Data DGP Emp-MCAR Emp-CCMV EM GAIN MissForest MICE Mean Emp-MCAR Emp-CCMV EM GAIN MissForest MICE Mean Concrete MCAR 0.6188 0.6293 0.7326 0.9768 0.5571 0.7118 1.0013 0.4199 0.4289 0.5465 0.7623 0.3248 0.5063 0.8115 CCMV 0.6239 0.6238 0.8046 1.0759 0.7168 0.7495 1.0385 0.4440 0.4439 0.6195 0.8559 0.5042 0.5566 0.8784 MAR 0.6007 0.6158 0.7161 0.9838 0.5320 0.6952 1.0101 0.4042 0.4165 0.5296 0.7650 0.3045 0.4900 0.8156 Wine MCAR 0.7735 0.7896 0.9577 1.0483 0.7123 0.9325 1.0013 0.5364 0.5477 0.7165 0.7888 0.4756 0.6957 0.7597 CCMV 0.7343 0.7339 0.9753 1.0702 0.8219 0.9714 0.9085 0.5243 0.5233 0.7807 0.8374 0.6078 0.7750 0.7351 MAR 0.7614 0.7773 0.9502 1.0312 0.6925 0.9243 0.9958 0.5294 0.5399 0.7127 0.7790 0.4640 0.6920 0.7581 CCPP MCAR 0.6071 0.6069 0.6421 0.8304 0.5433 0.6274 1.0004 0.4281 0.4279 0.4680 0.6445 0.3643 0.4473 0.8538 CCMV 0.5659 0.5539 0.6247 0.8219 0.5530 0.6055 1.1072 0.3931 0.3874 0.4518 0.6260 0.3601 0.4224 0.9620 MAR 0.6005 0.6000 0.6363 0.8270 0.5256 0.6201 1.0047 0.4189 0.4184 0.4605 0.6406 0.3501 0.4378 0.8577 
+
+# C NACC Data and Sensitivity Analysis 
+
+Table S3 summarizes participant characteristics by cognitive status. On average, impaired participants are younger at death, while education and race distributions are similar across groups. Genetically, APOE ε4 carrier status is more common among impaired participants, 42 Table S2: Pointwise accuracy under 40% missingness simulation. Within each row, the smallest two values for RMSE and MAE are shown in bold. DGP denotes the missing data generation process. Emp-MCAR and Emp-CCMV denote emputation trained with the MCAR and CCMV emputation risks, respectively. Competing methods include Expectation-Maximization (EM), GAIN, missForest, MICE, and mean imputation (Mean). RMSE MAE Data DGP Emp-MCAR Emp-CCMV EM GAIN MissForest MICE Mean Emp-MCAR Emp-CCMV EM GAIN MissForest MICE Mean Concrete MCAR 0.7748 0.7862 0.8696 1.0274 0.7849 0.8617 1.0001 0.5552 0.5638 0.6703 0.8032 0.5189 0.6528 0.8103 CCMV 0.7414 0.7421 0.9725 1.1766 0.8523 0.9364 1.0809 0.5302 0.5307 0.7786 0.9094 0.6196 0.7431 0.9269 MAR 0.7904 0.7954 0.8699 0.9664 0.7671 0.8631 1.0077 0.5784 0.5811 0.6704 0.7551 0.5032 0.6539 0.8143 Wine MCAR 0.8384 0.8697 1.0080 1.0819 0.8674 0.9672 1.0012 0.5901 0.6243 0.7558 0.8037 0.6107 0.7260 0.7598 CCMV 0.7749 0.7830 1.0399 1.0193 0.8680 1.0065 1.0127 0.5610 0.5645 0.8390 0.8083 0.6508 0.8160 0.8429 MAR 0.8537 0.8572 1.0003 0.9905 0.8475 0.9601 0.9972 0.6137 0.6153 0.7507 0.7318 0.5970 0.7218 0.7586 CCPP MCAR 0.6937 0.6943 0.7215 1.1320 0.7101 0.7164 1.0001 0.5041 0.5046 0.5384 0.8806 0.4991 0.5280 0.8535 CCMV 0.6467 0.5854 0.7349 0.9880 0.6693 0.7272 1.2418 0.4467 0.4159 0.5303 0.7626 0.4492 0.5134 1.0749 MAR 0.6835 0.6834 0.7048 0.8750 0.6917 0.6975 1.0036 0.4942 0.4945 0.5224 0.6751 0.4820 0.5090 0.8568 whereas APOE ε2 carrier status is more common among cognitively normal participants. ADNC also varies by cognitive status, with high ADNC much more frequent in the impaired group and low or absent ADNC more common among cognitively normal participants. 
+
+C.1 Tree Graph 
+
+We select the tree graph using the parent-based alignment approach in Suen & Chen (2026). For each non-complete pattern r̸ = 1 d, the parent s is chosen as the one whose observed data distribution p(xr|R = s) most closely matches p(xr|R = r), as measured by the energy distance computed on the variables commonly observed among NACCBMI , BPSYS ,and NACCGDS together with the always-observed variables. Continuous variables ( AGE , EDUC ,
+
+NACCBMI , BPSYS , NACCGDS ) are standardized prior to distance computation, while categorical variables ( SEX , RACE , NACCAPOE , NACCDIUR , NPADNC , CDRGLOB ) are kept on their original scales, so that no single variable dominates the energy distance. The resulting tree graph is 43 Table S3: Demographic and genetic characteristics by cognitive status. Statistics are presented as mean (standard deviation) for age and education and count (%) for the other variables.                                            
+
+> Overall Normal (CDR = 0) Impaired (CDR >0) (N = 4906) (N = 645) (N = 4261)
+> Age at death, years 81 (11) 86 (9) 80 (11)
+> Sex
+> Male 2680 (55%) 285 (44%) 2395 (56%) Female 2226 (45%) 360 (56%) 1866 (44%)
+> Race
+> White 4641 (95%) 607 (94%) 4034 (95%) Non-White 265 (5.4%) 38 (5.8%) 227 (5.3%)
+> Education, years 15 (3) 16 (3) 15 (3)
+> APOE ε4 carrier 2075 (42%) 129 (20%) 1946 (46%)
+> APOE ε2 carrier 571 (12%) 110 (17%) 461 (11%)
+> ADNC
+> Not AD 522 (10%) 124 (19%) 398 (9.2%) Low 1429 (29%) 375 (58%) 1054 (25%) Intermediate 912 (19%) 130 (20%) 782 (18%) High 2043 (42%) 16 (2.5%) 2027 (48%)
+
+shown in Figure S4. We further apply the tree-graph emputation to the NACC data using 500 bootstrap replicates. The training parameters used for tree-graph emputation are the same as those reported in the main analysis under the MCAR and CCMV assumptions. The imputation procedure, as detailed in the main paper, proceeds sequentially along the tree. For each incomplete pattern, missing variables are imputed step by step from the observed pattern toward the root node. For instance, consider pattern 000 , where NACCBMI , BPSYS , and NACCGDS are all missing. According to the selected tree graph, the path connecting 000 to the root is 
+
+000 ← 010 ← 110 ← 111 . Thus, the imputation is performed sequentially along this path. 44 111 
+
+# 011 101 110 
+
+# 010 
+
+# 000 
+
+# 100 
+
+# 001 
+
+Figure S4: Tree graph for the NACC data analysis obtained by parent-based alignment. Each node represents a response pattern, where the three binary digits correspond to 
+
+NACCBMI , BPSYS , and NACCGDS , respectively. 
+
+BPSYS is first imputed to move from 000 to 010 , then NACCBMI is imputed to move from 010 
+
+to 110 , and finally NACCGDS is imputed to reach the complete-case pattern 111 .As shown in Figure S5, the estimates from tree-graph emputation are consistent with those obtained under CCMV and MCAR assumptions. For both the resilience and resistance models, the odds ratio estimates and 95% confidence intervals are similar across the three emputation assumptions and are also aligned with MICE. It is interesting that complete-case analysis yields very different estimates from emputation for several covariates such as sex, diuretic use, and GDS score. Although MCAR is a strong working assumption, emputation uses incomplete observations during training and thereby exploits much more observed information than complete-case analysis. In addition, emputation uses a flexible neural-network-based distributional model, which may better capture nonlinear dependence among clinical and demographic variables. Overall, Figure S5 suggests that the tree-graph analysis supports the scientific conclusions reported in the main paper and also suggests that complete-case analysis can yield different results when incomplete observations are discarded. 45 Resilience Resistance        
+
+> 0.5 12480.5 12
+> GDS score Diuretic use Systolic BP BMI APOE e2 carrier APOE e4 carrier Education Race (White) Sex (Female) Age at death
+> Odds Ratio
+
+Method CC MICE Emputation (CCMV) Emputation (MCAR) Emputation (Tree graph) Figure S5: Odds ratios (ORs) and 95% confidence intervals for predictors of cognitive resilience (left) and cognitive resistance (right) under five missing-data analyses: complete-case analysis (CC), multiple imputation by chained equations (MICE), emputation under MCAR, emputation under CCMV, and emputation under tree graph. 46 C.2 Sensitivity Analysis 
+
+Emputation accommodates a variety of missing data assumptions. It is therefore important to assess the sensitivity of downstream conclusions to this choice. We have compared estimated odds ratios across MCAR, CCMV, and tree graph emputation risks, which examine sensitivity to different identifying assumptions on the extrapolation density. Here, we further assess departures from the CCMV assumption using an exponential tilting scheme. For a sensitivity parameter ρ, the tilted extrapolation density is 
+
+pρ(x¯r|xr, R = r) ∝ p(x¯r|xr, R = 1 d) · exp( −ρ∥x¯r − μ¯r∥2)
+
+where ρ = 0 recovers CCMV, and μ¯r = E[X¯r|Xr, R = 1 d] is the conditional mean un-der the CCMV extrapolation density. In practice, the tilting is operationalized in the standardized logit-transformed space to ensure scale invariance across variables with dif-ferent supports, specifically BMI ∈ [10 , 100] , systolic blood pressure ∈ [70 , 230] , and GDS score ∈ [0 , 15] . The quantity μ¯r is estimated as the Monte Carlo mean of M candidate draws from the trained emputation model. We obtain samples from the tilted density via sampling-importance resampling, where each candidate draw receives importance weight 
+
+w(m) ∝ exp (
+
+−ρ∥x(m)¯r − μ¯r∥2)
+
+, and K draws are resampled for each subject according to the normalized weights ˜w(m) = w(m)/ ∑ 
+
+> m
+
+w(m). The resampled draws are then transformed back to the original scale via destandardization and inverse logit. These draws serve as multiple imputations, and odds ratios are pooled across the K completed datasets. Bootstrap confidence intervals are constructed across B = 500 replicates. Figure S6 shows that the associations for age, sex, APOE ε4 carrier status, and diuretic use are stable in both models, with both the direction and statistical significance robust to departures from CCMV. BMI in the resistance model and GDS in the resilience model are more sensitive, with statistical significance not consistently preserved across different values of ρ. These associations should therefore be interpreted more cautiously. Overall, 47 APOE_e2 NACCBMI BPSYS NACCDIUR NACCGDS 
+
+0.4 0.6 0.8 1.0 
+
+0.92 0.96 1.00 
+
+1.00 1.04 1.08 1.12 
+
+1.0 1.5 2.0 2.5 3.0 
+
+246
+
+1.000 1.005 1.010 1.015 1.020 
+
+1.0 1.5 2.0 2.5 
+
+0.90 0.95 1.00 
+
+AGE SEX RACE EDUC APOE_e4 
+
+−1 0 1 −1 0 1 −1 0 1 −1 0 1 −1 0 1
+
+1.02 1.05 1.08 
+
+1.0 1.5 2.0 2.5 
+
+ρ
+
+> Odds Ratio
+
+(a) Resilience 
+
+APOE_e2 NACCBMI BPSYS NACCDIUR NACCGDS 
+
+0.6 0.8 1.0 
+
+0.90 0.95 1.00 
+
+1.00 1.04 1.08 1.12 
+
+1.0 1.5 2.0 2.5 
+
+0.4 0.6 0.8 1.0 
+
+0.995 1.000 1.005 1.010 1.015 
+
+1.00 1.25 1.50 1.75 2.00 
+
+1.00 1.02 1.04 1.06 1.08 
+
+AGE SEX RACE EDUC APOE_e4 
+
+−1 0 1 −1 0 1 −1 0 1 −1 0 1 −1 0 1
+
+1.00 1.02 1.04 1.06 
+
+0.6 0.7 0.8 0.9 1.0 1.1 
+
+ρ
+
+> Odds Ratio
+
+(b) Resistance Figure S6: Sensitivity analysis: estimated odds ratios across values of the sensitivity parameter ρ for (a) resilience model and (b) resistance model. the sensitivity analysis supports the robustness of the main findings and suggests that complete-case analysis may overstate significance because it relies on a selected complete-case sample. 48 D Proofs 
+
+D.1 Proof of Theorem 3.1 
+
+The MCAR emputation risk can be written as 
+
+E[̂ L(f )] = E
+
+ 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+ ∑
+
+> r<
+
+Ri
+
+1
+
+|Ri − r|
+
+
+
+1
+
+B
+
+> B
+
+∑
+
+> b=1
+
+∥∥∥Xi, Ri−r − [f (Xi,r , ϵ i, ¯r,b , r )] Ri−r
+
+∥∥∥
+
+− 12B(B − 1) 
+
+> B
+
+∑
+
+> b,b ′=1
+
+∥∥∥[f (Xi,r , ϵ i, ¯r,b , r )] Ri−r − [f (Xi,r , ϵ i, ¯r,b ′ , r )] Ri−r
+
+∥∥∥
+
+= EXR,R,ϵ 
+
+ ∑
+
+> r<R
+
+1
+
+|R − r|
+
+
+
+1
+
+B
+
+> B
+
+∑
+
+> b=1
+
+∥XR−r − [f (Xr, ϵ ¯r,b , r )] R−r∥− 12B(B − 1) 
+
+> B
+
+∑
+
+> b,b ′=1
+
+∥[f (Xr, ϵ ¯r,b , r )] R−r − [f (Xr, ϵ ¯r,b ′ , r )] R−r∥
+
+
+
+= EXR,R 
+
+ ∑
+
+> r<R
+
+1
+
+|R − r|Eϵ [∥XR−r − [f (Xr, ϵ ¯r,b , r )] R−r∥]
+
+− 12Eϵ ∥[f (Xr, ϵ ¯r,b , r )] R−r − [f (Xr, ϵ ¯r,b ′ , r )] R−r∥
+
+
+
+= EXR,R 
+
+ ∑
+
+> r<R
+
+1
+
+|R − r|[−ES (pf (·| xr, r ), X R−r)] 
+
+
+
+= ER
+
+ ∑
+
+> r<R
+
+1
+
+|R − r|EXr |REXR−r ∼p(·| xr ,R )[−ES (pf (·| xr, r ), X R−r)] 
+
+
+
+= ER
+
+ ∑
+
+> r<R
+
+1
+
+|R − r|EXr EXR−r ∼p(·| xr )[−ES (pf (·| xr, r ), X R−r)] 
+
+,
+
+where the last equality uses the property of identified extrapolation densities under MCAR, 
+
+i.e. , p(·| xr, R ) = p(·| xr) for any R ∈ R ∪ { 1d}. Because the energy score (ES) is a strictly proper scoring rule, the innermost expectation 
+
+EXR−r ∼p(·| xr )[−ES (pf (·| xr, r ), X R−r)] 
+
+is minimized if and only if, for any s ∈ R ∪ { 1d} satisfying s > r ,
+
+pf ∗ (xs−r|xr, r ) = p(xs−r|xr).
+
+49 Therefore, the density of ̂ X¯r satisfies pf ∗ (x¯r|xr, r ) = p(x¯r|xr) and recovers the true extrapo-lation density under MCAR. 
+
+D.2 Proof of Theorem 3.2 
+
+The CCMV population risk can be expressed as 
+
+E[̂ L(f )] = E
+
+ 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+ ∑
+
+> r∈R
+
+I(Ri = 1 d) 1
+
+|¯r|
+
+
+
+1
+
+B
+
+> B
+
+∑
+
+> b=1
+
+∥Xi, ¯r − [f (Xi,r , ϵ i, ¯r,b , r )] ¯r∥− 12B(B − 1) 
+
+> B
+
+∑
+
+> b,b ′=1
+
+∥[f (Xi,r , ϵ i, ¯r,b , r )] ¯r − [f (Xi,r , ϵ i, ¯r,b ′ , r )] ¯r∥
+
+
+
+= EXR,R,ϵ 
+
+ ∑
+
+> r∈R
+
+I(R = 1 d) 1
+
+|¯r|
+
+
+
+1
+
+B
+
+> B
+
+∑
+
+> b=1
+
+∥X¯r − [f (Xr, ϵ ¯r,b , r )] ¯r∥− 12B(B − 1) 
+
+> B
+
+∑
+
+> b,b ′=1
+
+∥[f (Xr, ϵ ¯r,b , r )] ¯r − [f (Xr, ϵ ¯r,b ′ , r )] ¯r∥
+
+
+
+= EXR,R 
+
+ ∑
+
+> r∈R
+
+I(R = 1 d) 1
+
+|¯r|
+
+Eϵ [∥X¯r − [f (Xr, ϵ ¯r,b , r )] ¯r∥]
+
+− 12Eϵ ∥[f (Xr, ϵ ¯r,b , r )] ¯r − [f (Xr, ϵ ¯r,b ′ , r )] ¯r∥
+
+
+
+= EXR,R 
+
+ ∑
+
+> r∈R
+
+I(R = 1 d) 1
+
+|¯r|[−ES (pf (·| xr, r ), X ¯r)] 
+
+
+
+= p(R = 1 d) ∑
+
+> r∈R
+
+1
+
+|¯r|EXr |R=1 d EX¯r ∼p(·| xr ,R =1 d)[−ES (pf (·| xr, r ), X ¯r)] .
+
+Because the energy score is a strictly proper scoring rule, the innermost expectation 
+
+EX¯r ∼p(·| xr ,R =1 d)[−ES (pf (·| xr, r ), X ¯r)] 
+
+is minimized if and only if 
+
+pf ∗ (x¯r|xr, r ) = p(x¯r|xr, R = 1 d).
+
+50 D.3 Proof of Theorem 3.3 
+
+Similar to the derivation above, the tree-graph emputation risk can be written as 
+
+E[̂ LG(f )] = E
+
+ 1
+
+n
+
+> n
+
+∑
+
+> i=1
+
+∑
+
+> r∈R
+
+I(Ri = PA (r)) 
+
+|PA (r) − r|
+
+
+
+1
+
+B
+
+> B
+
+∑
+
+> b=1
+
+∥∥∥Xi, PA (r)−r − [f (Xi,r , ϵ i, ¯r,b , r )] PA (r)−r
+
+∥∥∥
+
+− 12B(B − 1) 
+
+∑
+
+> b̸=b′
+
+∥∥∥[f (Xi,r , ϵ i, ¯r,b , r )] PA (r)−r − [f (Xi,r , ϵ i, ¯r,b ′ , r )] PA (r)−r
+
+∥∥∥
+
+= E
+
+ ∑
+
+> r∈R
+
+I(R = PA (r)) 
+
+|PA (r) − r|
+
+Eϵ
+
+[∥ ∥∥XPA (r)−r − [f (Xr, ϵ ¯r,b , r )] PA (r)−r
+
+∥∥∥]
+
+− 12Eϵ
+
+∥∥∥[f (Xr, ϵ ¯r,b , r )] PA (r)−r − [f (Xr, ϵ ¯r,b ′ , r )] PA (r)−r
+
+∥∥∥
+
+= ∑
+
+> r∈R
+
+p(R = PA (r)) 
+
+|PA (r) − r| EXr |R=PA (r)EXPA (r)−r ∼p(·| xr ,R =PA (r)) [−ES( pf (·| xr, r ), X PA (r)−r)] .
+
+For each r ∈ R , the expectation EXPA (r)−r ∼p(·| xr ,R =PA (r)) [−ES (
+
+pf (·| xr, r ), X PA (r)−r
+
+)
+
+] is mini-mized if and only if 
+
+pf ∗ (xPA (r)−r | xr, r ) = p(xPA (r)−r | xr, R = PA (r)) .
+
+D.4 Proof of Theorem 4.1 
+
+The m-ACMV emputation risk can be written as 
+
+E[̂ L(g)] = E
+
+ 1
+
+n
+
+> n
+
+∑
+
+> i=1
+> d−1
+
+∑
+
+> s=1
+
+I(Ti > s )
+
+
+
+1
+
+B
+
+> B
+
+∑
+
+> b=1
+
+|Xi,s +1 − g(Xi, ≤s, ϵ i,>s,b , s )|− 12B(B − 1) 
+
+∑
+
+> b̸=b′
+
+|g(Xi, ≤s, ϵ i,>s,b , s ) − g(Xi, ≤s, ϵ i,>s,b ′ , s )|
+
+
+
+= E
+
+
+
+> d−1
+
+∑
+
+> s=1
+
+I(T > s )
+
+Eϵ |Xs+1 − g(X≤s, ϵ >s,b , s )|− 12Eϵ |g(X≤s, ϵ >s,b , s ) − g(X≤s, ϵ >s,b ′ , s )|
+
+
+
+= E
+
+
+
+> d−1
+
+∑
+
+> s=1
+
+I(T > s ){− ES (pg(·| x≤s, s ), X s+1 )}
+
+
+
+=
+
+> d−1
+
+∑
+
+> s=1
+
+p(T > s )EX≤s|T >s EXs+1 ∼p(·| x≤s,T >s )[−ES (pg(·| x≤s, s ), X s+1 )] 
+
+51 Since the energy score is strictly proper, the inner expectation 
+
+EXs+1 ∼p(·| x≤s,T >s )[−ES (pg(·| x≤s, s ), X s+1 )] 
+
+is minimized if and only if 
+
+pg∗ (xs+1 |x≤s, T = s) = p(xs+1 |x≤s, T ≥ s + 1) .
+
+That is, we have shown that the density of ̂ Xs+1 satisfies pg∗ (xs+1 |x≤s, T = s) =
+
+p(xs+1 |x≤s, T ≥ s + 1) , which recovers the desired extrapolation density under m-ACMV. 52
