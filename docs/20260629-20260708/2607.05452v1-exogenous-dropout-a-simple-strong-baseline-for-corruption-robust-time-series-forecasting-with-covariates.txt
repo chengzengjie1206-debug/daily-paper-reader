@@ -1,0 +1,713 @@
+Title: Exogenous Dropout: A Simple, Strong Baseline for Corruption-Robust Time Series Forecasting with Covariates
+
+URL Source: https://arxiv.org/pdf/2607.05452v1
+
+Published Time: Wed, 08 Jul 2026 00:01:49 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# Exogenous Dropout: A Simple, Strong Baseline for Corruption-Robust Time Series Forecasting with Covariates 
+
+## HU Hao 1 AI Xue-shan 1,2, * 
+
+> 1
+
+State Key Laboratory of Water Resources Engineering and Management, Wuhan University, Wuhan 430072, China 
+
+> 2
+
+Hubei Key Laboratory of Water System Science for Sponge City Construction (Wuhan University), Wuhan 430072, China 
+
+> *
+
+Corresponding author. 
+
+## July 8, 2026 
+
+Abstract 
+
+Time series forecasters that incorporate exogenous covariates are fragile in deployment: when those covariates are corrupted — noised, temporally misaligned, or missing — state-of-the-art exogenous-fusion and exogenous-adapted models (TimeXer, DAG, iTransformer, CrossLinear) degrade 32–62% above the endogenous-only floor on electricity-price forecasting. A growing line of work responds with increasingly elaborate architectures that bound, gate, or mask the exogenous pathway. We show that much of this architectural advantage can be matched or exceeded by a one-line, model-agnostic training intervention: 
+
+exogenous dropout , which randomly zeros whole exogenous channels during training. It restores ro-bustness across every architecture we test at negligible cost to clean accuracy; applied to an existing dual-correlation network (DAG), it yields the most robust model in our study — Gaussian degradation 
+
++3%, misalignment −8%, missing-channel −4% relative to the floor, at near-best clean accuracy (MSE 0.259 vs. the study-best 0.255). To test whether such robustness instead demands a dedicated archi-tecture , we build a deliberately strong bounded foil, BoundEx — a learnable gate, a fallback residual that provably reverts to the endogenous baseline, and per-channel exogenous FiLM modulation — and find it outperformed by DAG trained with the same dropout, on clean accuracy and on all three cor-ruption types. An architecture ×dropout ablation, a gate-behavior diagnostic, and a representation-level bound (which holds but is empirically loose) show that architectural boundedness is not necessary for this robustness: although the bound does contribute within BoundEx in some domains, an unbounded model trained with the same dropout is more robust than the bounded one in every domain. The finding replicates across three domains (electricity prices, reservoir hydrology, and meteorology) and three corruption types (Gaussian noise, temporal misalignment, and fully missing channels). We re-lease a corruption-robustness benchmark and recommend exogenous dropout as a simple, strong baseline against which future architectural proposals should be measured. 
+
+# 1 Introduction 
+
+Electricity price forecasting, weather-driven energy prediction, and supply-chain demand estimation share a common structure: forecasters observe both an endogenous target history and a stream of exogenous covariates — day-ahead auction prices, temperature forecasts, holiday calendars — that are known in advance over the forecast horizon. Incorporating these future-known covariates should, in principle, improve accuracy. Yet the dominant paradigm for doing so treats exogenous variables as unconstrained information sources whose influence on the model’s internal representation has no architectural upper bound. This absence of a bound matters profoundly in deployment. Real-world exogenous feeds are routinely corrupted: day-ahead prices are revised after settlement, weather forecasts drift, sensor readings fail, and pipeline errors introduce spurious channels. Under such conditions, unbounded exogenous fusion becomes a 1arXiv:2607.05452v1 [cs.LG] 5 Jul 2026 liability: when the covariates are corrupted, the exogenous pathway, rather than helping, can actively harm prediction, and no architectural mechanism prevents it from doing so. This vulnerability is not theoretical, and the field has noticed. A rapidly growing line of work — TimeXer Wang et al. [2024], ExoTST Tayal et al. [2024], DAG Qiu et al. [2025], CrossLinear Zhou et al. [2025], CITRAS Yamaguchi et al. [2026], and FTimeXer Li et al. [2026] — responds with increasingly sophisticated fusion mechanisms (cross-attention, dual temporal-channel correlation graphs, stochastic masking, frequency-domain gating), several explicitly motivated by robustness to imperfect covariates. The implicit premise is that defending the exogenous pathway requires dedicated architectural machinery. In this paper we question that premise, and find that a far simpler intervention suffices. We take a deliberately minimal path: we study a one-line, model-agnostic training intervention — exoge-nous dropout — which randomly zeros entire exogenous channels during training (rescaling the survivors), exposing the model to varying exogenous availability so that it learns not to over-rely on any single co-variate. We add it to five representative forecasters and measure robustness under a controlled corruption benchmark. To put the architectural hypothesis to a fair test rather than simply dismiss it, we also build a deliberately strong bounded architecture — BoundEx (Bounded Exogenous Modulation) — not as a proposed model, but as a controlled foil : it injects exogenous information through a FiLM-style affine modulation Perez et al. [2018] — channel-wise scaling γ and shifting β — gated by a learned scalar ¯g ∈ [0 , 1] 
+
+and combined with the endogenous representation through a fallback residual: 
+
+hout = (1 − ¯g) ⊙ hendog + ¯ g ⊙ (γ ⊙ hendog + β) (1) When the gate closes ( ¯g → 0) the representation provably reverts to the endogenous backbone (we formalize this bound in Appendix A), and future-known covariates, when available, enter only through this same bounded modulation pathway. Our central finding is negative for this architectural route: once exogenous dropout is applied to the baselines, BoundEx — despite its built-in guarantee — is outperformed on clean accuracy and on all three corruption types, most decisively by an existing dual-correlation network (DAG) trained with the same dropout. The robustness reported for such bounded designs, we conclude, comes from the augmentation rather than the architecture. 
+
+Our contributions are fourfold: 1. We introduce a systematic exogenous-corruption robustness benchmark spanning three domains (electricity prices across five markets, reservoir hydrology, and meteorology), four test-time regimes (clean, Gaussian noise, temporal misalignment, and missing channels), and five random seeds per configuration, with degradation measured against the endogenous-only floor. 2. We show that exogenous dropout , a one-line training-time augmentation, is a strong and model-agnostic robustness baseline: it improves robustness under Gaussian noise, misalignment, and missing channels for every architecture tested (e.g. DAG +32% → +3% Gaussian, +25% → − 8% misalignment, 
+
++24% → − 4% missing) at negligible clean-accuracy cost. 3. Through a complete architecture ×dropout ablation , we establish that architectural boundedness is not necessary for this robustness: DAG with exogenous dropout is the most robust model in our study while retaining near-best clean accuracy , and outperforms our purpose-built bounded architecture BoundEx on clean accuracy and on all three corruption types — in every domain. 4. We provide a mechanism analysis — a gate-behavior diagnostic showing the learned gate does not close under corruption in any domain, and a representation-level bound that holds but is empirically loose — supporting the conclusion that architectural boundedness is not required for exogenous-corruption robustness (it does aid BoundEx in some domains, but an unbounded model with the same dropout is more robust everywhere). 22 Related Work 
+
+## 2.1 Endogenous Time Series Forecasting 
+
+The past five years have witnessed rapid evolution in deep learning for time series forecasting. Early Transformer-based forecasters adapted the canonical encoder-decoder architecture et al. [2017] to temporal data: Informer Zhou et al. [2021] introduced sparse attention for long sequences, Autoformer Wu et al. [2021] leveraged seasonal-trend decomposition with auto-correlation, and FEDformer Zhou et al. [2022] operated in the frequency domain. A critical inflection point came with the observation that simpler architectures often outperform complex Transformers on standard benchmarks. DLinear Zeng et al. [2023] demonstrated that a single linear layer could surpass many Transformer variants, prompting a re-examination of architectural complexity. PatchTST Nie et al. [2022] addressed this by segmenting time series into patches and applying channel-independent attention, achieving strong results while maintaining Transformer expressivity. More recent work has explored MLP-based architectures Ekambaram et al. [2023], Das et al. [2023] and foundation model approaches Ansari et al. [2024], Liang et al. [2024]. This literature establishes a strong history-only baseline. By improving representations of trend, sea-sonality, long-range dependence, channel structure, and distributional shift within the lookback window, endogenous forecasters show that substantial predictive power can be extracted without external covariate streams. This strength defines the endogenous floor : the accuracy attainable when exogenous information is ignored. Exogenous methods should be judged relative to this floor, improving clean accuracy without falling substantially below it when covariates are noisy, misaligned, missing, or otherwise corrupted. At the same time, endogenous forecasting leaves a distinct problem unresolved. Many real tasks provide auxiliary signals that differ from target history: they may come from separate systems, be available over the forecast horizon, or be corrupted independently of the endogenous series. The question is therefore not only how to build a stronger history encoder, but how to incorporate such covariates without letting them dominate forecasts when their reliability deteriorates. This motivates the exogenous-variable forecasting literature reviewed next. 
+
+## 2.2 Exogenous Variables in Time Series Forecasting 
+
+The integration of exogenous variables into neural forecasters has attracted growing attention, driven by applications in energy markets, transportation, and healthcare where future-known covariates are routinely available. Early and general-purpose approaches incorporated covariates directly into the forecasting model. N-BEATSx Olivares et al. [2021] extended the N-BEATS basis expansion architecture with exogenous stacks, while Temporal Fusion Transformer Lim et al. [2021] used variable selection networks to weight covariates before feeding them into a multi-head attention encoder, and iTransformer Liu et al. [2023] inverted the attention dimension — attending across variates rather than time steps — so that auxiliary covariates can be handled as part of the multivariate input. These methods, while effective, treat exogenous and endogenous information largely symmetrically — providing no protection against corrupted covariates. More recent work has developed specialized architectures for exogenous fusion, in rapid succession. TimeXer Wang et al. [2024] introduces a dual-branch Transformer in which endogenous patches and exoge-nous variables exchange information through cross-attention with learnable global tokens. ExoTST Tayal et al. [2024] separates past and future exogenous variables as distinct modalities and fuses them through cross-temporal attention. CATS Lu et al. [2024] constructs auxiliary time series from the covariates as a plug-and-play exogenous representation. DAG Qiu et al. [2025] builds dual temporal and channel-wise correlation graphs to discover and inject exogenous dependencies, achieving strong clean-data accuracy. CrossLinear Zhou et al. [2025] adds a lightweight plug-and-play cross-correlation embedding. The two most recent entries, CITRAS Yamaguchi et al. [2026] and FTimeXer Li et al. [2026], respectively propose a covariate-informed Transformer with dedicated exogenous embedding and fusion layers, and a frequency-domain gated fusion combined with stochastic exogenous masking and consistency regularization. Two properties of this literature are worth emphasizing for what follows. First, to our knowledge none of these methods imposes a structural constraint that bounds how much the exogenous pathway can perturb the endogenous representation — their fusion magnitude is unconstrained by design, so a corrupted covariate can in principle move the forecast arbitrarily far from the endogenous-only prediction. Second, where robustness to imperfect covariates is addressed at all, it is addressed empirically rather than architecturally: most 3tellingly, the robustness component of the most recent of these models, FTimeXer, is closely related to 
+
+stochastic exogenous masking — a relative of the exogenous dropout we isolate and study in this paper — rather than to any architectural bound. These two observations — the absence of an architectural bound, and the empirical, masking-based nature of existing robustness mechanisms — motivate the two questions this paper asks: whether an explicit architectural bound is necessary, and how far a simple masking-style training augmentation alone can carry robustness. 
+
+## 2.3 Conditional Modulation and Gating in Deep Learning 
+
+A long line of work studies how one signal can conditionally modulate another inside a neural network. Feature-wise Linear Modulation (FiLM) Perez et al. [2018] was introduced for visual question answering, where linguistic representations conditionally scale and shift visual features through channel-wise affine pa-rameters; it has since been adopted across image generation, style transfer, and speech processing as a lightweight way to inject conditioning information without restructuring the backbone. Gating mechanisms have an equally long history: LSTMs Hochreiter and Schmidhuber [1997] use forget and input gates to regulate information flow through time; Highway Networks Srivastava et al. [2015] route signals through gated skip connections that let very deep networks preserve identity mappings; and Mixture-of-Experts architectures Shazeer et al. [2017] employ learned gating functions to sparsely route inputs to specialized sub-networks. Gated Linear Units Dauphin et al. [2017] offer a simpler element-wise variant in which a sig-moid gate multiplicatively controls feature propagation. A common principle recurs across these methods — 
+
+conditional, gated information flow , in which a learned gate determines how strongly an auxiliary or trans-formed signal influences the main representation and, in the limit of a closed gate, recovers the unmodulated signal. A complementary ingredient is normalization for distribution shift. Reversible instance normalization (RevIN) Kim et al. [2022] normalizes each input series and later denormalizes the forecast, improving ro-bustness to shifts in level and scale; a forecaster equipped with instance normalization thus provides a stable, well-characterized baseline that a gated mechanism can fall back to when its gate closes. How these ingredi-ents — affine FiLM modulation, a learned gate, and a fallback to a normalized endogenous baseline — can be assembled into an exogenous-injection mechanism with an explicit bound on exogenous influence is the design we study in §3. 
+
+# 3 Methods: A Bounded Foil (BoundEx) and Exogenous Dropout 
+
+This section defines the two methods we compare. The intervention the paper ultimately recommends is 
+
+exogenous dropout , a one-line, model-agnostic training augmentation (§3.5). Against it we set BoundEx ,a deliberately strong bounded foil : an architecture purpose-built to make exogenous influence controllable by construction, which we use to test whether architectural boundedness is necessary for corruption robustness (§3.1–§3.4). We describe both below so that the comparison in §4–§5 is concrete. 
+
+## 3.1 Problem Formulation 
+
+A forecasting model receives three inputs: an endogenous lookback window Xendog ∈ RL×de of the target series over L historical time steps with de variates; historical exogenous covariates Xhist ∈ RL×dx
+
+observed over the same lookback; and future-known exogenous covariates Xfuture ∈ RH×dx spanning the 
+
+H-step forecast horizon. The target is Y ∈ RH×de . A corruption process ˜X = Corrupt (X; c, σ ) maps clean exogenous inputs to degraded ones under corruption type c (Gaussian noise, temporal misalignment, or missing channels) with severity σ.The standard approach fuses these inputs through an unbounded mechanism — cross-attention in TimeXer Wang et al. [2024], dual temporal-channel correlation in DAG Qiu et al. [2025], or concatena-tion followed by a Transformer encoder — producing a prediction ˆyunbounded = Fuse (hendog , X hist , X future )
+
+where hendog = Backbone (Xendog ) is the endogenous encoder output. The key vulnerability is that Fuse lacks any architectural constraint on ∥ˆyunbounded − ˆyfloor ∥, where ˆyfloor = Projector (hendog ) is the prediction of the endogenous-only model. When exogenous inputs are corrupted, this unbounded perturbation can drive the forecast arbitrarily far from the safe endogenous baseline. 4We define two desiderata for robust exogenous injection: 1. Gate-proportional influence on the representation: the deviation of the modulated represen-tation from the endogenous one scales linearly with a learned gate ¯g ∈ [0 , 1] — by construction 
+
+∥hout −hendog ∥ = ¯ g ∥hmod −hendog ∥ — so exogenous influence on the internal representation is controlled 
+
+in proportion to the gate rather than admitted without limit. 2. Graceful degradation: as corruption severity increases, the gate ¯g should approach zero, causing the model to revert to the endogenous-only prediction — the model may fail to improve upon the floor but must not fall below it. 
+
+## 3.2 Exogenous Encoding Input 𝑥 = [ 𝑥 exog | 𝑥 target ] ∈ R𝐵 ×𝐿 × ( 𝐾 +1)
+
+Instance normalization 𝑥 norm = ( 𝑥 − 𝜇 )/ 𝜎 
+
+Split 
+
+Patch embedding 
+
+𝐿 → 𝑁 patches Channel dropout 
+
+Per-channel linear 
+
+R𝐿 or 𝐿 +𝑃 → R𝐷 
+
+ℎexog ∈ R𝐵 ×𝐾 ×𝐷 
+
+FiLM MLP 
+
+𝛾 𝑘 , 𝛽 𝑘 
+
+Gate MLP 
+
+𝑔 𝑘 = 𝜎 (𝑧 𝑘 /𝜏 )
+
+Í ¯𝛾, ¯𝛽 = Agg 𝑘 (𝛾 𝑘 , 𝛽 𝑘 , 𝑔 𝑘 )
+
+¯𝑔 = mean 𝑘 𝑔 𝑘 
+
+𝑥 exog ∈ R𝐵 ×𝐿 ×𝐾 
+
+Transformer encoder 
+
+ℎendog ∈ R𝐵 × 𝑁 ×𝐷 
+
+𝑥 target ∈ R𝐵 ×𝐿 ×1
+
+Bounded gated-FiLM modulation 
+
+ℎmod = ¯𝛾 ⊙ ℎendog + ¯𝛽 =⇒ ℎout = ¯𝑔ℎ mod + ( 1 − ¯𝑔 ) ℎendog 
+
+> fallback residual
+
+FlattenHead: R𝐷 × 𝑁 → R𝑃 
+
+Forecast ˆ 𝑌 ∈ R𝐵 ×𝑃 ×1
+
+ℎout 
+
+Figure 1: Overview of the BoundEx bounded gated-FiLM modulation mechanism. The endogenous PatchTST backbone produces hendog ; in parallel, the exogenous channels (optionally concatenated with future-known covariates) pass through channel dropout and the per-channel exogenous encoder to yield the FiLM parameters ¯γ, ¯β and the scalar gate ¯g. The bounded modulation hout = (1 −¯g) hendog +¯ g (¯ γ ⊙hendog + ¯β)
+
+retains a fallback residual to the endogenous backbone (full details in §3). BoundEx encodes the exogenous covariates through a lightweight pathway, kept simple so that whatever robustness the architecture exhibits can be attributed to the bounded modulation (§3.3) rather than to an elaborate encoder. Each of the K exogenous channels is mapped to a single summary vector by a linear projection shared across channels, 
+
+hexo ,k = We xexo ,k + be ∈ Rdm , k = 1 , . . . , K, (2) where xexo ,k is the k-th channel’s covariate series over time. 5When future-known covariates are available across the forecast horizon — such as day-ahead electricity auction prices or weather forecasts (as distinct from weather measurements ) — each channel’s historical and future-known values are concatenated along the time axis before this projection, so that We ∈ Rdm×(L+H);otherwise only the L historical steps are used and We ∈ Rdm×L. The pathway thus yields a set of per-channel exogenous representations {hexo ,k }Kk=1 , one summary vector per covariate, which drive the bounded modulation below. 
+
+## 3.3 Bounded FiLM-Style Modulation 
+
+The core of BoundEx is a gated affine modulation block that limits exogenous influence on the endogenous representation by construction. Given the endogenous representation hendog ∈ Rdm from the PatchTST backbone Nie et al. [2022], each per-channel exogenous representation hexo ,k produces channel-wise FiLM parameters Perez et al. [2018] and a gate: 
+
+γk = MLP γ (hexo ,k ), βk = MLP β (hexo ,k ) ∈ Rdm , gk = σ(MLP g (hexo ,k )/τ ) ∈ [0 , 1] , (3) where MLP γ , MLP β are two-layer networks initialized near zero (so the modulation starts close to the identity) and gk is a per-channel scalar gate with temperature τ . The channel parameters are combined into a single FiLM transform and a scalar gate by gate-weighted averaging: 
+
+γagg =
+
+∑ 
+
+> k
+
+gk γk
+
+∑ 
+
+> k
+
+gk
+
+, βagg =
+
+∑ 
+
+> k
+
+gk βk
+
+∑ 
+
+> k
+
+gk
+
+, ¯g = 1
+
+K
+
+∑
+
+> k
+
+gk ∈ [0 , 1] . (4) In practice a small constant ϵ = 10 −8 is added to the denominator ∑ 
+
+> k
+
+gk for numerical stability. The modulated representation is then formed as a gated interpolation: 
+
+hmod = γagg ⊙ hendog + βagg 
+
+hout = (1 − ¯g) hendog + ¯ g h mod 
+
+(5) This formulation provides an immediate architectural guarantee at the representation level. When ¯g = 0 ,
+
+hout = hendog exactly — the model is indistinguishable from the endogenous-only backbone, regardless of the exogenous input content. When ¯g = 1 , the exogenous modulation operates at full strength. For any intermediate gate value, the representation interpolates linearly between these two extremes. The exogenous contribution to the representation is bounded by: 
+
+∥hout − hendog ∥ = ¯ g · ∥ γagg ⊙ hendog + βagg − hendog ∥, (6) which is at most ¯g times the maximum modulation magnitude. This is an architectural guarantee on the representation — it holds for any input, including adversarial perturbations, and does not depend on the training distribution. We state and prove the corresponding prediction-level bound in Appendix A. In brief, because the forecast head is linear, the forecast’s deviation from the gate-closed endogenous floor ˆyfloor is controlled proportionally 
+
+by the gate, ∥ˆy − ˆyfloor ∥2 ≤ ¯g · s · σmax (W ) · ∥ hmod − hendog ∥2, so the prediction collapses to the floor as ¯g → 0.This is a proportional (not absolute) guarantee — because the FiLM outputs γ, β are unconstrained, it is not an absolute, input-independent ball — and it makes precise what a representation- and prediction-level architectural bound on exogenous influence does and does not provide. 
+
+## 3.4 Gate Design and Training 
+
+The overall gate ¯g is the mean of the per-channel gates gk, each produced by a compact bottleneck (an MLP with a single hidden layer of width dm/2 followed by a temperature-scaled sigmoid). Averaging over channels makes ¯g invariant to the ordering of the exogenous channels — a useful property when covariates lack a natural ordering or when spurious channels are interleaved with informative ones, since the overall gate depends on the channels’ aggregate gating rather than on channel identity or position. Training minimizes a composite objective: 6L = 1
+
+N Hd e
+
+∑ ∥ˆy − Y ∥22 + λg · ∥ ¯g∥1 (7) The primary term is mean squared error over the forecast horizon. The optional auxiliary term λg · ∥ ¯g∥1
+
+would encourage gate sparsity, but we find it immaterial: a sweep over λg ∈ { 0, 10 −4, 10 −3, 10 −2} leaves robustness essentially unchanged (Gaussian degradation +28.9/ +28.9/ +28.5/ +26.5% on the dropout-free base). All BoundEx results we report therefore use λg = 0 (pure MSE); the gate is shaped by the data, not by this penalty. 
+
+Forward pass. To summarize the computation in one place: the endogenous lookback Xendog is encoded by the PatchTST backbone into hendog ; the exogenous covariates (historical, and future-known when avail-able) are encoded by the per-channel linear projection of §3.2 into the summaries {hexo ,k }; from these the model produces channel-wise FiLM parameters and gates, aggregates them into γagg , β agg and the scalar gate 
+
+¯g, and combines them with hendog through the gated residual hout = (1 − ¯g) hendog + ¯ g (γagg ⊙ hendog + βagg )
+
+(§3.3); finally a linear head maps hout to the forecast ˆy. The gate ¯g is additionally exposed as a diagnostic. 
+
+## 3.5 Exogenous Dropout 
+
+The intervention this paper isolates and recommends is a one-line, model-agnostic training augmentation we call exogenous dropout . At each training step, each of the K exogenous channels is independently dropped — zeroed over its entire time span, historical and future-known — with probability p, and the surviving channels are rescaled by 1/(1 − p) so that the expected input is preserved (inverted dropout). Concretely, for an exogenous input Xexo ∈ RT ×K (with T = L for historical-only covariates, or T = L + H
+
+when future-known values are concatenated), we draw a mask m ∈ { 0, 1}K with mk ∼ Bernoulli (1 − p)
+
+independently per channel and feed 
+
+˜xexo ,k = mk
+
+1 − p xexo ,k , k = 1 , . . . , K. (8) The mask is whole-channel (a covariate is kept or dropped in full, never partially), is shared across a channel’s historical and future-known segments, is resampled independently at every training step, and is applied only 
+
+during training; at test time all channels pass through unaltered. Exposing the forecaster to a distribution of exogenous-availability patterns teaches it not to over-rely on any single covariate, so that corrupted or absent covariates at test time resemble a regime it has already seen. The augmentation adds no parameters and is agnostic to the backbone; we apply the same rate p = 0 .3 uniformly to every model (BoundEx included), so no architecture is privileged by it, and we sweep p in §4.5. 
+
+# 4 Experiments 
+
+## 4.1 Experimental Setup 
+
+Datasets and preprocessing. Our corruption-robustness benchmark spans three domains . (i) 
+
+Electricity price forecasting (EPF) — five markets, NP (Nord Pool), PJM (Pennsylvania-New Jersey-Maryland), BE (Belgium), FR (France), and DE (Germany) — each providing hourly electricity prices as the endogenous target and day-ahead auction prices plus auxiliary covariates (load and generation forecasts) as exogenous variables. (ii) Reservoir hydrology — Rapel , a Chilean hydropower reservoir (daily sam-pling, 3,366 days), forecasting water level from precipitation and inflow. (iii) Meteorology — Weather ,the Jena station (10-minute sampling), forecasting the target variable OT from 20 exogenous meteorological channels. All data are standardized to zero mean and unit variance per channel using training-set statis-tics and split chronologically into training/validation/test ( ≈70/10/20). All three domains use a lookback 
+
+L = 168 and forecast horizon H = 24 steps — in each domain’s native sampling units (hours for EPF, days for Rapel, 10-minute intervals for Weather) — and share the same training protocol and model hyperpa-rameters, with no per-domain tuning. The primary metric is Mean Squared Error (MSE), lower is better. Because absolute MSE is not comparable across domains of different scales, we report degradation relative to the endogenous-only floor: for each test-time condition c ∈ { clean, Gaussian, misalign, missing },
+
+c vs-Floor (%) = ( MSE c − MSE floor )/MSE floor × 100 ,
+
+7where MSE floor is the endogenous-only PatchTST MSE. Negative values indicate performance at or below the floor. 
+
+Exogenous covariates: historical vs. future-known. Following the standard exogenous-forecasting protocol Wang et al. [2024], every exogenous channel is supplied — and used by all models — over both the lookback and the forecast horizon. On EPF this is realistic: day-ahead prices and the load/generation forecasts for the delivery day are published before it begins. On Rapel and Weather we instead supply the recorded future values as an idealized “perfect-forecast” stream, as is conventional on these benchmarks; this is conservative for our thesis, since the clean condition hands every model the most informative covariates available, yet exogenous dropout still helps under corruption. All corruption operators act on the full exogenous window (historical and future-known); the endogenous target history is never corrupted. 
+
+Corruption protocol. We evaluate under four exogenous conditions: 
+
+• Clean: exogenous variables are used as-is at test time (no corruption). 
+
+• Gaussian: independent Gaussian noise N (0 , σ 2) is added to every exogenous channel, where σ is set to the per-channel empirical standard deviation estimated from the training set, producing a signal-to-noise ratio of approximately 1. 
+
+• Misalign: the exogenous time series is shifted in time relative to the endogenous series by a random offset of k steps ( k ∼ Uniform {3, . . . , min(24 , T )}), simulating the practical scenario where day-ahead price forecasts are revised after settlement. 
+
+• Missing: all exogenous channels are set to zero at test time, simulating a complete loss of the covariate feed. This applies the same zeroing operation as the train-time exogenous-dropout intervention (§3.5), but at a more extreme, all-channel level: training drops a random subset of channels, whereas this condition removes all of them at once. 
+
+Exogenous dropout (the studied intervention). We apply the exogenous-dropout augmentation defined in §3.5 (whole-channel, p = 0 .3, inverted scaling, train-only) to every architecture, both with and without it — matched across models — yielding the architecture ×dropout comparison in §4.2. 
+
+Baselines. We compare against five models:              
+
+> Model Description PatchTST Nie et al. [2022] Endogenous-only baseline; the endogenous floor — performance achievable when exogenous variables are ignored entirely.
+> TimeXer Wang et al. [2024] Symmetric cross-attention between endogenous patches and exogenous tokens via learnable global query tokens.
+> DAG Qiu et al. [2025] Dual temporal and channel correlation graphs to discover and inject exogenous dependencies.
+> iTransformer Liu et al. [2023] Inverts the standard Transformer to attend across variates; exogenous channels provided as additional variates.
+> CrossLinear Zhou et al. [2025] Plug-and-play cross-correlation embedding that linearly aligns exogenous with endogenous series before a shared forecasting head.
+
+All baselines are trained with their authors’ recommended configurations. An additional configuration, 
+
+BoundEx (no fallback) , is our method with the (1 − ¯g) residual connection removed — the exogenous modulation output hmod replaces hendog directly rather than interpolating — serving as an ablation that isolates the effect of boundedness. We do not include the following models as baselines: ExoTST Tayal et al. [2024], CITRAS Yamaguchi et al. [2026], and FTimeXer Li et al. [2026] have no official public code; CATS Lu et al. [2024] is available but needs substantial per-dataset re-tuning to run faithfully under our shared, no-per-dataset-tuning protocol; and N-BEATSx Olivares et al. [2021] and the Temporal Fusion Transformer Lim et al. [2021] are earlier models we do not consider here. 
+
+Training and inference. All models are trained for 50 epochs with early stopping (patience = 5) using the Adam optimizer with learning rate 10 −4 and MSE loss, with five random seeds (0–4) per dataset. On EPF this yields 25 seed-runs per model across the five markets, from which we report per-market test-set MSE and cross-market means with standard error across markets (SEM = SD /√5, treating markets as the independent clustering unit for a conservative uncertainty estimate); on Rapel and Weather we report the five-seed mean. All experiments run on a single NVIDIA GeForce RTX 5070 Laptop GPU (8 GB VRAM) with PyTorch 2.10 and CUDA 13.0. 
+
+Hyperparameters. Table 1 summarizes the shared and model-specific hyperparameters. 8Table 1: Training protocol. Shared settings apply to all models; baselines otherwise use their authors’/TFB configurations (e.g. TimeXer dmodel =256 , DAG dmodel =64 ), not a forced common size. 
+
+Setting Value 
+
+Lookback L / Horizon H 168 / 24 Epochs / Patience 50 / 5 Optimizer Adam Exogenous dropout (studied factor) {0, 0.3} — whole-channel, inverted, train-only BoundEx: dmodel / layers / heads 128 / 2 / 8 BoundEx: patch len / stride 16 / 8 BoundEx: gate reg. λg 0 (immaterial; see §3.4) 
+
+## 4.2 Main Results 
+
+Table 2 reports our main results: the architecture × exogenous-dropout comparison across all three domains (five EPF markets, Rapel, and Weather), expressed as vs-Floor degradation under each test-time condition. It answers the core question of this paper: under corrupted — or entirely missing — exogenous inputs, does a model stay close to the safe endogenous-only floor, or degrade far above it? 9Table 2: Main results: architecture × exogenous-dropout across all three domains, as vs-Floor degradation (%) under each test-time condition (lower is better; negative beats the endogenous-only floor). Bold marks the best (lowest) value in each column within each domain block; underline marks the second-best.                                                                                                                                                              
+
+> Model Exog-drop Clean Gaussian Misalign Missing
+> Electricity prices (EPF; 5 markets, hourly)
+> iTransformer no +15.5 +61.9 +60.8 +51.9 iTransformer yes +9.9 +31.4 +30.5 +35.2 TimeXer no −17.9 +34.3 +19.0 +27.5 TimeXer yes −17.3 +25.1 +7.1 +13.2 DAG no −27.5 +32.2 +24.8 +23.7 DAG yes −26.1 +3.4 −7.9 −4.3
+> CrossLinear no +15.5 +62.3 +48.5 +50.7 CrossLinear yes +16.8 +32.3 +24.2 +29.1 BoundEx (ours) no −16.5 +28.9 +1.3 +28.3 BoundEx (ours) yes −11.9 +11.3 −1.4 +3.6
+> Reservoir hydrology (Rapel; daily, target =water level)
+> iTransformer no +18.3 +38.2 +30.7 +22.1 iTransformer yes +19.5 +36.1 +29.8 +19.3 TimeXer no −21.1 +15.7 +7.8 +14.2 TimeXer yes −27.1 +5.0 −2.8 +2.1 DAG no −19.7 −13.4 −15.4 −8.4 DAG yes −21.5 −16.8 −18.4 −11.2
+> CrossLinear no +30.3 +45.8 +38.9 +20.9 CrossLinear yes +22.3 +38.1 +25.7 +22.8 BoundEx (ours) no −8.6 +2.1 −10.1 −2.8 BoundEx (ours) yes −7.4 +3.0 −8.2 −3.5
+> Meteorology (Weather; 10-min, 20 exogenous channels)
+> iTransformer no +86.5 +526.7 +107.1 +492.7 iTransformer yes +119.5 +445.4 +138.2 +401.7 TimeXer no +9.3 +45.9 +31.9 +42.7 TimeXer yes +9.1 +41.6 +31.4 +36.4 DAG no −43.8 −10.3 −19.3 −14.5 DAG yes −39.2 −12.3 −12.8 −15.3
+> CrossLinear no +133.8 +484.3 +144.0 +461.5 CrossLinear yes +106.0 +306.8 +115.8 +318.6 BoundEx (ours) no −8.2 +26.4 +2.8 +38.8 BoundEx (ours) yes −3.9 −0.8 +3.7 −3.5
+
+“Exog-drop” is whether exogenous-channel dropout ( p = 0 .3) is applied during training. CrossLinear (all domains) and iTransformer on Weather do not train stably under our shared, no-per-dataset-tuning protocol; we report their true numbers rather than omit them (training and stability details, including the per-baseline divergence counts, are in Appendix B). 
+
+The table establishes the paper’s central empirical claims: 
+
+Exogenous dropout helps across architectures and domains. On EPF, adding the augmentation lowers Gaussian degradation for all five models — iTransformer +62 → +31, TimeXer +34 → +25, DAG 
+
++32 → +3, CrossLinear +62 → +32, BoundEx +29 → +11 — and likewise under misalignment and missing channels, while clean accuracy barely moves (absolute MSE, e.g. DAG 0.255 →0.259). The effect is not specific to electricity: on Weather, TimeXer’s Gaussian degradation falls +45.9 → +41.6 and missing +42.7 → +36.4; on Rapel, TimeXer Gaussian +15.7 → +5.0. The single most dramatic case is our own bounded BoundEx on Weather, which collapses under corruption without the augmentation (Gaussian +26.4, Missing +38.8) yet becomes robust with it (Gaussian −0.8, Missing −3.5). Missing channels — the same zeroing operation as the augmentation, taken to the all-channel extreme — behave the same way throughout: having been trained with whole channels randomly zeroed, the dropout models treat a fully-absent covariate feed as in-distribution (on EPF, DAG +23.7 → − 4.3; BoundEx +28.3 → +3.6). The intervention is one line of code, 10 model-agnostic, and effectively free. 
+
+The simple augmentation beats the purpose-built architecture, in every domain. Once the baselines receive the same dropout, BoundEx’s apparent advantage disappears. On EPF, DAG +dropout attains near-best clean accuracy (absolute MSE 0.259, second only to its own dropout-free variant at 0.255), the best Gaussian ( +3.4 vs. BoundEx’s +11.3), misalignment ( −7.9 vs. −1.4), and missing-channel ( −4.3 vs. +3.6) robustness, dominating BoundEx on every axis; across the 25 matched (market, seed) cells this dominance is significant under every condition — clean −14.2, Gaussian −7.9, misalignment −6.5, and missing −7.9 percentage points of vs-Floor degradation in DAG’s favor (paired t-test and Wilcoxon signed-rank both p < 0.001 ; 95% bootstrap confidence intervals exclude zero). The same holds in the other domains: DAG +dropout is the most corruption-robust configuration on Rapel (best in all three corruption columns: Gaussian −16.8, Misalign −18.4, Missing −11.2) and on Weather (best on Gaussian and Missing; on misalignment the already-robust DAG benefits little from dropout). Across the five seeds on Rapel and Weather, DAG +dropout has the lower vs-Floor degradation than BoundEx +dropout in four to five of the five seeds under every corruption. BoundEx +dropout remains competitive — ahead of the dropout-augmented iTransformer, TimeXer, and CrossLinear — but is dominated by DAG, so the bounded design confers no advantage in any domain. 
+
+Boundedness is not necessary for robustness. On EPF, stripping the exogenous dropout from BoundEx (otherwise identical) inflates Gaussian degradation from +11% to +29%, back to the level of the unbounded baselines, even though the bounded gate and fallback residual are untouched, while adding dropout to an unbounded model (DAG) drops it to +3%. The two-factor ablation of §4.4 shows the precise balance between the bound and the augmentation shifts across domains, but one comparison holds every-where: an unbounded DAG trained with the same dropout is the most robust model in all three domains, so no architectural bound is required. We analyze the limited role of the learned gate in §5. 11 iT TX DAG CL BEx iT TX DAG CL BEx iT TX DAG CL BEx 
+
+40 
+
+20 
+
+0
+
+20 
+
+40 
+
+60 
+
+> vs-floor degradation (%)
+> 87
+> 120
+> 134
+> 106
+
+EPF Rapel Weather 
+
+Clean         
+
+> iT TX DAG CL BEx iT TX DAG CL BEx iT TX DAG CL BEx
+
+20 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> vs-floor degradation (%)
+> 527
+> 445
+> 484
+> 307
+
+EPF Rapel Weather 
+
+Gaussian noise         
+
+> iT TX DAG CL BEx iT TX DAG CL BEx iT TX DAG CL BEx
+
+20 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> vs-floor degradation (%)
+> 107
+> 138
+> 144
+> 116
+
+EPF Rapel Weather 
+
+Temporal misalignment         
+
+> iT TX DAG CL BEx iT TX DAG CL BEx iT TX DAG CL BEx
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+> vs-floor degradation (%)
+> 493
+> 402
+> 461
+> 319
+
+EPF Rapel Weather 
+
+Missing channels 
+
+iT = iTransformer 
+
+TX = TimeXer 
+
+DAG = DAG 
+
+CL = CrossLinear 
+
+BEx = BoundEx 
+
+light = no dropout 
+
+dark = + dropout Figure 2: Effect of exogenous dropout on vs-Floor degradation (%; lower is better; light = no dropout, dark = + dropout; error bars ±1 SEM), one panel per test-time condition (clean, Gaussian noise, temporal misalignment, missing channels). Each panel groups the five models (iT = iTransformer, TX = TimeXer, DAG, CL = CrossLinear, BEx = BoundEx) within each of the three domains (EPF, Rapel, Weather). The 
+
+y-axis is scaled per panel and bars above the cap are clipped with their true value printed. 12 0.25 0.30 0.35 0.40 
+
+> Clean MSE (lower = better)
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> 70
+> Gaussian vs-floor (%) (lower = better)
+
+EPF   
+
+> 0.3 0.4 0.5
+> Clean MSE (lower = better)
+> 20
+> 10
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+
+Rapel    
+
+> 0.1 0.2 0.3 0.4
+> Clean MSE (lower = better)
+> 10
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+> 60
+> 70
+> 527 307
+> 445
+> 484
+
+Weather 
+
+> iT = iTransformer
+> TX = TimeXer
+> DAG = DAG
+> CL = CrossLinear
+> BEx = BoundEx
+> open = no dropout
+> filled = + dropout
+> off-scale (true value labelled)
+
+Figure 3: Accuracy–robustness trade-off, one panel per domain (absolute clean MSE is comparable only within a domain): clean MSE (x-axis) vs. Gaussian degradation above the floor (y-axis), both lower-better; each of the five models appears without (open) and with (filled) exogenous dropout, the arrow showing dropout’s effect, and the dotted line marks the endogenous floor. Up-triangles ( ▲) mark points that run off the top of the panel, with their true value printed. 
+
+## 4.3 Per-Market Head-to-Head 
+
+As a within-EPF robustness check, Table 3 breaks the dropout-matched DAG vs. BoundEx comparison (both trained with dropout) down by individual market, confirming that the headline numbers of Table 2 are not a cross-market averaging artifact. DAG +dropout has the lower degradation in every market on clean accuracy, in four of five markets under both Gaussian noise and missing channels, and in three of five under misalignment — the regime where BoundEx’s bounded modulation is genuinely competitive. In no market does BoundEx recover the decisive advantage it appeared to hold before the baselines were given the same augmentation; once dropout is shared, the bounded design earns no consistent per-market edge. Table 3: Per-market head-to-head, dropout-matched: DAG +dropout vs. BoundEx +dropout (vs-Floor %, 5 seeds per market; lower is better, negative beats the endogenous floor). Both models are trained with exogenous dropout p = 0 .3; cross-market means appear in Table 2. Bold marks the more robust (lower) of the two models for each market and condition. 
+
+Market Clean Gaussian Misalign Missing 
+
+DAG + dropout 
+
+NP −23.7 −3.1 −12.6 −7.7 
+
+PJM −45.3 +5.7 −9.7 −12.0 
+
+BE −11.2 +7.4 +0.1 +2.8 FR −12.3 +8.5 +2.4 +0.1 
+
+DE −38.0 −1.5 −19.8 −4.5 
+
+BoundEx + dropout 
+
+NP −8.7 +4.4 −0.4 −0.7 PJM −12.4 +23.9 +6.3 +5.9 BE −11.1 +6.6 −4.6 +1.8 
+
+FR −4.2 +13.6 +1.8 +9.3 DE −22.9 +7.9 −10.2 +1.7 
+
+13 4.4 Ablation: Dropout vs. Boundedness 
+
+To partition the contributions of the architectural bound and the dropout augmentation within BoundEx, we run the full two-factor ablation — fallback residual present/absent × exogenous dropout on/off — in all three domains, holding everything else fixed. Table 4 reports clean accuracy and degradation under each of the three corruptions for the four cells. Table 4: Two-factor ablation within BoundEx: fallback residual (absent no-fb / present fb ) × exogenous dropout (off/on), as vs-Floor (%) across three domains and four conditions; lower is better. Within each condition the two rows (dropout off/on) and the column pair ( no-fb /fb ) form the 2 ×2 grid, and bold marks its best (lowest) cell. EPF: cross-market means (5 markets × 5 seeds); Rapel/Weather: 5-seed means.                                                              
+
+> Clean Gaussian Misalign Missing
+> no-fb fb no-fb fb no-fb fb no-fb fb
+> EPF (five electricity markets)
+> no dropout −15.7 −16.5 +81.2 +28.9 +34.3 +1.3 +86.7 +28.3
+> +dropout −12.2 −11.9 +25.8 +11.3 +7.3 −1.4 +23.8 +3.6
+> Rapel (reservoir hydrology)
+> no dropout +43.7 −8.6 +165.7 +2.1 +78.9 −10.1 +66.5 −2.8
+> +dropout +55.1 −7.4 +116.0 +3.0 +77.6 −8.2 +82.8 −3.4
+> Weather (meteorology)
+> no dropout −0.8 −8.2 +68.7 +26.4 +3.5 +2.8 +69.9 +38.8
+> +dropout −0.3 −3.9 +38.4 −0.8 +3.7 +3.7 +35.7 −3.5
+
+The decomposition is domain- and corruption-dependent. On EPF the two single factors are close, but which one leads depends on the corruption. Reading from the neither-factor cell (no fallback, no dropout), dropout alone is the marginally stronger factor under Gaussian noise ( +81 → +26%, against +29% for the fallback alone) and missing channels ( +87 → +24%, against +28%), whereas the fallback alone is the stronger factor under misalignment ( +34 → +1%, against +7% for dropout); only their combination is best on every corruption (Gaussian +11%, misalignment −1%, missing +4%). On Weather and Rapel the order reverses and the fallback residual becomes the dominant factor across corruptions. On Weather the fallback cuts Gaussian degradation from +69% to +26% (against +38% for dropout alone) and missing from 
+
++70% to +39% (with dropout alone reaching a comparable +36%), while misalignment is already benign in every cell ( ≤ +4%). On Rapel the fallback is decisive under every condition: removing it inflates Gaussian past +160%, misalignment to +79%, and missing to +67%, and harms even clean accuracy, which jumps from −8% (with the fallback) to +44 ∼55% above the floor with no corruption at all, because BoundEx’s endogenous path runs through that residual; there dropout alone barely helps, and on clean and missing it even slightly hurts. In these two exogenous-light domains a bounded BoundEx is thus already robust without 
+
+dropout (Rapel at fallback, no-dropout: Gaussian +2%, misalignment −10%, missing −3%). 
+
+What generalizes is the comparison that matters for our thesis. An unbounded model carries no such fallback, yet — trained with the same dropout — DAG is more corruption-robust than BoundEx in every domain (Table 2; Rapel Gaussian −17% vs. BoundEx +3%, Weather −12% vs. −1%, EPF +3% vs. 
+
++11%). Architectural boundedness therefore helps BoundEx in some domains, but it is never necessary for robustness: a model with no bound at all, plus dropout, does better. The takeaway is not that the bound is useless within BoundEx (on Weather and Rapel it clearly is not) but that it is not what separates the best models — the transferable dropout augmentation, applied to a stronger backbone, wins regardless. 
+
+## 4.5 Dropout-Rate Sensitivity 
+
+A natural concern is whether our headline — exogenous dropout beats architecture, with DAG +dropout best — is an artifact of the single rate p = 0 .3 fixed throughout our protocol. We therefore sweep p ∈{0, 0.1, 0.3, 0.5, 0.7} for the two central models (the winning DAG and the bounded BoundEx) in all three domains, holding everything else fixed (Table 5, Figure 4). 14 Table 5: Exogenous-dropout rate sweep for DAG and BoundEx across all three domains (vs-Floor %; EPF: cross-market means, 5 markets × 5 seeds; Rapel/Weather: 5-seed means; lower is better, bold = per-column best for each model (DAG and BoundEx) within each domain). p = 0 and p = 0 .3 reuse earlier runs; 
+
+p ∈ { 0.1, 0.5, 0.7} are new. 
+
+Model p Clean Gaussian Misalign Missing 
+
+EPF (five electricity markets) 
+
+DAG 0.0 −27.5 +32.2 +24.8 +23.7 DAG 0.1 −27.5 +17.3 +7.3 +8.6 DAG 0.3 −26.1 +3.4 −7.9 −4.3 DAG 0.5 −24.2 −2.8 −12.6 −8.8 DAG 0.7 −21.9 −6.2 −13.9 −10.4 
+
+BoundEx 0.0 −16.5 +28.9 +1.3 +28.3 BoundEx 0.1 −15.1 +17.1 −1.2 +9.7 BoundEx 0.3 −11.9 +11.3 −1.4 +3.6 BoundEx 0.5 −3.8 +11.0 +3.1 +3.5 
+
+BoundEx 0.7 +11.7 +13.1 +15.2 +4.0 
+
+Rapel (reservoir hydrology) 
+
+DAG 0.0 −19.7 −13.4 −15.4 −8.4 DAG 0.1 −20.5 −15.7 −16.8 −10.5 DAG 0.3 −21.5 −16.8 −18.4 −11.2 DAG 0.5 −19.8 −17.1 −17.4 −12.3 
+
+DAG 0.7 −17.3 −15.8 −15.9 −11.5 BoundEx 0.0 −8.6 +2.1 −10.1 −2.8 BoundEx 0.1 −8.4 +2.8 −9.7 −3.4 BoundEx 0.3 −7.4 +3.0 −8.2 −3.4 BoundEx 0.5 −4.4 +3.8 −5.4 −4.6 
+
+BoundEx 0.7 −1.6 +6.7 −1.3 −4.1 
+
+Weather (meteorology) 
+
+DAG 0.0 −43.8 −10.3 −19.3 −14.5 DAG 0.1 −42.4 −11.8 −17.9 −14.3 DAG 0.3 −39.2 −12.3 −12.8 −15.3 
+
+DAG 0.5 −34.8 −11.3 −9.2 −15.1 DAG 0.7 −31.3 −8.0 −5.1 −13.7 BoundEx 0.0 −8.2 +26.4 +2.8 +38.8 BoundEx 0.1 −6.2 +4.6 +3.6 +4.5 BoundEx 0.3 −3.9 −0.8 +3.7 −3.5 
+
+BoundEx 0.5 −2.3 −0.3 +3.5 −3.5 BoundEx 0.7 +1.8 +0.9 +6.5 −3.4 
+
+15 10                
+
+> 0
+> 10
+> 20
+> 30
+> 40
+> Gaussian noise
+> vs-floor (%)
+> EPF
+> 15
+> 10
+> 5
+> 0
+> 5
+> Rapel
+> 10
+> 0
+> 10
+> 20
+> Weather
+> DAG
+> BoundEx
+> 20
+> 10
+> 0
+> 10
+> 20
+> 30
+> Misalignment
+> vs-floor (%)
+> 20
+> 15
+> 10
+> 5
+> 0
+> 20
+> 15
+> 10
+> 5
+> 0
+> 5
+> 0.0 0.1 0.3 0.5 0.7
+> exogenous dropout rate p
+> 10
+> 0
+> 10
+> 20
+> 30
+> Missing channels
+> vs-floor (%)
+> 0.0 0.1 0.3 0.5 0.7
+> exogenous dropout rate p
+> 15.0
+> 12.5
+> 10.0
+> 7.5
+> 5.0
+> 2.5
+> 0.0
+> 0.0 0.1 0.3 0.5 0.7
+> exogenous dropout rate p
+> 10
+> 0
+> 10
+> 20
+> 30
+> 40
+> 50
+
+Figure 4: Exogenous-dropout rate ( p) sensitivity across all three domains (columns) under Gaussian noise (top), misalignment (middle), and missing channels (bottom), for DAG (the winner) and BoundEx (the bounded foil); y-axes are vs-Floor degradation and are scaled per panel, with error bars showing ±1 SEM (across the 5 markets on EPF, across the 5 seeds on Rapel and Weather). The sweep tells a clean story with a sharp contrast between the two models, and the contrast is consistent across all three domains. For DAG , increasing p reduces degradation under all three corruptions — on EPF Gaussian +32% → − 6%, misalignment +25% → − 14%, missing +24% → − 10% — while clean accuracy barely moves (EPF clean vs-Floor drifts only from −28% to −22%, staying well below the floor throughout). The same monotone, rate-forgiving pattern holds on Rapel and Weather, where DAG remains 17 –44% below its clean floor across the whole range while its corruption degradation falls or holds. There is thus a wide, forgiving operating range in every domain: any p ∈ [0 .3, 0.7] leaves DAG more robust than every architectural baseline at little clean-accuracy cost. The headline is therefore not special to p = 0 .3; if anything, p = 0 .3 is conservative. 
+
+BoundEx , by contrast, is markedly more sensitive to the rate. On EPF its robustness has a narrow sweet spot around p ∈ [0 .1, 0.3] and degrades on every metric at high p: clean accuracy collapses from better-than-floor ( −17%) to worse-than-floor ( +12%) at p = 0 .7, Gaussian degradation flattens rather than continuing to fall, and misalignment robustness breaks down entirely (from −1% at p = 0 .3 to +15% at 
+
+p = 0 .7). The purpose-built architecture is thus the more fragile, more hyperparameter-sensitive of the two: heavy exogenous dropout fights its modulation pathway, whereas the same intervention on an unbounded 16 backbone is uniformly beneficial. Most tellingly, in every domain and at every corruption column, DAG’s best rate beats BoundEx’s best rate (Table 5, comparing the two models’ bold per-column entries): the simple augmentation on a stronger backbone dominates the bounded design across the whole rate axis, not at a single tuned point. 
+
+# 5 Discussion 
+
+The central finding of this study is methodological: the robustness gains commonly attributed to spe-cialized exogenous architectures can be obtained — and exceeded — by a one-line training augmentation. Exogenous dropout improves every architecture we test, and an existing unbounded model (DAG) plus dropout is the most robust model in our study — at near-best clean accuracy — ahead of the bounded BoundEx we built specifically for robustness. 
+
+Why does such a simple augmentation work? Randomly zeroing whole exogenous channels during training exposes the forecaster to a distribution of exogenous-availability patterns, teaching it to predict well when covariates are absent or unreliable rather than depending on them. At test time, corrupted covariates then resemble a (more extreme) version of a regime the model already handles. This effect is generic and architecture-independent, which is precisely why it transfers across cross-attention (TimeXer), correlation-graph (DAG), and variate-attention (iTransformer) designs alike. 
+
+Does the bounded gate actually close under corruption? The architectural intuition behind BoundEx — that a learned gate would detect corruption and close, reverting to the endogenous floor — is 
+
+not what we observe in any domain. Measuring the mean gate ¯g on held-out data (Table 6), at clean test time it never approaches zero (averaging 0.73 on EPF, 0.67 on Weather, and 0.35 on Rapel), and it does not systematically close under the partial corruptions: under Gaussian noise it falls only marginally (EPF, Weather) or even rises slightly (Rapel), and under misalignment it barely moves. The most revealing case is missing channels, where the exogenous feed is entirely absent and a corruption-detecting gate would have every reason to shut: instead ¯g only partially retreats — to 0.60 on EPF, 0.61 on Weather, and 0.34 on Rapel (with dropout) — staying far from the zero that would restore the endogenous floor. Nor does dropout work by teaching the gate to shut: the gate is similar with and without it, and under missing channels the dropout-trained gate is in fact slightly more open (EPF 0.60 vs. 0.55 , Weather 0.61 vs. 0.49 ), not less. Table 6: Mean gate ¯g on held-out data and trained head spectral norm σmax (W ) across all three domains (BoundEx; EPF: 5 markets × 2 seeds; Rapel and Weather: 2 seeds). 
+
+BoundEx clean Gaussian misalign missing σmax (W )
+
+EPF 
+
+with exog dropout 0.73 0.66 0.73 0.60 1.03 without exog dropout 0.75 0.64 0.75 0.55 1.02 
+
+Rapel 
+
+with exog dropout 0.35 0.39 0.36 0.34 0.83 without exog dropout 0.37 0.41 0.39 0.34 0.84 
+
+Weather 
+
+with exog dropout 0.67 0.67 0.67 0.61 1.26 without exog dropout 0.75 0.58 0.73 0.49 1.43 The robustness therefore does not come from the gate switching off. It comes from the modulation itself 
+
+being benign: under misalignment the learned exogenous modulation remains comparatively benign, and dropout pushes the FiLM parameters toward identity, so the admitted exogenous signal does little harm even with the gate open. The representation-level bound of Appendix A is consistent with this (it holds), but with ¯g in the 0.35 –0.75 range and σmax (W ) between 0.8 and 1.4 across domains it yields only mild attenuation (and none at all where σmax > 1) — it is far from tight and is not the operative mechanism. 
+
+Boundedness is not necessary for robustness. Proposition 1 guarantees proportional control — deviation from the floor scales with ¯g — but since the gate does not approach zero in any domain, the 17 guarantee is never strongly exercised. The two-factor ablation (§4.4) shows the bound does contribute to BoundEx’s own robustness on Weather and Rapel, so we do not claim it is inert; our claim is narrower and holds across all three domains: an unbounded model trained with the same augmentation (DAG +dropout) is more robust than the bounded BoundEx everywhere (Table 2). Architectural boundedness is therefore not necessary for robustness, and on this benchmark it is not what distinguishes the strongest models. 
+
+Practical implications. The message for practitioners is simple and actionable: before reaching for a specialized robust architecture, apply exogenous dropout to the model you already have. It costs one line, leaves clean accuracy essentially unchanged, and in our benchmark turns the most accurate clean-data model (DAG) into the most robust model overall. We recommend it as the default baseline against which architectural robustness claims should be measured. 
+
+# 6 Limitations 
+
+We identify three limitations of this study. 
+
+1. Domain coverage. We validate the findings on three domains — electricity price forecasting (five markets), reservoir hydrology (Rapel), and meteorology (Jena Weather, 20 covariates) — and they replicate in all three (§4.2): exogenous dropout lowers corruption degradation across architectures and DAG +dropout is the most robust. Still, all three are physical/energy-adjacent numerical series; whether exogenous dropout remains the dominant robustness factor for very different covariate types — traffic with road-network topology, clinical series with laboratory measurements, or image-based covariates — remains an open empirical question. 
+
+2. Proportional, not absolute, guarantee. The bound we prove (Appendix A) is proportional (it scales with ¯g), not an absolute, input-independent ball, because the FiLM outputs γ, β are unconstrained. Empirically the gate does not approach zero (Table 6), so even this proportional bound is loosely exercised. A bounded-FiLM variant could yield an absolute guarantee, but our evidence suggests this would not improve robustness over simply applying dropout. 
+
+3. Model and architecture coverage. We benchmark four representative forecasters and one bounded design (BoundEx) on a PatchTST backbone, five seeds each. We cannot exclude that some untested ar-chitecture benefits from explicit boundedness beyond what dropout provides; our claim is the weaker, well-supported one that boundedness is not required for the robustness observed here — an unbounded model with dropout already attains the best results. 
+
+# 7 Conclusion 
+
+We asked whether an explicit architectural bound is necessary for robustness to corrupted exogenous covariates, and how far a simple masking-style training augmentation can carry that robustness on its own. On a corruption benchmark spanning three domains — electricity prices (five markets), reservoir hydrology, and meteorology — with five seeds per dataset, exogenous dropout — a one-line, model-agnostic training augmentation that randomly zeros whole exogenous channels — improves robustness for every architecture we test, at negligible clean-accuracy cost. Applied to an existing dual-correlation network (DAG), it produces the most robust model in the study at near-best clean accuracy (Gaussian +3%, misalignment −8%, missing 
+
+−4%, clean MSE 0.259 vs. the study-best 0.255), outperforming our purpose-built bounded model BoundEx on every axis. A two-factor ablation, a gate-behavior diagnostic, and a (correct but empirically loose) representation-level bound together show that architectural boundedness is not necessary for this robustness: the bounded gate does not close under corruption in any domain, and in every domain an unbounded model trained with the same dropout is more robust than our bounded one. Within BoundEx the bound does contribute — substantially so on Rapel and Weather — yet it is never what separates the strongest models. We conclude that boundedness is not required for exogenous-corruption robustness in this setting. We therefore recommend exogenous dropout as a simple, strong baseline that future work on robust exogenous forecasting should report and be measured against, and we release our corruption benchmark to that end. Future work should: (i) extend the protocol to adversarial and distribution-shift corruptions — especially the out-of-distribution regime where an architectural worst-case bound could finally outperform an 18 empirical defense; (ii) test per-channel dropout, adaptive schedules, and historical/future-specific masks (we sweep the global rate in §4.5); (iii) broaden architecture and domain coverage (weather, traffic, clinical); and (iv) revisit bounded-FiLM designs to ask whether an absolute guarantee (Appendix A) ever yields robustness beyond what dropout provides. 
+
+# A Proportional Prediction Bound (Proposition 1) 
+
+We formalize the representation-level identity of §3.3 at the prediction level. Let the forecast head be the linear map H(z) = W vec( z) (a flatten followed by a single linear layer; the head dropout is the identity at inference), and let RevIN-style de-normalization rescale predictions by a positive factor s and shift m that are computed solely from the input lookback window and are therefore identical for the modulated and the endogenous-only forecasts. Write ˆy = s H (hout ) + m and define the endogenous floor of the model as its gate-closed prediction ˆyfloor = s H (hendog ) + m.
+
+Proposition 1 (Gated prediction bound). For any exogenous input, 
+
+∥ˆy − ˆyfloor ∥2 ≤ ¯g · s · σmax (W ) · ∥ hmod − hendog ∥2, (9) 
+
+where σmax (W ) is the spectral norm of the head weight. In particular, ¯g → 0 implies ˆy → ˆyfloor , regardless of the exogenous content. Proof. By construction hout − hendog = ¯ g (hmod − hendog ), since ¯g is a scalar gate. The de-normalization shift 
+
+m cancels in the difference and the positive scale s factors out, so by linearity of H,
+
+ˆy − ˆyfloor = s [H(hout ) − H(hendog )] = s ¯g H (hmod − hendog ).
+
+Taking norms and using the definition of the operator norm, ∥H(u)∥2 ≤ σmax (W ) ∥u∥2, gives the bound. Because H is linear, σmax (W ) is its exact Lipschitz constant, so no further regularity assumption on the head is needed. □
+
+Scope, and why the bound is empirically loose. The factor ∥hmod − hendog ∥ = ∥(γ − 1) ⊙ hendog + β∥
+
+is finite for any given input but is not uniformly bounded over all inputs, because γ and β are unconstrained linear projections of the exogenous features. Proposition 1 therefore certifies proportional (gated) control rather than an absolute, input-independent ball. A uniform absolute bound is attainable by constraining the modulation (e.g. bounded γ = 1 + a tanh( ·) and β = b tanh( ·) with a normalized backbone hendog ). Empirically, however, the operative quantities make even the proportional bound loose: the trained head has σmax (W ) ≈ 1.03 and the gate stays at ¯g ≈ 0.60 –0.75 under corruption — even with the exogenous feed entirely missing — rather than approaching 0 (Table 6). The bound thus holds but is far from tight, and — consistent with §4–§5 — architectural boundedness is not the mechanism behind the robustness we observe. 
+
+# B Baseline Training and Stability 
+
+Because our central claim is that a one-line augmentation, rather than careful per-dataset tuning, drives robustness, the baselines must be trained competently and uniformly. All models are run from the same Time-Series Forecasting Benchmark (TFB) harness under one shared protocol (§4.1): lookback L = 168 , horizon 
+
+H = 24 , 50 epochs with early stopping (patience 5), Adam, MSE loss, and five seeds (0–4). Each model otherwise keeps its authors’/TFB-recommended architecture hyperparameters (e.g. TimeXer dmodel =256 ,DAG dmodel =64 ); we deliberately do not re-tune architectures per dataset. Exogenous dropout, when applied, is the only training-time change, and it is applied identically to every model. Two baselines did not train stably under this shared, no-per-dataset-tuning protocol, and we report their true numbers rather than omit them. For iTransformer we additionally tuned the learning rate per market on EPF (a grid over {5 × 10 −5, 10 −4, 5 × 10 −4} with elayers ∈ { 1, 2}), because the competitor protocol uses per-market rates; even so, on Weather it diverges on 2 of 5 seeds at every rate in this range. For CrossLinear 
+
+we use the repository’s future-aware configuration (cross-correlation embedding active, α=0 .5); it converges on most EPF markets but diverges on 2 of 5 seeds on BE and FR and on 3 of 5 seeds on Weather. We call a seed divergent when its clean test MSE exceeds twice the endogenous floor (e.g. clean MSE ≈ 1.0 against 19 a floor of ≈ 0.4 on BE/FR); divergent seeds are retained in all reported means rather than discarded. No gradient clipping is used: the stable models (TimeXer, DAG, PatchTST, and BoundEx) train without it, and the failures above are convergence failures under the fixed protocol — not exploding-gradient artifacts — so they reflect a genuine lack of robustness on the affected domains rather than insufficient tuning on our part. 
+
+# References 
+
+Abdul Fatir Ansari, Lorenzo Stella, Caner Türkmen, Xiyuan Zhang, Pedro Mercado, Huibin Shen, Olek-sandr Shchur, Syama Sundar Rangapuram, Sebastian Pineda Arango, Shubham Kapoor, Jasper Zschieg-ner, Danielle C. Maddix, Hao Wang, Michael W. Mahoney, Kari Torkkola, Andrew Wilson, Michael Bohlke-Schneider, and Yuyang Wang. Chronos: Learning the language of time series. arXiv preprint arXiv:2403.07815 , 2024. doi: 10.48550/arxiv.2403.07815. URL https://doi.org/10.48550/arxiv. 2403.07815 .Abhimanyu Das, Weihao Kong, Andrew Leach, Shaan Mathur, Rajat Sen, and Rose Yu. Long-term fore-casting with tide: Time-series dense encoder. arXiv preprint arXiv:2304.08424 , 2023. doi: 10.48550/arxiv. 2304.08424. URL https://doi.org/10.48550/arxiv.2304.08424 .Yann N. Dauphin, Angela Fan, Michael Auli, and David Grangier. Language modeling with gated con-volutional networks. In International Conference on Machine Learning (ICML) , 2017. URL https: //arxiv.org/abs/1612.08083 .Vijay Ekambaram, Arindam Jati, Nam Nguyen, Phanwadee Sinthong, and Jayant Kalagnanam. Tsmixer: Lightweight mlp-mixer model for multivariate time series forecasting. 2023. doi: 10.1145/3580305.3599533. URL https://doi.org/10.1145/3580305.3599533 .Vaswani et al. Attention is all you need. In NeurIPS , 2017. Sepp Hochreiter and Jürgen Schmidhuber. Long short-term memory. Neural Computation , 9(8):1735–1780, 1997. doi: 10.1162/neco.1997.9.8.1735. URL https://doi.org/10.1162/neco.1997.9.8.1735 .Taesung Kim, Jinhee Kim, Yunwon Tae, Cheonbok Park, Jang-Ho Choi, and Jaegul Choo. Reversible instance normalization for accurate time-series forecasting against distribution shift. In International Conference on Learning Representations (ICLR) , 2022. URL https://openreview.net/forum?id= cGDAkQo1C0p .Qingzhong Li, Yue Hu, Zhou Long, Qingchang Ma, Hui Ma, and Jinhai Sa. Ftimexer: Frequency-aware time-series transformer with exogenous variables for robust carbon footprint forecasting. arXiv preprint arXiv:2604.02347 , 2026. URL https://arxiv.org/abs/2604.02347 . Preprint, not yet peer-reviewed. Closest prior work to BoundEx: FFT frequency branch + gated time-frequency fusion + stochastic ex-ogenous masking + consistency regularization for empirical spurious-correlation suppression. Yuxuan Liang, Haomin Wen, Yuqi Nie, Yushan Jiang, Ming Jin, Dongjin Song, Shirui Pan, and Qingsong Wen. Foundation models for time series analysis: A tutorial and survey. 2024. doi: 10.1145/3637528. 3671451. URL https://doi.org/10.1145/3637528.3671451 .Bryan Lim, Sercan Ö. Arık, Nicolas Loeff, and Tomas Pfister. Temporal fusion transformers for interpretable multi-horizon time series forecasting. International Journal of Forecasting , 2021. doi: 10.1016/j.ijforecast. 2021.03.012. URL https://doi.org/10.1016/j.ijforecast.2021.03.012 .Yong Liu, Tengge Hu, Haoran Zhang, Haixu Wu, Shiyu Wang, Lintao Ma, and Mingsheng Long. itransformer: Inverted transformers are effective for time series forecasting. arXiv preprint arXiv:2310.06625 , 2023. doi: 10.48550/arxiv.2310.06625. URL https://doi.org/10.48550/arxiv.2310.06625 .Jiecheng Lu, Xu Han, Yan Sun, and Shihao Yang. Cats: Enhancing multivariate time series forecasting by constructing auxiliary time series as exogenous variables. In International Conference on Machine 
+
+20 Learning , 2024. doi: 10.48550/arXiv.2403.01673. URL https://www.semanticscholar.org/paper/ 09e098f5bc0a187bea27437a78a0e9ae83cf6a3d .Yuqi Nie, Nam Hoai Nguyen, Phanwadee Sinthong, and Jayant Kalagnanam. A time series is worth 64 words: Long-term forecasting with transformers. arXiv preprint arXiv:2211.14730 , 2022. doi: 10.48550/ arxiv.2211.14730. URL https://doi.org/10.48550/arxiv.2211.14730 .Kin G. Olivares, Cristian Challu, Grzegorz Marcjasz, Rafał Weron, and Artur Dubrawski. Neural basis ex-pansion analysis with exogenous variables: Forecasting electricity prices with nbeatsx. arXiv preprint arXiv:2104.05522 , 2021. doi: 10.1016/j.ijforecast.2022.03.001. URL https://arxiv.org/abs/2104. 05522 .Ethan Perez, Florian Strub, Harm de Vries, Vincent Dumoulin, and Aaron Courville. Film: Visual reasoning with a general conditioning layer. In Proceedings of the AAAI Conference on Artificial Intelligence , 2018. doi: 10.1609/aaai.v32i1.11671. URL https://doi.org/10.1609/aaai.v32i1.11671 .Xiangfei Qiu, Yuhan Zhu, Zhengyu Li, Xingjian Wu, Bin Yang, and Jilin Hu. Dag: A dual correlation network for time series forecasting with exogenous variables. arXiv preprint arXiv:2509.14933 , 2025. URL 
+
+https://arxiv.org/abs/2509.14933 .Noam Shazeer, Azalia Mirhoseini, Krzysztof Maziarz, Andy Davis, Quoc Le, Geoffrey Hinton, and Jeff Dean. Outrageously large neural networks: The sparsely-gated mixture-of-experts layer. In International Conference on Learning Representations (ICLR) , 2017. URL https://arxiv.org/abs/1701.06538 .Rupesh Kumar Srivastava, Klaus Greff, and Jürgen Schmidhuber. Training very deep networks. In Advances in Neural Information Processing Systems (NeurIPS) , 2015. URL https://arxiv.org/abs/1507.06228 .Kshitij Tayal, Arvind Renganathan, Xiaowei Jia, Vipin Kumar, and Dan Lu. Exotst: Exogenous-aware temporal sequence transformer for time series prediction. 2024. doi: 10.1109/icdm59182.2024.00105. URL 
+
+https://doi.org/10.1109/icdm59182.2024.00105 .Yuxuan Wang, Haixu Wu, Jiaxiang Dong, Yong Liu, Yunzhong Qiu, Haoran Zhang, Jianmin Wang, and Mingsheng Long. Timexer: Empowering transformers for time series forecasting with exogenous variables. In Neural Information Processing Systems , 2024. doi: 10.48550/arXiv.2402.19072. URL https://www. semanticscholar.org/paper/db5cb5354d8c1ff9cccf2a1c9ef5c218c9323cc1 .Haixu Wu, Jiehui Xu, Jianmin Wang, and Mingsheng Long. Autoformer: Decomposition transformers with auto-correlation for long-term series forecasting. arXiv preprint arXiv:2106.13008 , 2021. URL https: //arxiv.org/abs/2106.13008 .Yosuke Yamaguchi, Issei Suemitsu, and Wei Wu. Citras: Covariate-informed transformer for time series forecasting. IEEE Access , 2026. doi: 10.1109/access.2026.3695717. URL https://doi.org/10.1109/ access.2026.3695717 .Ailing Zeng, Muxi Chen, Lei Zhang, and Qiang Xu. Are transformers effective for time series forecasting? In 
+
+Proceedings of the AAAI Conference on Artificial Intelligence , 2023. doi: 10.1609/aaai.v37i9.26317. URL 
+
+https://doi.org/10.1609/aaai.v37i9.26317 .Haoyi Zhou, Shanghang Zhang, Jieqi Peng, Shuai Zhang, Jianxin Li, Hui Xiong, and Wancai Zhang. Informer: Beyond efficient transformer for long sequence time-series forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence , 2021. doi: 10.1609/aaai.v35i12.17325. URL https: //doi.org/10.1609/aaai.v35i12.17325 .Pengfei Zhou, Yunlong Liu, Junli Liang, Qi Song, and Xiang-Yang Li. Crosslinear: Plug-and-play cross-correlation embedding for time series forecasting with exogenous variables. 2025. doi: 10.1145/3711896. 3736899. URL https://doi.org/10.1145/3711896.3736899 .Tian Zhou, Ziqing Ma, Qingsong Wen, Xue Wang, Liang Sun, and Rong Jin. Fedformer: Frequency enhanced decomposed transformer for long-term series forecasting. arXiv preprint arXiv:2201.12740 , 2022. URL 
+
+https://arxiv.org/abs/2201.12740 .21
