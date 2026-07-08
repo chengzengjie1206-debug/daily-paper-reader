@@ -6,61 +6,55 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-06-29 ~ 2026-07-08
-- 运行时间：2026-07-08 07:15:34 UTC
+- 最新运行日期：2026-07-08
+- 运行时间：2026-07-08 21:40:54 UTC
 - 运行状态：成功
-- 本次总论文数：13
-- 精读区：6
-- 速读区：7
+- 本次总论文数：11
+- 精读区：2
+- 速读区：9
 
 ### 今日简报（AI）
-本期日报精读了两篇高分论文（RainODE连续时间降水预测与部分观测函数型时间序列联合推断），速读三篇聚焦进化搜索、时空点过程与联邦基础模型的时间序列预测工作。  
-最值得关注的方向是连续时间动态建模与函数型数据的统计推断，其中RainODE和Simultaneous Inference分别在9.0分展示了方法创新。  
-建议读者优先精读这两篇论文，并进一步探索速读中的进化Transformer搜索与联邦Mamba基础模型，以拓展时间序列预测的实用工具。
-- 详情：[/20260629-20260708/README](/20260629-20260708/README)
+1) 今日日报精选11篇论文，精读聚焦高分辨率天气预报与高效模型压缩两大突破。
+2) 最值得关注方向：通过表面描述符提升数据驱动天气预测的精度，以及稀疏残差路由用更少token实现更优预测。
+3) 建议优先精读两篇8分论文，掌握如何用工程化技巧兼顾模型性能与效率。
+- 详情：[/202607/08/README](/202607/08/README)
 
 ### 精读区论文标签
-1. [RainODE: Continuous-Time Precipitation Forecasting with Latent Neural ODEs](/20260629-20260708/2606.29855v1-rainode-continuous-time-precipitation-forecasting-with-latent-neural-odes)  
-   标签：评分：9.0/10、query:ts-air-qual
-   evidence：通过神经ODE进行连续时间降水预测，直接涉及不规则时序预测
-2. [Simultaneous Inference for Partially Observed Functional Time Series](/20260629-20260708/2606.31269v1-simultaneous-inference-for-partially-observed-functional-time-series)  
-   标签：评分：9.0/10、query:ts-air-qual
-   evidence：源于间歇缺失的污染数据依赖性问题
-3. [Advances in Neural Controlled Differential Equations](/20260629-20260708/2607.05280v1-advances-in-neural-controlled-differential-equations)  
-   标签：评分：9.0/10、query:ts-air-qual
-   evidence：神经控制微分方程天然处理不规则采样时间序列
-4. [Air Quality Downscaling with Station-Guided Pseudo-Supervision](/20260629-20260708/2607.05292v1-air-quality-downscaling-with-station-guided-pseudo-supervision)  
-   标签：评分：9.0/10、query:ts-air-qual
-   evidence：深度学习用于PM2.5降尺度，站点引导
-5. [CausticFlow: An Efficient Machine Learning Framework Combining Neural Differential Equations and Normalizing Flows for Binary Microlensing Parameter Inference](/20260629-20260708/2607.04955v1-causticflow-an-efficient-machine-learning-framework-combining-neural-differential-equations-and-normalizing-flows-for-binary-microlensing-parameter-inference)  
+1. [Enhancing a high resolution data-driven weather prediction model with surface descriptors](/202607/08/2607.02824v1-enhancing-a-high-resolution-data-driven-weather-prediction-model-with-surface-descriptors)  
    标签：评分：8.0/10、query:ts-air-qual
-   evidence：直接处理不规则采样时间序列和数据间隙，使用神经控制微分方程
-6. [Exogenous Dropout: A Simple, Strong Baseline for Corruption-Robust Time Series Forecasting with Covariates](/20260629-20260708/2607.05452v1-exogenous-dropout-a-simple-strong-baseline-for-corruption-robust-time-series-forecasting-with-covariates)  
-   标签：评分：8.0/10、query:ts
-   evidence：处理时间序列预测中缺失的外生变量通道
+   evidence：深度学习用于天气预报，可直接应用于空气质量预测
+2. [Less Tokens, Better Forecasts: Sparse Residual Routing for Efficient Weather Prediction](/202607/08/2607.02829v1-less-tokens-better-forecasts-sparse-residual-routing-for-efficient-weather-prediction)  
+   标签：评分：8.0/10、query:ts-air-qual
+   evidence：深度学习用于天气预测；高效时空预测
 
 ### 速读区论文标签
-1. [EVOTS: Evolutionary Transformer Search for Time Series Forecasting](/20260629-20260708/2607.00154v1-evots-evolutionary-transformer-search-for-time-series-forecasting)  
-   标签：评分：7.0/10、query:ts
-   evidence：时间序列Transformer的进化架构搜索
-2. [When Context Compensates for Sparse Event History: AlphaEarth for Spatio-Temporal Point-Process Forecasting](/20260629-20260708/2607.01082v1-when-context-compensates-for-sparse-event-history-alphaearth-for-spatio-temporal-point-process-forecasting)  
+1. [A Partially Functional Dynamic Structural Equation Model for Multi-Resolution Environmental Data](/202607/08/2607.04641v1-a-partially-functional-dynamic-structural-equation-model-for-multi-resolution-environmental-data)  
    标签：评分：7.0/10、query:ts-air-qual
-   evidence：利用空间上下文补偿稀疏历史事件的时空点过程预测，与缺失值处理相关
-3. [QuantFlow: A Federated Mamba-Based Post-Transformer Foundation Model for Time-Series Forecasting](/20260629-20260708/2607.02632v1-quantflow-a-federated-mamba-based-post-transformer-foundation-model-for-time-series-forecasting)  
-   标签：评分：7.0/10、query:ts
-   evidence：基于联邦Mamba的时间序列基础模型
-4. [StateFlow: Dual-State Recurrent Modeling for Long-Horizon Time Series Forecasting](/20260629-20260708/2607.00197v1-stateflow-dual-state-recurrent-modeling-for-long-horizon-time-series-forecasting)  
-   标签：评分：6.0/10、query:ts
-   evidence：提出StateFlow双状态循环模型用于长期多变量预测
-5. [Zeus: Towards Tuning-Free Foundation Model for Time Series Analysis](/20260629-20260708/2607.01918v1-zeus-towards-tuning-free-foundation-model-for-time-series-analysis)  
+   evidence：多分辨率环境数据模型，针对大气污染物排放，与空气质量和分辨率不一致相关
+2. [Exogenous Dropout: A Simple, Strong Baseline for Corruption-Robust Time Series Forecasting with Covariates](/202607/08/2607.05452v1-exogenous-dropout-a-simple-strong-baseline-for-corruption-robust-time-series-forecasting-with-covariates)  
+   标签：评分：7.0/10、query:ts-air-qual
+   evidence：处理时间序列预测中的协变量缺失；模型无关的dropout应对损坏输入
+3. [TopoBrick: Agentic Topology Sampling of Exogenous Variables for Zero-Shot Building IoT Forecasting](/202607/08/2607.06349v1-topobrick-agentic-topology-sampling-of-exogenous-variables-for-zero-shot-building-iot-forecasting)  
+   标签：评分：7.0/10、query:ts-air-qual
+   evidence：基于拓扑采样的零样本建筑IoT预测
+4. [Relational and Sequential Conformal Inference for Energy Time Series over Graphs via Foundation Models](/202607/08/2606.31804v1-relational-and-sequential-conformal-inference-for-energy-time-series-over-graphs-via-foundation-models)  
    标签：评分：6.0/10、query:ts-air-qual
-   evidence：免调优时间序列基础模型
-6. [Self-Gating Attention for Efficient Time Series Forecasting](/20260629-20260708/2607.02344v1-self-gating-attention-for-efficient-time-series-forecasting)  
-   标签：评分：6.0/10、query:ts
-   evidence：自门控注意力用于高效时间序列预测
-7. [MSCENet: A Multi-Scale Correlation Enhanced Network for Anomaly Detection](/20260629-20260708/2607.05864v1-mscenet-a-multi-scale-correlation-enhanced-network-for-anomaly-detection)  
-   标签：评分：6.0/10、query:ts
-   evidence：多尺度相关增强网络用于多变量时序异常检测，方法可迁移至含缺失值的预测
+   evidence：基于图的能源时间序列共形预测，可迁移到空气质量时空建模
+5. [A Multi-Resolution Finite-Volume Inspired Deep Learning Framework for Spatiotemporal Dynamics Prediction](/202607/08/2607.00460v1-a-multi-resolution-finite-volume-inspired-deep-learning-framework-for-spatiotemporal-dynamics-prediction)  
+   标签：评分：6.0/10、query:ts-air-qual
+   evidence：深度学习框架用于时空动力学预测，可应用于空气质量
+6. [Evolutionary Feature Engineering for Structured Data](/202607/08/2607.01548v1-evolutionary-feature-engineering-for-structured-data)  
+   标签：评分：6.0/10、query:ts-air-qual
+   evidence：进化特征工程用于时间序列预测提升了基础模型性能
+7. [Self-Gating Attention for Efficient Time Series Forecasting](/202607/08/2607.02344v1-self-gating-attention-for-efficient-time-series-forecasting)  
+   标签：评分：6.0/10、query:ts-air-qual
+   evidence：高效自门控注意力用于时间序列预测可改造用于不规则采样数据
+8. [Extreme Adaptive Transformer for Time Series Forecasting](/202607/08/2607.02437v1-extreme-adaptive-transformer-for-time-series-forecasting)  
+   标签：评分：6.0/10、query:ts-air-qual
+   evidence：基于Transformer的极端事件预测模型，与不规则时间序列相关
+9. [QuantFlow: A Federated Mamba-Based Post-Transformer Foundation Model for Time-Series Forecasting](/202607/08/2607.02632v1-quantflow-a-federated-mamba-based-post-transformer-foundation-model-for-time-series-forecasting)  
+   标签：评分：6.0/10、query:ts-air-qual
+   evidence：通用时间序列基础模型；Mamba状态空间模型；联邦学习保护隐私
 
 
 <div class="dpr-home-promo-card">
