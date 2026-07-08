@@ -1,0 +1,408 @@
+Title: Beyond Observations: Reconstruction Error-Guided Irregularly Sampled Time Series Representation Learning
+
+URL Source: https://ojs.aaai.org/index.php/AAAI/article/download/39545/43506
+
+Number of Pages: 9
+
+Markdown Content:
+# Beyond Observations: Reconstruction Error-Guided Irregularly Sampled Time Series Representation Learning 
+
+# Jiexi Liu 1* , Meng Cao 2,3* , Songcan Chen 2,3† 
+
+> 1
+
+School of Computer and Artificial Intelligence, Nanjing University of Finance and Economics 
+
+> 2
+
+College of Computer Science and Technology, Nanjing University of Aeronautics and Astronautics 
+
+> 3
+
+MIIT Key Laboratory of Pattern Analysis and Machine Intelligence 
+
+{liujiexi, meng.cao, s.chen }@nuaa.edu.cn 
+
+Abstract 
+
+Irregularly sampled time series (ISTS), characterized by non-uniform time intervals with natural missingness, are preva-lent in real-world applications. Existing approaches for ISTS modeling primarily rely on observed values to impute unob-served ones or infer latent dynamics. However, these methods overlook a critical source of learning signal: the reconstruc-tion error inherently produced during model training. Such error implicitly reflects how well a model captures the under-lying data structure and can serve as an informative proxy for unobserved values. To exploit this insight, we propose 
+
+iTimER , a simple yet effective self-supervised pre-training framework for ISTS representation learning. iTimER mod-els the distribution of reconstruction errors over observed values and generates pseudo-observations for unobserved timestamps through a mixup strategy between sampled er-rors and the last available observations. This transforms un-observed timestamps into noise-aware training targets , en-abling meaningful reconstruction signals. A Wasserstein met-ric aligns reconstruction error distributions between observed and pseudo-observed regions, while a contrastive learning ob-jective enhances the discriminability of learned representa-tions. Extensive experiments on classification, interpolation, and forecasting tasks demonstrate that iTimER consistently outperforms state-of-the-art methods under the ISTS setting. 
+
+# Introduction 
+
+Irregularly sampled time series (ISTS) are ubiquitous in real-world applications, ranging from healthcare (Gold-berger et al. 2000; Reyna et al. 2020; Liu, Cao, and Chen 2025), meteorology (Schulz and Stattegger 1997; Cao et al. 2018) to transportation (Chen et al. 2022; Tang et al. 2020). Arising from factors such as sensor failures, transmission distortions, or cost-driven acquisition policies, ISTS exhibit inconsistent intervals between consecutive sampling times-tamps within a variable, asynchronous sampling across mul-tiple variables and sometimes sampling sparsity. As shown in Fig.1, these characteristics manifest as natural missing-ness , i.e., unobserved values occurring, violating the as-sumption of a coherent, fixed-dimensional feature space that 
+
+> *
+
+These authors contributed equally. 
+
+> †
+
+Corresponding Author Copyright © 2026, Association for the Advancement of Artificial Intelligence (www.aaai.org). All rights reserved. 𝐶 !
+
+𝐶 "
+
+𝑡 " 𝑡 ! 𝑡 # 𝑡 $𝑡 %
+
+𝑡 𝑡 & 𝑡 '
+
+: Real Observation / Observed Value : Natural Missingness / Unobserved Value 
+
+𝑡 
+
+Inconsistent Intervals 
+
+Asynchronous Sampling : Observed Timestamps 
+
+Figure 1: Multivariate irregularly sampled time series (ISTS) with two variables C1 and C2, exhibiting non-uniform sam-pling intervals with natural missingness. underlies most conventional time series analysis methods (Shukla and Marlin 2020). Recent studies have explored multiple directions to ad-dress the above challenge and model temporal dependen-cies with missing patterns. A common line of work lever-ages explicit imputation of missing values as a preprocessing step before learning representations or performing down-stream tasks (Che et al. 2018; Camino, Hammerschmidt, and State 2019; Tashiro et al. 2021; Zhang et al. 2021b; Chen et al. 2022; Fan 2022; Du, Cˆ ot´ e, and Liu 2023; Fons et al. 2025). However, such direct imputation can be unreliable under high missingness ratio and may introduce noise or bias (Zhang et al. 2021a; Wu et al. 2021; Agarwal et al. 2023; Sun et al. 2024). Therefore, other kind of method proposes end-to-end architectures that typically model the data using continuous-time dynamics (Kidger et al. 2020; Rubanova, Chen, and Duvenaud 2019; Jhin et al. 2022; Oh et al. 2025; Zhang et al. 2025) or learning discrete regularly-sampled representations (Shukla and Marlin 2021; Zhang et al. 2023; Yalavarthi et al. 2024; Agarwal et al. 2023; Zhang et al. 2024b). In parallel, a growing body of work adopts self-supervised learning paradigms for ISTS, where The Fortieth AAAI Conference on Artificial Intelligence (AAAI-26) 
+
+23712 supervision is derived from the data itself (Chowdhury et al. 2023; Beebe-Wang et al. 2023). These methods apply con-trastive learning to align representations of different aug-mented views, while others design reconstruction-based ob-jectives from perturbed dropout inputs to encourage infor-mative representations. Despite the above advancements, existing approaches for learning from ISTS exhibit a fundamental limitation: they predominantly rely on the observed data as the only avail-able source of training signals, except for label information. As a result, the model’s behavior in unobserved regions re-mains underconstrained, and its representational potential is largely overlooked. Crucially, these approaches tend to dis-regard model-intrinsic signals that arise naturally during op-timization. Among them, the reconstruction error that quan-tifies the discrepancy between inputs and outputs encodes implicit information about the model’s current understand-ing of the data. While self-supervised masked modeling methods usually minimize such error over observed regions, they typically treat it as a loss term, rather than a source of feedback that can inform learning beyond the observa-tions. In our opinion, the reconstruction error itself carries rich statistical cues that can be leveraged to guide learn-ing in unobserved regions. In particular, the error distribu-tion reflects the model’s uncertainty and inductive bias, of-fering a unique opportunity to synthesize auxiliary training signals without relying on external supervision information or heuristic augmentations. Motivated by this insight, in this work, we propose iTimER , a novel self-supervised pretrain-ing framework that treats reconstruction error as an informa-tive learning signal. By modeling its distribution and propa-gating it to unobserved timestamps, we construct pseudo-observations that enable distributionally aligned learning. This strategy not only enriches the training signal but also paves the way for more reliable and expressive representa-tions in ISTS without requiring any labeled data. Rather than merely imputing missingness or injecting ar-bitrary noise, iTimER leverages the model’s own reconstruc-tion behavior as a proxy for learning uncertainty. Specif-ically, we estimate a distribution of reconstruction errors over the observed timestamps and propagate this signal to unobserved regions via a sampling-and-mixup mechanism. This strategy reflects both the model’s uncertainty and its inductive preferences, enabling the generation of pseudo-observations aligned with the model’s learned reconstruc-tion error distribution. As observations in ISTS are not uniformly distributed over time but are often concentrated around specific events or high-frequency periods, leaving other segments completely unobserved. As a result, the ob-served data only provide a partial view of the series, lead-ing models trained on these inputs to learn biased dynam-ics that can impair generalization and downstream perfor-mance. Although some recent methods (Tashiro et al. 2021; Islam, Tadepalli, and Fern 2025) attempt to mitigate this is-sue by adding and removing noise during training, they typ-ically overlook the uneven, biased nature of real-world sam-pling. In contrast, iTimER constructs pseudo-observations based on the model’s own uncertainty, enabling a noise-aware learning signal. Rather than treating the observed data as perfect learning signals, iTimER embraces its imperfec-tions and uses them as a proxy to guide representation learn-ing for ISTS. To further ensure consistency between real and pseudo signals, iTimER imposes a Wasserstein metric constraint between the reconstruction error distributions of observed and pseudo-observed regions. This encourages the model to maintain similar uncertainty patterns across both parts of the sequence, effectively mitigating the impact of sampling bias. Additionally, iTimER employs contrastive learning to enhance the discriminative power of the learned represen-tations, enabling the encoder to better capture meaningful variations in temporal dynamics. To sum up, iTimER uses self-generated, noise-aware su-pervision signals that reveal how the model generalizes be-yond the observed data to learn meaningful representations under ISTS conditions. Our main contributions are summa-rized as follows: • We uncover the untapped value of reconstruction error as an informative self-supervised signal, providing a novel perspective for representation learning in ISTS. • We enforce consistency between real and pseudo-observation series by aligning their reconstruction error distributions, improving the reliability for better repre-sentation learning. • We present a task-agnostic pre-training model for ISTS, applicable to various downstream tasks, including classi-fication, forecasting, and interpolation. 
+
+# Related Work 
+
+Representation Learning for Irregularly Sampled Time Series 
+
+Recent advances in ISTS analysis have increasingly shifted toward learning expressive and discriminative representa-tions. A common kind of imputation-based methods im-pute unobserved values from real observations before down-stream tasks (Che et al. 2018; Chen et al. 2022; Fan 2022; Du, Cˆ ot´ e, and Liu 2023). However, inappropriate imputation can introduce misleading noise or structural bias, especially under sparse observations that negatively impact model per-formance (Zhang et al. 2021a; Agarwal et al. 2023). While end-to-end models aggregate observation values for each variable to get discrete hidden states using attention mech-anisms (Shukla and Marlin 2021; Zhang et al. 2023; Zhou et al. 2025), Graph Neural Networks (GNNs) (Zhang et al. 2021a; Yalavarthi et al. 2024; Zhang et al. 2024b), and Re-current Neural Networks (RNNs) (De Brouwer et al. 2019; Schirmer et al. 2022; Agarwal et al. 2023) -based meth-ods. Such methods struggle to capture continuous tempo-ral dependencies. To address this, Neural ODE-based ap-proaches (Kidger et al. 2020; Rubanova, Chen, and Duve-naud 2019; Jhin et al. 2022; Oh et al. 2025; Zhang et al. 2025) have been proposed to model ISTS in continuous time. Recent work has explored self-supervised learning for ISTS representation learning by deriving supervision di-rectly from the data itself (Chowdhury et al. 2023; Beebe-Wang et al. 2023). Self-supervised methods design pretext 23713 tasks that encourage the model to learn meaningful repre-sentations without relying on downstream labels, including contrastive learning that constructs augmented views from real observations for contrastive learning and masked mod-eling methods that drop parts of the input data, and pre-dict the dropout values by minimizing the reconstruction er-ror between the predicted and original values. When facing ISTS, the non-uniform time intervals with natural missing-ness make it difficult to construct meaningful positive pairs and waste valuable real observations and potentially distort the learning signal. Different from existing masked modeling methods, iTimER leverages reconstruction error not just as a loss, but as a learning signal to model uncertainty. It estimates error distributions from observed data and synthesizes pseudo-observations, enabling noise-aware representation learning without explicit imputation or artificial noise (Tashiro et al. 2021; Islam, Tadepalli, and Fern 2025). 
+
+Reconstruction Error as a Learning Signal 
+
+Across domains, reconstruction error, also referred to as residual, has proven to be more than a loss metric but serves as a valuable signal for model guidance. In image inpainting, Yu et al. (2018) employs reconstruction error in a coarse-to-fine architecture, where the residuals from the coarse stage are passed to the fine stage as structural cues, improving de-tail consistency in the final output. Similarly, in robust sub-space learning, Meng and De La Torre (2013) embeds re-construction error into the optimization loop to jointly learn the data structure and noise characteristics. In video anomaly detection, works such as Hasan et al. (2016) and Liu et al. (2018) exploit spatially localized residuals to identify abnor-mal events. These examples suggest that reconstruction error can highlight uncertainty, noise, or outliers and serve as an infor-mative learning cue. iTimER builds on this idea by model-ing the distribution of reconstruction error over observed re-gions in ISTS, then sampling from this distribution to gener-ate uncertainty-aware pseudo-observations. These are used not as direct labels, but as a proxy signal that drives both contrastive representation learning and distributional consis-tency. To our knowledge, iTimER is the first to formalize this strategy in the ISTS domain, using reconstruction error not as a penalty, but as a means of self-supervised guidance. 
+
+# Proposed iTimER Framework 
+
+Problem Setup and Method Outline 
+
+Let X = {X1, X2, . . . , XN } denote a dataset of N ISTS instances, where each instance Xn ∈ RT ×C contains C
+
+variables observed over T time steps. The binary mask 
+
+Mn ∈ { 0, 1}T ×C is a missingness indicator for Xn, where 
+
+mn,t,c = 0 indicates there is no observation at timestamp t
+
+in variable c and mn,t,c = 1 means it is observed. Our objec-tive is to learn a nonlinear encoding function fθ : RT ×C →
+
+Rτ ×D that maps each ISTS instance into a representation 
+
+Rn = fθ (Xn), where τ is the length of the representation and D is the dimension. Here, for brevity, we omit the data case index n for the n-th instance and c for the c-th variable in an instance when the context is clear. 
+
+Specifically, as illustrated in Fig.2, given an ISTS instance 
+
+X with its missingness indicator M , we employ an encoder-decoder architecture, where fθ maps the input series to a la-tent representation R and gϕ reconstructs the input from it to obtain reconstruction bX. We first estimate the reconstruc-tion error distribution ϵt ∼ N (μϵ, σ 2 
+
+> ϵ
+
+) from xt − ˆxt, where 
+
+mt = 1 . Then, for unobserved timestamps, i.e., mt = 0 , we sample errors ˜ϵt from N (μϵ, σ 2 
+
+> ϵ
+
+) and mixup it with the last available observation xt−1 to obtain the pseudo-observation 
+
+˜xt. This results finally becoming the pseudo-observation se-ries fX that preserves the original timestamps but contains pseudo values in place of the unobserved timestamps. By jointly optimizing distribution alignment, representa-tion consistency and reconstruction, this training strategy guides the encoder toward learning more informative and discriminative representations R for downstream tasks, and we will elaborate on the key steps in the following sections. 
+
+Pseudo-Observation Learning 
+
+Modeling Reconstruction Uncertainty. For any instance 
+
+X, to model the uncertainty of reconstruction, we begin by reconstructing the observed timestamps, i.e., mask mt = 1 
+
+by using an encoder-decoder model ˆxt = gϕ(fθ (xt)) . The reconstruction error is then computed as ϵt = xt − ˆxt. To capture its statistical properties, we assume the error distri-bution ϵt following a Gaussian distribution ϵt ∼ N (μϵ, σ ϵ),which can provide a basis for generating plausible pseudo-observations for the unobserved timestamps. We leverage a Gaussian form for the reconstruction error distribution, which aligns with the empirical observation that residuals from deep time series models tend to follow near-normal patterns. This is also suitable for ISTS (Shukla and Marlin 2021; Fortuin et al. 2020), where the stochastic na-ture of sampling times introduces non-uniform uncertainty. A Gaussian approximation allows us to quantify such uncer-tainty and synthesize pseudo-observations in the absence of complete data. In addition, to preserve informative signals while main-taining stability, a momentum strategy is adopted to utilize historical information through a momentum coefficient ρ for the reconstruction error as 
+
+μhϵ = ρ·μh−1 
+
+> ϵ
+
++(1 −ρ)·μϵ, σhϵ = ρ·σh−1 
+
+> ϵ
+
++(1 −ρ)·σϵ, (1) where μh−1 
+
+> ϵ
+
+and σh−1 
+
+> ϵ
+
+denote the mean and standard devia-tion at the (h − 1) -th iteration, separately. 
+
+Error Sampling at Unobserved Timestamps. For unob-served timestamps, i.e., mt = 0, we synthesize pseudo-observations by mixing a sampled reconstruction error with a temporal contextual anchor value, such as the global mean, local moving average, or the last observation value. In this paper, we choose the last observation as it can better pre-serve temporal continuity and aligns with the causal nature of time series. Compared to the global mean or local moving average, it is not only a simple processing, but also faithfully 23714 Reconstruction Results & Error Error Distribution 
+
+> x
+> x
+> x
+> Encoder Decoder
+> Pseudo Series
+> 𝑋 "
+> Input Series
+> 𝑋
+> Learned Representation
+> 𝑡
+
+⊕ 
+
+> 𝑅
+> Sampling
+> 𝐿 !"#$ _"&'
+> 𝐿 ()&*+! _"&'
+> 𝐿 '!,-".)-
+> 𝐿 /
+> 𝑋 &𝑋 &0
+> 𝐸 𝐸 "
+> Reconstruction Results & Error
+> Loss Calculation Dataflow Direction for Input or Pseudo Series Pseudo, Real, No Observation
+> Reconstructed Real, (Pseudo / No) Observation Reconstruction Error Distribution Mixup
+
+𝑓 ! 𝑔 "
+
+> 𝑅 "
+
+Figure 2: The iTimER framework. iTimER leverages reconstruction error from the original sequence to generate pseudo observations via mixup uncertainty-aware sampling and the last observed value. Both real and pseudo-observation series are encoded and reconstructed, with consistency enforced at both representation and error distribution levels. maintains local dynamics. Then, we obtain the Mixup strat-egy defined as 
+
+˜xt = αt · ¯x + (1 − αt) · ˜ϵt, ˜ϵt ∼ N (μhϵ , (σhϵ )2) (2) where αt ∈ [0 , 1] controls the mixing ratio. This approach generates softly regularized imputations that balance be-tween global structure and instance-specific uncertainty. In ISTS, where temporal gaps vary significantly and structural assumptions may not hold, such a mixup-based generation helps avoid overconfident or abrupt imputations, encourages smoother continuity, and enhances representation learning by exposing the model to more realistic distributional varia-tions. 
+
+Constructing Complete Pseudo-Observation Series. To form a complete pseudo-observation series, we integrate the sampled values with the original observations based on the observed mask. Specifically, for each time step t, if the orig-inal value xt is observed (i.e., mt = 1 ), we retain the origi-nal observation. If xt is missing (i.e., mt = 0 ), we replace it with the generated pseudo-observation ˜xt introduced above. Formally, the constructed series is defined as: 
+
+˜xt =
+
+xt, if mt = 1 ˜xt, if mt = 0 (3) This procedure ensures that the final sequence preserves all original valid observations while providing realistic, distribution-aware proxy for the missingness, enabling the model to learn from a more complete and semantically co-herent input. fX then follows the similar procedure that re-constructed by gϕ(fθ ( fX)) and obtain the reconstruction er-ror distribution N (μp, σ 2 
+
+> p
+
+) where mt = 0 .
+
+Learning Objective Design 
+
+Our main step of iTimER is to enforce reconstruction er-ror consistency. The unobserved timestamps in ISTS have no ground truth and exhibit non-uniform sampling inter-vals that cannot directly supervise the model learning in those regions. By matching the statistical profile of errors between observed and imputed points, we provide a prin-cipled learning signal on the unobserved timestamps that 1) quantifies the model’s uncertainty in unobserved times-tamps, 2) prevents overconfident, biased imputations, and 3) encourages the encoder to learn representations that general-ize across both observed and missing parts. This error distri-bution alignment thus serves as a proxy for true reconstruc-tion quality where observations are unavailable, leading to uncertainty-aware ISTS representations. Here, to match the reconstruction error distributions of the real and pseudo-observation series, we use the 2-Wasserstein distance (Panaretos and Zemel 2019) between 
+
+Pr = N (μϵ, σ 2 
+
+> ϵ
+
+) and Pp = N (μp, σ 2 
+
+> p
+
+) as follows 
+
+LW = D2-Wasserstein (Pr ∥ Pp)= ∥μϵ − μp∥2 + ∥σϵ − σp∥2 (4) Moreover, to ensure robust and informative representa-tion learning under ISTS, we incorporate both contrastive learning and dual reconstruction objectives. The contrastive loss encourages the latent representations of the original and pseudo-observation series to remain close, thereby mitigat-ing representation drift caused by missing values. This align-ment in the embedding space not only enhances the seman-tic consistency between observed and reconstructed data but also facilitates the learning of stable, discriminative features that are less sensitive to sampling irregularities or noise. 23715 Input ISTS X and pseudo-observation series fX are en-coded using a shared encoder fθ (·), producing latent repre-sentations R and eR, respectively: 
+
+R = fθ (X), eR = fθ ( fX) (5) Therefore, the contrastive loss function is:              
+
+> Lcontrast =−X|B|
+> i=1 log exp
+> 
+> Ri·eRi
+> P|B|
+> j=1
+> 
+> (Ri·eRi) + I[i̸=j](Ri·Rj)
+> 
+> (6)
+
+where the I is the indicator function, |B| indicates batch size. The dual reconstruction losses Eq.(7), one on the orig-inal observations and the other on the pseudo-observation series, serve complementary roles. The original reconstruc-tion loss serves as a fundamental self-supervision signal to ensure that the encoder fθ and decoder gϕ can effectively capture the underlying structure of the observed data and ac-curately reconstruct the ISTS. While the pseudo-observation reconstruction loss evaluates whether the model can still produce stable and reasonable reconstructions. It strength-ens the model’s ability to handle pseudo-observations, help-ing it learn the underlying distribution of the imputed re-gions. 
+
+Lorig rec = ∥M ⊙ (X − cX)∥2
+
+Lpseudo rec = ∥M ⊙ ( fX − cXp)∥2 (7) The overall loss function is a weighted combination of the above terms: 
+
+L = αL W + βL contrast + 12 (Lorig rec + Lpseudo rec ) (8) where α and β are hyperparameters controlling the relative importance of each term. 
+
+# Experiments 
+
+In this section, we show the effectiveness of the iTimER framework across 3 mainstream time series downstream tasks, including classification, interpolation, and forecast-ing. The results are reported as mean and standard devi-ation values calculated over 5 independent runs. We use Time-Feature Attention (TFA) and Feature-Feature Atten-tion (FFA) as the backbone encoder (Chowdhury et al. 2023). The bold font highlights the top-performing method, while the underlined text marks the runner-up. Additional experimental setup and encoder details are provided in the Appendix due to space constraints. 
+
+Experimental Setup 
+
+Datasets and Metrics. For the Classification task, we evaluate on three real-world ISTS datasets from healthcare and human activity domains: (1) P19 (Reyna et al. 2020) in-cludes 38 , 803 ICU patients monitored by 34 sensors, with a missing ratio of 94 .9% . (2) P12 (Goldberger et al. 2000) contains temporal measurements from 11 , 988 patients over the first 48 hours of ICU stay, using 36 sensors and a missing ratio of 88 .4% . (3) PAM (Reiss and Stricker 2012) consists of 5, 333 sequences of 8 daily activities measured by 17 sen-sors, with 60 .0% missingness. 
+
+P19 and P12 are imbalanced binary label datasets while PAM dataset is balance containing 8 classes. Following the standard practice and prior works (Li, Li, and Yan 2023; Zhang et al. 2021a), we split each dataset into training/vali-dation/test sets using an 8 : 1 : 1 ratio and fixed indices for fair comparison. For the imbalanced P12 and P19 datasets, we report Area Under the Receiver Operating Characteris-tic Curve (AUROC) and Area Under the Precision-Recall Curve (AUPRC), while for the nearly balanced PAM dataset, we use Accuracy, Precision, Recall, and F1 Score. Higher values across all these metrics indicate better performance. For Interpolation and Forecasting tasks, we use three nat-ural ISTS datasets from the healthcare and activity domains: (1) Physionet (Goldberger et al. 2000) includes 12 , 000 ICU patients monitored by 41 sensors, with a missing ratio of 
+
+85 .7% . (2) MIMIC (Johnson et al. 2016) contains 23 , 457 
+
+ISTS samples covering the first 48 hours of ICU stays, with 
+
+96 variables and 96 .7% missingness. (3) Human Activity 
+
+(Frank, Asuncion et al. 2010) comprises 5, 400 samples of 3D positional data collected from 12 sensors, with 75 .0% 
+
+missingness. We randomly split each dataset into training, validation, and test sets with a 6 : 2 : 2 ratio, applying min-max nor-malization to the original observation values. For both tasks, we evaluate performance using Mean Squared Error (MSE) and Mean Absolute Error (MAE), where lower values indi-cate better performance. Complete results are reported in the appendix. 
+
+Baselines. To evaluate the performance of iTimER in ISTS Classification , we incorporate the following base-line models for a fair comparison, including Transformer (Vaswani et al. 2017), MTGNN (Wu et al. 2020), DGM 2-O (Wu et al. 2021), IP-Net (Shukla and Marlin 2018), GRU-D (Che et al. 2018), SeFT (Horn et al. 2020), mTAND (Shukla and Marlin 2021), Raindrop (Zhang et al. 2021a), Warpformer (Zhang et al. 2023) and ViTST (Li, Li, and Yan 2023). Specially, we also compare with several Pre-trained Language Model (PLM)-based methods for regularly sam-pled time series analysis, such as FPT (Zhou et al. 2023) and Time-LLM (Jin et al. 2024), as well as pre-training ISTS models PrimeNet (Chowdhury et al. 2023). For ISTS Interpolation and Forecasting tasks, except adapting the representative baselines above to these two tasks, we further incorporate several models designed for the ISTS prediction tasks, including Latent-ODE (Rubanova, Chen, and Duvenaud 2019), Neural Flow (Biloˇ s et al. 2021), CRU (Schirmer et al. 2022), t-PatchGNN (Zhang et al. 2024b) and ISTS-PLM (Zhang et al. 2024a), a PLM-based method for ISTS. 
+
+Main Results 
+
+As shown in Table 1, iTimER consistently achieves strong performance, demonstrating its effectiveness for ISTS clas-sification tasks. Specifically, in the imbalanced binary clas-sification tasks, iTimER outperforms prior methods on the P12 dataset by clear margins in both AUROC and AUPRC, indicating greater sensitivity to rare yet informative sig-nals in sparse ICU data. It maintains competitive results on 23716 P12 P19 PAM Method AUROC AUPRC AUROC AUPRC Accuracy Precision Recall F1 score Transformer 83 .3 ± 0.7 47 .9 ± 3.6 80 .7 ± 3.8 42 .7 ± 7.7 83 .5 ± 1.5 84 .8 ± 1.5 86 .0 ± 1.2 85 .0 ± 1.3
+
+MTGNN 74 .4 ± 6.7 35 .5 ± 6.0 81 .9 ± 6.2 39 .9 ± 8.9 83 .4 ± 1.9 85 .2 ± 1.7 86 .1 ± 1.9 85 .9 ± 2.4
+
+DGM 2-O 84 .4 ± 1.6 47 .3 ± 3.6 86 .7 ± 3.4 44 .7 ± 11 .7 82 .4 ± 2.3 85 .2 ± 1.2 83 .9 ± 2.3 84 .3 ± 1.8
+
+IP-Net 82 .6 ± 1.4 47 .6 ± 3.1 84 .6 ± 1.3 38 .1 ± 3.7 74 .3 ± 3.8 75 .6 ± 2.1 77 .9 ± 2.2 76 .6 ± 2.8
+
+GRU-D 81 .9 ± 2.1 46 .1 ± 4.7 83 .9 ± 1.7 46 .9 ± 2.1 83 .3 ± 1.6 84 .6 ± 1.2 85 .2 ± 1.6 84 .8 ± 1.2
+
+SeFT 73 .9 ± 2.5 31 .1 ± 4.1 81 .2 ± 2.3 41 .9 ± 3.1 67 .1 ± 2.2 70 .0 ± 2.4 68 .2 ± 1.5 68 .5 ± 1.8
+
+mTAND 84 .2 ± 0.8 48 .2 ± 3.4 84 .4 ± 1.3 50 .6 ± 2.0 92 .9 ± 0.8 93 .8 ± 0.8 94 .0 ± 0.9 93 .8 ± 0.8
+
+Raindrop 82 .8 ± 1.7 44 .0 ± 3.0 87 .0 ± 2.3 51 .8 ± 5.5 88 .5 ± 1.5 89 .9 ± 1.5 89 .9 ± 0.6 89 .8 ± 1.0
+
+Warpformer 83 .4 ± 0.9 47 .2 ± 3.7 88 .8 ± 1.7 55 .2 ± 3.9 94 .3 ± 0.6 95 .8 ± 0.8 94 .8 ± 1.0 95 .2 ± 0.6
+
+ViTST 85 .1 ± 0.8 51 .1 ± 4.1 89 .2 ± 2.0 53 .1 ± 3.4 95 .8 ± 1.3 96 .2 ± 1.3 96 .1 ± 1.1 96 .5 ± 1.2
+
+FPT 84 .8 ± 1.1 50 .7 ± 3.0 87 .3 ± 2.9 51 .6 ± 3.6 94 .0 ± 1.4 95 .3 ± 0.9 94 .7 ± 1.1 94 .9 ± 1.1
+
+Time-LLM 84 .4 ± 1.8 50 .2 ± 1.6 85 .1 ± 2.6 50 .1 ± 3.4 93 .4 ± 1.2 94 .2 ± 1.3 94 .7 ± 1.0 94 .4 ± 1.1
+
+PrimeNet 84 .9 ± 0.6 49 .8 ± 2.7 84 .4 ± 1.3 39 .7 ± 3.1 95 .3 ± 0.5 96 .1 ± 0.3 95 .5 ± 0.6 95 .7 ± 0.4
+
+iTimER 85 .7 ± 0.8 52 .0 ± 2.1 87 .1 ± 0.6 45 .6 ± 3.5 96 .1 ± 0.8 96 .7 ± 0.5 96 .4 ± 0.9 96 .6 ± 0.7
+
+Table 1: Overall performance comparison on ISTS Classification task. PhysioNet MIMIC Human Activity Method MSE ×10 −3 MSE ×10 −2 MSE ×10 −3
+
+GRU-D 6.18 ± 0.23 2.06 ± 0.05 2.74 ± 0.09 
+
+SeFT 9.46 ± 0.12 2.12 ± 0.02 14 .95 ± 0.03 
+
+Raindrop 10 .65 ± 0.12 2.31 ± 0.04 15 .21 ± 0.12 
+
+Warpformer 6.37 ± 0.34 1.93 ± 0.06 2.59 ± 0.15 
+
+mTAND 5.65 ± 0.08 1.93 ± 0.05 2.07 ± 0.17 
+
+Latent-ODE 6.84 ± 0.34 1.89 ± 0.08 3.12 ± 0.22 
+
+Neural Flow 6.77 ± 0.06 2.18 ± 0.11 3.73 ± 0.06 
+
+CRU 10 .30 ± 0.10 2.52 ± 0.04 7.17 ± 0.32 
+
+t-PatchGNN 4.75 ± 0.03 1.55 ± 0.08 1.95 ± 0.12 
+
+FPT 12 .24 ± 0.07 3.71 ± 0.01 2.85 ± 0.09 
+
+Time-LLM 12 .43 ± 0.08 3.63 ± 0.05 2.92 ± 0.01 
+
+ISTS-PLM 4.55 ± 0.08 1.47 ± 0.01 1.93 ± 0.01 
+
+iTimER 2.86 ± 0.04 0.13 ± 0.00 1.82 ± 0.01 
+
+Table 2: Overall performance comparison on ISTS Interpo-lation task. PhysioNet MIMIC Human Activity Method MSE ×10 −3 MSE ×10 −2 MSE ×10 −3
+
+GRU-D 5.59 ± 0.09 1.76 ± 0.03 2.94 ± 0.05 
+
+SeFT 9.22 ± 0.18 1.87 ± 0.01 12 .20 ± 0.17 
+
+Raindrop 9.82 ± 0.08 1.99 ± 0.03 14 .92 ± 0.14 
+
+Warpformer 5.94 ± 0.35 1.73 ± 0.04 2.79 ± 0.04 
+
+mTAND 6.23 ± 0.24 1.85 ± 0.06 3.22 ± 0.07 
+
+Latent-ODE 6.05 ± 0.57 1.89 ± 0.19 3.34 ± 0.11 
+
+Neural Flow 7.20 ± 0.07 1.87 ± 0.05 4.05 ± 0.13 
+
+CRU 8.56 ± 0.26 1.97 ± 0.02 6.97 ± 0.78 
+
+t-PatchGNN 4.98 ± 0.08 1.69 ± 0.03 2.66 ± 0.03 
+
+FPT 10 .95 ± 0.02 4.00 ± 0.03 3.03 ± 0.09 
+
+Time-LLM 11 .56 ± 0.19 4.41 ± 0.01 3.21 ± 0.01 
+
+ISTS-PLM 4.92 ± 0.05 1.64 ± 0.02 2.58 ± 0.03 
+
+iTimER 3.64 ± 0.05 0.14 ± 0.00 2.75 ± 0.03 
+
+Table 3: Overall performance comparison on ISTS Forecast-ing task. P19 and achieves SOTA performance on the balanced PAM dataset, demonstrating its consistent effectiveness across varying levels of class imbalance and missingness. More-over, as shown in Fig. 3, iTimER achieves this without sacri-ficing efficiency. Its favorable balance between performance and complexity makes it especially suitable for ISTS. Table 2 presents the performance comparison for ISTS in-terpolation tasks, where 30% of the observation timestamps are randomly masked and the model is tasked with recon-structing them using unmasked data. iTimER consistently achieves the best performance across all three datasets, out-performing recent SOTA methods. Its superior results, par-ticularly on high-missingness datasets like MIMIC and Phy-sioNet, indicate a strong ability to capture local structure and uncertainty without relying on explicit imputation or continuous-time solvers. Table 3 shows the performance on ISTS forecasting tasks, where we follow the common setup in Zhang et al. (2024b) that uses the first 24 hours of data to predict the next 24 hours on PhysioNet and MIMIC datasets, and uses the first 
+
+3, 000 ms to predict the next 1, 000 ms on Human Activ-ity data. iTimER achieves SOTA results on PhysioNet and MIMIC, and ranks among the top methods on Human Ac-tivity. These results suggest that iTimER’s reconstruction-aware representation learning generalizes well to long-range extrapolation, even under significant sparsity and distribu-tion shift. In nearly all cases, iTimER exhibits consistently low stan-dard deviation , indicating it is a reliable and robust model. Its performance remains stable across varying data sam-ples and initial conditions, highlighting its strong potential to generalize well to new, unseen data. This stability and predictability are particularly valuable in sensitive domains such as medical diagnosis, where accurate and reliable pre-23717 P12 PhysioNet-I PhysioNet-F Method AUROC ↑ MSE ×10 −3 ↓ MSE ×10 −3 ↓
+
+Baseline 84 .6 ± 2.1 5.03 ± 0.04 6.10 ± 0.29 
+
+Random 84 .8 ± 0.6 4.01 ± 0.06 4.61 ± 0.10 
+
+Constant 84 .7 ± 0.9 3.89 ± 0.10 4.26 ± 0.07 
+
+Only Error 85 .1 ± 0.8 3.08 ± 0.06 3.77 ± 0.05 
+
+Zero 85 .0 ± 1.9 3.06 ± 0.10 3.94 ± 0.12 
+
+Mean 85 .4 ± 1.0 2.91 ± 0.06 3.66 ± 0.08 
+
+MAve 85 .8 ± 1.0 2.83 ± 0.01 3.64 ± 0.02 
+
+w/o LW 85 .0 ± 1.0 3.17 ± 0.05 3.91 ± 0.01 
+
+w/o Lcontrast 85 .4 ± 0.7 3.02 ± 0.05 3.78 ± 0.03 
+
+iTimER 85 .7 ± 0.8 2.86 ± 0.04 3.64 ± 0.05 
+
+Table 4: Ablation results of iTimER on three downstream tasks, evaluating different pseudo-observation strategies and loss components (P12 for classification, PhysioNet-I for in-terpolation, and PhysioNet-F for forecasting). dictions are essential in clinical settings. 
+
+Ablation Analysis and Efficiency Evaluation 
+
+Ablation Analysis. Table 4 presents the ablation study evaluating various pseudo-observation strategies and loss components in iTimER. Here, Baseline performs reconstruction-based pretraining only on the observed data, without generating pseudo-observations or modeling reconstruction errors for unobserved timestamps. It serves as a lower result that lacks uncertainty modeling and signal augmentation. We first test substitutes for ˜xt, i.e., the proxy for the un-observed regions: Random samples ( Random ), a constant global mean ( Constant ), and using only the reconstruction error ( Only Error ). Random and Constant variants utilize uninformed or static values, leading to substantial degrada-tion in all tasks, highlighting the importance of noise-aware generation. While Only Error variant relies completely on the reconstruction error component and performs better than the above two variants, but still underperforms compared to our full iTimER. This highlights that sampling from the er-ror distribution N  μϵ, σ 2
+
+> ϵ
+
+ alone introduces meaningful in-ductive cues, along with the fact that without anchoring to observed values, it lacks the structural grounding necessary for robust representation learning. Subsequently, in the mixup formulation ˜xt = αt · ¯x +(1 − αt) · ˜ϵt, we test three alternatives for ¯x: setting it to zero (Zero ), the global mean ( Mean ), or a local moving average (MAve ) with a window size of 5. Among them, the MAve 
+
+strategy achieves the best results, suggesting that preserving local dynamics benefits pseudo-observation quality. How-ever, it introduces additional computational cost due to win-dowed processing and potential extra parameters. Finally, removing either the Wasserstein loss or the contrastive con-sistency loss leads to clear performance drops, confirming that both are essential for aligning uncertainty and ensur-ing representational coherence. Overall, these results vali-85.1      
+
+> 82.8 74.4 84.4
+> 84.9
+> 83.4
+> 85.7
+> -0.5
+> 0
+> 0.5
+> 1
+> 1.5
+> 2
+> 2.5
+> 3
+> 72 77 82 87 92
+> ViTST
+> 2.196s, 40.2G
+> Raindrop
+> 0.124s, 4.8G
+> MTGNN
+> 0.197s, 4.2G
+> DGM 𝟐 -O
+> 0.313s, 9.1G
+> PrimeNet
+> 1.074s, 8.9G Warpformer
+> 0.638s, 13.2G
+> iTimER(Ours)
+> 0.161s, 5.1G
+> AUROC Training Time
+
+Figure 3: Efficiency comparisons in terms of Training Time (s) and Memory Usage (G) with the latest advanced models on the P12 datasets. date our design choices and demonstrate that iTimER’s gains are from principled generation and multi-objective training. 
+
+Efficiency Evaluation. To demonstrate computational complexity, taking P12 in the classification task with a batch size of 50 as an example, iTimER achieves a training time cost of 0.161 s per batch with 5.16 GB of memory usage. As in Fig.3, the closer a circle is to the bottom-right corner and the smaller its area, the higher the model’s classification ac-curacy, with faster training speed and lower memory usage. Our iTimER achieves lower time complexity than most other methods and uses much less memory, especially less than ViTST, which also performs well on classification tasks. Although we achieve SOTA performance for the P12 dataset, our training time cost and memory usage are not optimal. This is primarily due to the additional overhead introduced by computing reconstruction error distributions and generating uncertainty-aware pseudo-observations dur-ing training. These steps enable iTimER to model ISTS more effectively, leading to improved performance across tasks despite the slight increase in resource consumption. 
+
+# Conclusion 
+
+In this work, we propose iTimER, a novel framework for ISTS representation learning that leverages reconstruction error distributions as informative training signals. By gener-ating pseudo-observations guided by learned error distribu-tions and enforcing consistency across original and pseudo-observation series, iTimER effectively enriches the training signal without relying on labels or explicit imputation. Ex-tensive experiments across three downstream tasks demon-strate its strong performance and broad applicability. Looking forward, the learned reconstruction error distri-bution offers a promising plug-and-play module that can be integrated into a wide range of ISTS models. Future work will explore its utility for enhancing uncertainty modeling, guiding attention mechanisms, or improving robustness un-der distribution shift. 23718 Acknowledgements 
+
+The main framework of this work was developed under the supervision of Professor Songcan Chen at Nanjing Univer-sity of Aeronautics and Astronautics. The authors wish to thank all the donors of the original datasets, and everyone who provided feedback on this work. This work is supported by the Key Program of NSFC under Grant No.62376126. 
+
+# References 
+
+Agarwal, R.; Sinha, A.; Prasad, D. K.; Clausel, M.; Horsch, A.; Constant, M.; and Coubez, X. 2023. Modelling Ir-regularly Sampled Time Series Without Imputation. arXiv preprint arXiv:2309.08698 .Beebe-Wang, N.; Ebrahimi, S.; Yoon, J.; Arik, S. O.; and Pfister, T. 2023. PAITS: Pretraining and Augmenta-tion for Irregularly-Sampled Time Series. arXiv preprint arXiv:2308.13703 .Biloˇ s, M.; Sommer, J.; Rangapuram, S. S.; Januschowski, T.; and G¨ unnemann, S. 2021. Neural flows: Efficient alter-native to neural ODEs. In Proceedings of Advances in Neu-ral Information Processing Systems (NeurIPS) , volume 34, 21325–21337. Camino, R. D.; Hammerschmidt, C. A.; and State, R. 2019. Improving missing data imputation with deep generative models. arXiv preprint arXiv:1902.10666 .Cao, W.; Wang, D.; Li, J.; Zhou, H.; Li, L.; and Li, Y. 2018. Brits: Bidirectional recurrent imputation for time series. In 
+
+Proceedings of Advances in Neural Information Processing Systems (NeurIPS) , volume 31. Che, Z.; Purushotham, S.; Cho, K.; Sontag, D.; and Liu, Y. 2018. Recurrent neural networks for multivariate time series with missing values. Scientific Reports , 8(1): 1–12. Chen, X.; Zhang, C.; Zhao, X.-L.; Saunier, N.; and Sun, L. 2022. Nonstationary temporal matrix factorization for multivariate time series forecasting. arXiv preprint arXiv:2203.10651 .Chowdhury, R. R.; Li, J.; Zhang, X.; Hong, D.; Gupta, R. K.; and Shang, J. 2023. Primenet: Pre-training for irregular mul-tivariate time series. In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) , volume 37. De Brouwer, E.; Simm, J.; Arany, A.; and Moreau, Y. 2019. GRU-ODE-Bayes: Continuous modeling of sporadically-observed time series. In Proceedings of Advances in Neural Information Processing Systems (NeurIPS) , volume 32. Du, W.; Cˆ ot´ e, D.; and Liu, Y. 2023. Saits: Self-attention-based imputation for time series. Expert Systems with Ap-plications , 219: 119619. Fan, J. 2022. Dynamic Nonlinear Matrix Completion for Time-Varying Data Imputation. In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) .Fons, E.; Sztrajman, A.; El-Laham, Y.; Ferrer, L.; Vyetrenko, S.; and Veloso, M. 2025. LSCD: Lomb–Scargle Conditioned Diffusion for Time series Imputation. In Pro-ceedings of International Conference on Machine Learning (ICML) .Fortuin, V.; Baranchuk, D.; R¨ atsch, G.; and Mandt, S. 2020. Gp-vae: Deep probabilistic time series imputation. In Pro-ceedings of the International Conference on Artificial Intel-ligence and Statistics (AISTATS) , 1651–1661. PMLR. Frank, A.; Asuncion, A.; et al. 2010. UCI machine learning repository. URL http://archive. ics. uci. edu/ml , 15: 22. Goldberger, A. L.; Amaral, L. A.; Glass, L.; Hausdorff, J. M.; Ivanov, P. C.; Mark, R. G.; Mietus, J. E.; Moody, G. B.; Peng, C.-K.; and Stanley, H. E. 2000. PhysioBank, PhysioToolkit, and PhysioNet: components of a new re-search resource for complex physiologic signals. Circula-tion , 101(23): e215–e220. Hasan, M.; Choi, J.; Neumann, J.; Roy-Chowdhury, A. K.; and Davis, L. S. 2016. Learning temporal regularity in video sequences. In Proceedings of the IEEE conference on com-puter vision and pattern recognition (CVPR) , 733–742. Horn, M.; Moor, M.; Bock, C.; Rieck, B.; and Borgwardt, K. 2020. Set functions for time series. In Proceedings of International Conference on Machine Learning (ICML) .Islam, M. R. U.; Tadepalli, P.; and Fern, A. 2025. Self-attention-based Diffusion Model for Time-series Imputation in Partial Blackout Scenarios. In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) , volume 39, 17564–17572. Jhin, S. Y.; Lee, J.; Jo, M.; Kook, S.; Jeon, J.; Hyeong, J.; Kim, J.; and Park, N. 2022. Exit: Extrapolation and interpolation-based neural controlled differential equations for time-series classification and forecasting. In Proceed-ings of ACM Web Conference , 3102–3112. Jin, M.; Wang, S.; Ma, L.; Chu, Z.; Zhang, J. Y.; Shi, X.; Chen, P.-Y.; Liang, Y.; Li, Y.-F.; Pan, S.; and Wen, Q. 2024. Time-LLM: Time Series Forecasting by Reprogramming Large Language Models. In Proceedings of International Conference on Learning Representations (ICLR) .Johnson, A.; Pollard, T. J.; Shen, L.; Lehman, L.-w. H.; Feng, M.; Ghassemi, M.; Moody, B.; Szolovits, P.; Celi, L. A.; and Mark, R. G. 2016. MIMIC-III, a freely acces-sible critical care database Sci. Data , 3(1): 1. Kidger, P.; Morrill, J.; Foster, J.; and Lyons, T. 2020. Neural controlled differential equations for irregular time series. In 
+
+Proceedings of Advances in Neural Information Processing Systems (NeurIPS) , volume 33, 6696–6707. Li, Z.; Li, S.; and Yan, X. 2023. Time Series as Images: Vision Transformer for Irregularly Sampled Time Series. In 
+
+Proceedings of Advances in Neural Information Processing Systems (NeurIPS) .Liu, J.; Cao, M.; and Chen, S. 2025. TimeCHEAT: A Chan-nel Harmony Strategy for Irregularly Sampled Multivariate Time Series Analysis. In Proceedings of the AAAI Confer-ence on Artificial Intelligence (AAAI) , volume 39. Liu, W.; Luo, W.; Lian, D.; and Gao, S. 2018. Future frame prediction for anomaly detection–a new baseline. In Pro-ceedings of the IEEE conference on computer vision and pattern recognition (CVPR) , 6536–6545. Meng, D.; and De La Torre, F. 2013. Robust matrix fac-torization with unknown noise. In Proceedings of the 23719 IEEE conference on computer vision and pattern recogni-tion (CVPR) , 1337–1344. Oh, Y.; Kam, S.; Lee, J.; Lim, D.-Y.; Kim, S.; and Bui, A. 2025. Comprehensive review of neural differential equations for time series analysis. arXiv preprint arXiv:2502.09885 .Panaretos, V. M.; and Zemel, Y. 2019. Statistical aspects of Wasserstein distances. Annual review of statistics and its application , 6(1): 405–431. Reiss, A.; and Stricker, D. 2012. Introducing a new bench-marked dataset for activity monitoring. In Proceedings of International Symposium on wearable computers , 108–109. IEEE. Reyna, M. A.; Josef, C. S.; Jeter, R.; Shashikumar, S. P.; Westover, M. B.; Nemati, S.; Clifford, G. D.; and Sharma, A. 2020. Early prediction of sepsis from clinical data: the PhysioNet/Computing in Cardiology Challenge 2019. Crit-ical Care Medicine , 48(2): 210–217. Rubanova, Y.; Chen, R. T.; and Duvenaud, D. K. 2019. La-tent ordinary differential equations for irregularly-sampled time series. In Proceedings of Advances in Neural Informa-tion Processing Systems (NeurIPS) , volume 32. Schirmer, M.; Eltayeb, M.; Lessmann, S.; and Rudolph, M. 2022. Modeling irregular time series with continuous re-current units. In Proceedings of International Conference on Machine Learning (Proceedings of International Confer-ence on Machine Learning (ICML)) , 19388–19405. PMLR. Schulz, M.; and Stattegger, K. 1997. SPECTRUM: Spec-tral analysis of unevenly spaced paleoclimatic time series. 
+
+Computers & Geosciences , 23(9): 929–945. Shukla, S. N.; and Marlin, B. 2018. Interpolation-Prediction Networks for Irregularly Sampled Time Series. In Proceed-ings of International Conference on Learning Representa-tions (ICLR) .Shukla, S. N.; and Marlin, B. 2021. Multi-Time Attention Networks for Irregularly Sampled Time Series. In Proceed-ings of International Conference on Learning Representa-tions (ICLR) .Shukla, S. N.; and Marlin, B. M. 2020. A survey on princi-ples, models and methods for learning from irregularly sam-pled time series. arXiv preprint arXiv:2012.00168 .Sun, C.; Li, H.; Song, M.; Cai, D.; Zhang, B.; and Hong, S. 2024. Time pattern reconstruction for classification of irregularly sampled time series. Pattern Recognition , 147: 110075. Tang, X.; Yao, H.; Sun, Y.; Aggarwal, C.; Mitra, P.; and Wang, S. 2020. Joint modeling of local and global tem-poral dynamics for multivariate time series forecasting with missing values. In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) , volume 34, 5956–5963. Tashiro, Y.; Song, J.; Song, Y.; and Ermon, S. 2021. CSDI: Conditional Score-based Diffusion Models for Probabilistic Time Series Imputation. In Proceedings of Advances in Neu-ral Information Processing Systems (NeurIPS) , volume 34. Vaswani, A.; Shazeer, N.; Parmar, N.; Uszkoreit, J.; Jones, L.; Gomez, A. N.; Kaiser, Ł.; and Polosukhin, I. 2017. At-tention is all you need. In Proceedings of Advances in Neu-ral Information Processing Systems (NIPS) , volume 30. Wu, Y.; Ni, J.; Cheng, W.; Zong, B.; Song, D.; Chen, Z.; Liu, Y.; Zhang, X.; Chen, H.; and Davidson, S. B. 2021. Dynamic gaussian mixture based deep generative model for robust forecasting on sparse multivariate time series. In Pro-ceedings of the AAAI Conference on Artificial Intelligence (AAAI) , volume 35, 651–659. Wu, Z.; Pan, S.; Long, G.; Jiang, J.; Chang, X.; and Zhang, C. 2020. Connecting the dots: Multivariate time series forecasting with graph neural networks. In Proceedings of the ACM SIGKDD International Conference on Knowledge Discovery & Data Mining (KDD) , 753–763. Yalavarthi, V. K.; Madhusudhanan, K.; Scholz, R.; Ahmed, N.; Burchert, J.; Jawed, S.; Born, S.; and Schmidt-Thieme, L. 2024. GraFITi: Graphs for Forecasting Irregularly Sam-pled Time Series. In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) , volume 38, 16255–16263. Yu, J.; Lin, Z.; Yang, J.; Shen, X.; Lu, X.; and Huang, T. S. 2018. Generative image inpainting with contextual atten-tion. In Proceedings of the IEEE conference on computer vision and pattern recognition , 5505–5514. Zhang, J.; Zheng, S.; Cao, W.; Bian, J.; and Li, J. 2023. Warpformer: A Multi-scale Modeling Approach for Irreg-ular Clinical Time Series. In Proceedings of the ACM SIGKDD International Conference on Knowledge Discov-ery & Data Mining (KDD) , 3273–3285. Zhang, W.; Yin, C.; Liu, H.; and Xiong, H. 2024a. Un-leash the power of pre-trained language models for irregu-larly sampled time series. arXiv preprint arXiv:2408.08328 .Zhang, W.; Yin, C.; Liu, H.; Zhou, X.; and Xiong, H. 2024b. Irregular Multivariate Time Series Forecasting: A Trans-formable Patching Graph Neural Networks Approach. In 
+
+Proceedings of International Conference on Machine Learn-ing (ICML) .Zhang, X.; Zeman, M.; Tsiligkaridis, T.; and Zitnik, M. 2021a. Graph-Guided Network for Irregularly Sampled Multivariate Time Series. In Proceedings of International Conference on Learning Representations (ICLR) .Zhang, Y.; Wang, X.; Yu, X.; Zhou, Z.; Xu, X.; Bai, L.; and Wang, Y. 2025. DiffODE: Neural ODE with Differentiable Hidden State for Irregular Time Series Analysis. In 2025 IEEE 41st International Conference on Data Engineering (ICDE) , 2107–2120. IEEE Computer Society. Zhang, Z.-Y.; Zhang, S.-Q.; Jiang, Y.; and Zhou, Z.-H. 2021b. LIFE: Learning individual features for multivariate time series prediction with missing values. In IEEE Inter-national Conference on Data Mining (ICDM) , 1511–1516. IEEE. Zhou, T.; Niu, P.; Sun, L.; Jin, R.; et al. 2023. One fits all: Power general time series analysis by pretrained lm. In Pro-ceedings of Advances in Neural Information Processing Sys-tems (NeurIPS) , volume 36, 43322–43355. Zhou, Z.; Huang, Y.; Wang, Y.; Wu, Y.; Kwok, J.; and Liang, Y. 2025. Revitalizing Canonical Pre-Alignment for Irreg-ular Multivariate Time Series Forecasting. arXiv preprint arXiv:2508.01971 .23720
