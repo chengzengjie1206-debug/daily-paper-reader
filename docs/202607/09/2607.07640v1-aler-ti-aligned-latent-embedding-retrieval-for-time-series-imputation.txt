@@ -1,0 +1,582 @@
+Title: ALER-TI: Aligned Latent Embedding Retrieval for Time Series Imputation
+
+URL Source: https://arxiv.org/pdf/2607.07640v1
+
+Published Time: Thu, 09 Jul 2026 01:19:52 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+# ALER-TI : Aligned Latent Embedding Retrieval for Time Series Imputation 
+
+Xuan-Thong Truong 1, Trung-Kien Le 1, Tung Kieu 2, Thi-Thu Nguyen 1, Nhat-Hai Nguyen 1,* 
+
+1School of Computer Science, Hanoi University of Science and Technology, Hanoi, Vietnam 
+
+2Department of Computer Science, Aalborg University, Aalborg, Denmark 
+
+*Corresponding author: hai.nguyennhat@hust.edu.vn 
+
+Abstract —Deep learning has significantly advanced time series imputation, yet most existing architectures primarily rely on local-ized temporal context within the corrupted input sequence. This reliance can be limiting in real-world scenarios, where time series often exhibit non-stationary dynamics, weak temporal correlations, and infrequent patterns that are difficult to reconstruct from nearby observations alone. In this paper, we propose ALER-TI ,Aligned Latent Embedding Retrieval for Time Series Imputation, a retrieval-augmented framework that explicitly leverages historical patterns to supplement degraded local context for more reliable missing-value reconstruction. The core of ALER-TI is Latent Embedding Alignment (LEA), which mitigates the representation mismatch between corrupted queries and complete historical candidates. By applying post-hoc masking in the latent space, LEA aligns candidates with the query’s missingness pattern while allowing historical embeddings to be pre-computed and cached for efficient retrieval. ALER-TI is model-agnostic and can be integrated with various imputation backbones through a lightweight adaptation module. Extensive experiments on six real-world datasets under different missing rates demonstrate that ALER-TI consistently improves strong baseline models and enhances robustness across diverse imputation settings. 
+
+Index Terms —Time series imputation, retrieval-augmented learning, model-agnostic framework, contrastive learning. 
+
+I. I NTRODUCTION 
+
+Time series data collected from real-world sensors and moni-toring systems are frequently affected by missing values due to sensor malfunctions, transmission failures, or human errors [11]. Since many downstream analytical models require complete data matrices as inputs, missing observations can severely undermine the reliability of critical applications, ranging from healthcare monitoring [5], [19] and financial forecasting [1] to industrial anomaly detection [4]. To address this challenge, various deep learning architectures have been developed for time series imputation, including CNN -based models [18], [22], 
+
+Transformer variants [8], [17], and decomposition-based networks [23], [26]. Despite their different architectural designs, these methods mainly rely on the localized temporal context within the corrupted input sequence to reconstruct missing observations. However, real-world time series often exhibit complex and non-stationary dynamics driven by non-deterministic processes, where temporal correlations may weaken over time [17], [24]. Such dynamics can lead to infrequent patterns and distributional variations, making it difficult for models to infer missing values from the observed local context alone. This limitation is Re-compute  Pre-compute     
+
+> Latent Embedding
+> Alignment (LEA) On-the-fly Masking (OM)
+> Asymmetric Retrieval
+> (AR)
+> Query
+> Encoder Candidate
+> Encoder
+> Post-hoc
+> Masking
+> Top-k Candidates Top-k Candidates
+> Query
+> Encoder
+> Similarity
+> Estimation
+> Query
+> Encoder
+> Historical
+> Database
+> Candidate
+> Encoder
+> Similarity
+> Estimation
+> Top-k Candidates
+> Missing
+> Query
+> Similarity
+> Estimation
+> Candidate
+> Encoder
+> Early Masking
+> Pre-computed embeddings
+> Representation alignment
+> Pre-computed embeddings
+> Representation alignment
+> Pre-computed embeddings
+> Representation alignment
+> Missing
+> Query Historical
+> Database
+> Missing
+> Query Historical
+> Database
+
+Fig. 1: Comparison of retrieval strategies for time-series im-putation. (a) Asymmetric Retrieval (AR): Encodes the query and candidates independently, with candidates represented as fully observed trajectories. (b) On-the-fly Masking (OM): Applies masking before encoding to align candidate representations with the query pattern, but requires online re-encoding at inference time. (c) LEA (Ours): Uses mask-agnostic encoding and performs masking in latent space, enabling reuse of pre-computed embeddings while preserving query-aware alignment. 
+
+especially problematic when the corrupted segment corresponds to a rare event or when nearby observations provide insufficient correlated information for reliable reconstruction. A promising direction is to leverage historical patterns through retrieval-augmented mechanisms, a paradigm that has recently shown strong potential in time series forecasting [7], [16], [20]. For imputation, retrieval is especially appealing because it provides explicit reference patterns at inference time, complementing the information stored implicitly in model parameters. When the local context around missing values is weak, ambiguous, or affected by non-stationary dynamics, similar historical segments may offer useful structural evidence for reconstruction. Retrieval can also help reuse rare but relevant temporal patterns when similar situations reappear, which is difficult for fixed-parameter models to achieve when such patterns occur only sparsely in the training data [2], [29]. However, retrieval for time series imputation is fundamen-tally different from retrieval for forecasting. In forecasting, the query sequence is usually fully observed, so similarity can be estimated from a complete input context. In imputation, by arXiv:2607.07640v1 [cs.LG] 8 Jul 2026 contrast, the query itself is corrupted. Missing values directly distort the query representation and make it difficult to compare the query with complete historical candidates. Therefore, the key challenge is not merely how to retrieve historical patterns, but how to measure similarity between a corrupted query and clean candidates in a representation space that is both aligned and efficient. As illustrated in Fig. 1(a), a naive Asymmetric Retrieval strategy encodes the corrupted query and complete candidates independently. This design allows candidate embeddings to be pre-computed, but it creates a representation mismatch: the query encoder is affected by missingness artifacts, whereas the candidate encoder processes fully observed trajectories. Consequently, the resulting similarity scores may not reflect the true structural relationship between signals, causing the retriever to select irrelevant historical patterns. A more aligned alternative is On-the-fly Masking, shown in Fig. 1(b), which applies the query-specific mask to each candidate before encoding. Although this strategy reduces the representation gap, it destroys the efficiency of cached retrieval because candidate representations become query-dependent and must be recomputed online. To address these challenges, we propose ALER-TI , a retrieval-augmented framework for time series imputation centered on 
+
+Latent Embedding Alignment (LEA). As illustrated in Fig. 1(c), LEA adopts a mask-agnostic encoding paradigm that shifts the interaction with missingness patterns from raw input encoding to a downstream latent alignment stage. This design allows historical candidates to be encoded and cached offline, while LEA applies post-hoc masking and context-aware interaction to align corrupted queries with the pre-indexed candidate space during retrieval. In this way, ALER-TI preserves the efficiency of cached retrieval while mitigating the representation mismatch between corrupted queries and clean historical references. We further design ALER-TI as a model-agnostic framework that can be integrated with various time series imputation backbones, such as ModernTCN [18], TimesNet [22], and 
+
+SAITS [8]. By augmenting local-context models with relevant historical patterns, ALER-TI provides additional global evi-dence for reconstruction and improves imputation performance across different sequence lengths and missing rates. Our primary contributions are summarized as follows:  
+
+> •
+
+We propose Latent Embedding Alignment (LEA), aretrieval mechanism that mitigates the representation mismatch between corrupted queries and clean historical candidates while avoiding the computational bottleneck of online database re-encoding.  
+
+> •
+
+We introduce ALER-TI , a model-agnostic retrieval-augmented framework for time series imputation that integrates relevant historical patterns with existing back-bone models through a lightweight adaptation module.  
+
+> •
+
+Extensive experiments on multiple real-world benchmarks demonstrate that ALER-TI consistently improves strong imputation backbones and remains robust across diverse sequence lengths and missing rates. II. R ELATED WORK 
+
+Deep Learning for Time Series Imputation Time series imputation has been studied through a wide range of deep learning architectures designed to capture complex temporal dependencies. CNN-based methods extract local temporal patterns, with recent models such as TimesNet [22] trans-forming 1D sequences into 2D representations to capture multi-periodic variations, while ModernTCN [18] employs large-kernel convolutions to enhance temporal feature modeling. Following the success of self-attention, Transformer-based architectures have also been widely adopted for modeling long-range dependencies. For example, PatchTST [21] uses patch-level representations to preserve local semantic information, whereas SAITS [8] employs diagonal-masked self-attention blocks trained with a joint-optimization strategy to directly target missing entries. In parallel, recent studies show that simpler architectures can also be highly effective. DLinear [26] decomposes time series into trend and seasonal components, while RLinear [15] combines linear mapping with reversible instance normalization to alleviate non-stationary distribution shifts. Despite these advances, most existing models perform imputation primarily based on the corrupted local context within the input sequence. As a result, they may underutilize informative historical patterns, especially when the observed context is insufficient, weakly correlated, or affected by non-stationary dynamics. In contrast, ALER-TI introduces a retrieval-based framework that explicitly extracts relevant historical subsequences and uses them as auxiliary evidence for reconstructing missing values. This design supplements local-context modeling with long-term historical information, thereby improving reconstruction when the current sequence alone provides limited guidance. 
+
+Retrieval-Augmented Models Retrieval-augmented generation (RAG), originally developed in Natural Language Processing, has become an effective paradigm for alleviating the informa-tion bottleneck of fixed-parameter models by retrieving relevant instances from external databases [10], [14]. In the temporal do-main, recent studies have mainly explored retrieval-augmented forecasting, where similar historical patterns are retrieved to provide long-term context for future trend estimation [12], [16], [19], [20]. Rather than requiring the model to memorize every possible temporal variation in its parameters, retrieval allows relevant historical sequences to be accessed explicitly, improving the model’s ability to handle complex or infrequent patterns. However, directly applying retrieval to time series imputation is challenging because the query sequence is itself corrupted by missing values. A naive retrieval strategy that matches a corrupted query against complete historical candidates can create a substantial representation mismatch, while dynamically masking and re-encoding every candidate at inference time is computationally expensive. To address this challenge, we introduce ALER-TI , a retrieval-augmented framework tailored for time series imputation. To the best of our knowledge, ALER-TI is among the first frameworks to explicitly formulate deep time series imputation as a retrieval-augmented task, with a dedicated latent alignment mechanism for handling missing-query and complete-candidate mismatch. Its core component, Latent Embedding Alignment, aligns corrupted queries and clean historical candidates within a shared latent space through post-hoc masking and candidate-guided query encoding strategies, enabling both robust retrieval and efficient cached inference. III. M ETHODOLOGY 
+
+A. Problem Formulation 
+
+Given a complete time series Y ∈ RC×L with C channels and length L, missing values are indicated by a binary mask 
+
+M ∈ { 0, 1}C×L, where Mc,l = 1 means that the entry at channel c and timestamp l is observed, and Mc,l = 0 means that it is missing. The partially observed input sequence is denoted as X, which contains the observed entries of Y under the mask M.The goal of time series imputation is to estimate the missing entries of Y from the incomplete observation X and the mask 
+
+M. Specifically, the model is expected to reconstruct the unobserved values indicated by (1 − M) while preserving consistency with the observed values indicated by M.
+
+B. Framework Overview 
+
+ALER-TI extends standard time series imputation by in-corporating retrieval-augmented historical references. Given a historical time series repository S ∈ RC×T from the training split, we construct a candidate pool Dtrain by extracting subsequences of length L. For each incomplete query X with mask M, ALER-TI retrieves the top-k most relevant historical subsequences P = pi, i = 1 . . . k from Dtrain and uses them as auxiliary evidence for reconstruction. The reconstruction is produced by a model-agnostic framework: 
+
+¯X = Fθ (X, M, P). (1) The final imputed output preserves the observed values and replaces only the missing entries: 
+
+¯Y = M ⊙ X + ( 1 − M) ⊙ ¯X, (2) where ⊙ denotes element-wise multiplication. As shown in Fig. 2, ALER-TI follows a two-stage design. In the first stage, we train the Latent Embedding Alignment (LEA) module to align corrupted queries with clean historical candidates in a shared latent space. Historical candidates are encoded independently of query-specific masks and cached as latent representations, enabling efficient retrieval during inference. In the second stage, the retrieved subsequences are integrated with the output of a frozen backbone imputation model through a lightweight adapter. This design allows 
+
+ALER-TI to supplement local-context reconstruction with relevant historical patterns while remaining compatible with different imputation backbones. Cross Attention 
+
+> Aggregator Multi-view extractor
+> Masked Transformer
+> Encoder
+> Transformer Encoder
+> Score
+> Query
+> Keys
+> Temporal Embedding Temporal Embedding
+
+## ...  
+
+> Feature
+> similarity
+> Fusion
+> Top-k candidates
+> Database
+> Backbone imputation
+> Retrieve
+> MLP
+> Latent Embedding Alignment Retrieval-augmented Imputation
+> Masking
+> Backbone
+
+Fig. 2: Overview of the ALER-TI pipeline. (Left) LEA aligns corrupted queries with clean candidates through late-stage masking and candidate-guided query encoding. (Right) The retrieved historical signals are integrated with the output of a frozen backbone model through lightweight fusion, followed by a MLP-based block for refined reconstruction. 
+
+C. Latent Embedding Alignment (LEA) 1) LEA Architecture: The Latent Embedding Alignment (LEA) module is designed to retrieve structurally relevant historical subsequences for corrupted queries while avoiding the cost of re-encoding the entire database for every query. As illustrated in Fig. 2, LEA adopts a dual-stream architecture consisting of a candidate stream and a query stream. The candidate stream supports offline caching, while the query stream performs mask-aware interaction with cached candidate representations. 
+
+2) Candidate Encoding: For each historical candidate 
+
+pi ∈ D train , LEA first encodes the complete sequence using a Transformer encoder fθ . Importantly, the query-specific mask 
+
+M is not applied before candidate encoding. Instead, the candidate is encoded in a mask-agnostic manner, and the interaction with the query mask is postponed to the latent stage. This design allows all candidate representations to be pre-computed and cached offline, avoiding repeated online encoding of the historical database. The cached candidate representation is denoted as 
+
+zci = fθ (pi). (3) 
+
+3) Candidate-Guided Query Encoding: For a corrupted query X, LEA extracts multiple contextual views from the observed tokens. Let U denote the index set of observed query tokens after applying the mask M, and let hj , j ∈ U be their latent representations from the query stream. We introduce 
+
+m learnable query codes qr , r = 1 . . . m , where m ≪ L, to summarize the observed query context: 
+
+zqr = X
+
+> j∈U
+
+αrj hj , αrj = exp( q⊤ 
+
+> r
+
+hj /√d)
+
+P 
+
+> u∈U
+
+exp( q⊤ 
+
+> r
+
+hu/√d) , (4) where d denotes the latent dimension. These m contextual vectors provide multiple views of the observed query. To com-pare the query with the i-th candidate, LEA further aggregates these contextual views using the candidate representation zci
+
+as guidance: 
+
+zqi =
+
+> m
+
+X
+
+> r=1
+
+βir zqr , βir = exp( z⊤ 
+
+> ci
+
+zqr /√d)
+
+Pmv=1 exp( z⊤ 
+
+> ci
+
+zqv /√d) . (5) The similarity between the corrupted query and the i-th candidate is then computed as 
+
+si = z⊤ 
+
+> qi
+
+zci . (6) Since this interaction is performed only at the top latent layer and uses a small number of query codes, LEA improves representation alignment while maintaining efficient retrieval. 
+
+D. Data Construction and Contrastive Training 1) Candidate Pool Generation: We construct the candidate pool from the training split of the historical repository S by extracting subsequences of length L using a sliding window with unit stride, where Dtrain = {pi}Ni=1 , pi = Si:i+L, and 
+
+N = T − L + 1 for a single training series of length T ; for multiple training series, N denotes the total number of extracted subsequences. To reduce distribution shifts across different time periods, each candidate is processed using reversible instance normalization ( RevIN ) [13] before being encoded and cached. 
+
+2) Positive Sample Construction: During training, the com-plete ground truth Y is available and is used only to construct supervision for the retriever. To encourage LEA to focus on stable temporal structures rather than stochastic fluctuations, we apply seasonal-trend decomposition (STL) [6] to Y:
+
+Y = Ytr + Ysea + Yres , (7) where Ytr , Ysea , and Yres denote the trend, seasonal, and residual components, respectively. The positive reference is constructed from the deterministic components: 
+
+p+ = Ytr + Ysea . (8) This encourages the retriever to align corrupted observations with the underlying structural pattern of the target sequence. 
+
+3) Hard Negative Mining: Selecting informative negatives is important because randomly sampled subsequences may be too dissimilar and provide weak training signals. We therefore evaluate the Pearson correlation between the ground truth Y
+
+and each candidate pi ∈ D train :
+
+ρi = Pearson( Y, pi). (9) High-correlation but non-positive candidates are sampled as hard negatives. These samples are close enough to challenge the retriever but do not correspond to the target structural reference, encouraging LEA to learn fine-grained discriminative features beyond simple linear similarity. 
+
+4) Contrastive Objective: Given a corrupted query, its positive reference p+, and a set of hard negatives N −, LEA is trained with an InfoNCE-style contrastive objective: 
+
+LLEA = − log exp( s(X, p+)/τ )exp( s(X, p+)/τ ) + X 
+
+> p−∈N −
+
+exp( s(X, p−)/τ ) ,
+
+(10) where s(·, ·) denotes the LEA similarity function and τ is a temperature parameter. The same missingness pattern M
+
+is applied through the post-hoc masking procedure when comparing the query with positive and negative samples, ensuring that similarities are computed in an aligned latent space. 
+
+E. Retrieval-Augmented Time Series Imputation 
+
+After LEA is trained, ALER-TI uses it to retrieve relevant historical subsequences and integrate them with the output of a backbone imputation model. 
+
+1) Retrieval Module: We first build a persistent latent index by pre-computing candidate representations: 
+
+DV = zci = fθ (pi) (11) For a corrupted query X with mask M, LEA computes similarity scores si with i = 1 . . . N between the query and all cached candidates. The top-k candidates are selected as retrieved references: 
+
+K = Top-k( si), P = pi | i ∈ K , (12) where Top-k( ·) returns the indices of the k largest similarity scores. Because candidate embeddings are cached offline, retrieval only requires query encoding and lightweight latent-space matching during inference. 
+
+2) Lightweight Adapter: The retrieved candidates P are inte-grated with the prediction from a frozen backbone imputation model. Let zbb denote the backbone output representation. To mitigate distribution shifts between the current query and retrieved references, we apply RevIN to both zbb and the retrieved candidates. The normalized candidates are then aggregated into a retrieval representation zre by average pooling over the top-k references. To adaptively combine the backbone output with the retrieval representation, we compute a gating matrix: 
+
+g = σ(MLP g (zbb )) , (13) where σ(·) denotes the sigmoid activation. The fused represen-tation is obtained as 
+
+zf = g ⊙ zbb + ( 1 − g) ⊙ zre . (14) The fused representation is further refined by a residual MLP: 
+
+zimp = zf + MLP r (zf ). (15) Finally, the denormalization step restores zimp to the original scale and produces the reconstruction ¯X. Since the backbone is frozen, the additional trainable parameters introduced by 
+
+ALER-TI mainly come from the two compact MLPs in the adapter, making the framework lightweight and easy to integrate with different imputation backbones. 3) Imputation Training Objective: The adapter is optimized using the mean squared error over the missing entries: 
+
+Limp = |(1 − M) ⊙ (Y − ¯Y)|2
+
+> F
+
+|1 − M|1
+
+, (16) where | · | F and | · | 1 denote the Frobenius norm and ℓ1
+
+norm, respectively. This objective ensures that learning focuses directly on the missing entries while the final output keeps the observed values unchanged. IV. E XPERIMENTS 
+
+A. Experimental Setup 1) Datasets: Following established time series bench-marks [18], [22], [29], we evaluate ALER-TI on six widely used real-world datasets. The ETT benchmark [29] contains four subsets, ETTh1 , ETTh2 , ETTm1 , and ETTm2 , which record electricity-transformer oil temperature and load at hourly or 15-minute granularity. Electricity [9] contains hourly electricity consumption from 321 clients over three years. Weather [29] contains 21 meteorological variables recorded every 10 minutes throughout 2020. Together, these datasets cover diverse temporal patterns, sampling granularities, and distributional changes. For all datasets, we follow the same preprocessing and train/validation/test splits used by the baseline benchmarks to ensure a fair comparison. 
+
+2) Baseline Methods: To evaluate whether ALER-TI can serve as a model-agnostic enhancement, we instantiate it with seven general-purpose backbones from three architec-tural families: CNN-based models, including ModernTCN [18] and TimesNet [22]; Transformer-based models, including 
+
+PatchTST [21], Crossformer [28], and Autoformer [23]; and Linear/MLP-based models, including DLinear [26] and 
+
+RLinear [15]. These backbones cover a broad range of temporal modeling mechanisms, including multi-scale con-volution, patch-wise attention, decomposition, and linear temporal projection. We compare each backbone with its 
+
+ALER-TI -augmented counterpart to isolate the benefit of retrieval-enhanced historical context. We further include three imputation-specialized baselines: SAITS [8] and Helix [27] are dedicated imputation architectures, while Glocal-IB [25] is a concurrent model-agnostic training paradigm that augments backbone objectives with a global alignment loss derived from the Information Bottleneck framework. This separation allows us to assess ALER-TI across both general-purpose and imputation-specialized settings. 
+
+3) Implementation Details: We train LEA with a batch size of 16. The query set contains m = 16 codes, each represented by a 64-dimensional vector. The learning rate is set to 0.001 .The temperature parameter is initialized as τ = ln(1 /0.07) and is learned during training. This initialization yields a sufficiently sharp initial softmax distribution for the contrastive objective while allowing the scaling factor to adapt to each dataset. We integrate ALER-TI with each backbone and optimize the adapter using Adam and the MSE loss. For fairness, we keep the official training pipeline and hyperparameter configurations of each backbone unchanged, consulting Time-Series-Library 1 when needed. Thus, any performance differ-ence between a backbone and its augmented version can be attributed to ALER-TI rather than backbone-specific re-tuning. All experiments are conducted on a single NVIDIA GeForce RTX 5090 GPU. The source code is available at https://anonymous.4open.science/r/Time-series-0142/. 
+
+4) Evaluation: We use MSE and MAE as evaluation metrics. To assess robustness under different levels of information loss, we evaluate four missing rates r ∈ { 0.125 , 0.25 , 0.375 , 0.5}
+
+and four input lengths L ∈ { 96 , 192 , 336 , 720 }. Each configu-ration is repeated with three random seeds, and we report the average result. 
+
+B. Overall Results 
+
+Table I summarizes the relative MSE improvement obtained by adding ALER-TI to different backbones across all datasets and missing rates. Overall, ALER-TI improves nearly all evaluated configurations, with only one marginal degradation. This demonstrates that the proposed retrieval-augmented mech-anism is broadly effective rather than being tied to a specific architecture or dataset. Several observations can be made. First, the gains are particularly clear for linear backbones such as DLinear and 
+
+RLinear . This suggests that explicit historical retrieval can compensate for the limited capacity of simple parametric models by providing useful non-parametric context. Second, 
+
+Transformer -based models also benefit substantially, indicat-ing that retrieval remains helpful even when the backbone already has strong temporal modeling ability. Third, recent competitive architectures such as ModernTCN and TimesNet 
+
+still obtain consistent improvements, showing that ALER-TI 
+
+can enhance strong local-context models without modifying their internal structures. We also observe that ALER-TI is compatible with imputation-specialized methods and concurrent model-agnostic train-ing paradigms. In particular, applying ALER-TI on top of 
+
+Glocal-IB -trained backbones still brings further improve-ment, suggesting that retrieval-based context enrichment and objective-level regularization are complementary. These results support the main claim that ALER-TI serves as a general plug-and-play module for time series imputation. Full MSE and MAE results are reported in Table XI and Table XII, respectively. 
+
+C. Model Analysis 1) Influence of Retrieval Mechanisms: We first examine whether the observed gains come from meaningful retrieval rather than simply adding extra historical sequences. Table II compares ALER-TI with random retrieval, metric-based re-trieval, and two embedding-based alternatives. Random retrieval provides little benefit and can even hurt performance, showing that retrieval quality is critical for time-series imputation. Metric-based criteria, such as Pearson correlation and DTW 
+
+> 1https://github.com/thuml/Time-Series-Library
+
+Table I: MSE improvement (%) obtained by adding ALER-TI to ten baselines on six datasets. Higher values indicate larger improvements. Results are averaged over four input lengths L ∈ { 96 , 192 , 336 , 720 } for each missing rate r ∈ { 0.125 , 0.25 , 0.375 , 0.5}.
+
+Baseline type Imputation-specialized General-purpose Dataset r Helix SAITS Glocal-IB ModernTCN TimesNet CrossformerAutoformer PatchTST DLinear RLinear 
+
+ETTh1 
+
+0.125 10.26 19.91 13.05 8.11 6.90 49.14 24.62 35.90 33.02 27.10 0.25 0.00 7.93 8.63 10.87 8.90 41.67 27.71 33.85 33.57 27.34 0.375 4.73 7.83 10.90 5.17 10.60 38.00 24.53 27.46 31.03 24.28 0.5 5.59 12.36 11.01 8.22 12.80 28.82 21.71 25.45 28.10 21.63 
+
+ETTh2 
+
+0.125 5.50 9.56 15.98 2.50 5.10 29.51 8.33 3.13 24.53 14.91 0.25 2.44 13.13 10.54 2.27 6.30 26.62 9.26 1.45 26.09 24.06 0.375 3.19 8.45 11.05 2.08 7.10 21.52 6.56 4.05 27.22 25.16 0.5 1.63 12.07 6.84 8.77 8.30 17.49 4.05 1.25 24.50 23.78 
+
+ETTm1 
+
+0.125 6.98 23.46 9.05 10.53 2.50 21.15 44.44 41.79 43.40 43.40 0.25 4.00 15.52 6.90 12.50 3.40 20.37 40.98 42.42 39.44 40.00 0.375 7.02 23.81 8.16 15.38 3.60 13.56 49.37 43.84 34.07 34.83 0.5 12.07 18.95 5.22 7.14 4.10 15.63 46.59 34.94 20.19 44.77 
+
+ETTm2 
+
+0.125 14.29 20.73 18.06 0.00 2.00 16.42 24.59 6.25 21.88 19.67 0.25 0.00 15.38 15.80 4.76 2.20 17.50 24.62 5.71 22.62 20.25 0.375 10.53 15.44 6.92 4.00 2.40 13.95 8.89 2.70 13.33 17.89 0.5 8.70 10.62 6.78 -3.85 2.70 12.00 6.67 7.50 20.47 20.54 
+
+Electricity 
+
+0.125 12.75 7.35 7.89 7.14 9.80 10.29 6.52 10.99 17.46 19.05 0.25 3.70 8.33 5.89 8.33 9.50 11.88 7.97 5.68 19.42 18.09 0.375 3.31 11.06 5.70 3.70 9.70 11.30 8.28 5.32 17.19 17.39 0.5 3.17 12.27 2.71 6.74 10.00 16.28 8.61 1.83 18.06 15.94 
+
+Weather 
+
+0.125 14.81 6.90 13.29 10.34 2.70 10.53 18.75 14.71 15.79 15.79 0.25 6.45 10.34 6.08 3.33 3.20 5.26 16.22 23.91 19.15 19.15 0.375 11.76 11.11 6.96 3.03 3.60 7.14 12.12 15.38 23.64 22.22 0.5 10.53 8.33 7.24 0.00 3.80 9.09 16.00 27.78 21.88 22.58 
+
+Table II: Ablation study of retrieval criteria on ETTh1 and Weather 
+
+with missing rate r = 0 .25 . Results are averaged over four input lengths L ∈ { 96 , 192 , 336 , 720 }. The entry “-” denotes the vanilla baseline without retrieval augmentation, while other entries represent the specific methods used for candidate selection. Best results are in 
+
+bold .                                                                     
+
+> Dataset ETTh1 Weather
+> Model ModernTCN DLinear ModernTCN DLinear
+> MAE MSE MAE MSE MAE MSE MAE MSE
+> -0.149 0.046 0.261 0.140 0.058 0.030 0.107 0.047 Random 0.158 0.052 0.258 0.136 0.067 0.035 0.113 0.048
+> Metric based
+> Pearson 0.135 0.042 0.218 0.099 0.059 0.030 0.096 0.043 DTW 0.146 0.044 0.244 0.127 0.058 0.032 0.093 0.045
+> Embedding based
+> AR 0.136 0.044 0.217 0.103 0.060 0.032 0.094 0.042 OM 0.132 0.041 0.214 0.094 0.054 0.029 0.085 0.040
+> ALER-TI 0.133 0.041 0.211 0.093 0.056 0.029 0.084 0.038
+
+after linear interpolation, provide stronger candidates than random retrieval but remain limited because they mainly capture surface-level similarity. Among embedding-based methods, AR supports offline candidate encoding but suffers from a representation mismatch between masked queries and complete historical candidates. OM reduces this mismatch by encoding candidates under the 
+
+Table III: Ablation study of the candidate-guided query encoding in MSE. 
+
+Dataset w/o Interaction ALER-TI Prm. ( ∆% )ETTh1 0.128 0.123 3.91% 
+
+ETTh2 0.082 0.079 3.66% 
+
+ETTm1 0.068 0.060 11.76% 
+
+ETTm2 0.040 0.037 7.50% 
+
+Weather 0.109 0.107 1.83% 
+
+Electricity 0.046 0.039 15.22% 
+
+query-specific mask, but this requires online candidate re-encoding and therefore becomes expensive when the retrieval database is large. LEA offers a more favorable trade-off: it preserves offline candidate pre-computation while using latent interaction to align masked queries with historical candidates. As a result, ALER-TI achieves performance comparable to or better than OM, while avoiding its online encoding bottleneck. 
+
+2) Importance of Candidate-Guided Query Encoding: As illustrated in Fig. 2 (Left), we evaluate the candidate-guided query encoding mechanism in LEA through an ablation study against a Bi-Encoder baseline. This baseline retains the late-stage masking pipeline but restricts the query representation, thereby collapsing the dynamic cross-attention process into non-interactive embedding alignment. As summarized in Table III, removing this mechanism Table IV: Ablation study evaluating different fusion strategies (MSE). Bold indicates the optimal configuration. “+ Cross-attn ” denotes the cross-attention fusion and “+AF” denotes our ALER-TI ’s Fusion.                                                
+
+> Dataset Crossformer +Linear +Cross-attn +AF
+> ETTh1 0.170 0.156 0.158 0.121 ETTm1 0.064 0.063 0.061 0.054 Weather 0.129 0.117 0.112 0.108 Electricity 0.044 0.046 0.048 0.043
+> Table V: Ablation study on different components of the ALER-TI
+> mechanism. We evaluate the impact of the gating module, RevIN ,and the baseline imputation on final performance.
+> Dataset ETTh1 Weather
+> Metric MAE MSE MAE MSE
+> Autoformer 0.211 0.097 0.126 0.051
+> Autoformer +ALER-TI 0.191 0.081 0.102 0.040
+> w/o gate g0.202 0.095 0.118 0.053 w/o RevIN 0.209 0.098 0.121 0.049
+
+consistently degrades performance across all benchmarks, with especially clear drops on Electricity and ETTm1 . These results confirm that jointly encoding the masked query with candidate information helps extract richer contextual representations, leading to more accurate imputation. We further place the contextual views on the input query branch rather than the candidate branch. If the multi-view representation were deployed on the candidate side, the cached representation of each candidate would need to pass through multiple attention layers and an additional cross-attention block during online candidate encoding. This design would substantially increase inference latency, especially when scaling to large historical databases. 
+
+3) Effectiveness of ALER-TI ’s Fusion: To assess the design of ALER-TI ’s Fusion (AF) mechanism, we compare it with two alternative integration strategies on Crossformer under 
+
+r = 0 .5: ( i) Linear Fusion , which projects the concatenation of the backbone output and retrieved references through a static linear layer; and ( ii ) Cross-attention Fusion , which computes attention weights to dynamically align the backbone output with the top-k retrieved candidates. As shown in Table IV, AF consistently achieves the lowest MSE across the evaluated datasets. Linear Fusion, despite its simplicity, relies on static parameterization and cannot sufficiently capture sample-specific retrieval patterns. Cross-attention Fusion is more expressive, but it introduces additional parameter overhead and may overfit, notably degrading perfor-mance on Electricity compared with the standalone backbone. In contrast, AF avoids both limitations through a lightweight, instance-dependent gating mechanism that dynamically cali-brates the retrieved context against the backbone output with minimal additional parameters. 
+
+4) Ablation Study on Component Contributions: We inves-tigate the individual contributions of two key components in 
+
+ALER-TI : the gating matrix g and the RevIN module for miti-gating distribution shift. As summarized in Table V, removing                                    
+
+> Table VI: Detailed MSE results of sensitivity analysis under varying numbers of retrieved candidates ( k).
+> Dataset k=1 k=2 k=3 k=5 k=10
+> ETTh1 0.124 0.123 0.123 0.125 0.124
+> ETTh2 0.078 0.081 0.079 0.081 0.082
+> ETTm1 0.062 0.062 0.060 0.063 0.061
+> ETTm2 0.040 0.040 0.037 0.037 0.039
+> Weather 0.107 0.109 0.107 0.110 0.114
+> Electricity 0.041 0.038 0.039 0.041 0.043
+
+either component consistently degrades performance and, in some cases, even performs worse than the vanilla backbone. Specifically, the gating mechanism acts as a dynamic filter that selectively integrates retrieved historical patterns, preventing irrelevant context from distorting the current reconstruction. 
+
+RevIN further mitigates distribution shift between historical references and the current input, enabling stable and scale-invariant imputation under non-stationary temporal dynamics. 
+
+5) Influence of the Number of Retrieved Candidates k: We analyze the sensitivity of imputation performance to the number of retrieved candidates k ∈ 1, 2, 3, 5, 10 across six benchmark datasets, as shown in Table VI. ALER-TI remains stable across the evaluated range, reducing the need for exhaustive hyperparameter search. While a small value such as k = 1 
+
+is sufficient for datasets with simpler temporal patterns, it can be insufficient for datasets with more complex dynamics, where richer contextual information is beneficial. Conversely, excessively large values may introduce noise from less relevant candidates and slightly degrade performance. Overall, the best results are typically achieved around k ∈ 2, 3. We therefore fix k = 3 as the default setting for all experiments. 
+
+6) Theoretical Complexity Analysis: To characterize the computational cost of LEA, we compare its theoretical complex-ity with the embedding-based retrieval paradigms introduced in Fig. 1, namely AR and OM, across different operational phases. Table VII summarizes the theoretical bounds. Given a missing rate r, where r′ = 1 − r denotes the observed ratio, a standard Transformer backbone processing the observed tokens requires O(L2r′2d + Lr ′d2) operations per block, accounting for both quadratic self-attention and latent linear projections. The OM strategy incurs high online inference cost because its dynamic coupling mechanism requires the query mask to guide the encoding of historical candidates. As a result, candidate representations must be recomputed online, leading to an overhead of O(N (L2r′2d+Lr ′d2)) , which scales linearly with the database size N and quadratically with the observed sequence length Lr ′.LEA mitigates this bottleneck through post-hoc masking. The expensive sequence encoding can be shifted to the offline phase, with complexity O(N (L2d + Ld 2)) . During online retrieval, LEA reduces candidate encoding to O(N Lr ′d). Although LEA introduces an additional similarity-estimation cost of 
+
+O(N m (Lr ′ + 1) d) due to candidate-guided query encoding, this term remains efficient because the number of query codes is small, i.e., m ≪ L. Therefore, LEA preserves the efficiency Table VII: Theoretical complexity comparison of retrieval strategies for time-series imputation. N : database size, L: sequence length, d:latent dimension, m: number of query codes ( m ≪ L), and r′ = 1 − r, where r denotes the missing rate.                                
+
+> Phase / Strategy AR OM LEA (Ours)
+> Offline Embedding O(N(L2d+Ld 2)) 0 (Cannot) O(N(L2d+Ld 2))
+> Online Query Encoding O(L2r′2d+Lr ′d2)O(L2r′2d+Lr ′d2)O(L2r′2d+Lr ′d2)
+> Online Candidate Encoding O(1) O(N(L2r′2d+Lr ′d2)) O(N Lr ′d)
+> Similarity Estimation O(N d )O(N d )O(N m (Lr ′+ 1) d)
+
+of offline-indexed retrieval while improving representation consistency under dynamic masking. 
+
+Table VIII: Efficiency comparison of baseline models and their 
+
+ALER-TI -enhanced versions on Weather under r = 0.375 and 
+
+L = 192 . Best results are bolded .                                 
+
+> Model Trainable Params Train Time (s) Const. RDB Time (s) Inference Time (ms)
+> ModernTCN 5.9454M 544.1 -6.1 +ALER-TI 0.0022M 175.4 921.7 7.3
+> TimesNet 4.6933M 498.3 -5.9 +ALER-TI 0.0022M 158.7 921.7 6.9
+> PatchTST 0.9898M 321.1 -5.4 +ALER-TI 0.0022M 131.2 921.7 6.2
+> DLinear 0.2265M 275.3 -1.3 +ALER-TI 0.0022M 114.9 921.7 2.1
+
+7) Inference Latency and Empirical Scalability: While 
+
+ALER-TI reduces training cost by freezing the backbone parameters and optimizing only a lightweight adapter, its retrieval mechanism introduces a small inference overhead. As reported in Table VIII, this overhead is consistently limited across the evaluated architectures and remains small in absolute terms. This observation is consistent with the theoretical analysis in Table VII. The additional cost mainly comes from candidate-guided query encoding and similarity matching against the pre-computed candidate embedding database. Importantly, the latency remains bounded in practice. The post-hoc masking and aggregation design of LEA restricts online candidate encoding to O(N Lr ′d), avoiding the quadratic cost of conventional dynamic retrieval approaches. Even for lightweight backbones, where the relative overhead is more visible, the absolute inference time remains modest. These results show that ALER-TI achieves a favorable trade-off between retrieval-augmented accuracy and computational efficiency. 
+
+8) ALER-TI Remains Helpful under Temporal Distribution Shift: We evaluate the resilience of ALER-TI under temporal distribution shift by restricting the training data to 25% and 50% of the full training set. Since these datasets are chronologically ordered, limiting the training window to earlier segments creates a challenging setting where the retrieval database is temporally separated from the test period. As shown in Table IX, ALER-TI matches or outperforms the standalone PatchTST baseline across all datasets and data 
+
+Table IX: Robustness analysis of ALER-TI under temporal distribution shift. MSE results are obtained using PatchTST as the backbone with a missing rate r = 0 .5, averaged across four sequence lengths 
+
+96 , 192 , 336 , 720 . Best results are bolded .                                
+
+> Dataset Model 25% 50% 100% ETTh1 PatchTST 0.204 0.188 0.165 +ALER-TI 0.173 0.157 0.123 ETTm2 PatchTST 0.059 0.051 0.040 +ALER-TI 0.055 0.046 0.037 Weather PatchTST 0.134 0.121 0.109 +ALER-TI 0.134 0.120 0.107 Electricity PatchTST 0.071 0.062 0.054 +ALER-TI 0.060 0.056 0.039
+
+Table X: Imputation performance in terms of MSE under varying degrees of pattern rarity in the training set. Results are averaged across 360 independent evaluation segments. Best results are bolded .                     
+
+> Pattern occurrences 124
+> DLinear 0.191 0.180 0.168 +ALER-TI 0.164 0.163 0.159
+> TimesNet 0.127 0.109 0.104 +ALER-TI 0.116 0.103 0.099
+> PatchTST 0.141 0.133 0.128 +ALER-TI 0.120 0.118 0.115
+
+regimes, with the only tie occurring on Weather under the 25% setting. Even in the most constrained setting, LEA recovers useful structural patterns from limited historical memory. Under the 50% setting, ALER-TI continues to provide consistent improvements. With the full training set, the gains become more pronounced, suggesting that the framework can effectively leverage a denser retrieval repository to improve imputation accuracy. 
+
+9) Robustness to Infrequent Temporal Patterns: Parametric deep networks can underrepresent long-tail temporal behaviors because their parameters are primarily optimized toward dominant global trajectories. ALER-TI addresses this limitation through an explicit non-parametric retrieval mechanism, en-abling the reconstruction of localized dynamics even when their morphological signatures are rare. We validate this property on synthetic time series embedded with sparse, event-driven anomalies. 
+
+a) Synthetic Data Generation: The evaluation sequences superimpose deterministic global trajectories, including sinu-soidal trend and seasonality, with localized low-frequency structural anomalies modeled by a Time-Varying Autoregressive Table XI: Detailed MSE results for ten baselines with and without ALER-TI . Lower metric values indicate better performance and best performances are bolded . The missing rates are set as r ∈ { 0.125 , 0.25 , 0.375 , 0.5}. The final results are averaged across four different sequence lengths L ∈ { 96 , 192 , 336 , 720 }. * represents variants with the “former” suffix. 
+
+Baseline type Imputation-specialized General-purpose 
+
+Dataset r Helix +ALER-TI SAITS +ALER-TI Glocal-Ib +ALER-TI ModernTCN +ALER-TI TimesNet +ALER-TI Cross* +ALER-TI Auto* +ALER-TI PatchTST +ALER-TI DLinear +ALER-TI RLinear +ALER-TI 
+
+0.125 0.117 0.105 0.226 0.181 0.212 0.184 0.037 0.034 0.069 0.064 0.116 0.059 0.065 0.049 0.117 0.075 0.106 0.071 0.107 0.078 
+
+0.25 0.137 0.137 0.290 0.267 0.277 0.253 0.046 0.041 0.089 0.081 0.132 0.077 0.083 0.060 0.130 0.086 0.140 0.093 0.139 0.101 
+
+0.375 0.148 0.141 0.332 0.306 0.342 0.305 0.058 0.055 0.106 0.095 0.150 0.093 0.106 0.080 0.142 0.103 0.174 0.120 0.173 0.131 
+
+ETTh1 0.5 0.179 0.169 0.437 0.383 0.423 0.376 0.073 0.067 0.128 0.112 0.170 0.121 0.129 0.101 0.165 0.123 0.210 0.151 0.208 0.163 
+
+0.125 0.109 0.103 0.251 0.227 0.145 0.122 0.040 0.039 0.051 0.048 0.122 0.086 0.048 0.044 0.064 0.062 0.106 0.080 0.104 0.088 
+
+0.25 0.082 0.080 0.259 0.225 0.316 0.283 0.044 0.043 0.063 0.059 0.139 0.102 0.054 0.049 0.069 0.068 0.138 0.102 0.133 0.101 
+
+0.375 0.094 0.091 0.296 0.271 0.260 0.231 0.048 0.047 0.071 0.066 0.158 0.124 0.061 0.057 0.074 0.071 0.169 0.123 0.159 0.119 
+
+ETTh2 0.5 0.123 0.121 0.323 0.284 0.407 0.379 0.057 0.052 0.083 0.076 0.183 0.151 0.074 0.071 0.080 0.079 0.200 0.151 0.185 0.141 
+
+0.125 0.043 0.040 0.081 0.062 0.120 0.109 0.019 0.017 0.025 0.024 0.052 0.041 0.054 0.030 0.067 0.039 0.053 0.030 0.053 0.030 
+
+0.25 0.050 0.048 0.116 0.098 0.161 0.150 0.024 0.021 0.034 0.033 0.054 0.043 0.037 0.022 0.066 0.038 0.071 0.043 0.070 0.042 
+
+0.375 0.057 0.053 0.147 0.112 0.208 0.191 0.026 0.022 0.036 0.035 0.059 0.051 0.079 0.040 0.073 0.041 0.091 0.060 0.089 0.058 
+
+ETTm1 0.5 0.058 0.051 0.190 0.154 0.262 0.248 0.028 0.026 0.041 0.039 0.064 0.054 0.088 0.047 0.083 0.054 0.117 0.093 0.106 0.059 
+
+0.125 0.021 0.018 0.082 0.065 0.052 0.043 0.021 0.021 0.020 0.020 0.067 0.056 0.061 0.046 0.032 0.030 0.064 0.050 0.061 0.049 
+
+0.25 0.021 0.021 0.104 0.088 0.075 0.063 0.021 0.020 0.022 0.022 0.080 0.066 0.065 0.049 0.035 0.033 0.084 0.065 0.079 0.063 
+
+0.375 0.019 0.017 0.136 0.115 0.120 0.112 0.025 0.024 0.024 0.023 0.086 0.074 0.045 0.041 0.037 0.036 0.105 0.091 0.095 0.078 
+
+ETTm2 0.5 0.023 0.021 0.113 0.101 0.327 0.305 0.026 0.027 0.027 0.026 0.100 0.088 0.045 0.042 0.040 0.037 0.127 0.101 0.112 0.089 
+
+0.125 0.102 0.089 0.204 0.189 0.313 0.288 0.056 0.052 0.098 0.088 0.068 0.061 0.138 0.129 0.091 0.081 0.063 0.052 0.063 0.051 
+
+0.25 0.108 0.104 0.204 0.187 0.320 0.301 0.072 0.066 0.095 0.086 0.101 0.089 0.138 0.127 0.088 0.083 0.103 0.083 0.094 0.077 
+
+0.375 0.121 0.117 0.208 0.185 0.329 0.310 0.081 0.078 0.097 0.088 0.115 0.102 0.145 0.133 0.094 0.089 0.128 0.106 0.115 0.095 
+
+Electricity 0.5 0.126 0.122 0.220 0.193 0.338 0.329 0.089 0.083 0.100 0.090 0.129 0.108 0.151 0.138 0.109 0.107 0.155 0.127 0.138 0.116 
+
+0.125 0.027 0.023 0.029 0.027 0.080 0.069 0.029 0.026 0.027 0.026 0.038 0.034 0.032 0.026 0.034 0.029 0.038 0.032 0.038 0.032 
+
+0.25 0.031 0.029 0.029 0.026 0.091 0.085 0.030 0.029 0.032 0.031 0.038 0.036 0.037 0.031 0.046 0.035 0.047 0.038 0.047 0.038 
+
+0.375 0.034 0.030 0.072 0.064 0.133 0.124 0.033 0.032 0.036 0.035 0.042 0.039 0.066 0.058 0.039 0.033 0.055 0.042 0.054 0.042 
+
+Weather 0.5 0.038 0.034 0.036 0.033 0.179 0.166 0.036 0.036 0.038 0.037 0.044 0.040 0.050 0.042 0.054 0.039 0.064 0.050 0.062 0.048 
+
+Table XII: Detailed MAE results for ten baselines with and without ALER-TI . Lower metric values indicate better performance and best performances are bolded . The missing rates are set as r ∈ { 0.125 , 0.25 , 0.375 , 0.5}. The final results are averaged across four different sequence lengths L ∈ { 96 , 192 , 336 , 720 }. * represents variants with the “former” suffix. 
+
+Baseline type Imputation-specialized General-purpose 
+
+Dataset r Helix +ALER-TI SAITS +ALER-TI Glocal-Ib +ALER-TI ModernTCN +ALER-TI TimesNet +ALER-TI Cross* +ALER-TI Auto* +ALER-TI PatchTST +ALER-TI DLinear +ALER-TI RLinear +ALER-TI 
+
+0.125 0.220 0.209 0.311 0.249 0.302 0.261 0.134 0.127 0.177 0.171 0.236 0.170 0.176 0.146 0.224 0.182 0.227 0.184 0.228 0.193 
+
+0.25 0.241 0.238 0.348 0.301 0.347 0.311 0.149 0.133 0.202 0.196 0.253 0.194 0.198 0.162 0.236 0.196 0.261 0.211 0.261 0.217 
+
+0.375 0.251 0.242 0.383 0.342 0.389 0.347 0.166 0.159 0.221 0.215 0.271 0.213 0.225 0.188 0.249 0.214 0.290 0.239 0.289 0.245 
+
+ETTh1 0.5 0.273 0.256 0.436 0.361 0.433 0.380 0.184 0.174 0.241 0.237 0.291 0.243 0.246 0.211 0.265 0.233 0.318 0.267 0.316 0.273 
+
+0.125 0.234 0.226 0.343 0.288 0.262 0.229 0.131 0.127 0.152 0.145 0.231 0.202 0.147 0.148 0.167 0.165 0.220 0.197 0.218 0.218 0.25 0.202 0.195 0.350 0.313 0.433 0.387 0.138 0.135 0.171 0.159 0.249 0.219 0.156 0.157 0.172 0.170 0.253 0.222 0.249 0.223 
+
+0.375 0.220 0.214 0.372 0.329 0.370 0.335 0.143 0.142 0.182 0.169 0.267 0.240 0.165 0.167 0.179 0.174 0.280 0.244 0.273 0.242 
+
+ETTh2 0.5 0.254 0.253 0.396 0.338 0.478 0.428 0.159 0.152 0.196 0.185 0.290 0.265 0.183 0.184 0.186 0.187 0.306 0.269 0.296 0.263 
+
+0.125 0.124 0.117 0.181 0.150 0.220 0.201 0.093 0.088 0.099 0.095 0.160 0.148 0.158 0.114 0.170 0.114 0.158 0.121 0.157 0.122 
+
+0.25 0.136 0.131 0.209 0.167 0.250 0.236 0.103 0.097 0.111 0.111 0.163 0.128 0.131 0.115 0.171 0.126 0.184 0.145 0.183 0.144 
+
+0.375 0.146 0.142 0.233 0.202 0.281 0.264 0.106 0.098 0.122 0.119 0.171 0.164 0.189 0.132 0.180 0.137 0.209 0.171 0.207 0.167 
+
+ETTm1 0.5 0.147 0.140 0.267 0.211 0.314 0.287 0.118 0.110 0.145 0.136 0.192 0.176 0.196 0.154 0.190 0.150 0.226 0.205 0.215 0.179 
+
+0.125 0.102 0.096 0.199 0.176 0.164 0.141 0.088 0.087 0.085 0.084 0.174 0.163 0.157 0.143 0.112 0.125 0.168 0.150 0.165 0.149 
+
+0.25 0.095 0.094 0.217 0.189 0.198 0.175 0.089 0.087 0.091 0.090 0.187 0.173 0.154 0.141 0.117 0.113 0.195 0.172 0.189 0.171 
+
+0.375 0.094 0.091 0.244 0.209 0.250 0.237 0.098 0.097 0.096 0.095 0.192 0.181 0.136 0.132 0.122 0.119 0.218 0.197 0.209 0.186 
+
+ETTm2 0.5 0.103 0.098 0.229 0.207 0.445 0.403 0.100 0.102 0.104 0.106 0.206 0.194 0.139 0.134 0.128 0.124 0.241 0.215 0.227 0.205 
+
+0.125 0.191 0.177 0.309 0.278 0.381 0.354 0.166 0.159 0.217 0.203 0.184 0.169 0.258 0.216 0.222 0.214 0.176 0.151 0.176 0.148 
+
+0.25 0.197 0.192 0.305 0.279 0.387 0.353 0.191 0.181 0.211 0.207 0.228 0.209 0.256 0.221 0.219 0.202 0.231 0.202 0.219 0.187 
+
+0.375 0.211 0.206 0.307 0.278 0.394 0.366 0.202 0.200 0.212 0.206 0.244 0.215 0.263 0.227 0.227 0.220 0.258 0.215 0.244 0.212 
+
+Electricity 0.5 0.218 0.211 0.314 0.281 0.401 0.381 0.211 0.204 0.218 0.213 0.260 0.221 0.267 0.232 0.245 0.241 0.286 0.241 0.269 0.238 
+
+0.125 0.048 0.041 0.039 0.035 0.115 0.108 0.054 0.052 0.056 0.055 0.093 0.079 0.067 0.058 0.064 0.056 0.088 0.071 0.089 0.072 
+
+0.25 0.052 0.049 0.040 0.039 0.132 0.125 0.058 0.056 0.065 0.063 0.095 0.088 0.078 0.069 0.086 0.060 0.107 0.084 0.106 0.084 
+
+0.375 0.062 0.056 0.047 0.041 0.181 0.167 0.063 0.061 0.071 0.072 0.104 0.095 0.118 0.106 0.071 0.064 0.120 0.091 0.118 0.091 
+
+Weather 0.5 0.067 0.062 0.049 0.045 0.238 0.221 0.068 0.067 0.075 0.074 0.105 0.099 0.099 0.087 0.095 0.070 0.133 0.103 0.129 0.100 (TV-AR ) [3] process: 
+
+xt =
+
+> p
+
+X
+
+> i=1
+
+φi(t), x t−i + ϵt,
+
+where p = 30 , ϵt ∼ U(−0.05 , 0.05) , and φi(t) changes abruptly to define the rare anomaly morphology within a fixed window of 192 time steps. To enforce data scarcity, TV-AR 
+
+segments are injected into the training set with exactly 1, 2,and 4 occurrences. 
+
+b) Empirical Evaluation: Table X reports the imputation performance. Standalone parametric baselines degrade as the pattern frequency decreases from 4 to 1, indicating their difficulty in modeling rare temporal patterns. In contrast, 
+
+ALER-TI mitigates this degradation across all backbones, and its relative gains become larger as the pattern becomes scarcer. For example, ALER-TI reduces DLinear ’s MSE by 14 .1% with one occurrence, compared with 5.3% with four occurrences. These results confirm that non-parametric retrieval provides explicit temporal context that helps overcome the data-scarcity bottleneck of purely parametric models. 
+
+D. Detailed Results 
+
+Tables XI and XII report the full MSE and MAE results for all ten baselines and their ALER-TI -augmented counterparts across six datasets, four missing rates, and four sequence lengths, confirming the consistent gains summarized in Table I. V. C ONCLUSION 
+
+We proposed ALER-TI , a retrieval-augmented framework for time series imputation. ALER-TI addresses the limitation of relying only on corrupted local context by retrieving relevant historical patterns to support missing-value reconstruction. Its core component, Latent Embedding Alignment (LEA), miti-gates the representation mismatch between corrupted queries and clean historical candidates while maintaining efficient cached retrieval. Through a lightweight model-agnostic adapter, 
+
+ALER-TI can be integrated with different imputation backbones. Experiments on multiple real-world benchmarks show that 
+
+ALER-TI consistently improves strong baseline models across different sequence lengths and missing rates. In future work, we plan to explore more efficient retrieval strategies for large-scale historical databases. We also aim to extend ALER-TI to more challenging missingness patterns, such as block missingness and sensor-level failures. REFERENCES [1] Y. S. Abu-Mostafa and A. F. Atiya, “Introduction to financial forecasting,” 
+
+Appl. Intell. , vol. 6, no. 3, pp. 205–213, 1996. [2] D. Arpit, S. Jastrzebski, N. Ballas, D. Krueger, E. Bengio, M. S. Kanwal, T. Maharaj, A. Fischer, A. C. Courville, Y. Bengio, and S. Lacoste-Julien, “A closer look at memorization in deep networks,” in Proc. ICML , 2017, pp. 233–242. [3] L. F. Bringmann, E. L. Hamaker, D. E. Vigo, A. Aubert, D. Borsboom, and F. Tuerlinckx, “Changing dynamics: Time-varying autoregressive models using generalized additive modeling.” Psychological methods ,vol. 22, no. 3, p. 409, 2017. [4] M. Canizo, I. Triguero, A. Conde, and E. Onieva, “Multi-head CNN-RNN for multi time series anomaly detection: An industrial case study,” 
+
+Neurocomputing , vol. 363, pp. 246–260, 2019. [5] Z. Che, S. Purushotham, K. Cho, D. A. Sontag, and Y. Liu, “Recurrent neural networks for multivariate time series with missing values,” Sci. Rep. , vol. 8, no. 1, p. 6085, 2018. [6] R. B. Cleveland, W. S. Cleveland, J. E. McRae, and I. Terpenning, “STL: A seasonal-trend decomposition procedure based on loess,” J. Off. Stat. ,vol. 6, no. 1, pp. 3–73, 1990. [7] D. Du, T. Han, and S. Guo, “Predicting the future by retrieving the past,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 40, no. 25, 2026, pp. 20 896–20 904. [8] W. Du, D. C ˆot ´e, and Y. Liu, “SAITS: Self-attention-based imputation for time series,” Expert Syst. Appl. , vol. 219, p. 119619, 2023. [9] D. Dua and C. Graff, “UCI machine learning repository,” 2017. [10] Y. Gao, Y. Xiong, X. Gao, K. Jia, J. Pan, Y. Bi, Y. Dai, J. Sun, Q. Guo, M. Wang, and H. Wang, “Retrieval-augmented generation for large language models: A survey,” CoRR , vol. abs/2312.10997, 2023. [11] Y. Gong, Z. Li, J. Zhang, W. Liu, Y. Yin, and Y. Zheng, “Missing value imputation for multi-view urban statistical data via spatial correlation learning,” IEEE Trans. Knowl. Data Eng. , vol. 35, no. 1, pp. 686–698, 2023. [12] S. Han, S. Lee, M. Cha, S. ¨O. Arik, and J. Yoon, “Retrieval-augmented time series forecasting,” in Proc. ICML , 2025. [13] T. Kim, J. Kim, Y. Tae, C. Park, J. Choi, and J. Choo, “Reversible instance normalization for accurate time series forecasting against distribution shift,” in Proc. ICLR , 2022. [14] P. Lewis, E. Perez, A. Piktus, F. Petroni, V. Karpukhin, N. Goyal, H. K ¨uttler, M. Lewis, W. Yih, T. Rockt ¨aschel, S. Riedel, and D. Kiela, “Retrieval-augmented generation for knowledge-intensive NLP tasks,” in 
+
+Proc. NeurIPS , 2020, pp. 9459–9474. [15] Z. Li, S. Qi, Y. Li, and Z. Xu, “Revisiting long-term time series forecast-ing: An investigation on linear mapping,” CoRR , vol. abs/2305.10721, 2023. [16] J. Liu, L. Yang, H. Li, and S. Hong, “Retrieval-augmented diffusion models for time series forecasting,” in Proc. NeurIPS , 2024, pp. 2766– 2786. [17] Y. Liu, H. Wu, J. Wang, and M. Long, “Non-stationary transformers: Exploring the stationarity in time series forecasting,” in Proc. NeurIPS ,2022, pp. 9881–9893. [18] D. Luo and X. Wang, “ModernTCN: A modern pure convolution structure for general time series analysis,” in Proc. ICLR , 2024. [19] H. H. Nguyen, M. H. Nguyen, D. Nguyen, and H. Le, “Spectral text fusion: A frequency-aware approach to multimodal time series forecasting,” CoRR , vol. abs/2602.01588, 2026. [20] T. Nguyen, X. Truong, T. Nguyen, and N. Nguyen, “VARDiff: Vision-augmented retrieval-guided diffusion for stock forecasting,” Inf. Sci. , vol. 736, p. 123113, 2026. [21] Y. Nie, N. H. Nguyen, P. Sinthong, and J. Kalagnanam, “A time series is worth 64 words: Long-term forecasting with transformers,” in Proc. ICLR , 2023. [22] H. Wu, T. Hu, Y. Liu, H. Zhou, J. Wang, and M. Long, “TimesNet: Temporal 2d-variation modeling for general time series analysis,” in Proc. ICLR , 2023. [23] H. Wu, J. Xu, J. Wang, and M. Long, “Autoformer: Decomposition transformers with auto-correlation for long-term series forecasting,” in 
+
+Proc. NeurIPS , 2021, pp. 22 419–22 430. [24] X. Wu, F. Teng, X. Li, J. Zhang, T. Li, and Q. Duan, “Out-of-distribution generalization in time series: A survey,” Inf. Fusion , vol. 133, p. 104336, 2026. [25] J. Yang, K. Zhang, G. Zhang, P. S. Yu, and K. Ding, “Glocal information bottleneck for time series imputation,” Advances in Neural Information Processing Systems , vol. 38, pp. 104 452–104 484, 2026. [26] A. Zeng, M. Chen, L. Zhang, and Q. Xu, “Are transformers effective for time series forecasting?” in Proc. AAAI , vol. 37, no. 9, 2023, pp. 11 121–11 128. [27] F. Zhang, W. Du, H. Zhang, K. Yu, and S. Qu, “Helix: Hybrid encoding with learnable identity and cross-dimensional synthesis for time series imputation,” arXiv preprint arXiv:2605.02278 , 2026. [28] Y. Zhang and J. Yan, “Crossformer: Transformer utilizing cross-dimension dependency for multivariate time series forecasting,” in Proc. ICLR , 2023. [29] H. Zhou, S. Zhang, J. Peng, S. Zhang, J. Li, H. Xiong, and W. Zhang, “Informer: Beyond efficient transformer for long sequence time series forecasting,” in Proc. AAAI , 2021, pp. 11 106–11 115.
