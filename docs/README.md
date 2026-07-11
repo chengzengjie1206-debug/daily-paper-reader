@@ -6,49 +6,36 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-10
-- 运行时间：2026-07-10 20:52:58 UTC
+- 最新运行日期：2026-07-11
+- 运行时间：2026-07-11 21:07:14 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：1
-- 速读区：8
+- 本次总论文数：5
+- 精读区：0
+- 速读区：5
 
 ### 今日简报（AI）
-今日精读1篇加州野火PM2.5预测的泛化性研究，速读3篇时序预测新模型，聚焦极端事件与长期预测能力。  
-最值得留意的是精读论文对基础模型在极端环境中的泛化缺陷剖析，以及时序预测中自适应与物理引导方法的互补。  
-建议先从精读入手理解模型泛化陷阱，再根据兴趣选看速读中自适应多节奏或物理引导的优化思路。
-- 详情：[/202607/10/README](/202607/10/README)
+今日速读5篇，聚焦冰川预测、分布偏移与时间序列量化。最值得关注《GlacierCastAI》结合多模态卫星与气候信号预测冰川消退，以及《NEST》用混合专家模型应对数据集级分布偏移。建议普通读者优先从《GlacierCastAI》切入，了解AI在气候遥感中的前沿应用。
+- 详情：[/202607/11/README](/202607/11/README)
 
 ### 精读区论文标签
-1. [Evaluating the Generalizability of Foundation Models for Extreme Environmental Events: Case Study of California Wildfire PM2.5](/202607/10/2607.07951v1-evaluating-the-generalizability-of-foundation-models-for-extreme-environmental-events-case-study-of-california-wildfire-pm25)  
-   标签：评分：9.0/10、query:ts-air-qual
-   evidence：使用时间序列基础模型预测极端野火事件PM2.5浓度
+- 本次无精读推荐。
 
 ### 速读区论文标签
-1. [Extreme Adaptive Transformer for Time Series Forecasting](/202607/10/2607.02437v1-extreme-adaptive-transformer-for-time-series-forecasting)  
-   标签：评分：7.0/10、query:ts-air-qual
-   evidence：处理极端事件的时间序列Transformer，可迁移至空气质量极端值预测
-2. [Physics-guided spatiotemporal neural models for fuel density prediction](/202607/10/2607.06999v1-physics-guided-spatiotemporal-neural-models-for-fuel-density-prediction)  
-   标签：评分：7.0/10、query:ts-air-qual
-   evidence：带物理约束的时空深度学习用于燃料密度预测
-3. [RhyMix: A Lightweight Adaptive Multi-Rhythm Network for Long-Term Time Series Forecasting](/202607/10/2607.08234v1-rhymix-a-lightweight-adaptive-multi-rhythm-network-for-long-term-time-series-forecasting)  
-   标签：评分：7.0/10、query:ts-air-qual
-   evidence：处理时间序列中不规则突变的多节奏网络
-4. [Autorelevance function and other feature relevance measures for univariate time series](/202607/10/2607.01959v1-autorelevance-function-and-other-feature-relevance-measures-for-univariate-time-series)  
+1. [GlacierCastAI: Predicting Glacier Retreat from Multi-Modal Satellite Imagery and Climate Signals](/202607/11/2607.04117v1-glaciercastai-predicting-glacier-retreat-from-multi-modal-satellite-imagery-and-climate-signals)  
    标签：评分：6.0/10、query:ts-air-qual
-   evidence：单变量时间序列预测中的特征相关性度量
-5. [Liquid Latent State Dynamics for Interpretable Turbofan Degradation Modeling](/202607/10/2607.01986v1-liquid-latent-state-dynamics-for-interpretable-turbofan-degradation-modeling)  
+   evidence：深度学习时空预测冰川退缩，使用卫星和气候数据
+2. [NEST: Tackling Dataset-Level Distribution Shifts via Regime-Oriented Mixture-of-Experts](/202607/11/2607.06607v1-nest-tackling-dataset-level-distribution-shifts-via-regime-oriented-mixture-of-experts)  
    标签：评分：6.0/10、query:ts-air-qual
-   evidence：使用液态神经网络建模不规则时间序列
-6. [A Partially Functional Dynamic Structural Equation Model for Multi-Resolution Environmental Data](/202607/10/2607.04641v1-a-partially-functional-dynamic-structural-equation-model-for-multi-resolution-environmental-data)  
+   evidence：处理多元时间序列预测中的数据集级分布偏移，与不规则时间序列模型相关
+3. [tsbootstrap: Distribution-Free Uncertainty Quantification and Conformal Prediction for Time Series](/202607/11/2607.06690v1-tsbootstrap-distribution-free-uncertainty-quantification-and-conformal-prediction-for-time-series)  
    标签：评分：6.0/10、query:ts-air-qual
-   evidence：处理不同时间分辨率的多源环境数据
-7. [AIFS-SUBS: Extending Data-Driven Forecasting to Sub-Seasonal Timescales](/202607/10/2607.05100v1-aifs-subs-extending-data-driven-forecasting-to-sub-seasonal-timescales)  
+   evidence：提供考虑依赖性的重采样和共形预测方法，适用于不规则采样数据
+4. [Physics-guided spatiotemporal neural models for fuel density prediction](/202607/11/2607.06999v1-physics-guided-spatiotemporal-neural-models-for-fuel-density-prediction)  
    标签：评分：6.0/10、query:ts-air-qual
-   evidence：基于自回归时间步的数据驱动次季节天气预报
-8. [NEST: Tackling Dataset-Level Distribution Shifts via Regime-Oriented Mixture-of-Experts](/202607/10/2607.06607v1-nest-tackling-dataset-level-distribution-shifts-via-regime-oriented-mixture-of-experts)  
+   evidence：物理引导的时空深度学习环境预测方法，可迁移至空气质量
+5. [Scalable and Trustworthy Earth Observation Foundation Models](/202607/11/2607.07758v1-scalable-and-trustworthy-earth-observation-foundation-models)  
    标签：评分：6.0/10、query:ts-air-qual
-   evidence：时间序列预测中的分布偏移方法，可迁移至空气质量预测
+   evidence：地球观测基础模型
 
 
 <div class="dpr-home-promo-card">
