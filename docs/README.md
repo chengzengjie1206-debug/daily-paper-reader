@@ -6,36 +6,30 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-11
-- 运行时间：2026-07-11 21:07:14 UTC
+- 最新运行日期：2026-07-12
+- 运行时间：2026-07-12 20:34:14 UTC
 - 运行状态：成功
-- 本次总论文数：5
+- 本次总论文数：3
 - 精读区：0
-- 速读区：5
+- 速读区：3
 
 ### 今日简报（AI）
-今日速读5篇，聚焦冰川预测、分布偏移与时间序列量化。最值得关注《GlacierCastAI》结合多模态卫星与气候信号预测冰川消退，以及《NEST》用混合专家模型应对数据集级分布偏移。建议普通读者优先从《GlacierCastAI》切入，了解AI在气候遥感中的前沿应用。
-- 详情：[/202607/11/README](/202607/11/README)
+今日速读3篇6分论文，涵盖生成模型对传感器噪音的识别、多模型融合提升极端降水预报，以及物理引导的时空神经网络用于燃料密度预测。重点可关注“信号与噪音”区分方法及极端降水预测的观测数据融合技巧。建议后续探索物理引导模型在具体工业场景中的可迁移性。
+- 详情：[/202607/12/README](/202607/12/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [GlacierCastAI: Predicting Glacier Retreat from Multi-Modal Satellite Imagery and Climate Signals](/202607/11/2607.04117v1-glaciercastai-predicting-glacier-retreat-from-multi-modal-satellite-imagery-and-climate-signals)  
+1. [Signal or Noise? Understanding Generative Models for Real-World Sensor Time Series](/202607/12/2607.04245v1-signal-or-noise-understanding-generative-models-for-real-world-sensor-time-series)  
    标签：评分：6.0/10、query:ts-air-qual
-   evidence：深度学习时空预测冰川退缩，使用卫星和气候数据
-2. [NEST: Tackling Dataset-Level Distribution Shifts via Regime-Oriented Mixture-of-Experts](/202607/11/2607.06607v1-nest-tackling-dataset-level-distribution-shifts-via-regime-oriented-mixture-of-experts)  
+   evidence：生成模型用于真实世界传感器时间序列，可应用于环境传感器数据
+2. [Enhancing the Forecasting Capability of Multi-Model Blending Algorithms for Extreme Precipitation via Joint Use of Station and Gridded Observations](/202607/12/2607.04862v1-enhancing-the-forecasting-capability-of-multi-model-blending-algorithms-for-extreme-precipitation-via-joint-use-of-station-and-gridded-observations)  
    标签：评分：6.0/10、query:ts-air-qual
-   evidence：处理多元时间序列预测中的数据集级分布偏移，与不规则时间序列模型相关
-3. [tsbootstrap: Distribution-Free Uncertainty Quantification and Conformal Prediction for Time Series](/202607/11/2607.06690v1-tsbootstrap-distribution-free-uncertainty-quantification-and-conformal-prediction-for-time-series)  
+   evidence：使用U-Net进行环境预测的深度学习方法
+3. [Physics-guided spatiotemporal neural models for fuel density prediction](/202607/12/2607.06999v1-physics-guided-spatiotemporal-neural-models-for-fuel-density-prediction)  
    标签：评分：6.0/10、query:ts-air-qual
-   evidence：提供考虑依赖性的重采样和共形预测方法，适用于不规则采样数据
-4. [Physics-guided spatiotemporal neural models for fuel density prediction](/202607/11/2607.06999v1-physics-guided-spatiotemporal-neural-models-for-fuel-density-prediction)  
-   标签：评分：6.0/10、query:ts-air-qual
-   evidence：物理引导的时空深度学习环境预测方法，可迁移至空气质量
-5. [Scalable and Trustworthy Earth Observation Foundation Models](/202607/11/2607.07758v1-scalable-and-trustworthy-earth-observation-foundation-models)  
-   标签：评分：6.0/10、query:ts-air-qual
-   evidence：地球观测基础模型
+   evidence：提出物理引导的时空深度学习架构（ConvLSTM、AFNONet、ViViT），可迁移至空气质量预测
 
 
 <div class="dpr-home-promo-card">
