@@ -1,0 +1,376 @@
+Title: STAGformer: A Spatio-temporal Agent Graph Transformer for Micro Mobility Demand Forecasting
+
+URL Source: https://arxiv.org/pdf/2607.06614v1
+
+Published Time: Thu, 09 Jul 2026 00:04:01 GMT
+
+Number of Pages: 20
+
+Markdown Content:
+# STAGformer: A Spatio-temporal Agent Graph Transformer for Micro Mobility Demand Forecasting 
+
+Ye Zihao 
+
+Department of System Engineering 
+
+City University of Hong Kong 
+
+Abstract 
+
+Accurate station-level demand forecasting is essential for the efficient operation of bike-sharing systems, yet it remains challenging due to complex spatio-temporal dependencies and the large scale of urban networks. This paper presents STAGformer, a Spatio-Temporal Agent Graph Transformer that achieves efficient global modeling with linear computational complexity. The model introduces a two-step agent attention mechanism, where a small set of learnable spatial and temporal agent tokens first aggregate global information and then broadcast it back to individual stations and time steps, effectively capturing long-range inter-actions while reducing the quadratic cost of standard self-attention to O(N T ). STAGformer integrates four core modules: a spatio-temporal encoder that fuses dynamic node features with external contextual factors (weather, time, points of interest), a graph propagation module for spatial neighbor aggregation, a temporal convolution module for local pattern ex-traction, and the agent attention module for global dependency modeling. Extensive exper-iments on two real-world datasets—NYC Citi-Bike and Chicago Divvy-Bike—demonstrate that STAGformer consistently outperforms state-of-the-art baselines across multiple pre-diction horizons, achieving significant improvements in both RMSE and MAE. Ablation studies validate the contribution of each component, with the agent attention mechanism proving critical for modeling global spatio-temporal dependencies. By combining the ex-pressive power of softmax attention with linear efficiency, STAGformer provides a scalable and accurate solution for micro-mobility demand forecasting in large-scale urban systems. 
+
+Keywords: Bike-sharing, Graph Neural Network, Traffic forecasting, Demand modelling 
+
+# 1 Introduction 
+
+As a green and flexible mode of micro-mobility, bike-sharing has been widely adopted in numer-ous cities worldwide, effectively alleviating traffic congestion and promoting low-carbon travel [37, 28]. However, bike-sharing systems are inherently dynamic and spatio-temporally hetero-geneous: rental and return demands at stations exhibit periodic fluctuations over time, while spatially they are influenced by road network structures, the distribution of points of inter-est (POIs), and real-time weather conditions (as illustrated in Fig. 1). Therefore, accurate station-level demand forecasting is crucial for vehicle rebalancing, operational optimization, and enhancing user experience [30, 32]. In recent years, deep learning techniques, particularly Graph Neural Networks (GNNs) and Transformer architectures, have significantly advanced spatio-temporal forecasting [9, 10, 16]. GNNs effectively model spatial dependencies among stations [14, 15], while Transformers excel at capturing long-range temporal correlations [17, 26]. Nevertheless, existing methods face two major challenges when applied to large-scale bike-sharing networks: (i) the computational 1arXiv:2607.06614v1 [cs.LG] 7 Jul 2026 STAGformer: Spatio-temporal Agent Graph Transformer complexity of standard self-attention scales quadratically with the product of the number of stations N and time steps T , i.e., O(( N T )2), rendering it impractical for city-scale systems [16, 18]; (ii) most models fail to effectively integrate multi-source external factors (e.g., weather, POIs) that influence demand, leading to limited prediction accuracy [29, 34]. To address these challenges, we propose a Spatio-Temporal Agent Graph Transformer (STAG-former) based on an agent attention mechanism. By introducing a small set of learnable “agent” tokens, STAGformer reduces the complexity of self-attention to linear in both the number of stations and time steps, thereby efficiently capturing global spatio-temporal dependencies [31]. Specifically, STAGformer comprises four core modules: a spatio-temporal feature encoder that projects historical station features and external factors into a high-dimensional representation and injects positional information; a graph propagation module that explicitly aggregates infor-mation from spatial neighbors using the graph structure; a temporal convolution module that extracts local temporal patterns for each station; and an agent attention module that models long-range interactions between stations and time steps with linear complexity through a two-step aggregation and broadcasting mechanism. Finally, the fused features are passed through an output layer to generate multi-step predictions of rental and return demands. The main contributions of this paper are as follows: 1. We design an encoding scheme that fuses dynamic node features with global external fea-tures, and enhance both global and local pattern extraction through graph propagation and temporal convolution. 2. We propose STAGformer, which introduces the agent attention mechanism to the task of bike-sharing demand forecasting, achieving linear computational complexity while maintaining global modeling capability. 3. Extensive experiments on two real-world datasets demonstrate that STAGformer outperforms state-of-the-art baselines in terms of RMSE and MAE, while offering higher computational efficiency. The remainder of this paper is organized as follows: Section 2 reviews related work; Section 3 formulates the problem and provides preliminaries; Section 4 details the STAGformer architec-ture; Section 5 describes the experimental setup and results analysis; Section 6 concludes the paper and discusses future work. 
+
+# 2 Related Work 
+
+2.1 Spatio-Temporal Forecasting: Evolution and Challenges 
+
+Station-level demand forecasting in micro-mobility systems, such as bike-sharing, is inherently challenging due to complex spatial dependencies, temporal dynamics, and the large scale of urban networks. Early approaches primarily relied on time series models, e.g., ARIMA and its seasonal variants SARIMA, which capture periodicities and trends but fail to incorporate spatial correlations and external factors [2, 1]. Subsequently, machine learning models like Support Vector Regression (SVR), Random Forests, and Gradient Boosting Trees were adopted, improving accuracy by manually engineering features (e.g., weather, holidays) [5, 4]. However, these methods cannot automatically mine spatial dependencies among stations and have limited capacity for long-range temporal modeling. The advent of deep learning revolutionized spatio-temporal forecasting. Recurrent Neural Networks (RNNs) and their variants (LSTM, GRU) were widely applied to model time series for each station independently, effectively capturing non-linear temporal dependencies [6, 7]. To simultaneously model spatial correlations, researchers turned to Convolutional Neural Networks (CNNs) applied to grid-based urban representations [8], but grid partitioning fails to adapt to 2STAGformer: Spatio-temporal Agent Graph Transformer 
+
+Figure 1: Spatial imbalance of bike-sharing demand and returns in Chicago on Wednesday, September 10, 2025. Red areas indicate high demand or returns, blue areas low activity. non-Euclidean road network structures. The emergence of Graph Neural Networks (GNNs) ad-dressed this issue. The Diffusion Convolutional Recurrent Network (DCRNN) [9] combined dif-fusion convolution with a sequence-to-sequence architecture, achieving the first spatio-temporal prediction on graphs. The Spatio-Temporal Graph Convolutional Network (STGCN) [10] uti-lized alternating stacks of 1D temporal convolutions and graph convolutions, significantly im-proving computational efficiency. Subsequent studies further explored dynamic graph modeling: ASTGCN introduced atten-tion mechanisms to adaptively adjust spatial weights [11]; GMAN designed an encoder-decoder structure with spatio-temporal attention modules to handle long-range dependencies [12]. For large-scale dynamic graphs, TrafficStream proposed a streaming GNN framework with continual learning [13]. More recent works such as Graph WaveNet [14] and AGCRN [15] incorporate adaptive graph learning to capture hidden spatial dependencies without relying on a predefined graph structure. These methods excel in modeling local spatio-temporal dependencies but are of-ten limited by fixed or static graph structures and still struggle with capturing global long-range interactions efficiently. 
+
+2.2 Attention Mechanisms and Transformer-based Models 
+
+The attention mechanism, first achieving breakthroughs in natural language processing [16], was soon introduced to spatio-temporal forecasting tasks. Transformers, with their self-attention ca-pability to directly model dependencies between any two positions, have shown strong potential in traffic flow prediction [17]. However, the standard self-attention mechanism incurs a compu-tational complexity of O(( N T )2), where N is the number of nodes and T is the number of time steps, making it prohibitive for city-scale networks. To mitigate this, several efficient attention variants have been proposed: 
+
+• Sparse attention restricts each query to attend to only a subset of keys, reducing complexity but potentially sacrificing global context [18]. 3STAGformer: Spatio-temporal Agent Graph Transformer 
+
+Figure 2: Comparison of model performance and efficiency (NYC, September 2025, MAE; bubble size indicates parameter count). 
+
+• Separated attention performs spatial and temporal attention separately, e.g., first attend-ing among nodes per time step ( O(T N 2)) and then along time per node ( O(N T 2)). While reducing cost compared to joint attention, it still involves quadratic terms in N or T , which remains problematic when either dimension is large [12, 11]. 
+
+• Linear attention replaces the Softmax similarity with kernel functions to achieve linear complexity, but often suffers from degraded expressiveness and difficulty in capturing sharp attention patterns [19, 21]. In parallel, Graph Attention Networks (GATs) have achieved remarkable success on graph-structured data by assigning different weights to neighboring nodes via attention [22, 23, 24]. In spatio-temporal forecasting, many studies combine GAT with recurrent or convolutional net-works; ASTGCN [11] and GMAN [12] utilize attention to enhance spatial dependency modeling, while MTGNN [25] captures multi-scale spatio-temporal correlations through graph attention layers. These methods improve modeling of dynamic spatial relationships but still suffer from high computational complexity, limiting their scalability to large station networks. More recently, Transformer variants designed for long sequences, such as Informer [26], have been applied to time series forecasting. However, they primarily focus on temporal dimension efficiency and do not address the joint spatio-temporal scalability challenge. Set Transformers [27] introduce inducing points to reduce complexity in set-structured data, which shares con-ceptual similarity with our agent-based approach, but they are not tailored to spatio-temporal graphs and do not incorporate explicit spatial graph propagation. 
+
+2.3 Design Rationale and Advantages of STAGformer 
+
+Despite the significant progress made by the aforementioned methods, existing models still strug-gle to balance computational efficiency and global modeling capability for large-scale bike-sharing networks. STAGformer addresses these gaps by leveraging the agent attention mechanism [31] in the spatio-temporal domain and integrating it with complementary modules. The key design features of our approach are: 
+
+• Linear complexity with global receptive field: The agent attention mechanism [31] re-4STAGformer: Spatio-temporal Agent Graph Transformer places the quadratic self-attention with a two-step aggregation-broadcasting process mediated by a small set of learnable agent tokens, reducing complexity from O(( N T )2) to O(N T ). We extend this mechanism to spatio-temporal data by introducing separate spatial and temporal agent tokens that independently capture cross-station and cross-time interactions, while pre-serving the Softmax attention’s ability to model arbitrary long-range dependencies—unlike sparse or kernel-based linear attention methods that may compromise global information ex-change. 
+
+• Preservation of expressiveness: Unlike linear attention variants that replace Softmax with kernel functions and often sacrifice representational capacity, STAGformer inherits the full Softmax attention in both agent-attention steps and employs a depthwise convolution (DWC) residual branch [31] to compensate for potential feature diversity loss. This design ensures that the efficiency gains do not come at the cost of predictive accuracy. 
+
+• Integration of local and global modules: While agent attention captures global dependen-cies, STAGformer also incorporates a graph propagation module for explicit spatial neighbor aggregation and a temporal convolution module for local temporal pattern extraction. This hybrid design complements the global modeling with fine-grained local information, which is often missing in pure Transformer architectures. 
+
+• Multi-source feature fusion: STAGformer seamlessly integrates dynamic node features with external factors (weather, time, POIs) through a dedicated encoding scheme, enhancing its ability to capture contextual influences ignored by many existing models. In summary, STAGformer provides a scalable and accurate solution for micro-mobility de-mand forecasting by combining the strengths of graph-based local modeling and attention-based global modeling, all with linear computational complexity. The experimental results on real-world datasets demonstrate its superiority over a wide range of baseline methods, confirming the effectiveness of the proposed approach. 
+
+# 3 Preliminary 
+
+3.1 Bike-sharing System 
+
+An urban bike-sharing network can be modeled as a graph G = ( V, E), where V = {v1, v 2, . . . , v N }
+
+denotes the set of N rental stations and E represents the spatial connections between stations. At each time step t, every station vi ∈ V records multi-dimensional status information, such as the number of rentals, returns, and available bikes, forming a node feature vector xi,t ∈ RFn .Aggregating features of all stations at time t yields a matrix Xt ∈ RN ×Fn , and the complete historical observation sequence can be represented as a 4D tensor X ∈ RB×T ×N ×Fn , where B is the batch size and T is the length of the historical time window. In addition to station status, bike-sharing demand is influenced by various external factors, such as weather conditions (temperature, precipitation, wind speed) and temporal information (hour of the day, day of the week, holidays). Let gt ∈ RFg denote the global feature vector at time step t; then the sequence of external factors can be expressed as G ∈ RB×T ×Fg .
+
+3.2 Problem Definition 
+
+We adopt a sliding window prediction paradigm. Given a historical observation window of length 
+
+T and a prediction horizon H, the goal is to learn a mapping function f that projects historical observations onto future station-level demands over H time steps. For an arbitrary batch, the problem is formalized as: 5STAGformer: Spatio-temporal Agent Graph Transformer 
+
+Figure 3: Overall architecture of Spatio-Temporal Agent Graph Transformer (STAGformer). 
+
+ˆYt+1: t+H = f (Xt−T +1: t, Gt−T +1: t, Aext ) , (1) where: ˆYt+1: t+H ∈ RB×H×N ×D denotes the predicted D-dimensional targets (e.g., rental and return counts) for each station over the future H steps; Xt−T +1: t ∈ RB×T ×N ×Fn is the his-torical node features within the observation window; Gt−T +1: t ∈ RB×T ×Fg is the global features (including weather and temporal information) within the observation window; Aext ∈ RN ×N is an external adjacency matrix (e.g., road network distance matrix). 
+
+# 4 Methodology 
+
+To improve the accuracy and robustness of station-level bike-sharing demand forecasting, we propose a Spatio-Temporal Agent Graph Transformer (STAGformer) based on agent attention. The model constructs multi-level feature extraction modules to capture temporal dependencies, spatial correlations, and global spatio-temporal interactions, while reducing the quadratic com-plexity of standard self-attention to linear through the agent attention mechanism. The overall framework, illustrated in Fig. 3, comprises four core modules: a spatio-temporal feature encoder that projects raw inputs into high-dimensional representations and injects positional informa-tion; a graph propagation module that explicitly aggregates influences from spatial neighbors using the graph structure; a temporal convolution module that models local temporal dependen-cies; and an agent attention module that efficiently captures global spatio-temporal correlations with linear complexity. Finally, the fused features are passed through an output layer to generate future station-level demand predictions. 
+
+4.1 Spatio-Temporal Feature Encoding 
+
+The model input consists of two types of sequential data: dynamic node features X ∈ RB×T ×N ×Fn
+
+and global features G ∈ RB×T ×Fg . The feature encoding process is as follows: 1. Linear projection : Apply linear transformations to node features and global features sep-arately, mapping them to a hidden dimension d:
+
+Hnode = X Wnode + bnode ∈ RB×T ×N ×d, (2) 
+
+Hglobal = GWglobal + bglobal ∈ RB×T ×d. (3) 6STAGformer: Spatio-temporal Agent Graph Transformer 2. Global feature expansion and concatenation : Replicate Hglobal along the node dimen-sion N times to obtain Hexp global ∈ RB×T ×N ×d, then concatenate it with the node features along the feature dimension: 
+
+H = [ Hnode ∥ Hexp global ] ∈ RB×T ×N ×2d, (4) where ∥ denotes concatenation. For brevity, we denote C = 2 d as the unified feature dimen-sion. 3. Positional encoding : To incorporate temporal and spatial order information, we introduce learnable temporal positional encodings Ptime ∈ R1×T ×1×C and spatial positional encodings 
+
+Pspace ∈ R1×1×N ×C . These are added via broadcasting: 
+
+H = H + Ptime + Pspace . (5) The positional encoding parameters are initialized to zero and optimized jointly with the model. 4. Dimension rearrangement : The tensor shape is kept as RB×T ×N ×C to match the input format of subsequent modules. Thus, the raw input is encoded into a feature tensor H containing spatio-temporal informa-tion, ready for the following modules. 
+
+4.2 Graph Propagating and Temporal Convolution 
+
+4.2.1 Graph Propagating 
+
+To explicitly leverage graph structural information, we introduce a graph propagation module. The graph structure can be given by an external adjacency matrix Aext ∈ RN ×N or learned adaptively. Adaptive graph learning uses learnable node embeddings E ∈ RN ×da to compute similarities via inner product, followed by ReLU activation, division by a learnable temperature parameter τ , and Softmax normalization: 
+
+ˆA = Softmax 
+
+ ReLU (EE ⊤)
+
+τ
+
+
+
+. (6) Given the normalized adjacency matrix, we perform K-step graph propagation. For the feature tensor H ∈ RB×T ×N ×C , propagation is applied along the node dimension: 
+
+H(k) = ˆAkH, k = 0 , 1, . . . , K, (7) where ˆA0 = I and ˆAk denotes the adjacency matrix after k propagation steps (implemented via matrix multiplication). In practice, ˆAkH is realized by repeatedly applying ˆA to H along the node dimension. Higher-order features ( k ≥ 1) are fused using learnable weights {αk}Kk=1 , normalized by Softmax: 
+
+Hprop =
+
+> K
+
+X
+
+> k=1
+
+αkH(k). (8) 7STAGformer: Spatio-temporal Agent Graph Transformer 
+
+4.2.2 Temporal Convolution Module 
+
+To capture local temporal dependencies for each station, we introduce a lightweight temporal convolution module. This module applies 1D convolutions along the time dimension to extract short-term variation patterns, and employs residual connections to enhance training stability. Given the feature tensor H ∈ RB×T ×N ×C , the temporal convolution module first reshapes it to (BN ) × C × T , enabling parallel processing of all stations’ time series along the merged batch-station dimension. A 1D convolution (either standard or depthwise separable) is then applied: 
+
+Hconv = Conv1D kt,groups =g (Hreshaped ) , (9) where the kernel size kt controls the local receptive field; when g = C, this becomes a depthwise separable convolution. The convolution output is sequentially passed through batch normaliza-tion, GELU activation, and Dropout: 
+
+Hconv = Dropout (GELU (BN (Hconv ))) . (10) This module can be stacked for multiple layers to progressively capture local temporal fea-tures at different scales. The final output tensor retains the full spatio-temporal structure and can be directly fed into the subsequent agent attention module. 
+
+4.3 Spatio-Temporal Agent Attention 
+
+In spatio-temporal forecasting tasks, traditional self-attention faces a trade-off between computa-tional complexity and long-range modeling capability. For traffic forecasting, the input typically comprises T time steps and N spatial nodes. Directly applying global self-attention to all T × N
+
+tokens incurs a complexity of O(( T N )2C), which is infeasible for large-scale graphs. Even with separated spatial attention (self-attention among N nodes at each time step) and temporal atten-tion (self-attention along time for each node), the total complexity remains O(T N 2C + N T 2C),which is still costly when N or T is large. To address this, we employ the agent attention mechanism [31] in the spatio-temporal setting. Specifically, we introduce separate sets of spatial and temporal agent tokens, and decompose the agent attention into two symmetric branches that respectively model cross-station and cross-time dependencies. This design achieves efficient global modeling with linear complexity while preserving the expressiveness of Softmax attention. 
+
+4.3.1 General Self-Attention Module 
+
+Existing Transformer-based spatio-temporal forecasting methods typically adopt two attention paradigms. One is joint spatio-temporal attention, which flattens the spatio-temporal positions into N × T tokens and computes self-attention among all tokens. Here, Q, K, V are obtained by linearly projecting X . The complexity of this operation is O(( N T )2d), and memory consumption grows sharply with the number of stations or the time window length. The second paradigm is separated spatio-temporal attention, which performs spatial and temporal attention independently. For spatial self-attention, the batch and time dimensions are merged into (B · T, N, C ), yielding a complexity of O(N 2T d ). Subsequently, temporal self-attention is applied independently for each node, resulting in O(T 2N d ). The total complexity is O(N 2T d + T 2N d ).Compared to the first approach, separated attention effectively models spatio-temporal de-pendencies separately, avoiding the high computational cost and memory footprint of joint at-tention. However, it still encounters a computational bottleneck when N or T is large. Attn (X ) = Softmax 
+
+ QK ⊤
+
+√dk
+
+
+
+V, (11) 8STAGformer: Spatio-temporal Agent Graph Transformer 
+
+4.3.2 Basic Form of Spatio-Temporal Agent Attention 
+
+For an input feature tensor X ∈ RB×T ×N ×C , we first view it as B × T independent spatial graphs, each containing N nodes. Linear projections yield queries Q, keys K, and values V ∈
+
+RB×T ×N ×C . To reduce computation, we introduce a small set of learnable spatial agent tokens 
+
+Ps ∈ R1×ns×C (with ns ≪ N ), which are broadcast to match the batch dimension. The spatial agent attention is computed in two steps: 1. Agent aggregation : The agent tokens Ps serve as queries, performing Softmax attention with keys K and values V to aggregate global information into agent context VP :
+
+VP = Softmax  (Ps)KT /√d + Bagent 
+
+V, (12) where Bagent ∈ R1×H×ns×1 is an agent bias ( H is the number of attention heads) and d = C/H 
+
+is the dimension per head. 2. Agent broadcasting : The original queries Q attend to the agent tokens Ps (now serving as keys) and the agent context VP in a second Softmax attention, broadcasting the aggregated global information back to each node: 
+
+Os = Softmax  Q(Ps)T /√d + Bnode 
+
+VP , (13) where Bnode ∈ R1×H×1×ns is another set of agent biases. To preserve feature diversity, we introduce a depthwise convolution (DWC) module applied to the values V , and add it as a residual branch to the output: 
+
+Os = Os + DWC( V ), (14) where DWC employs a depthwise separable 1D convolution with kernel size 3 ( Conv1d , groups = C ) sliding along the node dimension, effectively recovering feature diversity that may be lost in the two-step attention. Similarly, for the temporal dimension, we introduce nt learnable temporal agent tokens 
+
+Pt ∈ R1×nt×C and transpose the input tensor to (B, N, T, C ), yielding B × N time series of length T . The temporal agent attention process is symmetric to the spatial version, using independent temporal agent biases Bt, agent and Bt, node to obtain the temporal attention output 
+
+Ot. DWC is not used in the temporal branch because the feature dimension is typically shorter and the loss of feature diversity is less significant. 
+
+4.3.3 Overall Module Structure 
+
+In the GraphAgentAttention module, when the input is a 4D tensor (B, T, N, C ) and temporal attention is enabled, the forward process is: 1. Apply spatial agent attention to the input, yielding Xspatial = SpatialAttn (X).2. Apply temporal agent attention to Xspatial , yielding Xtemporal = TemporalAttn (Xspatial ).3. The final output is the residual sum: Xout = Xspatial + Xtemporal .This module can be stacked for multiple layers, with residual connections and layer normal-ization to stabilize training. 9STAGformer: Spatio-temporal Agent Graph Transformer 
+
+4.3.4 Complexity Analysis 
+
+In spatial agent attention, the two attention steps each have a complexity of O(BT N n sC).Including the projections and DWC, the total complexity is: 
+
+Ω = 4 BT N C 2
+
+| {z }
+
+> projections
+
++ BT N C | {z }
+
+> agent acquisition
+
++ 2 BT N n sC
+
+| {z }
+
+> agent attention
+
++ k2BT N C | {z }
+
+> DWC
+
+, (15) where k = 3 is the DWC kernel size. Temporal agent attention has a similar complexity of 
+
+O(BN T n tC). Since ns and nt are constants much smaller than N and T (e.g., ns = 32 ,
+
+nt = 32 ), the overall complexity is linear in both N and T , i.e., O(N T ). In contrast, standard spatio-temporal self-attention (global or separated) is at least O(N 2T + N T 2), which becomes prohibitively expensive for large N or T .
+
+4.3.5 Comparison with Standard Spatio-Temporal Attention 
+
+Standard spatio-temporal attention typically adopts two paradigms: 
+
+• Global attention : Flattens the spatio-temporal positions into N T tokens and computes fully-connected self-attention, with complexity O(( N T )2C). It maintains a full receptive field but is infeasible for large-scale data. 
+
+• Separated attention : First computes spatial attention independently for each time step (O(T N 2C)), then temporal attention independently for each node ( O(N T 2C)). Although complexity is reduced to quadratic, it still involves N 2 and T 2 terms. In contrast, spatio-temporal agent attention reduces the quadratic complexity to linear by introducing a small number of learnable agent tokens. Specifically, the spatial and temporal branches have complexities of O(BT N n sC) and O(BN T n tC), respectively, where ns, n t ≪ N, T 
+
+are constants. Thus, the overall complexity is linear in N and T , i.e., O(N T ), significantly out-performing the quadratic complexity of standard attention. Moreover, the two-step Softmax mechanism preserves global information exchange; the agent biases allow flexible encoding of relative positional relationships between nodes and time steps; and the DWC module com-pensates for the inherent feature diversity loss in linear attention, striking a favorable balance between computational efficiency and expressiveness. 
+
+# 5 Experiment 
+
+In this section, we present the implementation details, dataset descriptions, evaluation metrics, and baseline methods for comparison. We then conduct experiments to assess the performance of STAGformer, including comparisons with baseline methods, ablation studies, and case studies under different scenarios. 
+
+5.1 Data Description 
+
+To evaluate our model, we collected and integrated data from two cities, combining bike-sharing operational records with meteorological data, points of interest (POIs), and road network in-formation. These data collectively provide the necessary input features for model training, as summarized in Table 1. 
+
+Bike-sharing trip data: This dataset contains operational records from the NYC Citi-Bike 1
+
+and Chicago Divvy-Bike 2 systems. The dataset primarily consists of two parts: (i) rental and 
+
+> 1https://ride.citibikenyc.com/system-data
+> 2https://divvybikes.com/system-data
+
+10 STAGformer: Spatio-temporal Agent Graph Transformer return trip records for each station, and (ii) station-level details such as spatial and temporal information. 
+
+Meteorological feature data: Weather data for both cities were collected from the NOAA National Weather Service database 3, providing historical daily weather records. Each record describes basic weather conditions and categorizes daily weather into four main types: sunny, cloudy, rainy/snowy, and extreme weather. 
+
+Road network and POI data: POI data were obtained from OpenStreetMap (OSM) 4, offering detailed information around stations. Table 1 lists the main POI types and their counts for each city. We adopted POIs within a 150-meter radius of each station as input features for the model. Additionally, road network and city boundary data were collected from the open data platforms of New York City 5 and Chicago 6 for supplementary analysis. Table 1: POIs Data from OpenStreetMap                               
+
+> POI type New York Chicago parking space 91669 5822 platform 11574 13240 bench 18325 2338 parking 5841 13399 garden 8571 4298 stop position 6366 5438 bicycle parking 9196 2459 restaurant 7751 2829 pitch 6146 3995 fast food 4556 2139 park 2068 1589 playground 1825 1657 school 1809 1494 . . . . . . . . .
+
+5.2 Implementation 
+
+Preparation. We preprocessed the bike-sharing trip data for New York City and Chicago, including determining station spatio-temporal information, data cleaning, missing value impu-tation, outlier detection, and normalization. Weather data were aligned with trip data at an hourly temporal resolution. Road network and POI data for each city were merged to form an external adjacency matrix for the graph propagation module. Finally, all data were consolidated into a unified dataset. 
+
+Device. Experiments were conducted on the AutoDL platform, with an Intel(R) Xeon(R) Platinum 8260 CPU @ 2.40GHz, an RTX 4080 SUPER GPU (32GB VRAM), and 60GB of RAM. The software environment included PyTorch 2.8.0, Python 3.12, CUDA 12.8, and Ubuntu 22.04. The model was trained using the AdamW optimizer with an initial learning rate of 1 × 10 −3,batch size of 8, for 300 epochs, employing early stopping to prevent overfitting. 
+
+5.3 Evaluation Metrics 
+
+Accuracy metrics. We evaluate model performance using Root Mean Square Error (RMSE) and Mean Absolute Error (MAE). These metrics collectively provide a robust framework to 
+
+> 3https://www.noaa.gov/
+> 4https://www.openstreetmap.org/
+> 5https://opendata.cityofnewyork.us/
+> 6https://data.cityofchicago.org/
+
+11 STAGformer: Spatio-temporal Agent Graph Transformer Table 2: Performance of each model on two city Sharing-bike Datasets                                                                                             
+
+> NYC Citi-Bike Chicago Divvy-Bike Model Sept. 2025 Oct. 2025 Sept. 2025 Oct. 2025 RMSE MAE RMSE MAE RMSE MAE RMSE MAE Linear Regression 0.6336 0.3673 0.6152 0.3715 1.2282 0.8595 0.6262 0.3309 Spatial Regression 1.1176 0.6256 0.9377 0.5546 1.1327 0.4163 0.8353 0.3620 GRU 0.5538 0.2996 0.5572 0.2872 0.7823 0.2303 0.6394 0.2636 Transformer 0.5524 0.2905 0.5426 0.2984 0.8267 0.2480 0.6784 0.2399 GAT 0.5681 0.3272 0.5853 0.3426 0.7849 0.2236 0.7419 0.3064 BikeMAN 0.6429 0.3198 0.5832 0.3030 0.8411 0.2699 0.6034 0.2345 STAEformer 0.5106 0.2660 0.5145 0.2628 0.8678 0.2666 0.7603 0.2764 T-STAR 1.1373 0.6616 0.9497 0.5718 1.1502 0.4570 0.8445 0.4004 BGM 0.6670 0.3452 0.6208 0.2579 0.7680 0.2557 0.6496 0.2542
+> STAGformer 0.4874 0.2375 0.4782 0.2532 0.7419 0.2464 0.5440 0.1911
+> Underlined values indicate the best results among compared models; bold values represent our model.
+
+assess the model’s capability to capture subtle variations in the data. RMSE =
+
+vuut 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+(Yi − ˆYi)2 (16) MAE = 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+|Yi − ˆYi|. (17) where ˆyi is the predicted value, and yi is the ground truth. N denotes the number of stations. The ground truth for station i is denoted as yi = [ yrented  
+
+> i
+
+, y returned  
+
+> i
+
+], and the predicted value is 
+
+ˆyi = [ˆ yrented  
+
+> i
+
+, ˆyreturned  
+
+> i
+
+].
+
+Computational efficiency metrics. In addition to prediction accuracy, we evaluate compu-tational efficiency using two widely adopted metrics: the number of parameters (Params) and the number of floating-point operations (FLOPs). Params reflect model complexity and storage requirements, while FLOPs measure the computational cost during inference. We report the total multiply-accumulate operations (MACs) as computed by the thop library, where 1 MAC is considered as one FLOP in our context. For a fair comparison, all models are evaluated un-der the same input shape (B, T, N, F n) and on the same hardware. These metrics demonstrate the scalability and practical deployability of the model, especially in large-scale micro-mobility networks. 
+
+5.4 Comparison to Baselines 
+
+We selected nine representative methods for comparison in this study, described as follows: 
+
+• Linear Regression [20]: Predicts bike demand using weather and spatial features with neighborhood-level aggregation, serving as a simple yet interpretable baseline. 
+
+• Spatial Regression [37]: Models spatial lag and error structures to capture spatio-temporal dependencies in bike-sharing demand, accounting for interactions among neighboring stations. 
+
+• GRU [7]: A gated recurrent neural network that captures temporal dependencies in sequential data for each station independently, widely used for time series forecasting. 
+
+• Transformer [16]: A self-attention based architecture that models long-range dependencies across all stations and time steps jointly, offering strong expressiveness but high computational cost. 12 STAGformer: Spatio-temporal Agent Graph Transformer 
+
+• GAT [22]: Applies attention over graph neighborhoods to aggregate spatial information with learnable importance weights, enhancing the modeling of dynamic spatial relationships. 
+
+• BikeMAN [38]: A multi-level spatio-temporal attention neural network for station-level bike traffic prediction. It employs an encoder-decoder architecture with spatial attention on input features and temporal attention on hidden states, integrating weather and POI data to capture complex correlations. 
+
+• STAEformer [40]: A Transformer variant with spatio-temporal adaptive embeddings that enhances traffic forecasting performance by learning node-specific temporal patterns without complex architectural modifications. 
+
+• T-STAR [43]: A context-aware Transformer framework for short-term probabilistic demand forecasting in dock-based shared micro-mobility systems, integrating external factors and un-certainty estimation. 
+
+• BGM [33]: A dynamic graph modeling approach for demand prediction in expanding bike-sharing networks, adapting to new stations and evolving mobility patterns through graph structure learning. 
+
+5.5 Ablation Study 
+
+To thoroughly validate the effectiveness of each core module in STAGformer, we conducted a series of ablation experiments on both the New York and Chicago datasets, examining the change in model performance after removing specific modules. The ablation variants are defined as follows: 
+
+• w/o E (without External Features): Removes global external features (weather, time, POIs, etc.), using only historical station trip data as input. 
+
+• w/o G (without Graph Propagation): Removes the graph propagation module, i.e., no explicit aggregation of spatial neighbor information using the graph structure, retaining only temporal convolution and agent attention. 
+
+• w/o TC (without Time Convolution): Removes the temporal convolution module, relying solely on graph propagation and agent attention to capture temporal dependencies. 
+
+• w/o Attn (without Agent Attention): Removes the agent attention module, retaining only graph propagation and temporal convolution; thus, the model cannot model global long-range spatio-temporal interactions. 
+
+• STAGformer: The full model incorporating all modules. The experimental results, as shown in the figures, lead to the following conclusions: 1. Importance of external features: In the New York dataset, w/o External increased RMSE/MAE by 32.9% / 130.7% compared to the full model; in Chicago, the increases were 25.2% / 83.2%. This indicates that external factors such as weather, time, and POIs signif-icantly influence bike-sharing demand, and fusing multi-source features effectively improves prediction accuracy. 2. Role of graph propagation module: w/o Graph led to performance degradation in both datasets (New York: 0.8% / 2.2%; Chicago: 0.7% / 5.3%). This demonstrates that explicitly aggregating spatial neighbor information using the graph structure helps capture local spatial correlations, especially in areas with dense road network topology. 13 STAGformer: Spatio-temporal Agent Graph Transformer 
+
+Figure 4: Arrival and departure patterns of bike-sharing stations in New York City. 
+
+Figure 5: Ablation study results on New York and Chicago datasets. Bars represent error metrics (MAE, MSE, RMSE) and the red line shows the R 2 score. 14 STAGformer: Spatio-temporal Agent Graph Transformer 3. Necessity of temporal convolution module: The error increases for w/o TConv (New York: 7.0% / 4.6%; Chicago: 2.8% / 6.6%) confirm the effectiveness of lightweight temporal convolution in extracting short-term temporal patterns for each station. Relying solely on attention mechanisms may overlook local details. 4. Contribution of agent attention module: The most significant performance drop oc-curred for w/o Agent (New York: 37.9% / 47.9%; Chicago: 8.9% / 18.4%). This validates the critical role of agent attention in modeling global spatio-temporal dependencies, such as long-distance station coordination and periodic patterns. Removing this module reduces the model to only local graph propagation and temporal convolution, making it unable to capture complex global interactions. In summary, the four modules of STAGformer are complementary and indispensable. Global external features, graph propagation, temporal convolution, and agent attention characterize the spatio-temporal properties of bike-sharing demand from different dimensions, collectively ensuring high accuracy and robustness. 
+
+5.6 Case Study 
+
+In addition to the Chicago case presented in the introduction, we further validate the visualiza-tion of STAGformer on the New York City dataset. To intuitively illustrate the spatio-temporal heterogeneity of bike-sharing systems and verify STAGformer’s ability to capture complex pat-terns, we plotted the departure and arrival distributions at 8:00 AM on a weekday in September 2025 for the NYC Citi-Bike system, as shown in Fig. 4. Since displaying all approximately 2000 stations simultaneously would make the image too dense to interpret, we randomly sampled 300 stations and compared the model’s predictions with the actual trip demands. The upper subplot shows arrival distribution, and the lower subplot shows departure distribution. We also forecast the morning peak and evening peak, as shown in Fig. 6; the color depth represents the magnitude of rentals/returns, with red indicating high demand and blue indicating low demand. The following typical patterns can be observed: 1. High-intensity activity in core areas: Stations in Midtown and Lower Manhattan exhibit extremely high departure and arrival volumes, reflecting commuter demand in the central business district during morning and evening peaks. These stations show a surge in depar-tures during the morning peak and a surge in arrivals during the evening peak, exhibiting a pronounced tidal pattern. 2. Spatial imbalance: In stark contrast to Manhattan, stations in Brooklyn and Queens (scattered points around Manhattan) have overall lower activity levels (mostly blue or light red), with relatively balanced departure and arrival distributions. This spatial heterogeneity stems from functional zoning: residential areas are dominated by departures in the morning peak, while commercial areas are dominated by arrivals; internal flows in peripheral residential areas are minimal. 3. Local coordination patterns: Within Manhattan, neighboring stations often exhibit sim-ilar rental/return patterns. For example, stations near subway hubs maintain high turnover throughout the day, while stations in surrounding office areas show more pronounced morn-ing and evening peaks. This local spatial correlation underscores the necessity of the graph propagation module. 4. Long-range dependencies between distant stations: Although Manhattan and Brook-lyn are geographically distant, stations at opposite ends of certain commuter corridors (e.g., Manhattan business district and Brooklyn residential areas) exhibit complementary departure 15 STAGformer: Spatio-temporal Agent Graph Transformer and arrival patterns: high arrivals in Manhattan and high departures in Brooklyn during the morning peak, and the reverse during the evening peak. Such long-range dependencies exceed the receptive field of local graph convolution and require a global attention mechanism.  
+
+> (a) Morning peak (b) Evening peak
+
+Figure 6: Forecast morning peak and evening peak departure and arrival heatmaps in New York City. STAGformer effectively captures the above patterns through the following design elements: 
+
+• Graph propagation module aggregates spatial neighbor information, strengthening local correlation modeling. 
+
+• Agent attention module models dependencies between distant stations at linear cost through spatial and temporal agents. 
+
+• External feature fusion encodes weather, time, and POI information, helping the model distinguish demand patterns in different functional zones. The experimental results show that STAGformer achieves significantly lower prediction errors than baseline models in highly dynamic areas, demonstrating its capability to model complex spatio-temporal patterns. This case study not only visualizes the intrinsic structure of the data but also provides intuitive evidence for the effectiveness of the model design. 
+
+# 6 Conclusion 
+
+This paper proposed STAGformer, a spatio-temporal forecasting architecture that integrates the agent attention mechanism [31] with graph propagation and temporal convolution for station-level bike-sharing demand forecasting. By introducing separate spatial and temporal agent tokens and a two-step agent attention mechanism, the model reduces the quadratic complexity of standard self-attention to linear, while effectively capturing long-range dependencies across both spatial and temporal dimensions. The architecture integrates four key components: a spatio-temporal feature encoder that fuses dynamic node features with external global factors, a graph propagation module for aggregating spatial neighbor information, a temporal convolution module for modeling local temporal patterns, and a dedicated agent attention module that models global interactions via spatial and temporal agents. Extensive experiments on two real-world datasets (NYC Citi-Bike and Chicago Divvy-Bike) demonstrate that STAGformer consistently outperforms a wide range of baseline methods, achieving superior accuracy in terms of RMSE and 16 STAGformer: Spatio-temporal Agent Graph Transformer MAE across multiple prediction horizons. Notably, the agent attention mechanism yields linear complexity with respect to the number of stations and time steps, enabling efficient deployment in large-scale urban networks without sacrificing the expressive power of softmax attention. Ablation studies further validate the contribution of each module. Removing external fea-tures leads to significant performance drops, confirming the importance of integrating multi-source contextual information. The graph propagation and temporal convolution modules are shown to be essential for capturing local spatial correlations and short-term temporal dynamics, respectively. Most importantly, the agent attention module proves critical for modeling global spatio-temporal dependencies; its removal causes the largest error increase, underscoring its role in enabling long-range interactions among distant stations and capturing periodic patterns. Together, these components form a robust and efficient framework for micro-mobility demand forecasting. Despite its promising results, STAGformer has certain limitations that open avenues for future research. First, the current model relies on a fixed graph structure derived from road net-work distances; incorporating dynamic graph learning that adapts to evolving mobility patterns could further improve accuracy. Second, while the agent attention mechanism reduces compu-tational cost, its performance may be sensitive to the number of agent tokens, which requires empirical tuning. Future work could explore adaptive strategies for agent selection. Additionally, extending the model to other micro-mobility systems such as e-scooters or ride-hailing services, and incorporating richer external data (e.g., real-time events, social media trends), would test its generalizability. Finally, integrating STAGformer into a real-time decision-support system for bike-sharing operators could translate predictive gains into tangible operational benefits, such as optimized rebalancing and improved user satisfaction. 
+
+# Acknowledgement 
+
+This research is not supported by any organizations. 
+
+# References 
+
+[1] J. Kim, H. Kim, H. Kim, D. Lee, and S. Yoon, “A comprehensive survey of deep learning for time series forecasting: architectural diversity and open challenges,” Artif. Intell. Rev. ,vol. 58, no. 7, p. 216, 2025. [2] C. Chatfield and H. Xing, The Analysis of Time Series: An Introduction with R , 7th ed. Boca Raton, FL, USA: Chapman and Hall/CRC, 2019. [3] D. D. Lee, P. Pham, Y. Largman, and A. Ng, “Advances in neural information processing systems 22,” Neural Inf. Process. Syst. , vol. 1, no. 1, pp. 1–11, 2009. [4] Z.-H. Zhou, Machine Learning . Springer Nature, 2021. [5] J. H. Friedman, “Greedy function approximation: a gradient boosting machine,” Ann. Statist. , pp. 1189–1232, 2001. [6] S. Hochreiter and J. Schmidhuber, “Long short-term memory,” Neural Comput. , vol. 9, no. 8, pp. 1735–1780, 1997. [7] K. Cho et al., “Learning phrase representations using RNN encoder–decoder for statistical machine translation,” in Proc. Conf. Empir. Methods Nat. Lang. Process. (EMNLP) , 2014, pp. 1724–1734. [8] J. Zhang, Y. Zheng, and D. Qi, “Deep spatio-temporal residual networks for citywide crowd flows prediction,” in Proc. AAAI Conf. Artif. Intell. , vol. 31, no. 1, 2017. 17 STAGformer: Spatio-temporal Agent Graph Transformer [9] Y. Li, R. Yu, C. Shahabi, and Y. Liu, “Diffusion convolutional recurrent neural network: Data-driven traffic forecasting,” arXiv preprint arXiv:1707.01926 , 2017. [10] B. Yu, H. Yin, and Z. Zhu, “Spatio-temporal graph convolutional networks: A deep learning framework for traffic forecasting,” arXiv preprint arXiv:1709.04875 , 2017. [11] S. Guo, Y. Lin, N. Feng, C. Song, and H. Wan, “Attention based spatial-temporal graph con-volutional networks for traffic flow forecasting,” in Proc. AAAI Conf. Artif. Intell. , vol. 33, no. 1, 2019, pp. 922–929. [12] C. Zheng, X. Fan, C. Wang, and J. Qi, “GMAN: A graph multi-attention network for traffic prediction,” in Proc. AAAI Conf. Artif. Intell. , vol. 34, no. 1, 2020, pp. 1234–1241. [13] X. Chen, J. Wang, and K. Xie, “TrafficStream: A streaming traffic flow forecast-ing framework based on graph neural networks and continual learning,” arXiv preprint arXiv:2106.06273 , 2021. [14] Z. Wu, S. Pan, G. Long, J. Jiang, and C. Zhang, “Graph WaveNet for deep spatial-temporal graph modeling,” arXiv preprint arXiv:1906.00121 , 2019. [15] L. Bai, L. Yao, C. Li, X. Wang, and C. Wang, “Adaptive graph convolutional recurrent network for traffic forecasting,” in Adv. Neural Inf. Process. Syst. , vol. 33, 2020, pp. 17804– 17815. [16] A. Vaswani et al., “Attention is all you need,” in Adv. Neural Inf. Process. Syst. , vol. 30, 2017. [17] M. Xu et al., “Spatial-temporal transformer networks for traffic flow forecasting,” arXiv preprint arXiv:2001.02908 , 2020. [18] R. Child, S. Gray, A. Radford, and I. Sutskever, “Generating long sequences with sparse transformers,” arXiv preprint arXiv:1904.10509 , 2019. [19] A. Katharopoulos, A. Vyas, N. Pappas, and F. Fleuret, “Transformers are RNNs: Fast au-toregressive transformers with linear attention,” in Proc. Int. Conf. Mach. Learn. (ICML) ,2020, pp. 5156–5165. [20] D. Singhvi, S. Singhvi, P. I. Frazier, S. G. Henderson, E. O’Mahony, D. B. Shmoys, and D. B. Woodard, “Predicting bike usage for New York City’s bike sharing system,” in Proc. AAAI Workshop on Computational Sustainability , Austin, TX, USA, 2015. [21] K. Choromanski et al., “Rethinking attention with performers,” arXiv preprint arXiv:2009.14794 , 2020. [22] P. Veličković, G. Cucurull, A. Casanova, A. Romero, P. Liò, and Y. Bengio, “Graph attention networks,” arXiv preprint arXiv:1710.10903 , 2017. [23] S. Brody, U. Alon, and E. Yahav, “How attentive are graph attention networks?” arXiv preprint arXiv:2105.14491 , 2021. [24] J. Zhang, X. Shi, J. Xie, H. Ma, I. King, and D.-Y. Yeung, “GaAN: Gated attention networks for learning on large and spatiotemporal graphs,” arXiv preprint arXiv:1803.07294 , 2018. [25] Z. Wu, S. Pan, G. Long, J. Jiang, X. Chang, and C. Zhang, “Connecting the dots: Mul-tivariate time series forecasting with graph neural networks,” in Proc. ACM SIGKDD Int. Conf. Knowl. Discov. Data Min. , 2020, pp. 753–763. 18 STAGformer: Spatio-temporal Agent Graph Transformer [26] H. Zhou et al., “Informer: Beyond efficient transformer for long sequence time-series fore-casting,” in Proc. AAAI Conf. Artif. Intell. , vol. 35, no. 12, 2021, pp. 11106–11115. [27] J. Lee, Y. Lee, J. Kim, A. Kosiorek, S. Choi, and Y. W. Teh, “Set transformer: A frame-work for attention-based permutation-invariant neural networks,” in Proc. Int. Conf. Mach. Learn. (ICML) , 2019, pp. 3744–3753. [28] A. Behroozi and A. Edrisi, “Predicting travel demand of a bike sharing system using graph convolutional neural networks,” Public Transp. , vol. 17, no. 1, pp. 281–317, 2025. [29] R. Rochas, A. Furno, and N.-E. El Faouzi, “Contextual data integration for bike-sharing demand prediction with graph neural networks in degraded weather conditions,” in Proc. IEEE Int. Conf. Intell. Transp. Syst. (ITSC) , 2023, pp. 5436–5441. [30] J. Wang, T. Miwa, and T. Morikawa, “A demand truncation and migration poisson model for real demand inference in free-floating bike-sharing system,” IEEE Trans. Intell. Transp. Syst. , vol. 24, no. 10, pp. 10525–10536, Oct. 2023. [31] D. Han et al., “Agent attention: On the integration of softmax and linear attention,” in 
+
+Proc. Eur. Conf. Comput. Vis. (ECCV) , 2024, pp. 124–140. [32] J. Feng and H. Liu, “An adaptive spatial-temporal method capturing for short-term bike-sharing prediction,” IEEE Trans. Intell. Transp. Syst. , vol. 25, no. 11, pp. 16761–16774, Nov. 2024. [33] Y. Zhao, H. Wen, X. Zhang, and M. Luo, “BGM: Demand prediction for expanding bike-sharing systems with dynamic graph modeling,” in Proc. Int. Joint Conf. Artif. Intell. (IJCAI) , 2025, pp. 10008–10016. [34] Z. Xiang, F. Zeng, L. Liu, J. Wu, S. Mumtaz, and V. C. M. Leung, “Bike-sharing demand prediction based on dynamic time warping and spatio-temporal graph attention network,” 
+
+IEEE Trans. Intell. Transp. Syst. , 2025, to be published. [35] S. Jiang, Z. Strout, B. He, D. Peng, P. B. Shull, and B. P. L. Lo, “Dual stream meta learning for road surface classification and riding event detection on shared bikes,” IEEE Trans. Syst. Man Cybern. Syst. , vol. 53, no. 11, pp. 7188–7200, Nov. 2023. [36] N. Wiedemann, T. Uscidda, and M. Raubal, “GeOT: a spatially explicit framework for evaluating spatio-temporal predictions,” Int. J. Geogr. Inf. Sci. , vol. 39, no. 10, pp. 2236– 2266, 2025. [37] A. Faghih-Imani and N. Eluru, “Incorporating the impact of spatio-temporal interactions on bicycle sharing system demand: A case study of New York CitiBike system,” J. Transp. Geogr. , vol. 54, pp. 218–227, 2016. [38] X. Yang, J. Wang, S. Han, and S. He, “Micromobility flow prediction: A bike shar-ing station-level study via multi-level spatial-temporal attention neural network,” arXiv preprint arXiv:2507.16020 , 2025. [39] A. Tziorvas, G. S. Theodoropoulos, and Y. Theodoridis, “MoDE-Boost: Boosting shared mobility demand with edge-ready prediction models,” arXiv preprint arXiv:2602.16573 ,2026. [40] H. Liu et al., “Spatio-temporal adaptive embedding makes vanilla transformer sota for traffic forecasting,” in Proc. ACM Int. Conf. Inf. Knowl. Manag. (CIKM) , 2023, pp. 4125–4129. 19 STAGformer: Spatio-temporal Agent Graph Transformer [41] H. Wang, J. Chen, T. Pan, Z. Dong, L. Zhang, R. Jiang, and X. Song, “STGformer: Efficient spatiotemporal graph transformer for traffic forecasting,” arXiv preprint arXiv:2410.00385 ,2024. [42] Y. Liu and Z. Zhang, “STGFormer: Spatio-temporal GraphFormer for 3D human pose estimation in video,” Pattern Recognit. , p. 112239, 2025. [43] J. Cheng, G. H. de Almeida Correia, O. Cats, and S. S. Azadeh, “T-STAR: A context-aware transformer framework for short-term probabilistic demand forecasting in dock-based shared micro-mobility,” arXiv preprint arXiv:2602.06866 , 2026. 20

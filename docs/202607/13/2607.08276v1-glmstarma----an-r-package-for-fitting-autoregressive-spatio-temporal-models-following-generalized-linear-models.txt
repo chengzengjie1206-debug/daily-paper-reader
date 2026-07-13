@@ -1,0 +1,3358 @@
+Title: glmSTARMA – An R-Package for fitting autoregressive spatio-temporal models following generalized linear models
+
+URL Source: https://arxiv.org/pdf/2607.08276v1
+
+Published Time: Fri, 10 Jul 2026 00:54:55 GMT
+
+Number of Pages: 63
+
+Markdown Content:
+# glmSTARMA – An R-Package for fitting autoregressive spatio-temporal models following generalized linear models 
+
+# Steffen Maletz 1, Konstantinos Fokianos 2, and Roland Fried 1
+
+> 1
+
+Department of Statistics, TU Dortmund University, Germany 
+
+> 2
+
+Department of Mathematics and Statistics, University of Cyprus, Cyprus 
+
+# July 10, 2026 
+
+# Abstract 
+
+The R package glmSTARMA implements autoregressive models for spatio-temporal data at fixed locations, with time-invariant spatial dependency structure. We rely on generalized linear models methodology and unify several approaches for the analysis of spatial count time series. Such models allow the (conditional) mean of the response to depend on past observations, lagged (conditional) expectations, and covariates. The response can be a continuous or a discrete random variable. Additionally, the package develops inference for double generalized linear models, allowing the dispersion parameter(s) of the marginal distributions to be modeled similarly to the mean process. This is a new capability which introduces, for example, spatio-temporal volatility models, such as space-time GARCH processes, and count time series models with spatio-temporal overdispersion and underdispersion. We provide functions for model estimation, simulation, inference, and prediction. Its use is illustrated by data examples. 
+
+Keywords— copula, covariates, dispersion, double generalized linear models, multivariate time series, space-time data 
+
+1arXiv:2607.08276v1 [stat.CO] 9 Jul 2026 1. Introduction 
+
+Spatio-temporal data, which capture the evolution of variables over time at fixed locations, are essential in a wide range of scientific disciplines. Economists use these data to model real estate prices (Otto and Schmid, 2018; Pace et al., 2000) and analyze macroeconomic relationships (Elhorst and Emili, 2022). Environmental scientists employ spatio-temporal models to predict water quality in river networks (Clement et al., 2006) and study urban heat dynamics (Choi et al., 2021). Epi-demiologists collect and model weekly infection counts from different regions to investigate disease spread (Dickson et al., 2020; Held et al., 2005). Furthermore, spatio-temporal models are applied in modeling crime patterns (Clark and Dixon, 2021) and studying traffic flow (Kamarianakis and Prastacos, 2005). Across these diverse applications, the analysis of spatio-temporal data often involves specific assump-tions and characteristics tailored to the particular scientific field. For example, infection counts or hospitalization rates measured weekly for each district (see, e.g. Maletz et al., 2024; Martins et al., 2023) are integer-valued and often exhibit overdispersion (Paul et al., 2008). In meteorological contexts, constraints such as the non-negativity of precipitation, or an excess of zero values repre-senting drought periods, must be taken into account (Yang et al., 2005). Even when the data can be approximated by a Gaussian distribution, non-linear dependencies may limit the applicability of linear models such as the Space Time ARMA (STARMA) models introduced by Pfeifer and Deutsch (1980). In this work, we assume that the data have been observed in equidistant time intervals. Such spatio-temporal data can be viewed as multivariate time series with a spatial structure. Their analysis is subject to the specific scientific field questions. We propose a general modeling framework for spatio-temporal data analysis. The main statistical tool is based on double generalized linear models (DGLM), introduced by Smyth (1989), but the approach we employ takes into account autoregressive components. This framework is implemented in the new R package glmSTARMA and builds on the concept of spatial lagging as suggested by Pfeifer and Deutsch (1980). This enables users to build spatio-temporal models for both the mean and the dispersion parameter of a given marginal distribution. For example, spatio-temporal GARCH processes (Otto et al., 2025) can be combined with a mean model. For spatio-temporal count data many contributions – such as those by Jahn et al. (2023) and Maletz et al. (2024) – are based on the Poisson distribution. Although these simple models account for overdispersion in the marginal distribution to some degree, it is desirable to develop a more flexible class. We will show that the DGLM based approach taken in this work allows the models to be extended, such that they can capture contemporary over- and underdispersion. Other available R packages for modeling spatio-temporal data focus on specific model classes. For example, the starma package (Cheysson, 2016) implements classical linear STARMA models but does not support covariates, which can be included in STARMAX (STARMA with external co-variates) processes (Stoffer, 1986). Related to this are the Generalized Network Autoregressive (GNAR) processes, which are implemented in the R package with the same name (Knight et al., 2020). The PNAR package (Armillotta et al., 2024) applies this approach to count data. More precisely, it estimates network time series models with marginal Poisson distributions, closely re-lated to Poisson-STARMA models (Maletz et al., 2024) and other multivariate count time series models (Fokianos et al., 2020). With the spGARCH package (Otto, 2019) it is possible to estimate 2Name Description Main Functions glmstarma Fit model for the mean to given data                                  
+
+> dglmstarma Fit mean and dispersion model to given data
+> glmstarma.sim Simulate observations applying the mean model
+> dglmstarma.sim Simulate observations applying a mean and dispersion model Help Functions TimeConstant Create a time-constant covariate, i.e. ∀t:Xt=X∈Rp
+> SpatialConstant Create a spatial constant covariate, i.e. Xt=xt·1p, x t∈R
+> generateW Create spatial weight matrices on regular grids. Generic Functions summary Summary of fitted model
+> fitted Fitted values
+> residuals Different types of residuals
+> AIC Akaike Information Criterion
+> BIC Bayesian Information Criterion
+> QIC Quasi Information Criterion
+> predict Predict future values
+> vcov Variance Covariance Matrix of estimated coefficients Data load_data Download and return preprocessed datasets
+> delete_data Remove datasets from the cache
+
+Table 1: Key functions of the R package glmSTARMA along with the included datasets. spatio-temporal GARCH models. Simple univariate autoregressive models can be fitted using the base R function glm by including lagged values as covariates. The gam function in the mgcv package (Wood, 2017) additionally allows spatial smoothing via Markov random field theory. However, both functions do not enforce parameter constraints that are often necessary for valid inference. None of the above packages allows simultaneous modeling of spatio-temporal data at the observation or expectation level and at the variance/dispersion level. Even for univariate time series, we are not aware of any software that implements existing time series models for non-normal data with varying dispersion that were proposed by Barreto-Souza et al. (2025) and Zheng et al. (2022). The glmSTARMA framework generalizes and unifies these approaches, allowing flexible modeling through covariates, lagged observations, and a latent feedback process for both the mean and the dispersion processes, as we will explain in what follows. The use of spatial lagging enables the analysis of high-dimensional data by using only a small number of free parameters. The package supports a wide range of response distributions. Table 1 provides an overview of key functions developed for this R package. The functions glmstarma and dglmstarma are used to estimate the models described next. Here, glmstarma estimates only a spatio-temporal model for the mean, described in Subsection 2.1. The function dglmstarma estimates both the mean model and the dispersion model, which is described in Subsection 2.2. With the functions glmstarma.sim and 
+
+dglmstarma.sim , data can be simulated from the corresponding spatio-temporal models. In Sec-tion 3, we describe the use of these functions and the underlying data-generating process, which also allows for contemporary dependencies between the dimensions, i.e., the locations of the time series. The estimation procedure is explained in Section 4. Furthermore, the package provides functionality for statistical inference, model diagnostics, and forecasting. We discuss all these issues in Section 5. Section 6 contains two data examples. The resulting preprocessed data for these can be loaded with the load_data function of the R package. 32. Modeling Framework 
+
+Let {Yt = ( Y1,t , . . . , Y p,t )′ | t = 0 , 1, . . . } denote a p-dimensional time series representing the evolu-tion of a target variable, say Y , such as weekly infection counts, observed at p fixed spatial locations over time. Each component process {Yi,t , t = 0 , 1, . . . }, i = 1 , . . . , p , corresponds to a univariate time series that represents the response variable at location i at time t. Assume that we observe simulta-neously two – not necessarily distinct – sets of covariate processes, say {Xk,t = ( X1,k,t , . . . , X p,k,t )′}
+
+for k = 1 , . . . , m , and { ˜Xk,t = ( ˜X1,k,t , . . . , ˜Xp,k,t )′} for k = 1 , . . . , ˜m. Introducing two covariate series renders the modeling approach we take in this work possible. The proposed modeling framework is based on the concept of DGLM introduced by Smyth (1989). Specifically, two distinct model components are specified: one for the conditional mean of the response variable Y and another for the dispersion parameter of the assumed distribution. The covariates Xk,t contribute to the modeling of the mean, while the ˜Xk,t are used in the dispersion model to explain possible heteroskedasticity or overdispersion in the data. Similarly to classical generalized linear models (GLM), DGLMs consist of several key components. For formalization, let Ft denote the history of the processes up to time t. Details will be given later on. In this work, we adapt the DGLM framework as follows: 1. Distribution : The univariate conditional distributions Yi,t | F t−1 are assumed to belong to the exponential dispersion family. Their corresponding density can be written as 
+
+f (yi,t | θi,t , ϕ i,t , Ft−1) = exp 
+
+ θi,t yi,t − A(θi,t )
+
+ϕi,t 
+
++ c(ϕi,t , y i,t )
+
+
+
+, (1) where θi,t (respectively, ϕi,t ) denotes the natural (respectively, dispersion) parameter of the distribution. The conditional expectation and variance of the observation Yi,t are given by 
+
+μi,t := E(Yi,t | F t−1) = ∂A (θi,t )
+
+∂θ i,t 
+
+, σ2 
+
+> i,t
+
+:= Var (Yi,t | F t−1) = ϕi,t · V (μi,t ),
+
+where V denotes a variance function that depends on the conditional mean μi,t .2. Linear Predictors : Define two linear processes {ψt = (ψ1,t , . . . , ψ p,t )′} and {ζt =(ζ1,t , . . . , ζ p,t )′} that will be used as predictors of the mean and the dispersion process, re-spectively. Precise definitions are given by equations (6) and (8) below. 3. Link Functions : The relationship between the conditional mean, the dispersion parameter, and the linear predictors is established through the link functions g and ˜g that satisfy 
+
+g(μi,t ) = ψi,t , ˜g(ϕi,t ) = ζi,t .
+
+The collection of conditional means over space and time is denoted as the mean process {μt := (μ1,t , . . . , μ p,t )′}, and the corresponding collection of dispersion parameters as the dispersion process 
+
+{ϕt := ( ϕ1,t , . . . , ϕ p,t )′}.Early references that deal with modeling mean and dispersion parameters simultaneously, in the context of independent data are Nelder (1985), Efron (1986) and Nelder and Pregibon (1987), while a Bayesian state space model was employed by West et al. (1985) for modeling time varying 4generalized linear models. The work by Jørgensen (1997) offers further insight on the more general concept of exponential dispersion models; see Smyth and Jørgensen (2002) for their connection with DGLM illustrated by an application to insurance claims data and, more recently, Bonat et al. (2018) who propose a new class of discrete generalized linear models based on the class of Poisson-Tweedie factorial dispersion models. The previous assumptions do not specify the (conditional) multivariate distribution of Yt | F t−1.This will be done in detail in Section 3. In practice, various data generating processes are applicable to introduce contemporary dependencies between the components Yi,t | F t−1 of the vector Yt | F t−1.We use copula-based data-generating processes for the models presented in this paper, with marginal distributions satisfying the assumptions described above; see Fokianos et al. (2020) for the case of multivariate count time series. Table 2 provides an overview of the distributions and link functions currently implemented in the R package, with the corresponding variance functions. In analogy to the glm function in R, all functions for simulation and parameter estimation include a family argument that specifies the distribution and the link function. Each distribution is implemented through a generation function named after the distribution, prefixed by v for “vector“. The corresponding link function is defined via the link argument. In addition to specifying the link function, this argument also implicitly defines two transformation functions, h and ˜h, which are used in Equations (6) and (8) to transform past values of the feedback / dispersion process and observations. As we will see later on, the gamma distribution is used to model the dispersion process. Therefore, the link functions for vgamma are available for the dispersion model (8). 5Data Type  Distribution  V (μi,t ) Link  g(μt) h(ψt) ˜h(Yt) NNP 
+
+> Gaussian  Normal (vnormal ) 1
+> "identity"  μt ψt Yt
+> "log"  log( μt) ψt log( |Yt|)
+> "inverse"  1/μt ψt 1/Yt
+> Positive continuous Gamma (vgamma ) μ2
+> i,t
+> "identity"  μt ψt Yt ✓
+> "log"  log( μt) ψt log( Yt + c · 1p)
+> "inverse"  1/μt ψt 1/Yt ✓
+> Inverse-Gauss (vinverse.gaussian ) μ3
+> i,t
+> "1/mu^2"  1/μ2
+> t ψt 1/Y2
+> t ✓
+> "inverse"  1/μt ψt 1/Yt ✓
+> "identity"  μt ψt Yt ✓
+> "log"  log( μt) ψt log( Yt)
+> Count Data Poisson (vpoisson ,
+> vquasipoisson )
+> μi,t
+> "log"  log( μt) ψt log( Yt + c · 1p)
+> "identity"  μt ψt Yt ✓
+> "sqrt"  √μt ψt
+> √Yt ✓
+> "softplus"  c log(exp( μt/c ) − 1p) c log( 1p + exp( ψt/c ))  Yt
+> Negative-Binomial (vnegative.binomial ) μi,t  + ϕi,t  · μ2
+> i,t
+> "log"  log( μt) ψt log( Yt + c · 1p)
+> "identity"  μt ψt Yt ✓
+> "sqrt"  √μt ψt
+> √Yt ✓
+> "softplus"  c log(exp( μt/c ) − 1p) c log( 1p + exp( ψt/c ))  Yt
+> Binomial (vbinomial ,
+> vquasibinomial )
+> μi,t (1  − μi,t /n i)
+> "identity"  μt/n ψt Yt/n  ✓
+> "softclipping"  c log
+> h exp( μt/c n)−1p
+> 1p−exp(( μt−n)/c n)
+> i
+> c log
+>  1+exp( ψt/c )1+exp(( ψt−1) /c )
+> 
+> Yt/n
+> "logit"  log
+>  μt
+> n−μt
+> 
+> (1 + exp( −ψt)) −1 Yt/n
+> "probit"  Φ−1(μt/n) Φ( ψt) Yt/n
+> Table 2: Summary of distributions and link functions implemented in  glmSTARMA  along with corresponding transformations of past values of the feedback process and the observations.  A checkmark at NNP indicates that the model formula in (6) or (8) needs all parameters to be non-negative. The notation  c >  0 (≥ 0 for Gamma marginals) describes a hyperparameter to be set, with default value equal to 1, which can be altered via the family argument  const . The vector  n having elements from
+> N in the binomial distribution can be set via the argument  size . If a vector of length 1 is defined, the value is set for all locations.
+
+62.1. Conditional Mean Model 
+
+We model the linear process {ψt} in Assumption 2 of the DGLM framework using 
+
+ψt = δ +
+
+> q
+
+X
+
+> i=1
+> ai
+
+X
+
+> ℓ=0
+
+αiℓ W(ℓ) 
+
+> α
+
+h (ψt−i) + 
+
+> r
+
+X
+
+> j=1
+> bj
+
+X
+
+> ℓ=0
+
+βjℓ W(ℓ) 
+
+> β
+
+˜h (Yt−j ) + 
+
+> m
+
+X
+
+> k=1
+> ck
+
+X
+
+> ℓ=0
+
+γkℓ W(ℓ) 
+
+> γ
+
+Xk,t . (2) This model consists of an intercept term, past values of the linear process, functions of past observa-tions, and effects of the covariate processes. Details on the model orders ( q, a i, r, b j , m, c k) and the weight matrices W (ℓ) 
+
+> θ
+
+, θ ∈ { α, β, γ } will be given later. Let ϑμ denote the parameter vector which contains all unknown parameters of (2), i.e., the intercept δ and the coefficients αiℓ , βjℓ , and γkℓ .Depending on the choice of the link function, it may be necessary to constrain the parameters to be non-negative to ensure that the conditional mean process μt conforms to the distribution implied by (1). For instance, when the response is a count variable, then μt > 0; see Table 2, for all relevant models and distributions where such constraints are required. 
+
+Transformation of linear process and past observations For simplicity, equation (2) contains transformations h and ˜h, which are applied to the past values of the linear process and the observa-tions. These functions are fixed with the link function, which connects ψt and μt. An overview can be found in Table 2. These transformations allow many models to be used, whereby in most cases we set h equal to the identity function. The function for transforming the observations is chosen such that ˜h(Yt) has the same scale as ψt, i.e., E(˜h(Yt) | F t−1) ≈ ψt.
+
+For an example of model (2) applied to spatio-temporal count data consider the log-linear PSTARMA processes; see Maletz et al. (2024). The authors assume marginal Poisson distribu-tions for Yi,t | F t−1 implemented in the family function vpoisson("log") . Without covariates, model (2) becomes 
+
+ψt = δ +
+
+> q
+
+X
+
+> i=1
+> ai
+
+X
+
+> ℓ=0
+
+αiℓ W(ℓ)ψt−i +
+
+> r
+
+X
+
+> j=1
+> bj
+
+X
+
+> ℓ=0
+
+βjℓ W(ℓ) log ( Yt−j + 1p) . (3) For the models studied by Jahn et al. (2023), the function h corresponds to the inverse link function, such that h(ψ) = μ, with some abuse of notation. For example, the softplus model can be applied by using the function vpoisson("softplus") . If there are no covariates, the softplus model takes the form of 
+
+ψt = δ +
+
+> q
+
+X
+
+> i=1
+> ai
+
+X
+
+> ℓ=0
+
+αiℓ W(ℓ)μt−i +
+
+> r
+
+X
+
+> j=1
+> bj
+
+X
+
+> ℓ=0
+
+βjℓ W(ℓ)Yt−j . (4) This is similar to the linear PSTARMA-process of Maletz et al. (2024), which is implemented via 
+
+vpoisson("identity") but with a different link function that implies ψ = μ . As opposed to the linear model, the softplus model can account for negative correlation with a cost of an additional hyperparameter c that sets the degree of linearity of the model. By default c = 1 .7Spatial Weights We use so-called spatial weight matrices W (ℓ) = ( w(ℓ) 
+
+> ij
+
+) ∈ Rp×p, which describe neighborhoods of different spatial orders ℓ ∈ N0. For the weights let w(ℓ) 
+
+> ij
+
+∈ [0 , 1] and we assume row-normalized matrices, i.e., W (ℓ)1p = 1p, for the theoretical properties of the model and for parameter estimation. It is possible to specify different matrices for past values of the feedback term ( W (ℓ) 
+
+> α
+
+), the observation process ( W (ℓ) 
+
+> β
+
+), and the covariates ( W (ℓ) 
+
+> γ
+
+). A neighborhood N (ℓ) 
+
+> i
+
+⊂ { 1, . . . , p } of order ℓ around location i contains those locations that are considered to be neighbored at spatial order ℓ from i. Lower-order neighborhoods are intended to include closer locations. The zero-order neighborhood is defined to contain only the location itself: 
+
+N (0)  
+
+> i
+
+= {i}. Neighborhoods of different orders are assumed to be disjoint: N (ℓ) 
+
+> i
+
+∩ N (˜ℓ) 
+
+> i
+
+= ∅ for ℓ̸ = ˜ℓ.By construction of the spatial weights, we assume w(ℓ) 
+
+> ij
+
+> 0 if and only if j ∈ N (ℓ) 
+
+> i
+
+. This implies 
+
+W (0) = Ip, where Ip denotes the p × p identity matrix. The specific values of the spatial weights w(ℓ) 
+
+> ij
+
+can be chosen by the user. A common choice is based on adjacency matrices: two regions are considered adjacent of order one if they share a common border. Higher-order neighbors ( ℓ > 1) can be defined recursively as those reachable by traversing 
+
+ℓ − 1 intermediate regions. A simple uniform weighting scheme can be defined as 
+
+w(ℓ) 
+
+> ij
+
+= 1#N (ℓ)
+
+> i
+
+, (5) where #N (ℓ) 
+
+> i
+
+denotes the cardinality of the neighborhood set. Depending on the application, neigh-borhoods and matrices can also be defined based on distances, i.e., using k-nearest neighbor schemes or all locations within a distance defined by the user, see Moraga (2023, Chap. 7) for further ex-amples. In R, the package spdep (Bivand, 2025) contains functions supporting the creation of the weight matrices. In the glmSTARMA package, the weight matrices are passed as a list to the associated arguments (wlist , wlist_past_mean , wlist_covariates ) in the relevant functions, where the ℓ + 1 -th list element corresponds to the spatial weight matrix of order ℓ. The list elements can be matrices, i.e., objects of class matrix in base R, or sparse matrices, i.e., objects of class dgCMatrix from the 
+
+Matrix R package (Bates et al., 2025). If no matrices are passed for past values of the feedback process ( wlist_past_mean ) and the covariates ( wlist_covariates ), i.e., the arguments are equal to NULL , the same matrices as in wlist are used. 
+
+Model orders The model orders in (2) are passed to the functions of the glmSTARMA package in an argument model as a named list. We distinguish in (2) between two types of intercepts: a homogeneous intercept, defined by δ = δ01p,and an inhomogeneous intercept, given by an arbitrary vector δ = ( δ1, . . . , δ p)′. The software defaults to a homogeneous intercept. An inhomogeneous intercept is specified by setting intercept = "inhomogeneous" in the model list argument. An inhomogeneous intercept can be included cautiously if the model includes time-invariant covariate processes, i.e., when Xk,t = Xk, ˜t for all 
+
+t, ˜t. In such cases, identifiability issues may arise, as the intercept and covariate effects may not be uniquely separable. 8The maximum spatial orders ai for the regression on past values of the feedback process can be passed as an integer vector in the list element past_mean , where the i-th entry belongs to time lag 
+
+i. Similarly, the spatial orders bj for the past observations are specified as list element past_obs .The maximum time lags q and r are determined automatically based on the length of the vector. By default, the maximum spatial order 0 is used for all covariates. Only local covariate effects are then modeled, i.e., the effects do not directly affect neighboring regions. Different maximum spatial orders can be passed in the list element covariates in the same way as before. The k-th entry of the vector then specifies the maximum spatial order for the k-th covariate. In some applications such as modeling periodicities, one does not want to regress on all lagged values up to the maximum lags q and r, but only on a small subset. Formally, we can write this using sets Q(μ) ⊂ N and R(μ) ⊂ N, which contain the time lags to be regressed. These can be passed as integer vectors in list elements past_mean_time_lags and past_obs_time_lags of the model 
+
+argument. The default setting as in (2) corresponds to Q(μ) = {1, . . . , q } and R(μ) = {1, . . . , r }.Moreover, spatial orders below the maximum spatial order can be omitted. Formally, for each time lag i ∈ Q (μ), we define a spatial index set A(μ) 
+
+> i
+
+⊂ N0; analogously, for each j ∈ R (μ), we define B(μ) 
+
+> j
+
+,and for each covariate process {Xk,t }, a set C(μ) 
+
+> k
+
+, k = 1 , . . . , m . These sets contain the spatial lags, which are incorporated in the model at a specific time lag or covariate. In this case, instead of integer vectors, binary matrices A = ( aℓ,i ) ∈ { 0, 1}a×q, B = ( bℓ,i ) ∈ { 0, 1}b×r and C = ( cℓ,i ) ∈ { 0, 1}c×k
+
+must be passed as list elements past_mean , past_obs , and covariates in the model argument, which then define the above sets, i.e., A(μ) 
+
+> i
+
+= {ℓ : aℓ+1 ,i = 1 }, and the other sets analogously. Using these sets, we can rewrite model (2) as 
+
+ψt = δ + X
+
+> i∈Q (μ)
+
+X
+
+> ℓ∈A (μ)
+> i
+
+αiℓ W(ℓ) 
+
+> α
+
+h (ψt−i) + X
+
+> j∈R (μ)
+
+X
+
+> ℓ∈B (μ)
+> j
+
+βjℓ W(ℓ) 
+
+> β
+
+˜h (Yt−j ) + 
+
+> m
+
+X
+
+> k=1
+
+X
+
+> ℓ∈C (μ)
+> k
+
+γkℓ W(ℓ) 
+
+> γ
+
+Xk,t .
+
+(6) To ensure identifiability, it is important to include regression on past observations, i.e., R(μ)̸ = ∅, if regression on past values of the feedback process ( Q(μ)̸ = ∅) is included in the model. See Maletz et al. (2024) for a more detailed discussion. Regression on the feedback process is omitted, if the list element past_mean is not defined in the named list or equal to NULL . If Q(μ)̸ = ∅, then it is necessary to initialize values ψ0, . . . , ψτ with τ = max Q(μ) ∪ R (μ) for parameter estimation. The choices available in the glmSTARMA package are discussed in Section 4. 
+
+2.2. Conditional Dispersion Model 
+
+Unlike the conditional mean, the dispersion parameters cannot be inferred directly from the observations. Therefore, consider pseudo-observations, say di,t , with conditional expectations 
+
+E(di,t | F t−1) = ϕi,t and collect all of them into a process {dt = ( d1,t , . . . , d p,t )′}. This is the approach taken by Smyth (1989) who proposes a deviance-based measure for computing di,t , using 9the (conditional) deviance residuals. Indeed, the di,t are computed from the distance between the log-likelihoods of the actual model to a saturated model, i.e., 
+
+di,t = 2 · log 
+
+"
+
+f (yi,t | μi,t = yi,t , Ft−1)
+
+f (yi,t | μi,t = μi,t , Ft−1
+
+#
+
+, (7) where f (yi,t | μi,t = μ, Ft−1) is defined by (1), conditionally on the past, evaluated at yi,t with the mean μ. The numerator uses μ = yi,t , i.e., a saturated model where the mean is equal to the observation; for more on this approach see Smyth (1989). Using di,t as observations, define the linear predictor ζt for the dispersion process ϕt along the lines of the mean model (6), that is, 
+
+ζt = ˜δ + X
+
+> i∈Q (ϕ)
+
+X
+
+> ℓ∈A (ϕ)
+> i
+
+˜αiℓ ˜W (ℓ) 
+
+> α
+
+hϕ(ζt−i) + X
+
+> j∈R (ϕ)
+
+X
+
+> ℓ∈B (ϕ)
+> j
+
+˜βjℓ ˜W (ℓ) 
+
+> β
+
+˜hϕ(dt−j ) + 
+
+> ˜m
+
+X
+
+> k=1
+
+X
+
+> ℓ∈C (ϕ)
+> k
+
+˜γkℓ ˜W (ℓ) 
+
+> γ
+
+˜Xk,t .
+
+(8) The unknown parameters, i.e., the intercept ˜δ and the coefficients ˜αiℓ , ˜βjℓ , and ˜γkℓ of (8) are collected in the vector ϑϕ. Most existing models in the literature consider a model for the mean, i.e., (6), and thus implicitly assume a constant dispersion parameter (which can be known or unknown). This is equivalent to (8) with ζt = ˜δ01p, for some constant ˜δ0. This package contains two functions, namely 
+
+glmstarma and dglmstarma , where the former fits the model (6). To capture specific dynamics in the dispersion parameters, various link functions are available for the dispersion model. Notably, when modeling normally distributed data, applying the identity link yields a structure that roughly corresponds to a standard GARCH process. Alternatively, utilizing a log-link function mirrors a log-GARCH model. For the log-link, our package defaults to using 
+
+log( dt−i + 1) instead of the traditional log( dt−i). This slight modification is crucial, as we have observed that it prevents numerical instabilities during the parameter estimation procedure. 
+
+Remark 1 (Distribution of di,t ). Under certain assumptions, the conditional distribution of the pseudo-observations di,t | F t−1 approximately follows a Gamma distribution with a fixed dispersion parameter of 2. Following Smyth (1989), this approximation is exact for the normal and the inverse Gaussian distributions. For the Poisson distribution, this approximation holds provided that μi,t > 3. For the binomial case, both μi,t > 3 and n − μi,t > 3 should be satisfied for the approximation to hold. For the Gamma distribution, the approximation holds provided that 
+
+ϕi,t < 1/3, although in this case di,t is known to follow a Digamma distribution exactly, see Smyth (1989) for more. The link functions of the Gamma distribution are available for the dispersion model in this package, so the model (8) can be easily fitted; recall Table 2. For the Poisson distribution, in simulations we observed that an overall adequate approximation, which yields reliable estimates of the dependence parameters, requires a larger magnitude of ob-servations. Due to the presence of spatial and temporal dependencies, the requirement of μi,t > 3
+
+does not appear to be satisfied frequently enough, if the global mean of the observations is too low, systematically leading to an underestimation of the autoregressive parameters (see the sim-ulation study in Appendix D). Our results suggest that the approximation becomes sufficiently accurate only when the unbounded mean of the observations reaches a level around 35, but future developments might be able to improve this. 10 Remark 2 (Count data and overdispersion). For standard Poisson models, the conditional mean and variance are equal, i.e., E(Yi,t | F t−1) = Var (Yi,t | F t−1) = μi,t , implying ϕi,t = 1 for all i, t .In practice, however, quasi-Poisson models are often used to allow for overdispersion or underdis-persion, assuming Var (Yi,t | F t−1) = ϕi,t μi,t with ϕi,t > 0. A distribution with this property is the generalized Poisson distribution, see Consul and Jain (1973). To avoid confusion, the R package contains the two family functions, vpoisson and vquasipoisson . The former assumes ϕi,t = 1 for all i, t , while the latter allows variation, which can be modeled via (8). The negative binomial case is discussed in the next remark. The same problem that occurs with the Poisson distribution applies to the binomial distribution. In this case, the (conditional) variance is given by V (μi,t ) = nipi,t (1 − pi,t ). Over- or under-dispersion can easily occur in practice if the ni random experiments are not independent (Ahn and Chen, 1995). To accommodate this, we set with the family-function vbinomial ϕi,t = 1 and allow varying dispersions for the vquasibinomial -family. 
+
+Remark 3 (Negative binomial models). Consider the following parameterization of the negative binomial distribution. 
+
+f (yi,t | F t−1) = Γ( νi,t + yi,t )Γ( yi,t + 1)Γ( νi,t )
+
+ νi,t 
+
+νi,t + μi,t 
+
+νi,t  μi,t 
+
+νi,t + μi,t 
+
+yi,t 
+
+, yi,t ∈ N0, (9) where Γ( ·) is the Gamma function and νi,t > 0 is a shape parameter. Therefore, E(Yi,t | F t−1) = μi,t 
+
+and Var (Yi,t | F t−1) = μi,t + μ2
+
+> i,t
+
+/ν i,t . This naturally encompasses conditional overdispersion as Var (Yi,t | F t−1) > E(Yi,t | F t−1). To take advantage of the natural overdispersion property of the negative binomial distribution, we set the GLM-dispersion parameter equal to 1 and instead use the shape parameter νi,t , or its inverse ˜ϕi,t = 1 /ν i,t . The same trick has been used in the glm.nb 
+
+function from the MASS package (Venables and Ripley, 2002) and in the tscount package (Liboschik et al., 2017). To calculate the deviance residuals (7) in case of the negative binomial distribution, we define d⋆i,t 
+
+for this distribution based on Pearson residuals of the Poisson distribution, i.e., 
+
+d⋆i,t = (yi,t − μi,t )2
+
+μi,t 
+
+, (10) because the shape parameter is unknown. These values are approximately distributed as (1 + 
+
+ϕi,t μi,t ) · χ21, with expected value ϕ⋆i,t = E(d⋆i,t | F t−1), which is given by (8). The inverse shape parameter ˜ϕi,t is recovered as 
+
+˜ϕi,t = max 
+
+
+
+0, ϕ⋆i,t − 1
+
+μi,t 
+
+
+
+, (11) which is the result of solving the conditional expectation of d⋆i,t for ˜ϕi,t but for positive values, because negative values imply underdispersion, a case which is not covered by the negative binomial distribution. If ˜ϕi,t = 0 , the negative binomial distribution reduces to a Poisson distribution. 11 Remark 4 (Deviance vs. Pearson residuals) It is generally possible to define the pseudo-observations di,t using the (squared) Pearson residuals, i.e., 
+
+di,t = (yi,t − μi,t )2
+
+V (μi,t ) , (12) instead of the deviance residuals (7), see Wu and Li (2016). However, the deviance residuals have a better theoretical foundation and are therefore used more often in practice, see Jørgensen (1997). The unknown parameters of the two models (6) and (8) are orthogonal to each other in the deviance residual case (Smyth, 1989), which facilitates the parameter estimation described in Section 4. The glmSTARMA package allows selecting the construction method in the relevant functions via the argument pseudo_observations , which can be set to either "deviance" (default) or "pearson" .This argument has no effect in case of the negative binomial distribution. 
+
+# 3. Data Generating Process 
+
+This R package provides the two functions glmstarma.sim and dglmstarma.sim to simulate data from multivariate processes defined by means of (6) and (8). Both functions are similar in structure but differ in how the dispersion parameter is handled, as explained next. 
+
+3.1. Main Function 
+
+The function glmstarma.sim assumes a constant dispersion by default, i.e., ϕi,t = 1 for all i and 
+
+t. Custom dispersion values can be supplied by the user via the dispersion argument within the family-functions; see Table 2. The dispersion argument can be set to a scalar, a numeric vector of length p, or a p × T matrix, where T denotes the number of time points to simulate. The argument 
+
+ntime specifies the length of the time series T , while model defines the model orders for the mean structure, as introduced in the previous sections. The true parameters of the mean model, denoted by ϑ, are provided via the argument parameters .In Section C of the Appendix, we illustrate with two examples how the functions can be used to simulate data from these processes. The function dglmstarma.sim allows us to incorporate the dispersion model in the simulation explicitly. In addition to the arguments mentioned above, it includes: 
+
+• dispersion_model to specify the model orders of the dispersion component, 
+
+• pseudo_observations to define how pseudo-observations are constructed, and 
+
+• parameters_dispersion to specify the true parameters of the dispersion model (8). Both parameters and parameters_dispersion follow the same structure as model and 
+
+dispersion_model , respectively. They are named lists that must contain the following elements: 
+
+• intercept : a vector with the intercept parameter(s), 
+
+• past_obs : a matrix B = ( β)iℓ , where the (ℓ + 1) -th row corresponds to the parameters of spatial lag ℓ, and the columns refer to the temporal lags, 12 • past_mean : parameters αiℓ in the same matrix format, referring to past means, and 
+
+• covariates : parameters γk,ℓ in the same matrix format, referring to the coefficients of the covariates. The columns refer to the covariates and the rows to the spatial lag. Note that parameter entries that do not match the model orders defined in model or 
+
+dispersion_model will be ignored, i.e., by setting them to zero. If covariates or regression on past values of the feedback/dispersion process are not included in the models, the corresponding list elements can be omitted. Covariates are supplied as a (named) list using the arguments covariates and (if applicable) 
+
+dispersion_covariates , with each element of the list representing one covariate process. These must be consistent with the total number of simulated time points, i.e., they must cover the same observation times as the time series to be simulated, i.e., ntime . The covariates are supplied as a matrix of dimension p × T or as a result of the auxiliary functions SpatialConstant or 
+
+TimeConstant . The first function accepts a vector of length T as input and creates a covariate of the form Xt = xt1p, i.e., it varies only over time, but takes the same values for all locations. The second function accepts a vector of length p as input and creates a covariate of the form 
+
+Xt = X ∈ Rp. These covariates can vary with location, but are constant in time. An optional argument n_start in the simulation functions controls the number of initial burn-in observations used to initialize the process. During this burn-in phase, time-variant covariates are not taken into account. By default, the burn-in phase consists of 100 time points. 
+
+3.2. Model Application and Simulation Procedure 
+
+The simulation process consists of two phases: a burn-in phase and a main sampling phase during which the output data are generated. In the burn-in phase, the first max Q(μ) ∪ Q (ϕ) ∪ R (μ) ∪ R (ϕ)
+
+observations are drawn independently from the distribution specified in the family argument. Recall that, for ν ∈ { μ, ϕ }, the sets Q(ν) and R(ν) denote the time lags included in the feedback and observation processes of the mean and dispersion models, respectively. The initial values for μi,t 
+
+and ϕi,t are set using the approximate expectation under assumption of stationarity of the process, see eq. (A-3) in the Appendix. The observations are generated using the methods described in the following subsection. After the initial observations, the model equations (6) and (8) are iteratively applied to generate new values of μt and ϕt, which are then used to simulate new observations. Covariate effects are ignored during the burn-in phase. After the burn-in phase, the simulation runs for further T time points, as specified by ntime , and covariates are incorporated into the model dynamics provided that they have been included in the model. 
+
+3.3. Sampling from Joint Distribution 
+
+Note that the model assumptions in Section 2 do not imply conditional independence of the compo-nents in Yt conditionally on Ft−1. To simulate contemporary dependencies among components of 
+
+Yt, this package allows the use of copulas. The distribution functions listed in Table 2 support the arguments copula and copula_param . The main idea follows Fokianos et al. (2020); the marginals 13 are of some known form (for example Poisson, negative binomial), and the copula function deter-mines the joint dependence. This enables us to use established methods based on the property of keeping the marginals conditionally on the past within a specific distribution family. Examples of this approach have been reported by Armillotta and Fokianos (2024) and Maletz et al. (2024) in the context of count data. The copula argument accepts one of the following character strings: "normal" , "t" , "clayton" ,
+
+"frank" , "gumbel" , or "joe" , each corresponding to a copula implemented in the copula package (see Yan (2007)). The scalar copula_param specifies the associated copula parameter. By default, i.e., when no copula is specified, observations are generated assuming conditional independence using the standard random number generators. If a copula is specified, one of the sampling algorithms described below is applied, depending on the chosen distribution. In the Appendix in Section C we show two examples on how to simulate data from these processes using the functions of the package. 
+
+Inversion Method For most implemented distributions (Normal, Poisson with ϕi,t = 1 , Negative Binomial, Gamma, Binomial), the inversion method can be used (see e.g. Devroye, 1986, Chapter 2). A random vector u0,t = ( u0,t, 1, . . . , u 0,t,p )′ is drawn from the specified copula. Due to the properties of copulas, the components are uniformly distributed on [0 , 1] but not necessarily independent. The observation Yt is then generated element-wise as 
+
+Yi,t = F −1(u0,t,i ; μi,t , ϕ i,t ),
+
+where F −1 denotes the quantile function of the corresponding distribution with mean μi,t and dispersion parameter ϕi,t . In cases of non-unique quantile functions, the smallest value for which the cumulative distribution function of the corresponding distribution exceeds the value u0,t,i is used. 
+
+Michael-Schucany-Haas Method For the inverse Gaussian distribution, the inversion method is challenging due to the lack of a simple closed-form quantile function. Therefore, we use the Michael-Schucany-Haas method (Michael et al., 1976) for the generation of random numbers. First, two independent random vectors, say U1,t and U2,t are drawn from a copula. Then, the observation 
+
+Yi,t is computed as follows: 1. Define Zi,t = Φ −1(U1,t,i ) so that Zi,t ∼ N (0 , 1) .2. Let ˜Zi,t = Z2 
+
+> i,t
+
+and compute 
+
+˜Yi,t = μi,t + μ2 
+
+> i,t
+
+˜Zi,t 
+
+2ϕi
+
+− μi,t 
+
+2ϕi
+
+q
+
+4μi,t ϕi ˜Zi,t + μ2 
+
+> i,t
+
+˜Z2
+
+> i,t
+
+.
+
+3. Then set 
+
+Yi,t =
+
+
+
+˜Yi,t , if U2,t,i ≤ μi,t 
+
+μi,t + ˜Yi,t 
+
+,μ2
+
+> i,t
+
+˜Yi,t 
+
+, otherwise .
+
+14 Poisson Process For the special case of the Poisson distribution without over- or underdispersion (i.e., without a dispersion model (8)), an alternative data-generating process based on Fokianos et al. (2020) is available. This method is implemented only in glmstarma.sim and can be used in the vpoisson -family with the argument sampling_method = "poisson_process" . See Fokianos et al. (2020) and Fokianos (2024) for details. 
+
+Quasi-Poisson-Models For quasi-Poisson models with time-varying dispersion, simulated via the function dglmstarma.sim , the sampling method can be specified using the argument 
+
+sampling_method within the vquasipoisson family. The available options are "build_up" ,
+
+"chop_down" , "branching" , and "negbin" .The first three options generate samples from a suitably parameterized generalized Poisson distri-bution, as defined by Consul and Jain (1973). The implementation follows the approach used in the R package RNGforGPD (Li et al., 2021). The "negbin" method, on the other hand, uses the negative binomial distribution as defined in Equation (9), with 
+
+νi,t = μi,t 
+
+ϕi,t − 1 .
+
+Note that the "branching" and "negbin" methods do not simulate underdispersion (i.e., ϕi,t < 1). In such cases, sampling defaults to the standard Poisson distribution. 
+
+Quasi-Binomial-Models Two different methods are employed for simulating quasi-binomial mod-els, depending on whether the data exhibit overdispersion or underdispersion. For the observations we use the notation 
+
+Yi,t | F t−1 ∼ QuasiBin (ni, π i,t , ϕ i,t )
+
+with conditional mean and variance 
+
+E(Yi,t | F t−1) = niπi,t Var (Yi,t | F t−1) = ϕi,t niπi,t (1 − πi,t ).
+
+In case of overdispersion (i.e., ϕi,t ≥ 1), following the lines of Ahn and Chen (1995), we generate ni+1 
+
+independent Bernoulli random variables Zj ∼ Bin (1 , π i,t ) for j = 0 , 1, . . . , n i, and ni independent Bernoulli variables ˜Zj ∼ Bin (1 , ρ ) for j = 1 , . . . , n i, where ρ = p(ϕi,t − 1) /(ni − 1) . Then, we define 
+
+˜Yj = ˜Zj Z0 +(1 − ˜Zj )Zj , j = 1 , . . . , n i, and compute Yi,t = Pni 
+
+> j=1
+
+˜Yj . In the case of underdispersion (i.e., ϕi,t < 1), a normal approximation is used, that is, 
+
+˜Yi,t ∼ N (niπi,t , ϕ i,t niπi,t (1 − πi,t )) ,
+
+and Yi,t is set to the integer in {0, 1, . . . , n i} closest to ˜Yi,t .While the first method works exactly with desired mean and variance, the normal approximation faces problems when the mean is very close to the boundaries 0 and ni.15 4. Parameter Estimation 
+
+Similarly to the data simulation functionality, the R package glmSTARMA provides two functions for model fitting within the framework established in this work: glmstarma estimates a model for the conditional mean only, while dglmstarma estimates both a mean and a dispersion model. In both cases, the parameters are estimated using a quasi-maximum likelihood (QMLE) approach. In 
+
+dglmstarma , the estimation proceeds iteratively, alternating between fitting the mean model (6) and the dispersion model (8), as is common in the estimation of double generalized linear models; see Smyth (1989). The estimation is performed by default under stability constraints; see Eq. (A-1) in the Appendix. 
+
+4.1. Quasi-Maximum-Likelihood Estimation 
+
+The unkown parameters ϑμ of the mean model (6) are estimated by maximizing the following conditional quasi log-likelihood function 
+
+ℓ(ϑμ) = 
+
+> T
+
+X
+
+> t=τp
+
+X
+
+> i=1
+
+log( f (yi,t | θi,t , ϕ i,t , Ft−1)) = 
+
+> T
+
+X
+
+> t=τp
+
+X
+
+> i=1
+
+ θi,t (ϑμ)yi,t − A(θi,t (ϑμ)) 
+
+ϕi,t 
+
++ c(ϕi,t , y i,t )
+
+
+
+,
+
+(13) with τ = max Q(μ) ∪ R (μ) ∪ Q (ϕ) ∪ R (ϕ), i.e., the largest time lag used in the models (6) and (8). For estimation of the parameters ϑϕ of the dispersion model (8) a quasi-likelihood, using a Gamma density with fixed dispersion parameter 2, is calculated on the pseudo-observations di,t instead of 
+
+yi,t and ϑϕ instead of ϑμ; see the next subsection for more details on the estimation procedure. Although the log-likelihood function is constructed assuming conditional independence among the components of Yt | F t−1, it still takes into account temporal and spatial correlations because of eq. (6) and (8). In case The corresponding (quasi) score function of the mean model is 
+
+ST (ϑμ) = 
+
+> T
+
+X
+
+> t=τ
+
+ ∂∂ϑμ
+
+ψt
+
+′
+
+Dt(Yt − g−1(ψt)) , (14) where Dt = diag(( g−1)′(ψi,t )/σ 2
+
+> i,t
+
+, i = 1 , . . . , p ) = diag(1 /g ′(g−1(ψi,t )) σ2
+
+> i,t
+
+, i = 1 , . . . , p ) and σ2 
+
+> i,t
+
+=
+
+ϕi,t · A′′  
+
+> i
+
+(θi,t (ϑμ)) . The (quasi) Fisher information matrix is given by the expected second derivative of (13): 
+
+GT (ϑμ) = 
+
+> T
+
+X
+
+> t=τ
+
+ ∂∂ϑμ
+
+ψt
+
+′
+
+˜Dt
+
+ ∂∂ϑμ
+
+ψt
+
+
+
+, (15) 16 with ˜Dt = diag((( g−1)′(ψi,t )) 2/σ 2
+
+> i,t
+
+, i = 1 , . . . , p ). A derivation of this matrix is provided in Ap-pendix A.2.1. The derivatives [∂ψt/∂ ϑμ]′ in (14) and (15) are computed component-wise. Here, 
+
+X ◦ Y denotes the element-wise (Hadamard) product of the matrices X, Y ∈ Rp×q:
+
+∂ψ′
+
+> t
+
+∂δ 0
+
+= 1p +
+
+> q
+
+X
+
+> j=1
+> aj
+
+X
+
+> ℓ=0
+
+αjℓ W(ℓ)
+
+
+
+h′(ψt−j ) ◦ ∂ψ′
+
+> t−j
+
+∂δ 0
+
+
+
+,∂ψ′
+
+> t
+
+∂α jo 
+
+= W(o)h(ψt−j ) + 
+
+> q
+
+X
+
+> i=1
+> ai
+
+X
+
+> ℓ=0
+
+αiℓ W(ℓ)
+
+
+
+h′(ψt−j ) ◦ ∂ψ′
+
+> t−j
+
+∂α jo 
+
+
+
+,∂ψ′
+
+> t
+
+∂β io 
+
+= W(o)˜h(Yt−i) + 
+
+> q
+
+X
+
+> j=1
+> aj
+
+X
+
+> ℓ=0
+
+αjℓ W(ℓ)
+
+
+
+h′(ψt−j ) ◦ ∂ψ′
+
+> t−j
+
+∂β io 
+
+
+
+,∂ψ′
+
+> t
+
+∂γ ko 
+
+= W(o)Xk,t +
+
+> q
+
+X
+
+> j=1
+> aj
+
+X
+
+> ℓ=0
+
+αjℓ W(ℓ)
+
+
+
+h′(ψt−j ) ◦ ∂ψ′
+
+> t−j
+
+∂γ ko 
+
+
+
+.
+
+(16) 
+
+4.2. Iterative Estimation of Mean and Dispersion Models 
+
+Similarly to the DGLMs, we use an iterative procedure that alternates between estimating the mean model (6) and the dispersion model (8). This approach exploits the separability of the two submodels while accounting for their interdependence through the variance structure. In each iteration, we maximize a quasi-log-likelihood using numerical optimization methods. For the mean model, we employ the density function specified by the family argument. For the dispersion model, we use the density function of the Gamma distribution with its dispersion parameter fixed at 2, evaluated on pseudo-observations di,t derived from the Pearson residuals of the mean model. The quasi-log-likelihood for the dispersion model follows the same structural form as the mean model, with Yt replaced by dt, linear processes ψt replaced by ζt, and all other model components adapted accordingly. To ensure monotonic improvement of the log-likelihood (13) after each submodel fit, and numerical stability, our implementation incorporates two key enhancements beyond the standard algorithm. First, we monitor the joint log-likelihood after updating each submodel. If an update leads to a decrease in the overall likelihood, we apply a step-halving procedure: the parameter update is scaled by successive factors of 0.5 until the likelihood increases or a maximum number of halving steps is reached. This backtracking strategy prevents divergent behavior and ensures that each accepted update improves the model fit. Second, we employ dual convergence criteria. The iteration terminates when either (i) the change in the combined parameter vector falls below a specified tolerance, say ε, indicating parameter stability, or (ii) the relative improvement in log-likelihood between successive iterations becomes negligible. This dual-criterion approach balances computational efficiency with robust convergence detection. Algorithm 1 provides a detailed description of the iterative estimation procedure, including the likelihood monitoring and step-halving mechanism. This enhanced iterative scheme ensures robust convergence while maintaining computational efficiency. 17 Algorithm 1 Iterative Estimation Procedure with Likelihood Monitoring  
+
+> 1:
+
+Initialize iteration counter: k ← 0 
+
+> 2:
+
+Set constant dispersion: ϕ(0)  
+
+> i,t
+
+← ϕ for all i, t  
+
+> 3:
+
+Compute initial joint log-likelihood: ℓ(0)  
+
+> 4:
+
+repeat  
+
+> 5:
+
+Mean Model Update:  
+
+> 6:
+
+Estimate mean model via QMLE using current ϕ(k) 
+
+> i,t
+
+: ˜ϑ(k) 
+
+> μ
+> 7:
+
+Compute joint log-likelihood based on mean model estimates: ˜ℓ(k) 
+
+> μ
+> 8:
+
+if ˜ℓ(k) 
+
+> μ
+
+< ℓ (k) then  
+
+> 9:
+
+Apply step-halving to ˜ϑ(k) 
+
+> μ
+
+until ˜ℓ(k) 
+
+> μ
+
+≥ ℓ(k) 
+
+> 10:
+
+end if  
+
+> 11:
+
+Accept update: ˆϑ(k) 
+
+> μ
+
+← ˜ϑ(k) 
+
+> μ
+> 12:
+
+Update joint log-likelihood: ℓ(k) ← ℓ(k) 
+
+> μ
+> 13: 14:
+
+Dispersion Model Update:  
+
+> 15:
+
+Compute pseudo-observations: {d(k) 
+
+> t
+
+} from current mean model  
+
+> 16:
+
+Estimate dispersion model on {d(k) 
+
+> t
+
+} via QMLE: ˜ϑ(k) 
+
+> ϕ
+> 17:
+
+Update dispersion: ˜ϕ(k) 
+
+> i,t
+
+based on ˜ϑ(k) 
+
+> ϕ
+> 18:
+
+Compute joint log-likelihood based on disperson estimates: ˜ℓ(k) 
+
+> ϕ
+> 19:
+
+if ˜ℓ(k) 
+
+> ϕ
+
+< ℓ (k) then  
+
+> 20:
+
+Apply step-halving to ˜ϑ(k) 
+
+> ϕ
+
+until ˜ℓ(k) 
+
+> ϕ
+
+≥ ℓ(k) 
+
+> 21:
+
+end if  
+
+> 22:
+
+Accept update: ˆϑ(k) 
+
+> ϕ
+
+← ˜ϑ(k) 
+
+> ϕ
+
+, ϕ(k+1)  
+
+> i,t
+
+← ˜ϕ(k) 
+
+> i,t
+> 23: 24:
+
+Set joint log-likelihood: ℓ(k+1) ← ˜ℓ(k) 
+
+> ϕ
+> 25:
+
+k ← k + 1  
+
+> 26:
+
+until ∥( ˆϑ(k) 
+
+> μ
+
+, ˆϑ(k) 
+
+> ϕ
+
+) − ( ˆϑ(k−1)  
+
+> μ
+
+, ˆϑ(k−1)  
+
+> ϕ
+
+)∥2 < ε or |ℓ(k) − ℓ(k−1) |/|ℓ(k−1) | < δ  
+
+> 27:
+
+return ( ˆϑμ, ˆϑϕ)
+
+Estimation behavior can be adjusted using the control argument, which accepts a named list of control parameters passed internally to the function glmstarma.control and dglmstarma.control .Further details about the control parameters are given in Section B of the Appendix. 
+
+# 5. Model Selection and Assessment 
+
+This R package provides several tools for model assessment and selection. The summary function computes standard errors for the estimated parameters and derives asymptotic p-values based on the normal approximation of the quasi-maximum likelihood estimator (QMLE), as detailed in Sec-tion A.2. For models with parameters restricted to non-negative values, see Table 2, the normal approximation is invalid under the null hypothesis of a true parameter equal to zero. Following the 18 theory of GARCH processes (Francq and Zakoïan, 2019), we apply a heuristic correction by halving the p-values. Simulation studies in Maletz et al. (2024) support the validity of this approach. The residuals function extracts residuals from fitted models. Three types of residuals are available: standard residuals ri,t = yi,t − μi,t , Pearson residuals rPi,t = ( yi,t − ˆμi,t )/pV (ˆ μi,t ), and deviance residuals rDi,t = di,t (corresponding to pseudo-observations). Optionally, Pearson and deviance residuals can be scaled by the estimated dispersion parameter. For forecasting in space and time, the predict function generates future values by iteratively apply-ing the model equations (2) and (8). When new observations are provided, rolling predictions can be computed; otherwise, the estimated conditional expectation substitutes for unobserved values. 
+
+5.1. Information Criteria 
+
+To facilitate model selection, including the choice of covariates, temporal orders, and spatial de-pendencies, several information criteria are computed during estimation: the Akaike Information Criterion (AIC) (Akaike, 1974), the Bayesian Information Criterion (BIC) (Schwarz, 1978), and the Quasi Information Criterion (QIC) (Pan, 2001). 
+
+General Structure. All criteria follow the form IC = −2˜ℓ(ϑ) + Penalty , (17) where ˜ℓ(ϑ) denotes the scaled (quasi-)log-likelihood and the penalty term varies by criterion. To ensure comparability between models with different temporal orders, the log-likelihood (13) is scaled by the effective number of observations: 
+
+˜ℓ(ϑ) = TT − max( Q(μ) ∪ R (μ) ∪ Q (ϕ) ∪ R (ϕ)) ℓ(ϑ), (18) where T denotes the total number of time points. 
+
+Quasi-Likelihood Models. For quasi models, where the mean structure of the Poisson or bino-mial distribution is paired with a dispersion model, a proper likelihood function may not exist or cannot be uniquely defined. We therefore employ adjusted profile likelihoods (McCullagh and Tib-shirani, 1990; Smyth and Verbyla, 1999). For the quasi-Poisson case, the quasi log-likelihood for one observation with mean μi,t and dispersion-parameter ϕi,t is 
+
+ℓ(yi,t ; μi,t , ϕ i,t ) = − 12
+
+log( ϕi,t ) + 2 yi,t + 2 log Γ( yi,t + 1) − 2yi,t log( yi,t ) + 
+
+yi,t log 
+
+ yi,t 
+
+> μi,t
+
+
+
+− (yi,t − μi,t )
+
+ϕi,t 
+
+ ,
+
+with the convention 0 log(0) := 0 .19 For the quasi-binomial case with observations yi,t ∈ { 0, . . . , n i}, μi,t = niπi,t and dispersion ϕi,t , the quasi-log-likelihood is 
+
+ℓ(yi,t ; μi,t , ϕ i,t , n i) = − 12
+
+"
+
+log( ϕi,t ) + 2 log 
+
+ ni
+
+yi,t 
+
+
+
+− 2yi,t log( yi,t ) − 2( ni − yi,t ) log( ni − yi,t )+ 1
+
+ϕi,t 
+
+
+
+2yi,t log 
+
+ yi,t 
+
+μi,t 
+
+
+
++ 2( ni − yi,t ) log 
+
+ ni − yi,t 
+
+ni − μi,t 
+
+  #
+
+.
+
+(19) 
+
+Penalty Terms. The penalty terms for the three information criteria differ in how they penalize model complexity. For the AIC, the penalty is given by 2k, where k denotes the total number of parameters in the mean and dispersion models. The BIC employs a stronger penalty of k log( T p ),where p is the number of spatial units, thereby favoring more parsimonious models as the sample size increases. The QIC accounts for model complexity through the sandwich variance estimator of the QMLE and is defined as Penalty QIC = 2 
+
+
+
+tr( G−1 
+
+> μ
+
+Hμ) + tr( G−1 
+
+> ϕ
+
+Hϕ)
+
+
+
+, (20) where Gμ and Hμ are the sandwich components for the mean model (see Equation (A-6)), and Gϕ
+
+and Hϕ are defined analogously for the dispersion model. 
+
+# 6. Usage and Examples 
+
+The most recent stable version of the glmSTARMA package is available on the Comprehensive R Archive Network (CRAN). Versions with newer and possibly untested features are available on GitHub https://github.com/stmaletz/glmSTARMA . Since most of the program code of the R package is written in C++ , installing the GitHub version requires suitable compilers, e.g., Rtools for Windows ( https://cran.r-project.org/bin/windows/Rtools/ ) and for MacOS XCode and GNU Fortran compiler ; see https://mac.r-project.org/tools/ . After installation, the package can be loaded via library("glmSTARMA") .The help pages, accessible through ?glmstarma and ?dglmstarma , provide a detailed summary of the two key functions and their arguments. In this Section we provide two data examples to illustrate the usage of the package. The preprocessed data sets corresponding to these examples can be downloaded from the GitHub repository with the load_data function. To comply with CRAN policies, the data sets could not be added directly to the R package. The function saves the data sets in a user directory when the function is called for the first time. The available data sets are 
+
+chickenpox , rota , and SST . We demonstrate the application of the functions using the last two data sets as examples in the following subsections. Two examples for simulation of data are discussed in the Appendix in Subsection C. The following analyses should not be seen as exhaustive data analyses, but rather as illustrative examples of software usage. 20 Log Incidence   
+
+> 0.3 0.6 0.9 (a) Log Mean Incidence of Rota Virus infec-tions in Germany
+> (b) Neighbors up to order 2 of Schwalm Eder Kreis county.
+
+Figure 1: German cities and districts. 
+
+6.1. Rotavirus Infections in Germany 
+
+As a first example, we analyze weekly reported rotavirus infections in p = 411 urban and rural districts in Germany from 2001 to 2024, comprising T = 1 , 252 weekly observations. An earlier version of this dataset (limited to 2018) was examined in our previous work (Maletz et al., 2024). Note that Germany’s 2021 territorial reform merged the city of Eisenach into Wartburg district, reducing the total number of districts by one. The data were obtained from the Robert Koch Institute’s SurvStat@RKI 2.0 platform ( https: //survstat.rki.de/ ) and can be loaded in preprocessed form via the package command 
+
+load_data("rota") . The dataset includes linearly interpolated weekly population sizes for each region. Additional preprocessing details are available on the help page ( ?rota ). Population data were derived from the Federal Statistical Office of Germany (Destatis). Figure 1(a) displays the log-transformed mean incidence rates (infections per 100,000 inhabitants) in all regions, revealing persistently higher case numbers in former East German territories. Since July 2013, rotavirus vaccination has been officially recommended in Germany. We now reproduce the log-linear model from Maletz et al. (2024) while extending the vaccination effect to distinguish between eastern and western regions. Spatial neighborhoods are defined as in the original study: first-order neighbors share a common border, while second-order neighbors are reachable by traversing exactly one intermediate region (without being direct neighbors). Figure 1(b) illustrates these neighborhood definitions for a sample region. 21 The original model assumes marginal Poisson distributions with linear process ψt = μt and the following specification: 
+
+ψt = δ01p +
+
+> 4
+
+X
+
+> i=1 2
+
+X
+
+> ℓ=0
+
+βi,ℓ W (ℓ) log( Yt−i + 1p) + 
+
+> 5
+
+X
+
+> k=1
+
+γkXk,t . (21) We modify the global vaccination effect to estimate separate effects for eastern and western Germany. The model includes these covariates: 
+
+• Population : log-transformed, linearly interpolated population size (per 100,000) for each region 
+
+• GDR : time-constant binary indicator for regions in former East Germany 
+
+• Seasonality : Xt = cos   2π 
+
+> 52
+
+t and Xt = sin   2π 
+
+> 52
+
+t for annual fluctuations 
+
+• Vaccination : interaction between the GDR indicator and a step function (1 post-vaccination recommendation) Covariates are specified using the code in Listing 1:       
+
+> 1covariates <- list(population = log(population_germany),
+> 2gdr = TimeConstant(1 * (gdr_feature > 0)),
+> 3season_cos = SpatialConstant(cos(2 * pi / 52 * 1:1252)),
+> 4season_sin = SpatialConstant(sin(2 * pi / 52 * 1:1252)),
+> 5vaccine_west = (gdr_feature == 0) %*% t(seq(ncol(rota)) >= 654),
+> 6vaccine_east = (gdr_feature > 0) %*% t(seq(ncol(rota)) >= 654))
+
+Listing 1: Specification of rotavirus model covariates The model is estimated using the code shown in Listing 2, with output displaying coefficient esti-mates for each component (intercept, autoregressive terms, covariates). Autoregressive coefficients and covariates are presented as matrices where columns represent time lags or specific covariates (e.g. t_4 for time-lag-4 effects), and rows represent spatial lags (e.g. s_1 for first-order neighbors). The results match closely those in Maletz et al. (2024), suggesting stable dependency structures in the extended dataset. The regional vaccination effects reveal a 23.5% reduction in western Germany (1 − exp( −0.2687) ) versus only 2% in eastern regions. 22 1 > glmstarma(rota, list(past_obs = rep(2, 4)), wlist = W_germany,  
+
+> 2
+
++ covariates = covariates, family = vpoisson("log"))  
+
+> 34
+
+Call:  
+
+> 5
+
+glmstarma(ts = rota, model = list(past_obs = rep(2, 4)), wlist = W_germany,  
+
+> 6
+
+family = vpoisson("log"), covariates = covariates)  
+
+> 78
+
+Estimated Coefficients:  
+
+> 9
+
+Intercept:  
+
+> 10
+
+[1] -0.754  
+
+> 11 12
+
+Autoregressive Coefficients:  
+
+> 13
+
+t_1 t_2 t_3 t_4  
+
+> 14
+
+s_0 0.4710 0.2163 0.1116 0.0529  
+
+> 15
+
+s_1 0.1034 0.0026 0.0007 -0.0006  
+
+> 16
+
+s_2 0.0238 0.0018 0.0004 -0.0003  
+
+> 17 18
+
+Covariate Coefficients:  
+
+> 19
+
+population gdr season_cos season_sin vaccine_west vaccine_east  
+
+> 20
+
+s_0 0.3213 0.2655 0.0632 0.4467 -0.2687 -0.0197 
+
+Listing 2: Model fit for log-linear PSTARMAX process 
+
+Dispersion Handling The default Poisson assumption fixes the dispersion parameter at ϕi,t =1 for all i, t , although count data often exhibit overdispersion. Alternative count data families (vquasipoisson or vnegative.binomial ) accommodate this: 
+
+• vquasipoisson estimates the variance as Var( Yi,t | F t−1) = ϕμ i,t 
+
+• vnegative.binomial uses Var( Yi,t | F t−1) = μi,t + ϕμ 2 
+
+> i,t
+
+(with ϕ = 0 for Poisson as a special case) All three families yield identical point estimates, differing only in standard error calculations. The sandwich estimator further reduces these differences. For this dataset, the quasipoisson dispersion is estimated at 1.804, while the negative binomial dispersion is 1.068. Model comparison via AIC favors the negative binomial family (1,429,264) over Poisson (1,608,721) and quasipoisson (1,498,655). 
+
+Software Comparison Our package design follows the user-friendly interface of tscount (Liboschik et al., 2017) for univariate count time series, extending its INGARCH and log-linear models to the spatio-temporal domain. Alternative R packages for spatio-temporal count data include: 
+
+• PNAR (Armillotta et al., 2024): Implements linear/log-linear Poisson Network Autoregression models, which are special cases of our framework (achievable via vpoisson("identity") or 
+
+vpoisson("log") ) for a fixed finite number of spatial points. Includes test statistics for testing linearity, but restricts covariates to time-constant terms. 23 30 °S20 °S10 °S0°  
+
+> 10 °N20 °N30 °N
+> 150 °E160 °W110 °W
+> Longitude
+> Latitude
+> sst
+> −0.25 0.00 0.25 0.50
+
+Figure 2: Pixel-wise mean of sea surface temperature anomalies (in °C) in the Pacific. The red rectangle, 29 ◦S to 29 ◦N latitude and 160 ◦E to 240 ◦E ( 120 ◦W), marks the area modeled in this data example. 
+
+• surveillance (Meyer et al., 2017): Implements the hhh4 framework, decomposing the con-ditional expectation into endemic and epidemic components: 
+
+μi,t = ei,t νi,t + λi,t Yi,t −1 + κi,t 
+
+X 
+
+> j̸=i
+
+w(1)  
+
+> ij
+
+Yj,t −1. (22) While structurally similar to our linear models, hhh4 natively supports time-varying parame-ters, but limits spatial dependencies to a single lag/matrix. Armillotta et al. (2024) note that its standard errors may be underestimated due to ignored contemporaneous dependencies. 
+
+6.2. Sea Surface Temperature Anomalies 
+
+We consider Sea Surface Temperature Anomaly (SST) data in the Pacific Ocean. The data describe (monthly) deviations (in °C) from climatology over the period from January 1970 to December 2002 and were measured on a regular grid from 120 ◦E to 290 ◦E ( 70 ◦W) longitude and 29 ◦S to 29 ◦Nlatitude in 2◦ increments. The complete data set is included in the R package STRbook (Wikle et al., 2019) under the name SST_df . We follow Hølleland and Karlsen (2020) and consider the rectangular area 29 ◦S to 29 ◦N latitude and 160 ◦E to 240 ◦E ( 120 ◦W), which does not contain land masses as there are no measurements available. Figure 2 shows the area we consider for modeling, as well as the coordinate-wise mean values of the SST variable. In total, we use monthly observations of this 30 × 41 grid ( p = 1230 ) for the time period from January 1970 to December 2002 ( T = 396 ). We observe minor temperature anomalies on 24 average near the equator, which increase until 6◦N and 6◦S and then decrease again. In the eastern direction, i.e., with increasing longitude, we also observe higher anomalies than in the western part of the area under consideration. Based on these observations, we construct several covariates that we account for in the modeling: (1) a linear temporal trend with values between 0 (beginning of the observation period) and 1 (end) to capture a potential increase in temperature, (2) longitude/360 to describe higher temperatures further east, (3) cos(2 π/ 12 · t) and sin(2 π/ 12 · t) to capture potential seasonality, and (4) two covariates min {| latitude |, 6}/90 and max {| latitude | − 6, 0}/90 to describe the increasing temperature anomalies up to the 6th degree and the decline beyond that in a piecewise linear manner. Listing 3 shows the R code used to specify these covariates for use in the modeling functions. We utilize the helper function SpatialConstant to define a covariate that varies only temporally. This is particularly intended for temporal trends or seasonality. The helper function TimeConstant defines a covariate that remains constant over the entire observation period and varies only spatially. Such covariates can describe effects that are generated exclusively by the location of the measurement site.         
+
+> 1times <- seq(from = as.Date("1970-01-01"), to = as.Date("2002-12-01"), by = "m")
+> 2times <- format(times, "%b %Y")
+> 3covariates <- list(trend = SpatialConstant(seq(times) / length(times)),
+> 4longitude = TimeConstant(locations$lon / 360),
+> 5season_cos = SpatialConstant(cos(2 * pi / 12 * seq(times))),
+> 6season_sin = SpatialConstant(sin(2 * pi / 12 * seq(times))),
+> 7abs_lat_inc = TimeConstant(pmin(abs(locations$lat), 6) / 90),
+> 8abs_lat_dec = TimeConstant(pmax(abs(locations$lat) - 6, 0) / 90))
+
+Listing 3: Definition of covariates for modeling SST data. The data.frame locations contains the variables lat and lon , which describe the latitude and longitude of the pixels. We cannot reconstruct how the anomalies were calculated exactly. It is plausible that they were determined using a simple regression model that ignores spatial dependencies. Such dependencies can arise naturally, as these are surface water temperature data that can be transported to nearby locations by ocean currents. Additionally, weather data typically exhibit time-varying variability, which is influenced by factors such as seasonal changes. Therefore, a combined modeling approach for such data at both the mean and variance level appears sensible. We consider a model under the marginal normality assumption, i.e., Yi,t | F t−1 ∼ N (μi,t , ϕ i,t ) and 
+
+Var( Yi,t | F t−1) = ϕi,t . We first use the mean model 
+
+μt = δ011230 +
+
+
+
+β0I1230 + βNW (N) + βEW (E) + βSW (S) + βWW (W) 
+
+Yt−1 +
+
+> 6
+
+X
+
+> k=1
+
+γkXk,t ,
+
+where W (ℓ), ℓ ∈ { N, E, S, W} indicates row-wise for each location exactly the adjacent pixel/coor-dinate point to the north, east, south, and west, respectively. In each row, there is exactly one 1 and otherwise only 0s. For coordinates located at the edges of the grid shown in Figure 2, such a neighbor does not necessarily exist, i.e., some rows contain only zeros. This violates the condition 
+
+W (ℓ)1p = 1p mentioned earlier in this work. However, due to the very high number of locations 
+
+p = 1230 and the relatively small number of boundary points (138), the impact of this is negligible. The cyclic neighborhood matrices used by Hølleland and Karlsen (2020) would, in our opinion, 25 introduce a bias into the analysis, as they would treat locations in the far north of the grid as direct neighbors of points on the southern edge of the grid. We model the variance process ϕt on a log-linear scale to capture negative dependencies as well. We assume ζt = log( ϕt) and 
+
+ζt = δ011230 +
+
+
+
+β0I1230 + βNW (N) + βEW (E) + βSW (S) + βWW (W) 
+
+log(( Yt−1−μt)2+1p)+ 
+
+> 6
+
+X
+
+> k=1
+
+γkXk,t ,
+
+i.e., we assume the same model order as in the mean model and use the same covariates from Listing 3. The model structure of the dispersion model is closely related to that of a spatio-temporal log-GARCH model with additional covariates (Otto et al., 2025). Model estimation is performed using the code in Listing 4.        
+
+> 1fit1 <- dglmstarma(SST, mean_model = list(past_obs = 4),
+> 2dispersion_model = list(past_obs = 4),
+> 3mean_family = vnormal(),
+> 4dispersion_link = "log",
+> 5wlist = W_directed,
+> 6mean_covariates = covariates,
+> 7dispersion_covariates = covariates)
+
+Listing 4: Joint fitting of spatio-temporal models for mean and dispersion. Using summary(fit1) , we can display a summary of the output. For the parameters of the mean model, we detect spatial dependence. The parameter associated with W (E) , labelled 
+
+past_obs_{s_2, t_1} in the output, is estimated to be significantly larger than the other spa-tial dependence parameters, indicating a stronger dependence from the eastern direction than from other directions. This can be explained by the northern and southern equatorial currents, which are driven by trade winds and transport water masses in a westward direction, resulting in stronger spatial dependence from the east. Additionally, dependencies from other directions are also sig-nificant, which can be explained by other currents that are, however, dominated by the equatorial currents on a global scale relative to the grid section. Furthermore, the mean model shows a positive temporal trend, which is likely attributable to rising water temperatures due to climate change. The other covariates in the mean model are not significant. In the dispersion model, we also detect spatio-temporal autoregressive dependencies. These are primarily driven by dependencies on past values of the pseudo-observations from the north (past_obs_{s_1, t_1} ) and south ( past_obs_{s_3, t_1} ), as well as from the location itself (past_obs_{s_0, t_1} ). Spatio-temporal dependencies from the east and west are not signifi-cant at the 5% level in the dispersion model. Additional to the autoregressive dependencies, a negative trend is observable in the dispersion, suggesting that the variance decreases over time. Additionally, there is an annual seasonality in the variance. Longitude does not appear to have an effect on either the mean or the variance. Latitude leads to a decrease in variance up to the 6th degree north or south and then to an increase again. This suggests a higher concentration of high or low anomalies in this region, possibly an artefact generated by equatorial currents. 26 1 summary(fit1)  
+
+> 23
+
+Call:  
+
+> 4
+
+dglmstarma(ts = SST, mean_model = list(past_obs = 4), dispersion_model = list(past_obs = 4),  
+
+> 5
+
+mean_family = vnormal(), wlist = W_directed, mean_covariates = covariates,  
+
+> 6
+
+dispersion_covariates = covariates)  
+
+> 789
+
+==================================================  
+
+> 10
+
+Coefficients of Mean Model  
+
+> 11
+
+==================================================  
+
+> 12
+
+Estimate Std. Error z value Pr(>|z|)  
+
+> 13
+
+(Intercept) -0.102614 0.056218 -1.825 0.06796 .  
+
+> 14
+
+past_obs_{s_0, t_1} 0.150587 0.021989 6.848 7.47e-12 ***  
+
+> 15
+
+past_obs_{s_1, t_1} 0.146773 0.014122 10.393 < 2e-16 ***  
+
+> 16
+
+past_obs_{s_2, t_1} 0.262654 0.010661 24.636 < 2e-16 ***  
+
+> 17
+
+past_obs_{s_3, t_1} 0.152767 0.015036 10.160 < 2e-16 ***  
+
+> 18
+
+past_obs_{s_4, t_1} 0.111290 0.013089 8.503 < 2e-16 ***  
+
+> 19
+
+trend_{s_0} 0.106865 0.033320 3.207 0.00134 **  
+
+> 20
+
+longitude_{s_0} 0.126819 0.080194 1.581 0.11378  
+
+> 21
+
+season_cos_{s_0} -0.007730 0.007681 -1.006 0.31422  
+
+> 22
+
+season_sin_{s_0} -0.011069 0.009553 -1.159 0.24657  
+
+> 23
+
+abs_lat_inc_{s_0} 0.269895 0.264460 1.021 0.30747  
+
+> 24
+
+abs_lat_dec_{s_0} -0.089160 0.058985 -1.512 0.13064  
+
+> 25
+
+--- 
+
+> 26
+
+Signif. codes: 0 ’***’ 0.001 ’**’ 0.01 ’*’ 0.05 ’.’ 0.1 ’’1  
+
+> 27 28
+
+Marginal Distribution: gaussian  
+
+> 29
+
+Link: identity  
+
+> 30 31
+
+==================================================  
+
+> 32
+
+Coefficients of Dispersion Model  
+
+> 33
+
+==================================================  
+
+> 34
+
+Estimate Std. Error z value Pr(>|z|)  
+
+> 35
+
+(Intercept) -1.030314 0.117310 -8.783 < 2e-16 ***  
+
+> 36
+
+past_obs_{s_0, t_1} 0.561574 0.124929 4.495 6.95e-06 ***  
+
+> 37
+
+past_obs_{s_1, t_1} 0.206228 0.080298 2.568 0.0102 *  
+
+> 38
+
+past_obs_{s_2, t_1} 0.022348 0.075720 0.295 0.7679  
+
+> 39
+
+past_obs_{s_3, t_1} 0.201855 0.079095 2.552 0.0107 *  
+
+> 40
+
+past_obs_{s_4, t_1} 0.007037 0.071090 0.099 0.9211  
+
+> 41
+
+trend_{s_0} -0.677960 0.063748 -10.635 < 2e-16 ***  
+
+> 42
+
+longitude_{s_0} 0.127095 0.225730 0.563 0.5734  
+
+> 43
+
+season_cos_{s_0} 0.148817 0.026095 5.703 1.18e-08 ***  
+
+> 44
+
+season_sin_{s_0} 0.032206 0.026243 1.227 0.2197  
+
+> 45
+
+abs_lat_inc_{s_0} -17.334921 1.279691 -13.546 < 2e-16 ***  
+
+> 46
+
+abs_lat_dec_{s_0} 2.316219 0.242909 9.535 < 2e-16 ***  
+
+> 47
+
+--- 
+
+> 48
+
+Signif. codes: 0 ’***’ 0.001 ’**’ 0.01 ’*’ 0.05 ’.’ 0.1 ’’1  
+
+> 49
+
+Link: log  
+
+> 50
+
+Dispersion Parameter of dispersion model fixed at 2  
+
+> 51 52
+
+Number of coefficients of mean model: 12  
+
+> 53
+
+Number of coefficients of dispersion model: 12  
+
+> 54 55
+
+Quasi-Log-Likelihood: -210434  
+
+> 56
+
+AIC: 420916  
+
+> 57
+
+BIC: 421182.3  
+
+> 58
+
+QIC: 424241.9 
+
+Listing 5: Summary of spatio-temporal model fit of SST data 27 Discussion Another R package for modeling spatio-temporal data under the assumption of marginal normal distributions is the starma package (Cheysson, 2016), which provides an implemen-tation of the STARMA processes of the same name by Pfeifer and Deutsch (1980). The STARMA-GARCH combination introduced by Hølleland and Karlsen (2020) is implemented in the R package 
+
+starmagarch and available on GitHub ( https://github.com/holleland/starmagarch/ ). Both models describe the data solely through autoregressive dependence structures, meaning that location-specific differences cannot be easily described through covariates. Furthermore, the data must be detrended beforehand. The theoretical properties of these models are based, among other things, on spatial stationarity assumptions. The applicability of these models therefore requires several complex preprocessing steps, which additionally compromise interpretability. The starma package also works exclusively with dense spatial weight matrices. This is particularly problematic in high-dimensional cases such as in this application, when the weight matrices are only sparsely populated. This drastically increases computation time. On an Apple MacBook Air with M2 processor, the computation of the DGLM using the code in Listing 4 takes approximately 50 seconds. The estimation of a first-order STAR process with the same neighborhood matrices, i.e., 
+
+Yt =
+
+
+
+β0I1230 + βNW (N) + βEW (E) + βSW (S) + βWW (W) 
+
+Yt−1 + εt
+
+takes approximately 250 seconds with the starma package, making it more suitable for low-dimensional data. A more practical alternative is provided by the Generalized Network Autoregression (GNAR) models (Knight et al., 2016), as well as their extension to include exogenous covariates (GNARX) (Nason and Wei, 2022). Both models are implemented in the R package GNAR (Knight et al., 2020). In the functions of this R-package, users only need to provide a graph that defines the spatial neighbors. Higher-order neighbors are automatically calculated if required. On the one hand, this has the advantage that users only need to consider the first-order dependence structure. On the other hand, users may not be aware of what types of spatial dependencies are implied when they use this feature unknowingly. Furthermore, it is not possible to estimate different dependencies for different directions, as in the example above, since only a single network can be passed. The GNAR framework provides the possibility to model time-varying networks, which is currently not possible within our framework. Additionally, GNAR models can easily estimate individual autoregressive dependence parameters for each location. In the glmSTARMA package this can only be realized by passing a large list of neighborhood matrices W (i), i = 1 , . . . , p , where the i-th diagonal element of W (i) equals 1 and all other values in the matrix equal 0. The spatial dependence matrices are then appended to this list, and the spatial orders must be chosen accordingly. For a comparison, we now estimate a simple GNARX model of the form 
+
+Yt = β0Yt−1 + β1W Y t−1 +
+
+> 7
+
+X
+
+> k=1
+
+γkXk,t + εt,
+
+where W is the row-normalized adjacency matrix and εt ∼ N (0 , σ 2I) are independent and iden-tically distributed. A coordinate is considered adjacent, as in the example above, if it is located directly to the north, east, south, or west of a point. The covariates are identical to those from 28 Model Intercept β0 β1 γ1 γ2 γ3 γ4 γ5 γ6                                      
+
+> GNARX Est. −0.0899 −0.1603 0.9749 0.1080 0.0874 −0.0069 −0.0084 0.4124 −0.0964
+> Std. Err. 0.0053 0.0100 0.0104 0.0020 0.0085 0.0008 0.0008 0.0419 0.0075
+> glmstarma Est. −0.0889 −0.0937 0.9062 0.1086 0.0867 −0.0068 −0.0086 0.4025 −0.0974
+> Std. Err. 0.0406 0.0356 0.0393 0.0185 0.0711 0.0069 0.0070 0.2674 0.0541
+
+Table 3: Parameter estimates and standard errors of GNARX- and a glmstarma process. the example above. The additional seventh covariate is the intercept, which is not automatically fitted. Additionally, we estimate a similar mean model with glmstarma under the assumption of marginal normal distributions, i.e., 
+
+μt = δ01p + β0Yt−1 + β1W Y t−1 +
+
+> 6
+
+X
+
+> k=1
+
+γkXk,t .
+
+The estimation of the GNARX model takes approximately 15 seconds on a MacBook Air M2, while the glmstarma model requires approximately 1.7 seconds. Table 3 contains the parameter estimates of both models, as well as the standard errors calculated by supplementary calculations. Both models estimate the parameters of the covariates almost identically. Differences arise in β0 and β1.We enforce a stationary solution in glmstarma , while the GNAR package estimates the parameters using the lm function. Furthermore, the standard errors we calculate are larger than those of the GNARX model, which is because we do not assume independent and identically distributed errors, but also account for contemporaneous dependencies. 
+
+# 7. Conclusion 
+
+While existing R packages for spatio-temporal modeling provide essential tools, they often rely on restrictive assumptions, such as contemporaneous independence or strictly linear dependencies, that may not be justified in real-world applications. These simplifications often lead to underestimated standard errors and biased model selection, undermining the reliability of applied research. Our package addresses these limitations by offering a unified, user-friendly framework designed for flex-ible spatio-temporal modeling under diverse distributional assumptions. By supporting both linear and non-linear structures with customizable spatial and temporal lags, the package allows caputur-ing complex dependencies that are often overlooked by more rigid software implementations. A key innovation of our approach is the inclusion of time-varying dispersion parameters, a feature that allows the model to adapt to fluctuating volatility within the data over time. To ensure statistical integrity, we utilize robust sandwich estimators that provide reliable inference even when traditional assumptions fail. This focus on methodological rigor is paired with a modular design, ensuring that the package remains adaptable as analytical needs evolve. 29 Disclosure statement 
+
+The authors report that there are no competing interests to declare. 30 Literature 
+
+Ahn, H. and J. J. Chen (1995). “Generation of Over-Dispersed and Under-Dispersed Binomial Variates”. Journal of Computational and Graphical Statistics 4 (1), pp. 55–64. Akaike, H. (1974). “A new look at the statistical model identification”. IEEE Transactions on Au-tomatic Control 19 (6), pp. 716–723. Aknouche, A. and C. Francq (2021). “Count and duration time series with equal conditional stochas-tic and mean orders”. Econometric Theory 37 (2), pp. 248–280. Armillotta, M. and K. Fokianos (2024). “Count network autoregression”. Journal of Time Series Analysis 45 (4), pp. 584–612. Armillotta, M., M. Tsagris, and K. Fokianos (2024). “Inference for Network Count Time Series with the R Package PNAR”. The R Journal 15 (4), pp. 255–269. Barreto-Souza, W., L. S. C. Piancastelli, K. Fokianos, and H. Ombao (2025). “Time-Varying Dis-persion Integer-Valued GARCH Models”. Journal of Time Series Analysis , jtsa.12838. Bates, D., M. Maechler, and M. Jagan (2025). Matrix: Sparse and Dense Matrix Classes and Meth-ods .Bivand, R. (2025). spdep: Spatial Dependence: Weighting Schemes, Statistics .Bonat, W. H., B. Jø rgensen, C. C. Kokonendji, J. Hinde, and C. G. B. Demétrio (2018). “Ex-tended Poisson-Tweedie: properties and regression models for count data”. Statistical Modelling. An International Journal 18 (1), pp. 24–49. Chen, K., I. Hu, and Z. Ying (1999). “Strong Consistency of Maximum Quasi-Likelihood Estimators in Generalized Linear Models with Fixed and Adaptive Designs”. The Annals of Statistics 27 (4), pp. 1155–1163. Cheysson, F. (2016). starma: Modelling Space Time AutoRegressive Moving Average (STARMA) Processes .Choi, B., M. Bergés, E. Bou-Zeid, and M. Pozzi (2021). “Short-term probabilistic forecasting of meso-scale near-surface urban temperature fields”. Environmental Modelling & Software 145, p. 105189. Clark, N. J. and P. M. Dixon (2021). “A class of spatially correlated self-exciting statistical models”. 
+
+Spatial Statistics 43, p. 100493. Clement, L., O. Thas, P. Vanrolleghem, and J. Ottoy (2006). “Spatio-temporal statistical models for river monitoring networks”. Water Science and Technology 53 (1), pp. 9–15. Consul, P. C. and G. C. Jain (1973). “A Generalization of the Poisson Distribution”. Technometrics 
+
+15 (4), pp. 791–799. Devroye, L. (1986). Non-Uniform Random Variate Generation . New York, NY: Springer. Dickson, M. M., G. Espa, D. Giuliani, F. Santi, and L. Savadori (2020). “Assessing the effect of con-tainment measures on the spatio-temporal dynamic of COVID-19 in Italy”. Nonlinear Dynamics 
+
+101 (3), pp. 1833–1846. Efron, B. (1986). “Double exponential families and their use in generalized linear regression”. Journal of the American Statistical Association 81 (395), pp. 709–721. Elhorst, J. P. and S. Emili (2022). “A spatial econometric multivariate model of Okun’s law”. 
+
+Regional Science and Urban Economics 93, p. 103756. Fahrmeir, L. and H. Kaufmann (1985). “Consistency and Asymptotic Normality of the Maximum Likelihood Estimator in Generalized Linear Models”. The Annals of Statistics 13 (1), pp. 342–368. Fletcher, R. and C. M. Reeves (1964). “Function minimization by conjugate gradients”. The Com-puter Journal 7 (2), pp. 149–154. 31 Fokianos, K. (2024). “Multivariate count time series modelling”. Econometrics and Statistics 31, pp. 100–116. Fokianos, K., B. Støve, D. Tjøstheim, and P. Doukhan (2020). “Multivariate count autoregression”. 
+
+Bernoulli 26 (1). Francq, C. and J.-M. Zakoïan (2019). GARCH Models: Structure, Statistical Inference and Financial Applications . John Wiley & Sons, Ltd. Held, L., M. Höhle, and M. Hofmann (2005). “A statistical framework for the analysis of multivariate infectious disease surveillance counts”. Statistical Modelling 5 (3), pp. 187–199. Hølleland, S. and H. A. Karlsen (2020). “A Stationary Spatio-Temporal GARCH Model”. Journal of Time Series Analysis 41 (2), pp. 177–209. Jahn, M., C. H. Weiß, and H.-Y. Kim (2023). “Approximately linear INGARCH models for spatio-temporal counts”. Journal of the Royal Statistical Society Series C: Applied Statistics 72 (2), pp. 476–497. Jørgensen, B. (1997). The theory of dispersion models . Vol. 76. Monographs on Statistics and Applied Probability. Chapman & Hall, London. xii+237. Kamarianakis, Y. and P. Prastacos (2005). “Space–time modeling of traffic flow”. Computers & Geosciences 31 (2), pp. 119–133. Knight, M. I., M. A. Nunes, and G. P. Nason (2016). Modelling, detrending and decorrelation of network time series .Knight, M., K. Leeming, G. Nason, and M. Nunes (2020). “Generalized Network Autoregressive Processes and the GNAR Package”. Journal of Statistical Software 96 (5). Kraft, D. (1994). “Algorithm 733: TOMP–Fortran modules for optimal control calculations”. ACM Transactions on Mathematical Software 20 (3), pp. 262–281. Li, H., H. Demirtas, and R. Chen (2021). “RNGforGPD: An R Package for Generation of Univariate and Multivariate Generalized Poisson Data”. The R Journal 12 (2), pp. 120–133. Liboschik, T., K. Fokianos, and R. Fried (2017). “tscount: An R Package for Analysis of Count Time Series Following Generalized Linear Models”. Journal of Statistical Software 82, pp. 1–51. Liu, D. C. and J. Nocedal (1989). “On the limited memory BFGS method for large scale optimiza-tion”. Mathematical Programming 45 (1), pp. 503–528. Maletz, S., K. Fokianos, and R. Fried (2024). “Spatio-temporal count autoregression”. Data Science in Science 3 (1), p. 2425171. Maletz, S., K. Fokianos, and R. Fried (2026). glmSTARMA: (Double) Generalized Linear Models for Spatio-Temporal Data .Martins, A., M. G. Scotto, C. H. Weiß, and S. Gouveia (2023). “Space-time integer-valued ARMA modelling for time series of counts”. Electronic Journal of Statistics 17 (2). McCullagh, P. and R. Tibshirani (1990). “A Simple Method for the Adjustment of Profile Likeli-hoods”. Journal of the Royal Statistical Society Series B: Statistical Methodology 52 (2), pp. 325– 344. Meyer, S., L. Held, and M. Höhle (2017). “Spatio-Temporal Analysis of Epidemic Phenomena Using the R Package surveillance”. Journal of Statistical Software 77, pp. 1–55. Michael, J. R., W. R. Schucany, and R. W. Haas (1976). “Generating Random Variates Using Transformations with Multiple Roots”. The American Statistician 30 (2), pp. 88–90. Moraga, P. (2023). Spatial Statistics for Data Science: Theory and Practice with R . Chapman & Hall/CRC Data Science Series. Chapman & Hall/CRC. Nason, G. P. and J. L. Wei (2022). “Quantifying the Economic Response to COVID-19 Mitigations and Death Rates Via Forecasting Purchasing Managers’ Indices Using Generalised Network Au-32 toregressive Models with Exogenous Variables”. Journal of the Royal Statistical Society Series A: Statistics in Society 185 (4), pp. 1778–1792. Nelder, J. A. (1985). “Quasi-likelihood and GLIM”. Generalized linear models . Vol. 32. Lect. Notes Stat. Springer, Berlin, pp. 120–127. Nelder, J. A. and D. Pregibon (1987). “An extended quasilikelihood function”. Biometrika 74 (2), pp. 221–232. Otto, P. (2019). “spGARCH: An R-Package for Spatial and Spatiotemporal ARCH and GARCH models”. The R Journal 11 (2), pp. 401–420. Otto, P., O. Doğan, S. Taşpınar, W. Schmid, and A. K. Bera (2025). “Spatial and spatiotemporal volatility models: A review”. Journal of Economic Surveys 39 (3), pp. 1037–1091. Otto, P. and W. Schmid (2018). “Spatiotemporal analysis of German real-estate prices”. The Annals of Regional Science 60 (1), pp. 41–72. Pace, R., R. Barry, O. W. Gilley, and C. Sirmans (2000). “A method for spatial–temporal forecasting with an application to real estate prices”. International Journal of Forecasting 16 (2), pp. 229–246. Pan, W. (2001). “Akaike’s Information Criterion in Generalized Estimating Equations”. Biometrics 
+
+57 (1), pp. 120–125. Pan, Y. (2022). roptim: General Purpose Optimization in R using C++ .Paul, M., L. Held, and A. M. Toschke (2008). “Multivariate modelling of infectious disease surveil-lance data”. Statistics in Medicine 27 (29), pp. 6250–6267. Pfeifer, P. E. and S. J. Deutsch (1980). “A Three-Stage Iterative Procedure for Space-Time Model-ing”. Technometrics 22 (1), pp. 35–47. Schwarz, G. (1978). “Estimating the Dimension of a Model”. The Annals of Statistics 6 (2), pp. 461– 464. Smyth, G. K. (1989). “Generalized Linear Models with Varying Dispersion”. Journal of the Royal Statistical Society: Series B (Methodological) 51 (1), pp. 47–60. Smyth, G. K. and B. Jørgensen (2002). “Fitting Tweedie’s compound Poisson model to insurance claims data: dispersion modelling”. Astin Bulletin. The Journal of the International Actuarial Association 32 (1), pp. 143–157. Smyth, G. K. and A. P. Verbyla (1999). “Adjusted likelihood methods for modelling dispersion in generalized linear models”. Environmetrics 10 (6), pp. 695–709. Stoffer, D. S. (1986). “Estimation and Identification of Space-Time ARMAX Models in the Presence of Missing Data”. Journal of the American Statistical Association 81 (395), pp. 762–772. Venables, W. N. and B. D. Ripley (2002). Modern Applied Statistics with S . Fourth. New York: Springer. West, M., P. J. Harrison, and H. S. Migon (1985). “Dynamic generalized linear models and Bayesian forecasting”. Journal of the American Statistical Association 80 (389), pp. 73–97. Wikle, C. K., A. Zammit Mangion, and N. A. C. Cressie (2019). Spatio-temporal statistics with R .Chapman & Hall/CRC the R series. Boca Raton London New York: CRC Press. 1 p. Wood, S. N. (2017). Generalized Additive Models: An Introduction with R, Second Edition . 2nd ed. New York: Chapman and Hall/CRC. 496 pp. Wu, K. Y. K. and W. K. Li (2016). “On a dispersion model with Pearson residual responses”. 
+
+Computational Statistics & Data Analysis 103, pp. 17–27. Yan, J. (2007). “Enjoy the Joy of Copulas: With a Package copula”. Journal of Statistical Software 
+
+21, pp. 1–21. Yang, C., R. E. Chandler, V. S. Isham, and H. S. Wheater (2005). “Spatial-temporal rainfall simu-lation using generalized linear models”. Water Resources Research 41 (11). 33 Ypma, J. and S. G. Johnson (2022). nloptr: R Interface to NLopt . R package version 2.0.3. Zheng, T., H. Xiao, and R. Chen (2022). “Generalized autoregressive moving average models with GARCH errors”. Journal of Time Series Analysis 43 (1), pp. 125–146. 34 Appendix 
+
+In the following sections of the Appendix, we present further examples and discuss results that expand and supplement the main part. First, in Section A, we discuss theoretical properties of the model framework and parameter estimation. In Section B we explain additional control parameters of the estimation functions from Subsection 4 from the main part. In Section C, we illustrate usage of the simulation functions of the package using two examples. We support our claims about the theoretical properties with simulation results in Section D. 
+
+# A. Asymptotics and Stability 
+
+In time series analysis, stationary and ergodic processes are often required to establish consistent and (asymptotically) normally distributed parameter estimates. Introducing time-varying deter-ministic covariate processes directly violates the stationarity of the process to be modeled. Never-theless, we conjecture that consistent and asymptotically normal distributed parameter estimates can be obtained under weak assumptions. In Subsection A.1 we discuss the stability of processes. Subsection A.2 discusses our conjecture about the asymptotic results of the parameter estimation procedure. 
+
+A.1. Some Heuristics on Model Stability 
+
+To the best of our knowledge, there are currently no studies in the field of multivariate time series analysis that jointly model the mean and the dispersion as both time- and dimension-dependent. Therefore, the theoretical properties of such models have yet to be investigated in more detail. In the univariate case, it is common practice to combine an ARMA process with a GARCH process; see Francq and Zakoïan (2019, Sec. 7), or generalizations thereof within the GARMA-GARCH framework; see Zheng et al. (2022). Specifically, for count data, univariate INGARCH processes with time-varying dispersion have been studied by Barreto-Souza et al. (2025) under the negative binomial assumption. A necessary condition for the stationarity of the process {Yt} is the stationarity of {μt} and {ϕt}.This is generally only guaranteed if (a) no covariates are present, or (b) all covariate processes in (6) and (8) are time-invariant, or (c) (strictly) stationary; see Aknouche and Francq (2021). Furthermore, the existence of higher order moments might be necessary. To ensure the stability of the process, it is important to prevent the individual components of the processes of (6) and (8) from exploding, i.e., suddenly growing in an uncontrolled manner. This means that the functions hμ, ˜hμ and hϕ, ˜hϕ in (6) and (8), used to transform past values of the feedback- or dispersion process and past (pseudo-)observations, should be “well-behaved”. We conjecture that an appropriate assumption for this is that the functions are twice continuously differentiable and do not increase too fast. Heuristically, the functions hμ and hϕ shall fulfil |h(x)| ≤ 
+
+c|x| + d for constants c, d > 0, which implies linear growth at most. The functions ˜hμ and ˜hϕ shall behave asymptotically the same as the link functions gμ and gϕ, which we express as |˜h(g−1(x)) | ≤ 
+
+35 ˜c|x| + ˜d for some ˜c, ˜d > 0. Not that this is fulfilled by all functions implemented in the package; see Table 2. Recall (6) but without covariate terms. We assume that with the previous assumptions the condi-tion 
+
+X
+
+> i∈Q (μ)
+
+X
+
+> ℓ∈A (μ)
+> i
+
+|αiℓ | + X
+
+> j∈R (μ)
+
+X
+
+> ℓ∈B (μ)
+> j
+
+|βjℓ | < 1, (A-1) together with the identical condition in terms of ˜αi,ℓ and ˜βi,ℓ of (8), are sufficient to guarantee stationarity and ergodicity, as well as the existence of all moments of {Yt}. Similar conditions hold for univariate time-series models, such as GARCH and INGARCH processes, as well as spatio-temporal models for counts (Armillotta and Fokianos, 2024; Maletz et al., 2024) and generalized network models (Knight et al., 2020). However, these conditions might be too strict. For the Softplus and Softclipping processes, see Jahn et al. (2023), weaker bounds can be achieved but at the price of assuming constant dispersion parameters, i.e., 
+
+X
+
+> i∈Q
+
+X
+
+> ℓ∈A i
+
+max {0, α iℓ } + X
+
+> j∈R
+
+X
+
+> ℓ∈B j
+
+max {0, β jℓ } < 1 and X
+
+> i∈Q
+
+X
+
+> ℓ∈A i
+
+|αiℓ | < 1. (A-2) Under stationarity assumptions, the expectation of the process ψt is approximately given by 
+
+E(ψt) ≈
+
+Ip − X
+
+> i∈Q
+
+X
+
+> ℓ∈A i
+
+αiℓ W (ℓ) 
+
+> α
+
++ X
+
+> j∈R
+
+X
+
+> ℓ∈B j
+
+βjℓ W (ℓ)
+
+> β
+
+
+
+> −1
+
+δ⋆ (A-3) and E(Yt) ≈ g−1(E(ψt)) . Here, δ⋆ denotes the intercept plus the expected values of the covariate effects, if any. These formulas also hold analogously for E(ζt) and E(dt).
+
+A.2. Theoretical Properties 
+
+Smyth (1989) argues that the parameter vectors ϑμ and ϑϕ are orthogonal and can therefore be estimated separately. We assume that this property carries over to our context, even though Smyth (1989) assumes independent observations. Consistent parameter estimation requires certain conditions. First, the model parameters must satisfy the conditions (A-1) or (A-2). Second, covariate processes must be bounded with finite variance. Specifically, for deterministic covariates, we require the existence of c > 0 such that 
+
+∥Xk,t ∥22 < c for all t and k. For stochastic covariates, we must have E ∥Xk,t ∥22
+
+ < c for all t and 
+
+k.Additionally, as the sample size increases, the information provided by the covariates must grow sufficiently fast, compare, for example, Fahrmeir and Kaufmann (1985) or Chen et al. (1999). This can be guaranteed by the condition 
+
+σT 0.5 log( σT )0.5ε
+
+σT
+
+→ 0 (T → ∞ ), (A-4) 36 where σT and σT are the largest and smallest eigenvalue of the matrix 
+
+FT =
+
+> T
+
+X
+
+> t=1
+
+˜X⊤ 
+
+> t
+
+˜Xt, with ˜Xt =
+
+
+
+1p, W(0) X1,t , . . . , W(sm)Xm,t 
+
+
+
+.
+
+This condition should be satisfied for the covariates of both the mean model (6) and the dispersion model (8). Under these assumptions, we conjecture that the estimators ˆϑμ and ˆϑϕ are asymptoti-cally normal: 
+
+√T ( ˆϑ − ϑ0) → N (0 , G−1HG −1) as T → ∞ , (A-5) where ϑ0 denotes the true parameter vector for the mean or the dispersion model. The asymptotic variance takes a sandwich form, with matrices (for the mean model): 
+
+G(ϑ) = E
+
+ ∂ψ⊤
+
+> t
+
+∂ϑ ˜Dt(ϑ) ∂ψt
+
+∂ϑ
+
+
+
+, H(ϑ) = E
+
+ ∂ψ⊤
+
+> t
+
+∂ϑ Dt(ϑ)Σt(ϑ)Dt(ϑ) ∂ψt
+
+∂ϑ
+
+
+
+, (A-6) which can be approximated empirically using ˆϑ. For the dispersion model, the analogous matrices are computed using ζt instead of ψt and the pseudo-observations dt. Recall from Section 4 that 
+
+Dt = diag(( g−1)′(ψi,t )/σ 2
+
+> i,t
+
+, i = 1 , . . . , p ) = diag(1 /g ′(g−1(ψi,t )) σ2
+
+> i,t
+
+, i = 1 , . . . , p ),
+
+with σ2 
+
+> i,t
+
+= ϕi,t · A′′  
+
+> i
+
+(θi,t (ϑ(μ))) = ϕi,t V (μi,t ) the conditional variance estimation and 
+
+˜Dt = diag((( g−1)′(ψi,t )) 2/σ 2
+
+> i,t
+
+, i = 1 , . . . , p ).
+
+In the R package the two matrices G(ϑ) and H(ϑ) are replaced by their empirical counterparts, that is G(ϑ) is estimated by the expected hessian, see the next subsection, and H is calculated based on the score. These asymptotic results hold only if the true parameters lie in the interior of the parameter space. If inference is based on such results and some parameters lie on the boundary (e.g., due to non-negativity constraints, cf. Table 2), then test statistics need to be adjusted (cf. Francq and Zakoïan, 2019). For example, in one-sided tests such as H 0 : ϑi = 0 versus H 1 : ϑi̸ = 0 , doubling the local significance level suffices. The summary function adjusts the reported p-values accordingly. 
+
+A.2.1. Derivation of the information matrix 
+
+The Hessian is obtained with the common derivation rules as HT (θ) = ∂2ℓ∂θ∂θT = ∂S T (θ) 
+
+> ∂θT
+
+. For the Hessian we define ˜Dt = diag 
+
+ng′(g−1(ψi,t )) 2 g−1(ψi,t ), i = 1 , . . . , n 
+
+o
+
+.37 HT (θ) = 
+
+> T
+
+X
+
+> t=1
+> n
+
+X
+
+> i=1
+
+∂∂θT
+
+ ∂ψ i,t 
+
+∂θ
+
+yi,t − g−1(ψi,t )
+
+g′(g−1(ψi,t )) g−1(ψi,t )
+
+
+
+=
+
+> T
+
+X
+
+> t=1
+> n
+
+X
+
+> i=1
+
+∂2ψi,t 
+
+∂θ∂θT
+
+yi,t − g−1(ψi,t )
+
+g′(g−1(ψi,t )) g−1(ψi,t )
+
+| {z }
+
+> (⋆)
+
++
+
+> T
+
+X
+
+> t=1
+> n
+
+X
+
+> i=1
+
+∂ψ i,t 
+
+∂θ
+
+∂∂θT
+
+ yi,t − g−1(ψi,t )
+
+g′(g−1(ψi,t )) g−1(ψi,t )
+
+
+
+= ( ⋆) + 
+
+> T
+
+X
+
+> t=1
+> n
+
+X
+
+> i=1
+
+∂ψ i,t 
+
+∂θ 
+
+> ∂∂θT
+
+(yi,t − g−1(ψi,t )) · g′(g−1(ψi,t )) g−1(ψi,t )[g′(g−1(ψi,t )) g−1(ψi,t )] 2
+
+−
+
+> T
+
+X
+
+> t=1
+> n
+
+X
+
+> i=1
+
+∂ψ i,t 
+
+∂θ
+
+(yi,t − g−1(ψi,t )) ∂∂θT
+
+ g′(g−1(ψi,t )) g−1(ψi,t )
+
+[g′(g−1(ψi,t )) g−1(ψi,t )] 2
+
+= ( ⋆) −
+
+> T
+
+X
+
+> t=1
+> n
+
+X
+
+> i=1
+
+∂ψ i,t 
+
+∂θ
+
+> g′(g−1(ψi,t )) g−1(ψi,t )
+> g′(g−1(ψi,t ))
+
+[g′(g−1(ψi,t )) g−1(ψi,t )] 2
+
+∂ψ i,t 
+
+∂θT
+
+−
+
+> T
+
+X
+
+> t=1
+> n
+
+X
+
+> i=1
+
+∂ψ i,t 
+
+∂θ
+
+(yi,t − g−1(ψi,t )) 
+
+h g′′ (g−1(ψi,t ))  
+
+> g′(g−1(ψi,t ))
+
+g−1(ψi,t ) + g′(g−1(ψi,t )) 
+
+> g′(g−1(ψi,t ))
+
+i
+
+[g′(g−1(ψi,t )) g−1(ψi,t )] 2
+
+∂ψ i,t 
+
+∂θT
+
+= ( ⋆) −
+
+> T
+
+X
+
+> t=1
+> n
+
+X
+
+> i=1
+
+∂ψ i,t 
+
+∂θ
+
+1[g′(g−1(ψi,t ))] 2 g−1(ψi,t )
+
+∂ψ i,t 
+
+∂θT
+
+−
+
+> T
+
+X
+
+> t=1
+> n
+
+X
+
+> i=1
+
+∂ψ i,t 
+
+∂θ
+
+(yi,t − g−1(ψi,t )) g′′ (g−1(ψi,t )) g−1(ψi,t ) + g′(g−1(ψi,t )) 
+
+[g′(g−1(ψi,t ))] 3 [g−1(ψi,t )] 2
+
+∂ψ i,t 
+
+∂θT
+
+=
+
+> T
+
+X
+
+> t=1
+> n
+
+X
+
+> i=1
+
+∂2ψi,t 
+
+∂θ∂θT
+
+yi,t − g−1(ψi,t )
+
+g′(g−1(ψi,t )) g−1(ψi,t )
+
+−
+
+> T
+
+X
+
+> t=1
+> n
+
+X
+
+> i=1
+
+∂ψ i,t 
+
+∂θ
+
+(yi,t − g−1(ψi,t )) g′′ (g−1(ψi,t )) g−1(ψi,t ) + g′(g−1(ψi,t )) 
+
+[g′(g−1(ψi,t ))] 3 [g−1(ψi,t )] 2
+
+∂ψ i,t 
+
+∂θT
+
+−
+
+> T
+
+X
+
+> t=1
+
+∂ψ′
+
+> t
+
+∂θ ˜D−1
+
+> t
+
+∂ψ′
+
+> t
+
+∂θT .
+
+By taking expectation, we receive the conditional information matrix as 
+
+GT (θ) = E [HT (θ)] = −
+
+> T
+
+X
+
+> t=1
+
+∂ψ′
+
+> t
+
+∂θ ˜D−1
+
+> t
+
+∂ψ′
+
+> t
+
+∂θT
+
+# B. Control Parameters 
+
+Estimation behavior, see Section 4, can be adjusted using the control argument, which accepts a named list of control parameters passed internally to the function glmstarma.control and 
+
+dglmstarma.control 
+
+38 By default, the log-likelihood function in (13) is maximized using the SLSQP algorithm (Kraft, 1994) from the nloptr package (Ypma and Johnson, 2022), subject to potential non-negativity constraints on the parameters and stability constraints (A-1) or (A-2). The latter constraints can be disabled by setting constrained = FALSE .An alternative optimization method can be specified via the method argument. If this is set to 
+
+"optim" , the BFGS algorithm (Fletcher and Reeves, 1964) is employed for unconstrained models, whereas the L-BFGS algorithm (Liu and Nocedal, 1989) with a lower bound of zero is used when non-negativity constraints are in force. Both algorithms utilize the R internal optim implementation via the roptim package (Pan, 2022), executed in C++ . Note, however, that these algorithms do not enforce stability constraints. Models involving feedback terms (i.e., Q(μ)̸ = ∅ or Q(ϕ)̸ = ∅) require initial values for the feedback process, i.e., values for ψ0, . . . , ψmax Q(μ)−1. These can be provided via the init_link argument. The default, "first_obs" , sets ψt = ˜h(Yt). Alternatives include "mean" , which uses ψt = ( T +1) −1 PTt=0 ˜h(Yt), and "transformed_mean" , which applies the link function after averaging: ψt =˜h
+
+
+
+(T + 1) −1 PTt=0 Yt
+
+
+
+. The "zero" option sets ψt = 0p. Alternatively, a matrix of initial values can be passed, where the (t + 1) -st column corresponds to ψt. The initialization for the dispersion process follows the same logic and is specified via init_dispersion . The default here is "zero" ,since init_link = "first_obs" implies di,t = 0 for t = 0 , . . . , max Q.Initial values for parameter estimation are specified via the list elements parameter_init or 
+
+parameter_init_dispersion . These can be given as named lists, analogous to the parameter specification in simulations (see Section 3). Alternatively, "zero" (default) and "random" are avail-able. If no parameter constraints are imposed, all dependence parameters αiℓ , β jℓ and covariate parameters γkℓ are initialized to zero. If non-negativity constraints apply, they are initialized with a value slightly above zero, i.e., 
+
+αiℓ = βjℓ = 1
+
+|Q| + |R| + 10 , γkℓ = 1 .
+
+If "random" is selected, parameters are initialized randomly within the region defined by (A-1). The intercept is initialized based on the initial values of the other parameter values using 
+
+δ = 1
+
+T
+
+1 − X
+
+> i∈Q
+
+X
+
+> ℓ∈A i
+
+αiℓ − X
+
+> j∈R
+
+X
+
+> ℓ∈B j
+
+βjℓ 
+
+
+
+> T
+
+X
+
+> t=1
+
+˜h(Yt). (A-1) For homogeneous models, the mean of this vector is used. In the dglmstarma function, these values serve only for the first estimation step. In general, the parameter estimates from iteration k − 1 in Algorithm 1 are used as starting values in iteration k.Additional control parameters influencing convergence speed and memory usage are documented on the help page of glmstarma.control and glmstarma.control .
+
+# C. Simulation Examples 
+
+In this section we illustrate, with two examples, how data can be simulated from the model frame-work. We consider observations on a regular 10 × 10 grid (so p = 100 ) and include neighbours up 39 (a) Neighbors Value 0.25 1/3 0.5 (b) Spatial weights W (1) Value 0.25 0.5 1 (c) Spatial weights W (2) 
+
+Figure 3: Visualization of the neighborhood generated by generateW on a uniform 10 × 10 rectan-gular grid up to second-order neighbors to spatial order 2. The neighbourhood structure used throughout the examples is shown in Fig-ure 3. Panel 3(a) highlights, for a representative location (dark), the first-order neighbours (green), and the second-order neighbours (teal). All neighbours within the same order receive equal weight. The helper function generateW in the package constructs the corresponding weight matrices for this neighbourhood structure. The weight matrices used here are obtained by generateW("rectangle", dim = 100, maxOrder = 2, width = 10) . The call returns a list of matrices W (ℓ) ∈ Rp×p for 
+
+ℓ = 0 , 1, 2, which are row-normalized. Panel 3(b) visualizes the weights of the first-order neighbor-hood, i.e., W (1) , and Panel 3(c) shows the weights for the second-order neighbourhood, i.e., W (2) .The matrix W (0) is the 100 × 100 identity matrix. 
+
+C.1. Linear PSTARMA Process 
+
+In the first example we generate data on the grid from the linear spatio-temporal model of Maletz et al. (2026). Because that model specifies only the conditional mean of the observations, we use the function glmstarma.sim . Contemporaneous dependence is induced using the data-generating mechanism of Fokianos et al. (2020) with a Frank copula (parameter 2). We simulate a process of length T = 150 according to the model 
+
+μt = 3 · 1100 + 0 .2 μt−1 +  0.3 I100 + 0 .2 W (1) + 0 .1 W (2) Yt−1 + 0 .1 Yt−7.
+
+The R code used for this simulation is given in Listing 6. The function returns a named list containing the simulated observations (element observations ), the values of the linear predictor 
+
+ψt (element link_values ), the model orders (element model ), and the true parameters (element 
+
+parameters ). Because the intercept is homogeneous, the unconditional global mean can be computed as 
+
+μ = 11 − 0.2 − 0.3 − 0.2 − 0.1 − 0.1 = 10 .
+
+40 The mean of the simulated observations, e.g., mean(sim$observations) , is approximately 10 .0264 ,which is in agreement with the theoretical value. Using the true conditional means, the average of the Pearson residuals, mean((sim$observations - sim$link_values)ˆ2 / sim$link_values) , is approximately 0.9963 .The marginal distribution of the observations in this example is Poisson by default. To introduce overdispersion, the marginal Poisson family can be replaced. For instance, random draws from a generalized Poisson distribution are obtained by using the vquasipoisson family with an additional 
+
+dispersion argument instead of vpoisson . Similarly, marginal negative binomial observations can be generated by selecting the vnegative.binomial family.  
+
+> 1
+
+set.seed(42)  
+
+> 2
+
+sim <- glmstarma.sim(  
+
+> 3
+
+150,  
+
+> 4
+
+parameters = list(  
+
+> 5
+
+intercept = 1,  
+
+> 6
+
+past_mean = 0.2,  
+
+> 7
+
+past_obs = cbind(c(0.3, 0.2, 0.1),  
+
+> 8
+
+c(0.1, 0, 0))),  
+
+> 9
+
+model = list(  
+
+> 10
+
+intercept = "homogeneous",  
+
+> 11
+
+past_mean = 0,  
+
+> 12
+
+past_obs = c(2, 0),  
+
+> 13
+
+past_obs_time_lags = c(1, 7)),  
+
+> 14
+
+family = vpoisson("identity", copula = "frank", copula_param = 2,  
+
+> 15
+
+sampling_method = "poisson_process"),  
+
+> 16
+
+wlist = W  
+
+> 17
+
+)
+
+Listing 6: Simulation of a linear PSTARMA process 
+
+C.2. Continous-data Process 
+
+We now simulate data on the same spatial grid with marginal normal distributions, 
+
+Yi,t | F t−1 ∼ N  μi,t , ϕ i,t 
+
+.
+
+Contemporaneous dependence is introduced via the probability integral transform applied to a sample from a Joe copula with parameter 1.5. We assume a log-link between the conditional mean process {μt} and the linear predictor {ψt}, i.e. ψt = log( μt), with 
+
+ψt = 0 .1 · 1100 +  0.3 I100 + 0 .2 W (1) + 0 .1 W (2) Yt−1 + 0 .3 sin 
+
+ 2π
+
+52 t
+
+
+
+1100 − 0.2 cos 
+
+ 2π
+
+52 t
+
+
+
+1100 .
+
+In addition, we specify a spatio-temporally varying variance vector ϕt that follows a GARCH-like dynamics with seasonal component and a spatial gradient that increases with the column index of the grid in Panel 3(a). Let X =  1, . . . , 10 ′ ⊗ 110 denote the column-index covariate replicated across rows. Then 
+
+ϕt = 2 · 1100 +  0.1 I100 + 0 .05 W (2) ϕt−1 + 0 .3 Yt−1 − μt−1
+
+2 + 2 exp 
+
+
+
+sin 
+
+ 2π
+
+26 t
+
+ 
+
+1100 + 0 .5 X.
+
+41 This specification yields a dispersion process that varies in both space and time. For simulation of such a model the function dglmstarma.sim is provided. The R code used in this example is shown in Listing 7.  
+
+> 1
+
+## Define Covariates  
+
+> 2
+
+covariates_mean <- list(  
+
+> 3
+
+sine = SpatialConstant(sin(2 * pi / 52 * seq(250))),  
+
+> 4
+
+cosine = SpatialConstant(cos(2 * pi / 52 * seq(250))))  
+
+> 56
+
+covariates_dispersion <- list(  
+
+> 7
+
+sine = SpatialConstant(exp(sin(2 * pi / 26 * seq(250)))),  
+
+> 8
+
+column = TimeConstant(c(1:10 %x% rep(1, 10))))  
+
+> 910
+
+## Mean model specification  
+
+> 11
+
+mean_model <- list(  
+
+> 12
+
+intercept = "homogeneous",  
+
+> 13
+
+past_obs = matrix(c(1, 1, 1), ncol = 1),  
+
+> 14
+
+covariates = c(0, 0))  
+
+> 15 16
+
+mean_parameters <- list(  
+
+> 17
+
+intercept = 0.1,  
+
+> 18
+
+past_obs = matrix(c(0.3, 0.2, 0.1), ncol = 1),  
+
+> 19
+
+covariates = matrix(c(0.3, -0.2), nrow = 1))  
+
+> 20 21
+
+## Dispersion model specification  
+
+> 22
+
+dispersion_model <- list(  
+
+> 23
+
+intercept = "homogeneous",  
+
+> 24
+
+past_mean = matrix(c(1, 0, 1), ncol = 1),  
+
+> 25
+
+past_obs = 0,  
+
+> 26
+
+covariates = c(0, 0))  
+
+> 27 28
+
+dispersion_parameters <- list(  
+
+> 29
+
+intercept = 2,  
+
+> 30
+
+past_mean = matrix(c(0.1, 0, 0.05), ncol = 1),  
+
+> 31
+
+past_obs = matrix(0.3),  
+
+> 32
+
+covariates = matrix(c(3, 0.5), nrow = 1))  
+
+> 33 34
+
+## Simulation  
+
+> 35
+
+sim <- dglmstarma.sim(  
+
+> 36
+
+250,  
+
+> 37
+
+mean_parameters,  
+
+> 38
+
+dispersion_parameters,  
+
+> 39
+
+mean_model,  
+
+> 40
+
+dispersion_model,  
+
+> 41
+
+mean_family = vnormal("log", copula = "joe", copula_param = 1.5),  
+
+> 42
+
+dispersion_link = "identity",  
+
+> 43
+
+wlist = W,  
+
+> 44
+
+mean_covariates = covariates_mean,  
+
+> 45
+
+dispersion_covariates = covariates_dispersion) 
+
+Listing 7: Simulation of a DGLM-STARMA model with covariates and normal marginals 42 D. Simulation study 
+
+In this section, we assess the theoretical properties stated in Section A with simulations. We adopt the same spatial grid structure as in Section C, but restrict spatial interactions to first-order neighbors. 
+
+D.1. Construction 
+
+We consider models for two types of marginal distributions: (i) count data and (ii) marginally Gaussian (normal) data. For the count-data experiments we generate observations from the 
+
+vquasipoisson family with a log link; for the normal-data experiments we use the identity link. The contemporary dependence between locations is induced by a Frank copula with parameter 2. Data are generated in several configurations for the conditional mean and for the dispersion process. For the conditional mean, we use two alternative dynamic specifications: 
+
+ψt = δ0 · 1100 + (0 .4I100 + 0 .2W (1) ) h(Yt−1) + γ Xt, (M-1) 
+
+ψt = δ0 · 1100 + (0 .2I100 + 0 .1W (1) ) ψt−1 + (0 .2I100 + 0 .1W (1) ) h(Yt−1) + γ Xt, (M-2) where for the count-data experiments we set δ0 = 0 .6, γ = 0 .9, and h(Yt−1) = log( Yt−1 + 1100 ),
+
+while for the normally distributed experiments we set δ0 = 5 , γ = 2 , and h(Yt−1) = Yt−1.
+
+The covariate process {Xt} used in all simulation runs was generated once (and then reused across scenarios) with the following R code: 
+
+set.seed(42) covariates <- t(replicate(100, arima.sim(n = 1000, list(ar = c(0.89, -0.3), ma = c(-0.1, 0.28)), rand.gen = runif))) covariates <- covariates / max(covariates) covariates[covariates < 0] <- 0 
+
+We also consider several dispersion processes. The dispersion parameter vector ϕt is linked to a linear process ζt through the log link (i.e. ϕt = exp( ζt)). The following alternatives are used: 
+
+ϕt = 2 · 1100 , (D-1) 
+
+ζt = 0 .5 · 1100 + (0 .5I100 + 0 .2W (1) ) log( dt−1 + 1p). (D-2) 
+
+ζt = 0 .5 · 1100 + (0 .15 I100 + 0 .05 W (1) ) ζt−1 + (0 .3I100 + 0 .2W (1) ) log( dt−1 + 1p), (D-3) Each combination of the mean specifications (M-1)–(M-2) with the dispersion specifications (D-1)– (D-3) is used once to generate data. Table 4 summarises the data-generating configurations and the corresponding fitted models. When data are generated under a time-varying dispersion pro-cess, we estimate both (i) the correctly specified model with time-varying dispersion and (ii) a misspecified model that assumes a single global (time-constant) dispersion parameter; this allows 43 True Model Fitted Models Normal Generalized Poisson Boxplots QQ-Plots Boxplots QQ-Plots (M-1) + (D-1) (M-1) + (D-2) - - - -(M-1) + (D-2) (M-1) + (D-1) & (M-1) + (D-2) Fig. 4 Fig. 5 Fig. 12 Fig. 13 (M-1) + (D-3) (M-1) + (D-1) & (M-1) + (D-3) Fig. 6 Fig. 7 Fig. 14 Fig. 15 (M-2) + (D-1) (M-2) + (D-2) - - - -(M-2) + (D-2) (M-2) + (D-1) & (M-2) + (D-2) Fig. 8 Fig. 9 Fig. 16 Fig. 17 (M-2) + (D-3) (M-2) + (D-1) & (M-2) + (D-3) Fig. 10 Fig. 11 Fig. 18 Fig. 19 Table 4: Overview of data-generating models and estimated models on the generated data. For data generation, one of the two mean models ((M-1) – without feedback mechanism, (M-2) – with feedback mechanism) was combined with one of the dispersion models ((D-1) – constant dispersion, (D-2) – dispersion model without feedback mechanism, (D-3) – dispersion model with a feedback mechanism). For settings with variating dispersion, the correctly specified model was estimated, and one model was estimated assuming constant dispersion. us to examine robustness and the effect of misspecification. When the data-generating process has a global, time-constant dispersion (D-1), we fit only the variable-dispersion model in order to study the asymptotic behavior of the overparameterized model under the null hypothesis of no temporal dispersion dynamics. Each scenario is simulated for T ∈ { 50 , 100 , 250 , 500 , 1000 } and repeated over 1000 independent replications. Results are reported in the next Subsection. For models that include a feedback mechanism, i.e. (M-2) and (D-3), we initialize this during parameter estimation using the first observations or pseudo-observations. 
+
+D.2. Results 
+
+Table 4 provides an overview of the figures containing the simulation results for the respective settings. Each figure includes boxplots of the parameter estimates for both the mean and dispersion models. For the mean model, the estimates under a correctly specified dispersion are compared with those obtained under a misspecified constant-variance structure. In both cases, the estimates improve with increasing time series length; however, misspecification comes at the cost of higher variability in the parameter estimates. Incorporating a feedback mechanism into at least one model component reduces this difference. For the dispersion model, greater uncertainty is observed in the parameter estimates, which arises from the model being estimated on an error process. In the case of marginally normal distributions, the parameter estimates converge to the true values as the time series length increases. For gener-alized Poisson marginals, however, the estimates of β0 and β1 exhibit a notable bias from the true parameters (see Figures 12(b), 14(b), 16(b), and 18(b)), which does not fully vanish as the length T
+
+of the time series increases. This phenomenon is more pronounced in the purely autoregressive dis-persion model (D-2) than in model (D-3), which additionally incorporates a feedback mechanism. In particular, the strength of the autoregressive dependence tends to be underestimated. Crucially, however, the estimates stabilize at values between 0 and the true parameter, i.e. they still capture some of the dependence structure of the dispersion process. This stabilization might explain why 44 misspecifying the dispersion as constant entails only a moderate increase in the variability of the mean model estimates, as described above: even an imprecise dispersion model suffices to preserve the quality of mean estimation, provided the estimated parameters do not degenerate. We further analyzed this behavior in the next Subsection. QQ-plots of the parameter estimates for both the mean and dispersion models at T = 500 confirm convergence to a normal distribution, with only minor deviations when a feedback mechanism is included in the respective model component. Table 5 reports the empirical sizes of an approximate Wald test at the 5% significance level, derived from the normal approximation (A-5) of the estimates. We individually test the null hypotheses H0 : β0,1 = 0 and H 0 : β1,1 = 0 for the first two scenarios listed in Table 4. Rejection of either hypothesis indicates that a constant global dispersion parameter can no longer be assumed within the model framework. Even for small sample sizes, i.e., T = 50 , the empirical size closely approximates the nominal 5% level, and this approximation is maintained as the time series length increases. Mean model Distribution Parameter Observations ( T )50 100 250 500 1000 (M-1) Normal β0,1 0.066 0.068 0.044 0.046 0.052 
+
+β1,1 0.065 0.063 0.059 0.052 0.048 Gen. Poisson β0,1 0.069 0.071 0.051 0.045 0.049 
+
+β1,1 0.061 0.053 0.055 0.054 0.056 (M-2) Normal β0,1 0.070 0.072 0.045 0.047 0.052 
+
+β1,1 0.069 0.063 0.061 0.052 0.050 Gen. Poisson β0,1 0.072 0.066 0.045 0.043 0.047 
+
+β1,1 0.063 0.050 0.049 0.059 0.050 Table 5: Empirical size of the Wald test at the 5% significance level for the spatio-temporal depen-dence parameters of (D-2) under constant dispersion, i.e., (D-1). 
+
+D.2.1. Increasing the observation level 
+
+To investigate the phenomenon of underestimated autoregressive dependencies in more detail, we slightly modified the setting of the previous scenario. We restrict our attention to a 5 × 5 grid with the same dependence structure as before, focusing on the purely autoregressive models without a feedback term, i.e., the combination of (M-1) and (D-2), which exhibited the most notable behavior in the previous simulations. We now vary the true intercept of the mean model, thereby shifting the expected value of the obser-vations upward. In the case of marginal normal distributions, we consider δ0 ∈ [3 , 10] , whereas for marginal generalized Poisson distributions the data are simulated with δ0 ∈ [0 .1, 2] . The dispersion model is left unchanged as (D-2). Figure 20(a) shows the mean parameter estimates for the case of marginal normal distributions with a time series length of T = 1000 . The shaded gray region encloses the pointwise empirical 5% and 95% quantiles of the parameter estimates. Figure 20(b) presents the results for the marginal 45 generalized Poisson distribution. Whereas the magnitude of the intercept has no notable effect on parameter estimates in the normal distribution setting, the count data setting exhibits increased precision in estimating the mean model parameters as the intercept increases. Furthermore, the parameter estimates of the dispersion model converge on average to the true parameters as the intercept of the mean model increases, though this does not affect the variance of the estimates. The intercept governs the overall level of the observations, which in turn affects the Gamma ap-proximation of the pseudo-observations employed in the estimation of the dispersion model. While this approximation is known to be exact for the normal distribution (Smyth, 1989), count data require a sufficiently high observation level. In the count data setting with T = 1000 , the simulated observations vary on average between approximately 4.492 (δ0 = 0 .1) and 492 .879 (δ0 = 2 ). From 
+
+δ0 ≈ 1, corresponding to an average of approximately 38 .83 , the true parameter value is contained within the empirical 90% confidence interval of the parameter estimates. In summary, the combination of the mean model and dispersion in our framework is able to de-tect spatial and temporal dependencies in the dispersion, but the effect might be systematically underestimated in some cases. Further studies are needed to investigate under which conditions the relationships can be well estimated or improved. For this purpose, REML based estimation procedures analogous to the DGLMs for independent data (Smyth and Verbyla, 1999) may be used. In the mean model, the dependencies are already captured very well on average. 46 β1 Covariate 
+
+Intercept β0
+
+50 100 250 500 1000 50 100 250 500 1000 
+
+50 100 250 500 1000 50 100 250 500 1000 
+
+0.35 0.40 0.45 
+
+1.2 1.6 2.0 2.4 
+
+246810 
+
+0.0 0.1 0.2 0.3 
+
+## Observation times 
+
+> Estimate
+
+## Dispersion model const varying (a) Parameter estimates of the mean model (M-1) under the constant dispersion specification (D-1) and the varying dispersion specification (D-2). Intercept β0 β1
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+0.0 0.1 0.2 0.3 
+
+0.40 0.44 0.48 0.52 0.56 
+
+0.3 0.4 0.5 0.6 0.7 0.8 
+
+## Observation times 
+
+> Estimate
+
+(b) Parameter estimates of the varying dispersion model (D-2) combined with the mean model (M-1). 
+
+Figure 4: Box plots of parameter estimates under alternative dispersion specifications. Panel (a) shows estimates of the mean model under constant and varying dispersion, whereas panel (b) displays estimates of the varying dispersion model. The data-generating process with marginal normal distributions corresponds to (M-1) and (D-2), i.e., both models without feedback mechanism. 47 β1 Covariate 
+
+Intercept β0
+
+−2 0 2 −2 0 2
+
+−2 0 2 −2 0 2
+
+0.37 0.38 0.39 0.40 0.41 0.42 
+
+1.8 1.9 2.0 2.1 2.2 
+
+4.0 4.5 5.0 5.5 6.0 
+
+0.16 0.20 0.24 
+
+## x
+
+> y
+
+(a) Mean model (M-1), i.e. without feedback mechanism. Intercept β0 β1
+
+−2 0 2 −2 0 2 −2 0 2
+
+0.14 0.16 0.18 0.20 0.22 0.24 0.26 
+
+0.48 0.49 0.50 0.51 0.52 
+
+0.45 0.50 0.55 
+
+## x
+
+> y
+
+(b) Dispersion model (D-2), i.e. without feedback mechanism. 
+
+Figure 5: Normal Q–Q plots of parameter estimates under the true data-generating process (M-1) and (D-2) with marginal normal distributions, based on T = 500 observation times. 48 β1 Covariate 
+
+Intercept β0
+
+50 100 250 500 1000 50 100 250 500 1000 
+
+50 100 250 500 1000 50 100 250 500 1000 
+
+0.32 0.36 0.40 0.44 0.48 
+
+1.2 1.6 2.0 2.4 
+
+246810 
+
+0.0 0.1 0.2 0.3 
+
+## Observation times 
+
+> Estimate
+
+## Dispersion model const varying (a) Parameter estimates of the mean model (M-1) under the constant dispersion specification (D-1) and the varying dispersion specification (D-3). β0 β1
+
+Intercept α0 α1
+
+50 100 250 500 1000 50 100 250 500 1000 
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+−0.6 −0.3 0.0 0.3 0.6 
+
+−0.2 0.0 0.2 
+
+0.0 0.1 0.2 0.3 
+
+0.0 0.5 1.0 1.5 
+
+0.20 0.25 0.30 0.35 
+
+## Observation times 
+
+> Estimate
+
+(b) Parameter estimates of the varying dispersion model (D-3) combined with the mean model (M-1). 
+
+Figure 6: Box plots of parameter estimates under alternative dispersion specifications. Panel (a) shows estimates of the mean model under constant and varying dispersion, whereas panel (b) displays estimates of the varying dispersion model. The data-generating process with marginal normal distributions corresponds to (M-1) and (D-3), i.e., the mean model does not include a feedback mechanism while the dispersion process does. 49 β1 Covariate 
+
+Intercept β0
+
+−2 0 2 −2 0 2
+
+−2 0 2 −2 0 2
+
+0.38 0.39 0.40 0.41 0.42 
+
+1.8 1.9 2.0 2.1 2.2 
+
+4.0 4.5 5.0 5.5 6.0 6.5 
+
+0.12 0.16 0.20 0.24 
+
+## x
+
+> y
+
+(a) Mean model (M-1), i.e., without feedback mechanism. β0 β1
+
+Intercept α0 α1
+
+−2 0 2 −2 0 2
+
+−2 0 2 −2 0 2 −2 0 2
+
+−0.1 0.0 0.1 0.2 
+
+0.10 0.15 0.20 
+
+0.14 0.16 0.18 0.20 0.22 0.24 0.26 
+
+0.3 0.4 0.5 0.6 0.7 
+
+0.28 0.29 0.30 0.31 0.32 
+
+## x
+
+> y
+
+(b) Dispersion model (D-3), i.e., with feedback mechanism. 
+
+Figure 7: Normal Q–Q plots of parameter estimates under the true data-generating process (M-1) and (D-3) with marginal normal distributions, based on T = 500 observation times. 50 β0 β1 Covariate 
+
+Intercept α0 α1
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+−0.4 0.0 0.4 
+
+1.0 1.5 2.0 2.5 
+
+0.0 0.2 0.4 
+
+−0.2 −0.1 0.0 0.1 0.2 0.3 
+
+0510 15 20 
+
+0.10 0.15 0.20 0.25 0.30 
+
+## Observation times 
+
+> Estimate
+
+## Dispersion model const varying (a) Parameter estimates of the mean model (M-2) under the constant dispersion specification (D-1) and the varying dispersion specification (D-2). Intercept β0 β1
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+0.0 0.1 0.2 0.3 
+
+0.40 0.45 0.50 0.55 
+
+0.3 0.4 0.5 0.6 0.7 0.8 
+
+## Observation times 
+
+> Estimate
+
+(b) Parameter estimates of the varying dispersion model (D-2) combined with the mean model (M-2). 
+
+Figure 8: Box plots of parameter estimates under alternative dispersion specifications. Panel (a) shows estimates of the mean model under constant and varying dispersion, whereas panel (b) displays estimates of the varying dispersion model. The data-generating process with marginal normal distributions corresponds to (M-2) and (D-2), i.e., the mean model includes a feedback mechanism and the dispersion process not. 51 β0 β1 Covariate 
+
+Intercept α0 α1
+
+−2 0 2 −2 0 2 −2 0 2
+
+−2 0 2 −2 0 2 −2 0 2
+
+−0.1 0.0 0.1 0.2 0.3 
+
+1.8 1.9 2.0 2.1 2.2 
+
+0.15 0.20 0.25 
+
+0.05 0.10 0.15 
+
+468
+
+0.18 0.20 0.22 
+
+## x
+
+> y
+
+(a) Mean model (M-2), i.e., with feedback mechanism. Intercept β0 β1
+
+−2 0 2 −2 0 2 −2 0 2
+
+0.14 0.16 0.18 0.20 0.22 0.24 0.26 
+
+0.48 0.49 0.50 0.51 0.52 
+
+0.45 0.50 0.55 0.60 
+
+## x
+
+> y
+
+(b) Dispersion model (D-2), i.e., without feedback mechanism. 
+
+Figure 9: Normal Q–Q plots of parameter estimates under the true data-generating process (M-2) and (D-2) with marginal normal distributions, based on T = 500 .52 β0 β1 Covariate 
+
+Intercept α0 α1
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+−0.4 0.0 0.4 
+
+1.0 1.5 2.0 2.5 
+
+−0.2 0.0 0.2 0.4 
+
+−0.2 −0.1 0.0 0.1 0.2 0.3 
+
+0510 15 20 
+
+0.10 0.15 0.20 0.25 0.30 
+
+## Observation times 
+
+> Estimate
+
+## Dispersion model const varying (a) Parameter estimates of the mean model (M-2) under the constant dispersion specification (D-1) and the varying dispersion specification (D-3). β0 β1
+
+Intercept α0 α1
+
+50 100 250 500 1000 50 100 250 500 1000 
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+−0.4 0.0 0.4 
+
+−0.2 0.0 0.2 0.4 
+
+0.0 0.1 0.2 0.3 
+
+0.0 0.5 1.0 1.5 2.0 
+
+0.20 0.25 0.30 0.35 
+
+## Observation times 
+
+> Estimate
+
+(b) Parameter estimates of the varying dispersion model (D-3) combined with the mean model (M-2). 
+
+Figure 10: Box plots of parameter estimates under alternative dispersion specifications. Panel (a) shows estimates of the mean model under constant and varying dispersion, whereas panel (b) displays estimates of the varying dispersion model. The data-generating process with marginal normal distributions corresponds to (M-1) and (D-3), i.e., both models include a feedback mechanism 53 β0 β1 Covariate 
+
+Intercept α0 α1
+
+−2 0 2 −2 0 2 −2 0 2
+
+−2 0 2 −2 0 2 −2 0 2
+
+−0.1 0.0 0.1 0.2 0.3 
+
+1.8 1.9 2.0 2.1 2.2 
+
+0.15 0.20 0.25 
+
+0.05 0.10 0.15 
+
+2468
+
+0.18 0.20 0.22 
+
+## x
+
+> y
+
+(a) Mean model (M-2), i.e., with feedback mechanism. β0 β1
+
+Intercept α0 α1
+
+−2 0 2 −2 0 2
+
+−2 0 2 −2 0 2 −2 0 2
+
+−0.1 0.0 0.1 0.2 
+
+0.10 0.15 0.20 
+
+0.14 0.16 0.18 0.20 0.22 0.24 0.26 
+
+0.3 0.4 0.5 0.6 0.7 
+
+0.28 0.29 0.30 0.31 0.32 
+
+## x
+
+> y
+
+(b) Dispersion model (D-3), i.e., with feedback mechanism. 
+
+Figure 11: Normal Q–Q plots of parameter estimates under the true data-generating process (M-2) and (D-3) with marginal normal distributions, based on T = 500 .54 β1 Covariate 
+
+Intercept β0
+
+50 100 250 500 1000 50 100 250 500 1000 
+
+50 100 250 500 1000 50 100 250 500 1000 
+
+0.35 0.40 0.45 
+
+0.7 0.8 0.9 1.0 1.1 
+
+0.5 1.0 
+
+0.0 0.1 0.2 0.3 
+
+## Observation times 
+
+> Estimate
+
+## Dispersion model const varying (a) Parameter estimates of the mean model (M-1) under the constant dispersion specification (D-1) and the varying dispersion specification (D-2). Intercept β0 β1
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+0.0 0.1 0.2 0.3 
+
+0.35 0.40 0.45 0.50 
+
+0.3 0.4 0.5 0.6 0.7 0.8 0.9 
+
+## Observation times 
+
+> Estimate
+
+(b) Parameter estimates of the varying dispersion model (D-2) combined with the mean model (M-1). 
+
+Figure 12: Box plots of parameter estimates under alternative dispersion specifications. Panel (a) shows estimates of the mean model under constant and varying dispersion, whereas panel (b) displays estimates of the varying dispersion model. The data-generating process with generalized Poisson marginals corresponds to (M-1) and (D-2), i.e., both models without feedback mechanism. 55 β1 Covariate 
+
+Intercept β0
+
+−2 0 2 −2 0 2
+
+−2 0 2 −2 0 2
+
+0.37 0.38 0.39 0.40 0.41 0.42 
+
+0.84 0.87 0.90 0.93 0.96 
+
+0.4 0.5 0.6 0.7 0.8 
+
+0.150 0.175 0.200 0.225 0.250 
+
+## x
+
+> y
+
+(a) Mean model (M-1), i.e., without feedback mechanism. Intercept β0 β1
+
+−2 0 2 −2 0 2 −2 0 2
+
+0.15 0.20 
+
+0.42 0.44 0.46 0.48 
+
+0.45 0.50 0.55 0.60 
+
+## x
+
+> y
+
+(b) Dispersion model (D-2), i.e., without feedback mechanism. 
+
+Figure 13: Normal Q–Q plots of parameter estimates under the true data-generating process (M-1) and (D-2) with generalized Poisson marginals, based on T = 500 .56 β1 Covariate 
+
+Intercept β0
+
+50 100 250 500 1000 50 100 250 500 1000 
+
+50 100 250 500 1000 50 100 250 500 1000 
+
+0.35 0.40 0.45 
+
+0.7 0.8 0.9 1.0 1.1 
+
+0.5 1.0 1.5 
+
+0.0 0.1 0.2 0.3 
+
+## Observation times 
+
+> Estimate
+
+## Dispersion model const varying (a) Parameter estimates of the mean model (M-1) under the constant dispersion specification (D-1) and the varying dispersion specification (D-3). β0 β1
+
+Intercept α0 α1
+
+50 100 250 500 1000 50 100 250 500 1000 
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+−0.8 −0.4 0.0 0.4 
+
+−0.2 0.0 0.2 0.4 
+
+0.0 0.1 0.2 0.3 
+
+0.0 0.5 1.0 1.5 
+
+0.15 0.20 0.25 0.30 0.35 
+
+## Observation times 
+
+> Estimate
+
+(b) Parameter estimates of the varying dispersion model (D-3) combined with the mean model (M-1). 
+
+Figure 14: Boxplots of parameter estimates under alternative dispersion specifications. Panel (a) shows estimates of the mean model under constant and varying dispersion, whereas panel (b) displays estimates of the varying dispersion model. The data-generating process with generalized Poisson marginals corresponds to (M-1) and (D-3), i.e., the mean model does not include a feedback mechanism while the dispersion process does. 57 β1 Covariate 
+
+Intercept β0
+
+−2 0 2 −2 0 2
+
+−2 0 2 −2 0 2
+
+0.38 0.39 0.40 0.41 0.42 
+
+0.84 0.87 0.90 0.93 0.96 
+
+0.4 0.5 0.6 0.7 0.8 
+
+0.16 0.20 0.24 
+
+## x
+
+> y
+
+(a) Mean model (M-1), i.e., without feedback mechanism. β0 β1
+
+Intercept α0 α1
+
+−2 0 2 −2 0 2
+
+−2 0 2 −2 0 2 −2 0 2
+
+−0.2 −0.1 0.0 0.1 0.2 
+
+0.05 0.10 0.15 0.20 0.25 
+
+0.15 0.20 
+
+0.3 0.4 0.5 0.6 0.7 0.8 
+
+0.24 0.26 0.28 0.30 
+
+## x
+
+> y
+
+(b) Dispersion model (D-3), i.e., with feedback mechanism. 
+
+Figure 15: Normal Q–Q plots of parameter estimates under the true data-generating process (M-1) and (D-3) with generalized Poisson marginals, based on T = 500 .58 β0 β1 Covariate 
+
+Intercept α0 α1
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+−0.4 −0.2 0.0 0.2 0.4 0.6 
+
+0.6 0.8 1.0 
+
+0.0 0.1 0.2 0.3 
+
+−0.1 0.0 0.1 0.2 0.3 
+
+0.0 0.5 1.0 1.5 2.0 2.5 
+
+0.10 0.15 0.20 0.25 0.30 
+
+## Observation times 
+
+> Estimate
+
+## Dispersion model const varying (a) Parameter estimates of the mean model (M-2) under the constant dispersion specification (D-1) and the varying dispersion specification (D-2). Intercept β0 β1
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+0.0 0.1 0.2 0.3 
+
+0.30 0.35 0.40 0.45 0.50 
+
+0.3 0.4 0.5 0.6 0.7 0.8 0.9 
+
+## Observation times 
+
+> Estimate
+
+(b) Parameter estimates of the varying dispersion model (D-2) combined with the mean model (M-2). 
+
+Figure 16: Box plots of parameter estimates under alternative dispersion specifications. Panel (a) shows estimates of the mean model under constant and varying dispersion, whereas panel (b) displays estimates of the varying dispersion model. The data-generating process with generalized Poisson marginals corresponds to (M-2) and (D-2), i.e., the mean model includes a feedback mechanism and the dispersion process not. 59 β0 β1 Covariate 
+
+Intercept α0 α1
+
+−2 0 2 −2 0 2 −2 0 2
+
+−2 0 2 −2 0 2 −2 0 2
+
+−0.05 0.00 0.05 0.10 0.15 0.20 
+
+0.86 0.90 0.94 0.98 
+
+0.16 0.20 0.24 
+
+0.05 0.10 0.15 
+
+0.4 0.6 0.8 1.0 
+
+0.18 0.20 0.22 
+
+## x
+
+> y
+
+(a) Mean model (M-2), i.e., with feedback mechanism. Intercept β0 β1
+
+−2 0 2 −2 0 2 −2 0 2
+
+0.15 0.20 
+
+0.42 0.44 0.46 0.48 
+
+0.45 0.50 0.55 0.60 
+
+## x
+
+> y
+
+(b) Dispersion model (D-2), i.e., without feedback mechanism. 
+
+Figure 17: Normal Q–Q plots of parameter estimates under the true data-generating process (M-2) and (D-2) with generalized Poisson marginals, based on T = 500 .60 β0 β1 Covariate 
+
+Intercept α0 α1
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+−0.4 0.0 0.4 
+
+0.6 0.8 1.0 
+
+−0.1 0.0 0.1 0.2 0.3 
+
+−0.2 0.0 0.2 
+
+0123
+
+0.15 0.20 0.25 0.30 
+
+## Observation times 
+
+> Estimate
+
+## Dispersion model const varying (a) Parameter estimates of the mean model (M-2) under the constant dispersion specification (D-1) and the varying dispersion specification (D-3). β0 β1
+
+Intercept α0 α1
+
+50 100 250 500 1000 50 100 250 500 1000 
+
+50 100 250 500 1000 50 100 250 500 1000 50 100 250 500 1000 
+
+−0.4 0.0 0.4 
+
+−0.2 0.0 0.2 0.4 
+
+0.0 0.1 0.2 0.3 
+
+0.0 0.5 1.0 1.5 
+
+0.15 0.20 0.25 0.30 0.35 
+
+## Observation times 
+
+> Estimate
+
+(b) Parameter estimates of the varying dispersion model (D-3) combined with the mean model (M-2). 
+
+Figure 18: Boxplots of parameter estimates under alternative dispersion specifications. Panel (a) shows estimates of the mean model under constant and varying dispersion, whereas panel (b) displays estimates of the varying dispersion model. The data-generating process with generalized Poisson marginals corresponds to (M-1) and (D-3), i.e., both models include a feedback mechanism 61 β0 β1 Covariate 
+
+Intercept α0 α1
+
+−2 0 2 −2 0 2 −2 0 2
+
+−2 0 2 −2 0 2 −2 0 2
+
+0.00 0.05 0.10 0.15 0.20 
+
+0.875 0.900 0.925 0.950 
+
+0.16 0.18 0.20 0.22 0.24 
+
+0.050 0.075 0.100 0.125 0.150 
+
+0.4 0.5 0.6 0.7 0.8 
+
+0.18 0.19 0.20 0.21 0.22 
+
+## x
+
+> y
+
+(a) Mean model (M-2), i.e., with feedback mechanism. β0 β1
+
+Intercept α0 α1
+
+−2 0 2 −2 0 2
+
+−2 0 2 −2 0 2 −2 0 2
+
+−0.25 0.00 0.25 0.50 
+
+−0.1 0.0 0.1 0.2 0.3 
+
+0.1 0.2 0.3 
+
+0.25 0.50 0.75 1.00 
+
+0.20 0.25 0.30 
+
+## x
+
+> y
+
+(b) Dispersion model (D-3), i.e., with feedback mechanism. 
+
+Figure 19: Normal Q–Q plots of parameter estimates under the true data-generating process (M-2) and (D-3) with generalized Poisson marginals, based on T = 500 .62 β1 γ
+
+0.385 0.390 0.395 0.400 0.405 0.410 
+
+1.90 1.95 2.00 2.05 2.10 
+
+Intercept β0
+
+4 6 8 10 4 6 8 10 
+
+46810 
+
+0.18 0.19 0.20 0.21 0.22 
+
+Mean model 
+
+0.17 0.18 0.19 0.20 0.21 0.22 
+
+0.49 0.50 0.51 
+
+Intercept β0 β1
+
+4 6 8 10 4 6 8 10 4 6 8 10 
+
+0.475 0.500 0.525 
+
+Intercept of the mean model 
+
+Dispersion model 
+
+Line: Mean · Gray area: 5%−95% quantile · Dashed: true value 
+
+Model estimates − Normal distribution | n = 1000 (a) Marginals generated by a normal distribution β1 γ
+
+0.38 0.39 0.40 0.41 
+
+0.84 0.87 0.90 0.93 0.96 
+
+Intercept β0
+
+0.5 1.0 1.5 2.0 0.5 1.0 1.5 2.0 
+
+0.0 0.5 1.0 1.5 2.0 
+
+0.17 0.18 0.19 0.20 0.21 0.22 0.23 
+
+Mean model 
+
+0.125 0.150 0.175 0.200 0.225 
+
+0.35 0.40 0.45 0.50 
+
+Intercept β0 β1
+
+0.5 1.0 1.5 2.0 0.5 1.0 1.5 2.0 0.5 1.0 1.5 2.0 
+
+0.50 0.55 0.60 
+
+Intercept of the mean model 
+
+Dispersion model 
+
+Line: Mean · Gray area: 5%−95% quantile · Dashed: true value 
+
+Model estimates − Quasi−Poisson | n = 1000 
+
+(b) Marginals generated by a generalized Poisson distribution 
+
+Figure 20: Mean parameter estimates of mean model (M-1) and dispersion model (D-2) as the intercept of the mean model varies, based on a 5 × 5 grid with T = 1000 . Shaded regions indicate pointwise empirical 90% intervals. 63

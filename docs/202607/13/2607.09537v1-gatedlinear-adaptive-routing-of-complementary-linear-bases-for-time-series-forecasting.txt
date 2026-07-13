@@ -1,0 +1,725 @@
+Title: GatedLinear: Adaptive Routing of Complementary Linear Bases for Time Series Forecasting
+
+URL Source: https://arxiv.org/pdf/2607.09537v1
+
+Published Time: Mon, 13 Jul 2026 01:16:45 GMT
+
+Number of Pages: 29
+
+Markdown Content:
+# GatedLinear: Adaptive Routing of Complementary Linear Bases for Time Series Forecasting 
+
+Qitai Tan, Ruiwen Gu, Yilin Su, Mo Li, Xu Lin, Xiao-Ping Zhang †
+
+Shenzhen Key Laboratory of Ubiquitous Data Enabling, Shenzhen International Graduate School, Tsinghua University 
+
+tqt24@mails.tsinghua.edu.cn xpzhang@ieee.org 
+
+## Abstract 
+
+Time series forecasting requires models to capture diverse, often mutually exclu-sive, temporal dynamics, from smooth trend continuation to nonstationary drift and strict phase-aligned recurrence. While recent deep learning models have improved accuracy, they typically force these diverse patterns through a single computational backbone governed by fixed algorithmic inductive biases (e.g., self-attention or spectral filtering). This single-mechanism approach often struggles with the pro-found heterogeneity of real-world series, where different variables and forecast horizons necessitate fundamentally different predictive treatments. To address this, we propose GatedLinear : a lightweight framework that frames forecasting as the adaptive routing of complementary linear bases . GatedLinear leverages a pool of three specialized mechanisms : a global trend-seasonal basis for smooth projection, a difference-based incremental basis for nonstationary drift, and a phase-aligned recurrence basis for explicit cyclic reuse. To dynamically orchestrate these distinct behaviors, we introduce a Tri-Factorized Fusion Gate that disentangles routing decisions into channel-specific preferences, horizon-aware offsets, and phase-indexed biases derived from known future time marks. This design allows the model to perform highly granular, point-wise soft routing across different predictive regimes without stacking computationally heavy neural modules. Exper-iments on standard benchmarks show that our method achieves state-of-the-art or highly competitive accuracy against recent complex foundational models, while offering explicitly interpretable routing patterns and operating with a substantially smaller parameter footprint. 
+
+## 1 Introduction 
+
+Time series forecasting is a fundamental problem in many real-world systems, including energy management, traffic control, weather prediction, finance, and industrial monitoring. The central challenge is not merely to fit historical observations, but to extrapolate future values under multiple temporal mechanisms. A future trajectory may continue a smooth trend, evolve through short-term increments, repeat a phase-aligned periodic pattern (i.e., exact historical recurring points such as 2:00 PM daily), or combine these behaviors in different proportions across variables and forecast horizons. Previously, time series forecasting predominantly relied on classical statistical models, such as ARIMA [ 1], vector autoregression (VAR) [ 2], and exponential smoothing (ETS) [ 3 ]. With the rise of deep learning, early neural approaches further advanced the field, including RNN-based DeepAR [ 4], LSTNet [ 5], and SegRNN [ 6], as well as CNN-based TCN [ 7] and SCINet [ 8]. More recently, the continuing advancement of deep learning has derived several prominent branches that 
+
+> †Corresponding author. Preprint. arXiv:2607.09537v1 [cs.LG] 10 Jul 2026
+
+Figure 1: Trait heterogeneity in time series forecasting benchmarks. (a) Different datasets exhibit distinct profiles across temporal traits, suggesting that no single forecasting mechanism is uniformly appropriate across datasets. (b) Even within one dataset, variable channels can have broad trait distributions, indicating substantial channel-level heterogeneity. The six temporal traits are defined in the Appendix D. steer the development of the field. Linear and MLP-based methods (e.g., DLinear [ 9], TimeMixer [ 10 ], TimeAlign [ 11 ]) pursue lightweight forecasting by emphasizing trend–seasonal decomposition, multi-scale mixing, or distribution-aware alignment. Transformer-based techniques (e.g., Autoformer [12 ], PatchTST [ 13 ], iTransformer [ 14 ], PhaseFormer [ 15 ]) excel at modeling global dependencies through self-attention mechanisms, albeit at the cost of high computational complexity. Beyond these mainstreams, a line of methods tailored for specific temporal dynamics has also received significant attention, where frequency- and periodicity-oriented models (e.g., FilterNet [ 16 ], TimesNet [ 17 ], FreqCycle [ 18 ], TQNet [ 19 ]) explicitly exploit spectral structures and periodic recurrence to capture repeating components. Despite this progress, the representation power of many advanced methods is heavily constrained by their underlying algorithmic inductive biases (e.g., self-attention inherently prefers smooth inter-polation, while frequency filters assume stable periodicities). Rather than adaptively altering their forecasting mechanism, these architectures force all inputs through a unified computational backbone. However, real-world time series exhibit profound heterogeneity that often involves mutually exclusive temporal dynamics. As shown in Figure 1, datasets differ substantially in trend strength, exact periodicity, and local drift, and even variables within the same dataset can follow distinct tempo-ral regimes. SynTSBench [ 20 ] further supports this view by constructing synthetic datasets with programmable temporal patterns and showing that few deep forecasting models perform uniformly well across all pattern types. A stable daily pattern explicitly benefits from recurring phase-aligned reuse—directly looking up the corresponding phase from historical cycles; a nonstationary drifting signal inherently requires incremental evolution; and a smooth trajectory is better handled by direct trend-seasonal projection. Relying on a single mechanism often leads to compromised predictions. For instance, Figure 2 illustrates that a representative Transformer, PatchTST, underfits strict trends, over-smooths exact cyclic spikes, and lags behind local nonstationary drift. These observations motivate a more dynamic forecasting paradigm: instead of expanding a single neural backbone, we propose an adaptive framework that routes each forecast point, identified by its variable, horizon, and future phase index, to an appropriate mixture of tailored, complementary linear mechanisms. Motivated by this view, we propose GatedLinear , a lightweight framework that formulates time series prediction as adaptive routing over a pool of three complementary linear bases. The first basis performs decomposed direct mapping over seasonal and trend components, capturing smooth continuation patterns. The second basis predicts future increments and integrates them forward from the last observation, targeting nonstationary but locally predictable dynamics. The third basis constructs a phase-aligned recurrence template from recent historical cycles and refines it with a linear residual, explicitly exploiting periodic reuse. 2Figure 2: Performance comparison between PatchTST and GatedLinear on data with distinct temporal characteristics: (a) Trend Data with smooth continuous evolution, (b) Periodic Data with strict phase-aligned recurrence, and (c) ARIMA(1,1,1) data with nonstationary drift. To combine these bases, we introduce a Tri-Factorized Fusion Gate . Instead of assigning a fixed branch weight to an entire dataset or sample, the gate produces weights for each forecast point and variable. Its logits are factorized into a channel-specific branch preference , a horizon-channel correction , and a future-phase-indexed correction whose index is derived from decoder-side time marks. This design keeps the forecasting branches linear and parameter-efficient, while enabling fine-grained, interpretable selection across horizons, variables, and periodic phases. Figure 3 illustrates the overall architecture of the proposed framework, including the three forecasting bases and the Tri-Factorized Fusion Gate. Our contributions are summarized as follows: • We propose GatedLinear , a tri-basis linear forecasting framework that explicitly mod-els a pool of three complementary predictive mechanisms: decomposed direct projection, difference-based incremental evolution, and phase-aligned periodic recurrence. The frame-work naturally addresses dataset-level and channel-level temporal heterogeneity via dynamic routing without stacking heavy neural modules. • We introduce a Tri-Factorized Fusion Gate that enables forecast-point-level, channel-wise, and phase-indexed soft blending. By factorizing gate logits into channel base tendencies, horizon offsets, and future-phase-indexed biases, the model precisely manages the basis mixture while preserving interpretability. • We demonstrate that adaptive routing of basic linear mechanisms allows a lightweight model to achieve state-of-the-art or highly competitive performance on standard forecasting bench-marks, suggesting that effective dynamic blending is as critical as increasing architectural complexity. 
+
+## 2 Problem formulation 
+
+Given a multivariate time series Xt−L+1: t ∈ RL×C with L historical observations and C variables, the goal is to predict future values ˆYt+1: t+H ∈ RH×C , where H denotes the prediction length. The forecasting task can be formalized as learning a mapping 
+
+f : RL×C → RH×C , ˆYt+1: t+H = f (Xt−L+1: t). (1) Our goal is to design a lightweight forecasting function f that can adapt its predictive mechanism across variables, forecast steps, and future temporal phases. For notational simplicity, we drop the global timestamp t in the following sections and locally index the historical window as X1: L and the future horizon as ˆY1: H .
+
+## 3 Methodology 
+
+This section describes the three forecasting bases and the structured fusion gate in detail. 3Figure 3: Overview of the proposed GatedLinear framework. The input sequence is processed by three complementary linear forecasting bases. A Tri-Factorized Fusion Gate uses horizon, channel, and future phase indices to select among the three bases for each future point. 
+
+3.1 Tri-basis linear forecasting 
+
+Our model instantiates the forecasting function f using three complementary linear bases. Each basis generates a candidate future sequence ˆY(k) ∈ RH×C for k ∈ { 1, 2, 3}, corresponding to the Global Trend-Seasonal Basis, Difference-Based Incremental Basis, and Phase-Aligned Recurrence Basis, respectively. A fusion gate simultaneously yields mixing weights W ∈ RH×C×3, such that 
+
+P3 
+
+> k=1
+
+Wh,c,k = 1 for all future steps h ∈ { 1, . . . , H } and channels c ∈ { 1, . . . , C }. The final sequence prediction is a convex combination of the branches: 
+
+ˆYh,c =
+
+> 3
+
+X
+
+> k=1
+
+Wh,c,k ˆY(k) 
+
+> h,c
+
+. (2) Here, ˆYh,c denotes the forecasted value at targeted future step h for variable c, and Wh,c,k is the weight confidently assigned to basis k for that specific point. 
+
+Global Trend-Seasonal Basis ( k = 1 ). The global basis is designed to learn smooth trend and sea-sonal structures that can be directly extrapolated over the forecast horizon. Following decomposition-based forecasting paradigms, the historical input is split into seasonal and trend components via moving-average operations: 
+
+Xs, Xt = Decomp( X), (3) where Xs, Xt ∈ RL×C isolate local cyclical fluctuations and global trends from the input X. Two linear mappings then project these components from the historical length L directly to the entire future horizon H: ˆY(1) :,c = Ls(Xs
+
+> :,c
+
+) + Lt(Xt
+
+> :,c
+
+), ∀c ∈ { 1, . . . , C }, (4) where Ls, Lt : RL → RH are learnable temporal affine layers operating over individual channels. 
+
+Difference-Based Incremental Basis ( k = 2 ). The difference basis targets nonstationary series with level shifts or persistent local drift, where predicting changes can be more stable than predicting absolute levels. We compute the first-order differences of the input series: 
+
+∆Xτ,c = Xτ,c − Xτ −1,c , ∀τ ∈ { 2, . . . , L }, (5) with ∆X1,c = 0 . Using a temporal linear projection Ld : RL → RH , this branch forecasts all future increments sequentially. The target future levels ˆY(2) are explicitly reconstructed via cumulative 4summation, integrated starting strictly from the last historically observed value XL,c :
+
+ˆY(2)  
+
+> h,c
+
+= XL,c +
+
+> h
+
+X
+
+> i=1
+
+[Ld(∆ X:,c )] i , (6) where i indexes the forecasted increments up to step h, so future levels are reconstructed by accumu-lating predicted changes from the last observed value. By explicitly integrating predicted increments from the exact last historical observation XL,c , this basis inherently avoids the unconditional bias caused by severe level shifts. A detailed theoretical analysis of its optimality in non-stationary drifting environments is provided in Appendix C. 
+
+Phase-Aligned Recurrence Basis ( k = 3 ). The phase-aligned basis complements the other two bases by mapping fine-grained periodic details from recent cycles to their corresponding future phases. For a given time series with characteristic base period P , assuming the historical window is sufficiently long ( L ≥ K · P ), we summarize the last K complete periods into a unified historical template T ∈ RP ×C . For each recurring phase r ∈ { 0, . . . , P − 1}:
+
+Tr,c = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+XL−KP +( k−1) P +r,c . (7) This exact template is subsequently tiled forward across the desired prediction length H to yield the unparameterized baseline sequence B(p) ∈ RH×C . We fine-tune this cyclical projection by supplementing an additive linearly modeled deformation residual Lp(X):
+
+ˆY(3) :,c = B(p):,c + Lp(X:,c ). (8) The template provides a same-phase forecast prior, while the residual absorbs mild deviations from exact recurrence. Notably, all three bases share the exact same structural simplicity: they are constructed solely from fundamental mathematical operations (difference, moving-average, phase alignment) combined with one-layer temporal linear mappings, entirely free of heavy neural modules. 
+
+3.2 Tri-Factorized Fusion Gate 
+
+To invoke the bases adaptively, we equip our framework with a structured gating mechanism yielding the mixing coefficients W. We designate this as a " Tri-Factorized Fusion Gate " because the gate separates three lookup contexts: the variable channel, the forecast horizon, and the future phase index associated with the target timestamp. For example, under an hourly daily period, the gate can treat a noon forecast differently from a midnight forecast even when the two targets have the same horizon length. This fine-grained, localized alignment enables point-wise mechanism selection. Accordingly, for future step h ∈ { 1, . . . , H }, given channel c, and candidate basis k, the unnormalized preference logit zh,c,k is structured into three disjoint learnable parameters: 
+
+zh,c,k = ac,k + uh,c,k + vϕh,c,k , (9) with respective meanings assigned as follows: • ac,k ∈ R conveys a persistent channel-specific base tendency, enabling varying dominances among different monitored variables. • uh,c,k ∈ R implements a horizon-dependent scalar offset, reflecting that smooth direct bases inherently excel farther out while increment predictions thrive primarily under tight proximities. • vϕh,c,k ∈ R is a phase-indexed selection bias, selected by the future phase index ϕh ∈{0, . . . , P − 1} associated with the target timestamp. This index is obtained from known decoder-side time marks when available, or from the horizon offset modulo the period otherwise. These structured logits are ultimately normalized into bounded fusion probabilities via a parametric softmax distribution ruled by a temperature hyperparameter τ :
+
+Wh,c,k = exp( zh,c,k /τ )
+
+P3 
+
+> j=1
+
+exp( zh,c,j /τ ) . (10) 5Reducing τ intrinsically prevents ambiguous blending and compels the gate to isolate the most reliable basis dominantly. Remarkably, our constructed framework entirely circumvents weighty recursive networks or excessive cross-attention modules. It establishes a compact selection scheme governed by structured lookups over channel, horizon, and phase index. 
+
+3.3 Training objective and complexity 
+
+For forecasting, we optimize the network using the standard Mean Squared Error (MSE) loss over a training batch: 
+
+Lforecast = 1
+
+B × H × C
+
+> B
+
+X
+
+> b=1
+> H
+
+X
+
+> h=1
+> C
+
+X
+
+> c=1
+
+ ˆYb,h,c − Yb,h,c 
+
+2
+
+, (11) where B designates the batch size, and Yb,h,c represents the ground-truth future values for a specific sequence in the batch. 
+
+Complexity analysis. Our tri-basis framework maintains a strictly lightweight profile, deliberately circumventing the quadratic overheads predominantly associated with self-attention architectures. We itemize complexity in two integral dimensions: • Parameter complexity: Under the common channel independence setting where weights are shared across variates, each linear mapping branch ( Ls, Lt, Ld, Lp) utilizes exactly 
+
+O(L × H) weights, accumulating to O(L × H) parameters in total. The structured gate introduces disjoint lightweight parameter matrices encompassing exactly 3×C for basis bias, 
+
+3 × H × C for horizon offset, and 3 × P × C for specific phase conditioning. Consequently, the overall model parameter count scales as O(LH + C(H + P )) , keeping the size notably bounded and effectively bypassing intensive MLP topologies. • Computational complexity: During the forward pass, extracting components and applying temporal matrix projections inherently requires O(L × H) operations per individual chan-nel. Iterating throughout the entire batch results in a theoretical time complexity scaling compactly strictly as O(B × C × L × H). The final gating fusion seamlessly computes simple additions and table lookups requiring negligible linear runtime strictly scaling as 
+
+O(B × C × H). Contrastingly, conventional global Transformers enforce prohibitive 
+
+O(B × C × L2) or unified sequence computational boundaries. Our decoupled design ensures O(BCLH ) deterministic, lightning-fast end-to-end execution. 
+
+## 4 Experiments 
+
+4.1 Experimental setup Datasets. We evaluate on standard forecasting benchmarks, including ETTm1, ETTm2, ETTh1, ETTh2, Electricity, Traffic, Weather, and Exchange [ 21 , 12 , 5]. Unless otherwise stated, each dataset is split into train/validation/test subsets with a ratio of 7:1:2. We use an input length of 
+
+L = 336 and evaluate prediction lengths H ∈ { 48 , 96 , 192 , 336 }. For datasets with clear daily or weekly periodicity, we set the period length according to the data frequency; otherwise, we use a validation-selected period. 
+
+Baselines. We compare against the same representative models reported in Table 1: DLinear [ 9], TimeMixer [ 10 ], MixLinear [ 22 ], PaiFilter [ 16 ], PatchTST [ 13 ], PhaseFormer [ 15 ], TQNet [ 19 ], TimeAlign [ 11 ], and iTransformer [ 14 ]. These baselines cover decomposition-based linear models, multi-scale MLP forecasting, patch- and phase-based temporal modeling, frequency filtering, temporal-query mechanisms, distribution-aware alignment, and inverted Transformer architectures. Detailed descriptions and source repositories are provided in the appendix. 
+
+Implementation details. All experiments are implemented in PyTorch 2.6.0 based on the Time-Series-Library training pipeline and conducted on a single NVIDIA A800 GPU. We train GatedLinear with Adam using mean squared error (MSE) loss, and report mean absolute error (MAE) and MSE as evaluation metrics. Further implementation details are provided in Appendix E.4. 6Table 1: Main forecasting results (averaged over prediction lengths H ∈ { 48 , 96 , 192 , 336 } with input length L = 336 ). The best results are shown in red bold , and the second-best in blue underline .                                                                                                                                                                                    
+
+> Dataset GatedLinear
+> (Ours)
+> DLinear
+> (AAAI 2023)
+> TimeMixer
+> (ICLR 2024)
+> MixLinear
+> (ICLR 2026)
+> PaiFilter
+> (NeurIPS 2024)
+> PatchTST
+> (ICLR 2023)
+> PhaseFormer
+> (ICLR 2026)
+> TQNet
+> (ICML 2025)
+> TimeAlign
+> (ICLR 2026)
+> iTransformer
+> (ICLR 2024)
+> MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE
+> ECL 0.138 0.231 0.148 0.243 0.143 0.235 0.159 0.254 0.141 0.235 0.147 0.250 0.163 0.255 0.141 0.236 0.141 0.236 0.143 0.237
+> ETTh1 0.404 0.414 0.388 0.403 0.400 0.415 0.383 0.399 0.433 0.440 0.401 0.417 0.400 0.407 0.391 0.409 0.402 0.415 0.459 0.452
+> ETTh2 0.300 0.356 0.300 0.358 0.328 0.379 0.314 0.360 0.347 0.392 0.329 0.379 0.326 0.372 0.315 0.368 0.320 0.367 0.382 0.402
+> ETTm1 0.305 0.344 0.322 0.356 0.325 0.366 0.338 0.371 0.330 0.369 0.317 0.362 0.540 0.484 0.313 0.355 0.307 0.350 0.357 0.385
+> ETTm2 0.196 0.273 0.197 0.274 0.212 0.288 0.209 0.288 0.210 0.281 0.208 0.286 0.241 0.320 0.201 0.276 0.205 0.277 0.240 0.316
+> Exchange 0.161 0.277 0.170 0.271 0.184 0.287 0.168 0.281 0.196 0.294 0.172 0.281 0.188 0.298 0.193 0.294 0.171 0.278 0.211 0.312
+> Traffic 0.405 0.272 0.416 0.283 0.383 0.267 0.423 0.284 0.395 0.278 0.383 0.270 0.428 0.267 0.381 0.266 0.396 0.276 0.367 0.262 Weather 0.173 0.218 0.198 0.240 0.178 0.225 0.207 0.252 0.179 0.226 0.179 0.221 0.208 0.257 0.182 0.226 0.174 0.218 0.191 0.235
+> Average 0.260 0.298 0.267 0.303 0.269 0.308 0.275 0.311 0.279 0.314 0.267 0.308 0.312 0.333 0.265 0.304 0.264 0.302 0.294 0.325
+
+Table 2: Ablation results on ECL, ETTm1, Traffic, and Weather. Numbers are averaged over prediction lengths H ∈ { 48 , 96 , 192 , 336 } with input length L = 336 . Avg. Inc. reports the average relative increase (%) over all eight MSE/MAE entries compared with the full model. 
+
+Variant ECL ETTm1 Traffic Weather Avg. Inc. (%) MSE MAE MSE MAE MSE MAE MSE MAE 
+
+Full model 0.1378 0.2311 0.3054 0.3444 0.4046 0.2716 0.1726 0.2176 0.00 w/o Global branch 0.1432 0.2372 0.3090 0.3457 0.4116 0.2774 0.1785 0.2202 +2.07 w/o Difference branch 0.1389 0.2317 0.3108 0.3468 0.4144 0.2732 0.1823 0.2248 +1.93 w/o Phase branch 0.1433 0.2377 0.3100 0.3468 0.4016 0.2742 0.1771 0.2196 +1.60 w/o Phase-indexed logits 0.1423 0.2354 0.3112 0.3481 0.4158 0.2815 0.1752 0.2194 +2.11 Plain softmax gate 0.1432 0.2368 0.3122 0.3492 0.4157 0.2819 0.1765 0.2205 +2.52 
+
+4.2 Main results 
+
+Table 1 summarizes the main forecasting results. Overall, GatedLinear obtains the best result on 11 out of 16 dataset-level metrics across the eight benchmarks. It also achieves the lowest average MSE and MAE, demonstrating the strongest overall forecasting performance among the compared methods. These results indicate that adaptively combining global, incremental, and phase-aligned linear bases can provide robust gains across heterogeneous time series datasets. Although GatedLinear is not the best on every individual dataset, it remains competitive against recent linear, frequency-based, and Transformer-style baselines. The strong average performance suggests that the proposed adaptive mechanism-selection strategy offers a favorable balance between simplicity and accuracy, rather than relying on a single fixed forecasting mechanism. 
+
+4.3 Ablation studies 
+
+We conduct five groups of ablation experiments to examine the contribution of the forecasting bases and the structured fusion gate. Table 2 reports the results on four representative datasets. The first three variants remove the global trend–seasonal branch, the difference-based incremental branch, and the phase-aligned recurrence branch, respectively, testing whether each basis provides useful complementary information. The fourth variant removes the phase-indexed logits from the fusion gate, which disables explicit future phase-aware routing. The fifth variant replaces the proposed Tri-Factorized Fusion Gate with a plain softmax gate over the three branches, whose weights are shared across horizons and variables. The full model achieves the best overall performance across these ablations, indicating that the three bases and the structured gate jointly contribute to the final accuracy. Removing any single branch generally degrades performance, which suggests that global trend–seasonal projection, difference-based local evolution, and phase-aligned recurrence capture different temporal patterns and cannot be fully substituted by the remaining branches. The gate-related ablations show a clearer performance drop, as reflected by the Avg. Inc. column. Removing the phase-indexed logits increases the averaged metric by 2.11%, indicating that explicit future phase information is important for selecting among the branches. Replacing the Tri-Factorized Fusion Gate with a plain softmax gate leads to the largest increase of 2.52%, because the same branch mixture must be shared across all horizons and variables. These results confirm that the improvement 7of GatedLinear comes not only from using multiple linear forecasting bases, but also from routing them with horizon-, channel-, and phase-aware information. 
+
+4.4 Interpretability analysis 
+
+The structured gate provides a direct diagnostic view of mechanism selection. Figure 4(a) shows that different datasets learn different branch-weight preferences over the forecast horizon, indicating that the model does not rely on a fixed mixture of forecasting mechanisms. Instead, it adjusts the relative importance of the global, difference, and phase-aligned branches according to dataset-specific temporal properties. A consistent pattern is that the difference branch tends to receive larger weights at shorter horizons and gradually decreases as the horizon extends, while the phase-aligned branch often becomes more prominent at longer horizons. This behavior is intuitive: difference-based incremental prediction is useful for capturing near-term local evolution, but its errors may accumulate over longer forecasts; in contrast, the phase-aligned branch can provide a more stable reference by reusing recurring periodic structure. The gate therefore dynamically shifts the mixture from short-term incremental evolution toward more reliable long-horizon periodic cues when appropriate. 
+
+Figure 4: Learned fusion gate weights across horizons and variables. (a) Different datasets allocate branch weights over the forecast horizon. (b) Variable- and horizon-specific gate weights on the Weather dataset. Figure 4(b) further shows that even within the same dataset, different variables can have distinct branch preferences. In each branch-specific rectangular heatmap, each row corresponds to one variable channel and each column corresponds to a forecast horizon step. The heterogeneous row patterns suggest that GatedLinear learns variable-specific routing behavior, allowing each variable to adaptively select the branch mixture that matches its own temporal characteristics. 
+
+Figure 5: Channel-wise branch-weight preferences across different datasets. Each point denotes a variable channel. Figure 5 visualizes channel-wise branch preferences for ECL, Traffic, and Weather. Each point denotes one variable, and its position reflects the relative reliance on the phase-aligned and difference-based branches. The Traffic variables form a compact cluster, while the Weather variables are much more dispersed. This pattern is consistent with the channel-level trait distributions in Figure 1(b): Weather exhibits stronger variable-level heterogeneity, whereas Traffic shows smaller variation among 8variables. Together, Figures 4 and 5 show that the learned gate preferences are aligned with the underlying data characteristics at both the dataset and variable levels. To further quantify this alignment, Figure 6 aggregates all variable channels from the evaluated datasets and reports the Spearman correlations between channel-level temporal traits and learned branch preferences. The difference branch is closely associated with shift-related traits such as Mean Shift and Scale Shift, indicating that it is emphasized for variables that require incremental evolution. In contrast, the phase branch is positively correlated with Seasonality Strength and Phase Consistency, matching its intended role of exploiting stable recurring phases. These correlations show that the gate learns semantically meaningful branch preferences rather than arbitrary weights, further supporting the interpretability and effectiveness of the adaptive routing mechanism. 
+
+4.5 Efficiency analysis 
+
+Figure 6: Spearman correlation heatmap between channel-level temporal traits and learned branch preferences. The computation of Spearman corre-lations is provided in Appendix D. 
+
+Figure 7: Efficiency comparison on the Electricity dataset using input length L = 336 , prediction horizon H = 96 , and batch size 128. Bubble size indicates peak GPU memory. Figure 7 compares forecasting accuracy and computational efficiency on the Electricity dataset. The proposed model lies in the favorable lower-left region, showing low forecasting error with short training time and small memory consumption. This efficiency comes from using only three lightweight forecasting bases together with a compact structured gate, avoiding the expensive attention or deep mixing modules used by heavier baselines. Overall, the results show that GatedLinear achieves a strong accuracy-efficiency trade-off while preserving a small computational footprint. 
+
+## 5 Conclusion 
+
+We introduced GatedLinear, a lightweight forecasting framework built on the principle that het-erogeneous time series should not be forced through a single fixed predictive mechanism. Instead of increasing backbone complexity, GatedLinear formulates forecasting as adaptive routing over three complementary linear bases: a global trend–seasonal projection for smooth extrapolation, a difference-based incremental basis for local nonstationary evolution, and a phase-aligned recurrence basis for explicit cyclic reuse. This tri-basis design provides a compact yet expressive mechanism pool whose components correspond to distinct temporal regimes. The key innovation of GatedLinear is the Tri-Factorized Fusion Gate, which performs forecast-point-level soft selection by factorizing routing logits into channel-specific preferences, horizon-dependent offsets, and future phase-indexed biases. This structure allows the model to adapt across variables, prediction steps, and periodic phases while keeping the predictor efficient and interpretable. Experiments on standard benchmarks show that GatedLinear achieves the best average MSE and MAE and remains highly competitive with recent linear, frequency-based, and Transformer-style forecasters. Ablation and gate analyses further verify that the gains arise from both the complementary forecasting bases and the semantically meaningful routing among them: the model emphasizes incremental evolution under shift-like dynamics and phase recurrence under stable periodicity. These results suggest that carefully structured mechanism selection can be a powerful alternative to stacking heavier neural modules for time series forecasting. 9References 
+
+[1] G. E. P. Box, G. M. Jenkins, G. C. Reinsel, et al. Time series analysis: forecasting and control .John Wiley & Sons, 2015. arXiv:2311.10122 .[2] Hiro Y Toda and Peter CB Phillips. Vector autoregression and causality: a theoretical overview and simulation study. Econometric reviews , 13(2):259–285, 1994. [3] Rob Hyndman, Anne B Koehler, J Keith Ord, and Ralph D Snyder. Forecasting with exponential smoothing: the state space approach . Springer Science & Business Media, 2008. [4] David Salinas, Valentin Flunkert, Jan Gasthaus, and Tim Januschowski. Deepar: Probabilistic forecasting with autoregressive recurrent networks. International journal of forecasting , 36(3): 1181–1191, 2020. [5] Guokun Lai, Wei-Cheng Chang, Yiming Yang, and Hanxiao Liu. Modeling long-and short-term temporal patterns with deep neural networks. In The 41st international ACM SIGIR conference on research & development in information retrieval , pages 95–104, 2018. [6] Shengsheng Lin, Weiwei Lin, Wentai Wu, Feiyu Zhao, Ruichao Mo, and Haotong Zhang. Segrnn: Segment recurrent neural network for long-term time series forecasting. IEEE Internet of Things Journal , 2025. [7] Shaojie Bai, J Zico Kolter, and Vladlen Koltun. An empirical evaluation of generic convolutional and recurrent networks for sequence modeling. arXiv preprint arXiv:1803.01271 , 2018. [8] Minhao Liu, Ailing Zeng, Muxi Chen, Zhijian Xu, Qiuxia Lai, Lingna Ma, and Qiang Xu. Scinet: Time series modeling and forecasting with sample convolution and interaction. Advances in neural information processing systems , 35:5816–5828, 2022. [9] Ailing Zeng, Muxi Chen, Lei Zhang, and Qiang Xu. Are transformers effective for time series forecasting? In Proceedings of the AAAI conference on artificial intelligence , volume 37, pages 11121–11128, 2023. [10] Shiyu Wang, Haixu Wu, Xiaoming Shi, Tengge Hu, Huakun Luo, Lintao Ma, James Y Zhang, and JUN ZHOU. Timemixer: Decomposable multiscale mixing for time series forecasting. In 
+
+The Twelfth International Conference on Learning Representations , 2024. [11] Yifan Hu, Jie Yang, Tian Zhou, Peiyuan Liu, Yujin Tang, Rong Jin, and Liang Sun. Bridging past and future: Distribution-aware alignment for time series forecasting. arXiv preprint arXiv:2509.14181 , 2025. [12] Haixu Wu, Jiehui Xu, Jianmin Wang, and Mingsheng Long. Autoformer: Decomposition trans-formers with auto-correlation for long-term series forecasting. Advances in neural information processing systems , 34:22419–22430, 2021. [13] Yuqi Nie, Nam H Nguyen, Phanwadee Sinthong, and Jayant Kalagnanam. A time series is worth 64 words: Long-term forecasting with transformers. In The Eleventh International Conference on Learning Representations , 2023. [14] Yong Liu, Tengge Hu, Haoran Zhang, Haixu Wu, Shiyu Wang, Lintao Ma, and Mingsheng Long. itransformer: Inverted transformers are effective for time series forecasting. In The Twelfth International Conference on Learning Representations , 2024. [15] Yiming Niu, Jinliang Deng, and Yongxin Tong. Phaseformer: From patches to phases for efficient and effective time series forecasting. arXiv preprint arXiv:2510.04134 , 2025. [16] Kun Yi, Jingru Fei, Qi Zhang, Hui He, Shufeng Hao, Defu Lian, and Wei Fan. Filternet: Harnessing frequency filters for time series forecasting. Advances in Neural Information Processing Systems , 37:55115–55140, 2024. [17] Haixu Wu, Tengge Hu, Yong Liu, Hang Zhou, Jianmin Wang, and Mingsheng Long. Timesnet: Temporal 2d-variation modeling for general time series analysis. In The Eleventh International Conference on Learning Representations , 2023. 10 [18] Boya Zhang, Shuaijie Yin, Huiwen Zhu, and Xing He. Freqcycle: A multi-scale time-frequency analysis method for time series forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 40, pages 28159–28167, 2026. [19] Shengsheng Lin, Haojun Chen, Haijie Wu, Chunyun Qiu, and Weiwei Lin. Temporal query net-work for efficient multivariate time series forecasting. In Forty-second International Conference on Machine Learning , 2025. [20] Qitai Tan, Yiyun Chen, Mo Li, Ruiwen Gu, Yilin Su, and Xiao-Ping Zhang. Syntsbench: Rethinking temporal pattern learning in deep learning models for time series. In The Thirty-ninth Annual Conference on Neural Information Processing Systems Datasets and Benchmarks Track , 2025. [21] Haoyi Zhou, Shanghang Zhang, Jieqi Peng, Shuai Zhang, Jianxin Li, Hui Xiong, and Wancai Zhang. Informer: Beyond efficient transformer for long sequence time-series forecasting. In 
+
+Proceedings of the AAAI conference on artificial intelligence , volume 35, pages 11106–11115, 2021. [22] Aitian Ma, Dongsheng Luo, and Mo Sha. Mixlinear: Extreme low resource multivariate time series forecasting with 0.1 k parameters. arXiv preprint arXiv:2410.02081 , 2024. [23] Boris N Oreshkin, Dmitri Carpov, Nicolas Chapados, and Yoshua Bengio. N-beats: Neural basis expansion analysis for interpretable time series forecasting. arXiv preprint arXiv:1905.10437 ,2019. [24] Cristian Challu, Kin G Olivares, Boris N Oreshkin, Federico Garza Ramirez, Max Mergenthaler Canseco, and Artur Dubrawski. Nhits: Neural hierarchical interpolation for time series fore-casting. In Proceedings of the AAAI conference on artificial intelligence , volume 37, pages 6989–6997, 2023. [25] Si-An Chen, Chun-Liang Li, Nate Yoder, Sercan O Arik, and Tomas Pfister. Tsmixer: An all-mlp architecture for time series forecasting. arXiv preprint arXiv:2303.06053 , 2023. [26] Tian Zhou, Ziqing Ma, Qingsong Wen, Xue Wang, Liang Sun, and Rong Jin. Fedformer: Frequency enhanced decomposed transformer for long-term series forecasting. In International conference on machine learning , pages 27268–27286. PMLR, 2022. [27] Shengsheng Lin, Weiwei Lin, Xinyi Hu, Wentai Wu, Ruichao Mo, and Haocheng Zhong. Cyclenet: Enhancing time series forecasting through modeling periodic patterns. Advances in Neural Information Processing Systems , 37:106315–106345, 2024. [28] Xiangfei Qiu, Jilin Hu, Lekui Zhou, Xingjian Wu, Junyang Du, Buang Zhang, Chenjuan Guo, Aoying Zhou, Christian S Jensen, Zhenli Sheng, et al. Tfb: Towards comprehensive and fair benchmarking of time series forecasting methods. arXiv preprint arXiv:2403.20150 , 2024. [29] Robert A Jacobs, Michael I Jordan, Steven J Nowlan, and Geoffrey E Hinton. Adaptive mixtures of local experts. Neural computation , 3(1):79–87, 1991. [30] Noam Shazeer, Azalia Mirhoseini, Krzysztof Maziarz, Andy Davis, Quoc Le, Geoffrey Hinton, and Jeff Dean. Outrageously large neural networks: The sparsely-gated mixture-of-experts layer. arXiv preprint arXiv:1701.06538 , 2017. [31] Peng Chen, Yingying Zhang, Yunyao Cheng, Yang Shu, Yihang Wang, Qingsong Wen, Bin Yang, and Chenjuan Guo. Pathformer: Multi-scale transformers with adaptive pathways for time series forecasting. In ICLR 2024: The Twelfth International Conference on Learning Representations. , 2024. 11 A Additional Related Work 
+
+Efficient linear and MLP-based forecasting. Long-sequence forecasting has recently seen a clear shift from increasingly complex attention backbones toward Transformer-free architectures that rely on simple temporal mappings, fully connected blocks, and MLP-style mixing. N-BEATS [ 23 ]introduced a deep fully connected architecture based on residual stacks and neural basis expansion, while N-HiTS [ 24 ] improved this basis-style view through hierarchical interpolation and multi-rate sampling for long-horizon forecasting. DLinear [ 9 ] demonstrates that decomposing a series into trend and seasonal components followed by one-layer linear mappings can already form a highly competitive baseline. TSMixer [ 25 ] uses all-MLP time- and feature-mixing blocks to capture temporal and cross-variate information, TimeMixer [ 10 ] extends this efficiency-oriented view with decomposable multi-scale MLP mixing, and MixLinear [ 22 ] further targets low-resource multivariate forecasting through segment-based temporal modeling and adaptive low-rank spectral filtering. These methods show that lightweight predictors can challenge heavier Transformer-style models, but they usually instantiate one dominant forecasting mechanism for all variables and forecast positions. GatedLinear follows this efficient forecasting lineage, yet treats lightweight linear operations as complementary bases rather than as a single fixed backbone, allowing smooth projection, incremental evolution, and periodic recurrence to be selected adaptively. 
+
+Periodicity and phase-aware modeling. Another line of work explicitly exploits frequency struc-ture, cyclic recurrence, or phase alignment in time series. FEDformer [ 26 ] introduces frequency-enhanced decomposition inside a Transformer architecture, TimesNet [ 17 ] discovers dominant periods and converts one-dimensional sequences into two-dimensional period-aligned representations, and FilterNet [ 16 ] learns frequency-domain filters for shaping informative spectral components. Cy-cleNet [ 27 ] models periodic patterns with learnable recurrent cycles and predicts residual components, while FreqCycle [ 18 ] combines shared-cycle learning in the time domain with segmented frequency modeling for residual components. PhaseFormer [ 15 ] replaces patch tokens with phase-wise model-ing and lightweight cross-phase routing for periodic forecasting. These approaches encode periodicity through spectral transforms, learned filters, learnable cycles, period-to-2D transformations, or phase-aware tokenization. In contrast, GatedLinear uses a direct time-domain recurrence basis that reuses historical values at matched future phases, and its phase-indexed gate logits decide when such exact phase reuse should dominate over the other bases. 
+
+Dataset heterogeneity and adaptive routing. Comprehensive benchmark studies suggest that forecasting data are highly heterogeneous across domains, variables, and temporal regimes. TFB [ 28 ]broadens evaluation coverage across diverse real-world domains and characterizes datasets to support fairer comparisons among statistical, machine-learning, and deep-learning forecasters. SynTS-Bench [ 20 ] further constructs synthetic datasets with programmable temporal patterns and shows that existing deep forecasting models rarely perform uniformly well across all pattern types. These obser-vations support the view that trend strength, periodicity, stationarity, and local drift vary substantially across datasets and even across variables within the same dataset. Adaptive routing is therefore a nat-ural response: mixture-of-experts models [ 29 , 30 ] use gates to assign inputs to specialized predictors, and recent time-series architectures such as Pathformer [ 31 ] and PhaseFormer [ 15 ] introduce adaptive pathways or routers for scale and phase interactions. GatedLinear shares this motivation but routes among interpretable linear bases instead of deep experts, with routing logits factorized by channel, horizon, and future phase so that each forecast point can select the mechanism most compatible with its temporal traits. 
+
+## B Limitations of Our Work 
+
+Channel-independent design. GatedLinear follows the common channel-independent forecasting setting: the temporal linear branches are shared across variables and each channel is mainly forecast from its own historical trajectory. Although the fusion gate learns channel-specific routing preferences, the current design does not explicitly model cross-variable dependencies. This choice keeps the model lightweight and interpretable, but it may be less effective when multivariate interactions are central to the forecasting problem. A representative case is Traffic, which contains 862 sensor variables; on this dataset, methods that directly model variate-level relations, such as iTransformer and TQNet, obtain stronger results. 12 Dependence on meaningful periods and time marks. The phase-aligned recurrence basis and the phase-indexed gate assume that the data contain a usable base period and that future phase indices are meaningful. When future time marks are available, these indices can be obtained from the decoder-side timestamps; otherwise, the model falls back to horizon-based phase indices. This assumption may be weakened for weakly periodic series, drifting periods, holiday or event effects, abrupt disruptions, and irregularly sampled observations. In such cases, reusing historical values from the same phase may become less reliable. 
+
+Limited expressiveness of the linear basis pool. Our framework intentionally restricts its forecast-ing mechanisms to three simple linear bases: smooth trend–seasonal projection, difference-based local evolution, and phase-aligned recurrence with a linear residual. This restriction is important for the model’s efficiency and interpretability, but it also bounds the expressive power of the predictor. Highly nonlinear dynamics, abrupt regime shifts, or trajectories driven by external events may not be fully captured by these three branches alone. 
+
+## C Theoretical Motivation of the Forecasting Bases 
+
+To formalize the intuition behind our multi-basis design, we provide a theoretical analysis illustrating why a single global forecasting mechanism struggles with non-stationary data, and why incorporating the difference-based incremental basis is theoretically optimal in such scenarios. 
+
+C.1 Optimality of the Difference-Based Basis on Non-Stationary Data 
+
+Consider a data generating process governed by an integrated random walk with drift (e.g., an ARIMA(0,1,0) process), which is a standard mathematical model for non-stationary series with level shifts. The process is defined as: 
+
+xt = xt−1 + c + ϵt, ϵt ∼ N (0 , σ 2), (12) where c is a constant deterministic drift and ϵt is independent zero-mean Gaussian noise. Unrolling this process gives the true future value at target step T + h:
+
+xT +h = xT + hc +
+
+> h
+
+X
+
+> i=1
+
+ϵT +i. (13) The optimal Minimum Mean Squared Error (MMSE) predictor is E[xT +h|x≤T ] = xT + hc , with a theoretical minimum error variance of hσ 2.
+
+Suboptimality of the Global Basis. A standard global linear mapping (or similarly, global self-attention over raw values) attempts to forecast the future by computing a weighted combination of historical observations: ˆx(global )  
+
+> T+h
+
+= PLi=1 wh,i xT −L+i. If the test data experiences a structural level shift (i.e., the absolute magnitude of x is shifted by an arbitrary scalar ∆shift not seen in the training set), the prediction becomes: 
+
+ˆx(global )  
+
+> T+h
+
+(shifted ) = 
+
+> L
+
+X
+
+> i=1
+
+wh,i (xT −L+i + ∆ shift ) = ˆ x(global )  
+
+> T+h
+
++ ∆ shift 
+
+> L
+
+X
+
+> i=1
+
+wh,i . (14) To maintain shift-invariance (i.e., for the shift in input to properly propagate to a shift in prediction without scaling error), the learned weights must strictly satisfy P wh,i = 1 . In practice, achieving and perfectly maintaining this strict equality constraint via unconstrained stochastic gradient descent is highly improbable, especially under weight decay regularization. Consequently, any level shift in the input induces an unconditional bias O(∆ shift ), causing the generalization error variance to grow unbounded with the shift magnitude. 
+
+Optimality of the Difference-Based Basis. Our difference-based incremental branch mathemati-cally perfectly resolves this issue. By computing the first-order difference ∆xt = xt − xt−1 = c + ϵt,the input sequences become strictly stationary and entirely independent of the absolute level of xt.The linear layer Ld now maps from a stationary sequence drawn from N (c, σ 2) to smoothly predict the stationary target increment c:
+
+∆ˆ xT +i = c. (15) 13 Crucially, the future values are reconstructed by integrating these predicted increments starting strictly from the last historically observed value xT :
+
+ˆx(dif f )  
+
+> T+h
+
+= xT +
+
+> h
+
+X
+
+> i=1
+
+∆ˆ xT +i = xT + hc. (16) This formulation is structurally identical to the theoretical MMSE predictor. The estimation of the required dynamic increments is completely decoupled from the absolute scale of the sequence, rendering the basis strictly invariant to arbitrary level shifts ∆shift . Its theoretical error variance is bounded exactly to the system’s inherent noise variance hσ 2. This demonstrates that integrating the difference-based recurrence is not merely an empirical engineering decision, but a theoretically nec-essary inductive bias to guarantee robust and unbounded-error-free forecasting under non-stationary drifting environments. 
+
+## D Temporal Trait and Gate-Correlation Analysis 
+
+This section provides the definitions used to construct the temporal-trait visualization in Figure 1 and the channel-level gate-correlation heatmap in Figure 6. For a single variable channel, let the training sequence be x1: T = ( x1, . . . , x T ), where T is the training length. Let P denote the dataset-specific base period, e.g., P = 24 for hourly ETT data and P = 168 for weekly hourly datasets such as Electricity and Traffic. For multivariate datasets, all traits are computed independently for each channel. 
+
+Trend and seasonality strength. We first estimate a low-frequency trend component using a centered moving average with window size P ,
+
+τt = MA P (x)t. (17) The detrended sequence is dt = xt − τt. We then estimate the seasonal component by averaging detrended values that share the same phase, 
+
+st = 1
+
+|I ϕ(t)|
+
+X
+
+> i∈I ϕ(t)
+
+di, ϕ(t) = t mod P, (18) where Iϕ = {i : i mod P = ϕ}. The residual is rt = xt − τt − st. Trend strength and seasonality strength are then computed as 
+
+TrendStrength = 1 − Var( r)max(Var( x − s), ϵ ) , SeasonalityStrength = 1 − Var( r)max(Var( x − τ ), ϵ ) ,
+
+(19) and clipped to [0 , 1] . Here ϵ is a small constant for numerical stability. 
+
+Phase consistency. Phase consistency measures whether values at the same phase of the base period are reproducible across cycles. Let K = ⌊T /P ⌋ be the number of complete cycles and fold the sequence into Xk,p for k = 1 , . . . , K and p = 0 , . . . , P − 1. Denote 
+
+¯Xp = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+Xk,p , ¯X = 1
+
+KP 
+
+> K
+
+X 
+
+> k=1
+> P−1
+
+X
+
+> p=0
+
+Xk,p . (20) The phase-consistency score is the fraction of total variance explained by phase-specific means: 
+
+PhaseConsistency = K PP −1 
+
+> p=0
+
+( ¯Xp − ¯X)2
+
+PKk=1 
+
+PP −1 
+
+> p=0
+
+(Xk,p − ¯X)2 + ϵ . (21) A larger value indicates more stable phase-aligned recurrence and therefore stronger support for the phase-aligned branch. 14 Mean and scale shift. Mean shift captures low-frequency level nonstationarity. For a rolling window of length P , define 
+
+μ(P ) 
+
+> t
+
+= 1
+
+P 
+
+> t+P−1
+
+X
+
+> i=t
+
+xi. (22) The mean-shift score is 
+
+MeanShift = Std 
+
+
+
+{μ(P ) 
+
+> t
+
+}T −P +1 
+
+> t=1
+
+
+
+. (23) Scale shift captures time-varying volatility or amplitude. With rolling standard deviation 
+
+σ(P ) 
+
+> t
+
+=
+
+vuut 1
+
+P 
+
+> t+P−1
+
+X
+
+> i=t
+
+
+
+xi − μ(P )
+
+> t
+
+2
+
+, (24) we compute 
+
+ScaleShift = Std 
+
+
+
+{σ(P ) 
+
+> t
+
+}T −P +1 
+
+> t=1
+
+
+
+Mean 
+
+
+
+{σ(P ) 
+
+> t
+
+}T −P +1 
+
+> t=1
+
+
+
++ ϵ. (25) Larger values indicate stronger level drift or scale nonstationarity. 
+
+Spectral entropy. Spectral entropy measures how concentrated the frequency-domain energy is. Let S(fj ) be the power spectral density estimated by Welch’s method and normalize it as 
+
+pj = S(fj )
+
+P 
+
+> m
+
+S(fm) . (26) The normalized spectral entropy is 
+
+SpectralEntropy = − 1log 2 M
+
+> M
+
+X
+
+> j=1
+
+pj log 2(pj + ϵ), (27) where M is the number of frequency bins. A larger value indicates more dispersed spectral energy and more complex frequency composition. 
+
+Robust normalization for visualization. For the radar and boxplot visualizations, each trait is robust-normalized across all selected channel samples. Given channel-level trait values {zi}Ni=1 , let 
+
+q2 and q98 be the 2nd and 98th percentiles. The normalized score is 
+
+˜zi = clip 
+
+ zi − q2
+
+q98 − q2 + ϵ , 0, 1
+
+
+
+. (28) Dataset-level radar values are obtained by averaging these robust-normalized channel-level scores. 
+
+Gate weight aggregation and correlation. The fusion gate produces branch weights wh,c,b for forecast horizon h, channel c, and branch b ∈ { Global , Difference , Phase }. For channel-level correlation analysis, we aggregate each channel’s branch weight over the prediction horizon: 
+
+¯wc,b = 1
+
+H
+
+> H
+
+X
+
+> h=1
+
+wh,c,b . (29) The heatmap in Figure 6 reports Spearman rank correlation between channel-level temporal traits and aggregated branch preferences over all selected channel samples. We use Spearman correlation because it captures monotonic relationships and is less sensitive to outliers or nonlinear scaling than Pearson correlation. For completeness, Pearson correlation between trait values ai and branch weights bi is 
+
+ρPearson (a, b ) = 
+
+PNi=1 (ai − ¯a)( bi − ¯b)
+
+qPNi=1 (ai − ¯a)2
+
+qPNi=1 (bi − ¯b)2
+
+. (30) Spearman correlation first converts the two variables into ranks and then computes Pearson correlation on the ranked values: 
+
+ρSpearman (a, b ) = ρPearson (R(a), R (b)) . (31) 15 E Experimental Details 
+
+E.1 Datasets 
+
+We provide additional details for the forecasting benchmarks used in our experiments. • The ETT benchmark contains two sub-datasets: ETTh, collected at 1-hour intervals, and ETTm, collected at 15-minute intervals. Both were recorded from electricity transformers between July 2016 and July 2018 [21]. • Electricity records the hourly electricity consumption of 321 clients from 2012 to 2014 [ 12 ]. • Traffic provides hourly measurements from 862 sensors on San Francisco Bay Area freeways from January 2015 to December 2016 [12]. • Weather includes 21 meteorological indicators recorded every 10 minutes during 2020 at the Weather Station of the Max Planck Biogeochemistry Institute [12]. • Exchange contains daily exchange rates for eight countries, including Australia, Britain, Canada, Switzerland, China, Japan, New Zealand, and Singapore, from 1990 to 2016 [5]. Unless otherwise stated, each dataset is split into train/validation/test subsets with a ratio of 7:1:2. The detailed dataset statistics are summarized in Table 3. Table 3: Dataset statistics. Dataset Frequency Duration Features Samples ETTh 1 hour 2016–2018 7 17,420 ETTm 15 min 2016–2018 7 69,680 Electricity 1 hour 2012–2014 321 26,304 Traffic 1 hour 2015–2016 862 17,544 Weather 10 min 2020 21 52,696 Exchange 1 day 1990–2016 8 7,588 The base period P is set according to the dataset frequency: P = 24 for ETTh1/ETTh2, P = 96 
+
+for ETTm1/ETTm2, P = 168 for Electricity and Traffic, P = 144 for Weather, and P = 24 for Exchange. 
+
+E.2 Evaluation Protocol and Metrics 
+
+All real-dataset experiments use input length L = 336 , prediction lengths H ∈ { 48 , 96 , 192 , 336 },and label length 0. We report mean squared error (MSE) and mean absolute error (MAE), following standard practice in time series forecasting. Lower values indicate better performance. Reported numbers are averaged over three random seeds, and the validation set is used for early stopping and hyperparameter selection. 
+
+E.3 Baselines 
+
+We compare GatedLinear with the representative baselines reported in Table 1. Their model categories and source repositories are summarized below. 
+
+DLinear. DLinear is a simple linear forecasting model that decomposes each input sequence into trend and seasonal components and applies one-layer linear mappings to both parts. Despite its simplicity, it provides a strong and efficient baseline for long-term time series forecasting. The official implementation is available at https://github.com/cure-lab/LTSF-Linear .
+
+TimeMixer. TimeMixer is an MLP-based forecasting model that exploits decomposable multi-scale patterns. It mixes seasonal and trend information across multiple temporal resolutions and aggregates multi-scale predictors for future forecasting. The official implementation is available at 
+
+https://github.com/kwuking/TimeMixer .16 MixLinear. MixLinear is an ultra-lightweight multivariate forecasting model designed for resource-constrained settings. It combines segment-based temporal modeling with adaptive low-rank spectral filtering, reducing the parameter scale while preserving both temporal and frequency-domain infor-mation. The official implementation is available at https://github.com/aitianma/MixLinear .
+
+PaiFilter. PaiFilter is a plain shaping filter introduced in FilterNet. It learns a universal frequency-domain filter to selectively shape time series signals and is recommended by FilterNet for datasets with a relatively small number of variables. The official implementation is available at https: //github.com/aikunyi/FilterNet .
+
+PatchTST. PatchTST adapts Transformers to long-term time series forecasting by segmenting each series into patch tokens and using channel-independent processing. This design enables the model to capture long-range temporal dependencies with improved efficiency. The official implementation is available at https://github.com/yuqinie98/PatchTST .
+
+PhaseFormer. PhaseFormer replaces patch-based tokenization with phase-wise modeling for periodic time series. It uses compact phase embeddings and a lightweight cross-phase routing mechanism to capture periodic dynamics with very low parameter cost. The official implementation is available at https://github.com/neumyor/PhaseFormer_TSL .
+
+TQNet. TQNet introduces temporal query vectors to model multivariate correlations efficiently. It uses periodically shifted learnable vectors as queries in an attention mechanism, combining global temporal priors with sample-specific key-value representations. The official implementation is available at https://github.com/ACAT-SCUT/TQNet .
+
+TimeAlign. TimeAlign is a lightweight plug-and-play alignment framework for time series forecast-ing. It aligns past and future representations through a reconstruction branch and a distribution-aware alignment module, helping reduce the mismatch between historical inputs and future targets. The official implementation is available at https://github.com/TROUBADOUR000/TimeAlign .
+
+iTransformer. iTransformer inverts the conventional Transformer design by treating variates as tokens and modeling multivariate correlations through attention. This architecture improves the effectiveness of Transformer modules on multivariate time series forecasting tasks. The official implementation is available at https://github.com/thuml/iTransformer .
+
+E.4 Implementation Details 
+
+The code implementation uses four linear branches: seasonal, trend, difference, and phase residual. The seasonal and trend branches jointly form the decomposed direct basis. The difference branch predicts increments and reconstructs future levels with cumulative summation. The phase branch averages the most recent complete cycles into a phase template and adds a learned residual. Fusion logits are stored as a base table, a horizon table, and a phase table. When available, future time marks select phase logits; otherwise, horizon modulo period is used. Our model is trained for at most 30 epochs using Adam with mean squared error loss, an initial learning rate of 0.005, batch size 128, and early stopping patience 20 based on validation loss. The moving-average kernel for trend–seasonal decomposition is set to 25. For the Tri-Factorized Fusion Gate, we use fusion temperature τ = 0 .8. RevIN is enabled with ϵ = 10 −5 and without affine parameters. The phase branch uses the most recent available complete cycles, with a target of 3 cycles for ETTh1 and 2 cycles for the other datasets, clipped by the number of complete cycles contained in the input window. Future time marks are used to select phase-indexed gate logits when the phase can be decoded; otherwise, the model falls back to horizon-modulo-period indexing. 17 F Additional Empirical Results 
+
+F.1 Detailed Forecasting Results 
+
+Table 4 reports the detailed MSE and MAE results for input length L = 336 and prediction lengths 
+
+H ∈ { 48 , 96 , 192 , 336 }. The horizon-wise breakdown further clarifies the averaged results in Table 1. GatedLinear is consistently strong on ECL, ETTm1, ETTm2, ETTh2, Exchange, and Weather, where it achieves the best or second-best results for most horizons. The gains are especially clear on ECL and Weather as the prediction horizon becomes longer, suggesting that the adaptive combination of global, difference-based, and phase-aligned bases helps maintain stable forecasts beyond the short-horizon regime. On ETTh1 and Traffic, specialized baselines remain stronger for some horizons, indicating that a fixed lightweight channel-independent design is not uniformly optimal for every dataset. Nevertheless, GatedLinear remains competitive across these cases and obtains the best overall average performance, supporting the claim that adaptive mechanism selection provides a robust accuracy profile across heterogeneous benchmarks. 
+
+F.2 Forecasting Visualizations 
+
+Figure 8 provides qualitative examples for the same forecasting setting. The vertical dashed line separates the observed input window from the prediction region. Across strongly periodic examples such as ECL and Traffic, GatedLinear preserves the phase and amplitude of repeated peaks more closely than the shown baselines, which is consistent with the role of the phase-aligned branch. On ETTm2 and ETTh2, the predictions also follow the dominant future shape while avoiding large phase shifts. For more irregular or nonstationary series such as ETTh1, Exchange, and Weather, all methods have difficulty matching abrupt local changes exactly; GatedLinear tends to produce smoother and more conservative trajectories, tracking the main level and trend while not overreacting to short-lived fluctuations. These visualizations complement the quantitative results by showing that the proposed gate can select useful forecasting mechanisms under diverse temporal patterns, while the remaining errors often occur around sudden regime changes or high-frequency variations. Figure 9 further shows forecasting results with the three branch contributions on ECL and Traffic. The visualizations make the fused forecast and the global, difference-based, and phase-aligned components explicit, illustrating how the final prediction is formed by combining complementary branches over the forecast horizon. 
+
+F.3 Effect of Different Input Windows 
+
+Figure 10 compares GatedLinear under different input-window lengths and examines whether longer input histories always improve forecasting accuracy. The effect is dataset-dependent. Traffic benefits from a longer window, and Weather also improves when more historical context is provided, which is plausible because both datasets contain stable daily or weekly patterns that can be reinforced by additional cycles. In contrast, ETTm1 and Exchange become worse when the window is excessively long, suggesting that older observations may introduce stale or nonstationary information. ETTh1, ETTh2, ETTm2, and ECL show their best or near-best results at moderate window lengths, rather than at the maximum window. Overall, the comparison indicates that the useful context size depends on the balance between informative periodic evidence and outdated historical information. 
+
+F.4 Parameter Sensitivity 
+
+Figure 11 analyzes two hyperparameters of the proposed gate and phase branch. For the fusion temperature τ , very sharp routing gives higher error, while moderate temperatures lead to lower MSE and MAE. The performance remains close across τ ∈ [0 .5, 1.0] , and the default value τ = 0 .8 lies in this stable low-error region, indicating that the model does not rely on a finely tuned temperature. For the number of phase cycles K, using a small number of recent cycles is beneficial, with the best region around K = 3 to K = 5 in this study. Increasing K to 10 degrades both metrics, likely because older cycles dilute the current phase template when the series undergoes level or amplitude changes. These results support the design choice of using compact phase evidence and a softly adaptive fusion gate. 18 Table 4: Detailed forecasting results with input length L = 336 . The best results are shown in red bold , and the second-best in blue underline. Lower MSE/MAE is better. 
+
+Dataset H GatedLinear DLinear TimeMixer MixLinear PaiFilter PatchTST PhaseFormer TQNet TimeAlign iTransformer 
+
+MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE 
+
+> ECL
+
+48 0.112 0.207 0.125 0.223 0.113 0.207 0.135 0.231 0.114 0.211 0.122 0.228 0.146 0.241 0.110 0.206 0.115 0.211 0.110 0.205 96 0.129 0.222 0.141 0.237 0.135 0.227 0.147 0.242 0.132 0.227 0.139 0.242 0.155 0.248 0.131 0.226 0.130 0.224 0.133 0.227 
+
+192 0.146 0.239 0.155 0.249 0.151 0.244 0.174 0.270 0.150 0.244 0.156 0.257 0.167 0.258 0.154 0.248 0.152 0.245 0.153 0.250 
+
+336 0.164 0.257 0.172 0.265 0.172 0.262 0.178 0.271 0.167 0.261 0.173 0.274 0.183 0.273 0.171 0.265 0.169 0.263 0.174 0.267 
+
+AVG 0.138 0.231 0.148 0.243 0.143 0.235 0.159 0.254 0.141 0.235 0.147 0.250 0.163 0.255 0.141 0.236 0.141 0.236 0.143 0.237 
+
+> ETTh1
+
+48 0.339 0.370 0.343 0.376 0.356 0.387 0.343 0.374 0.382 0.412 0.346 0.386 0.363 0.387 0.337 0.377 0.343 0.378 0.378 0.408 
+
+96 0.370 0.391 0.376 0.397 0.395 0.411 0.366 0.388 0.434 0.437 0.379 0.405 0.383 0.395 0.387 0.407 0.384 0.405 0.438 0.438 
+
+192 0.432 0.435 0.405 0.412 0.409 0.419 0.407 0.413 0.444 0.446 0.432 0.433 0.419 0.419 0.410 0.418 0.429 0.433 0.509 0.475 
+
+336 0.473 0.461 0.429 0.428 0.438 0.442 0.418 0.420 0.471 0.464 0.445 0.443 0.435 0.428 0.432 0.433 0.450 0.446 0.509 0.486 
+
+AVG 0.404 0.414 0.388 0.403 0.400 0.415 0.383 0.399 0.433 0.440 0.401 0.417 0.400 0.407 0.391 0.409 0.402 0.415 0.459 0.452 
+
+> ETTh2
+
+48 0.224 0.300 0.217 0.298 0.241 0.323 0.242 0.311 0.254 0.325 0.242 0.316 0.252 0.321 0.233 0.313 0.230 0.305 0.262 0.333 
+
+96 0.283 0.343 0.278 0.339 0.311 0.366 0.293 0.344 0.324 0.372 0.310 0.364 0.301 0.355 0.296 0.352 0.293 0.349 0.369 0.393 
+
+192 0.333 0.379 0.337 0.384 0.375 0.402 0.347 0.381 0.408 0.432 0.365 0.410 0.351 0.388 0.357 0.394 0.369 0.394 0.455 0.435 
+
+336 0.359 0.403 0.370 0.411 0.387 0.424 0.374 0.403 0.402 0.438 0.398 0.428 0.398 0.423 0.375 0.413 0.388 0.418 0.442 0.448 
+
+AVG 0.300 0.356 0.300 0.358 0.328 0.379 0.314 0.360 0.347 0.392 0.329 0.379 0.326 0.372 0.315 0.368 0.320 0.367 0.382 0.402 
+
+> ETTm1
+
+48 0.251 0.309 0.275 0.328 0.277 0.335 0.285 0.337 0.285 0.340 0.265 0.325 0.579 0.492 0.254 0.312 0.252 0.313 0.309 0.346 
+
+96 0.284 0.330 0.302 0.344 0.306 0.354 0.324 0.365 0.310 0.355 0.304 0.350 0.499 0.463 0.293 0.344 0.291 0.340 0.340 0.376 
+
+192 0.327 0.359 0.337 0.365 0.344 0.379 0.350 0.377 0.348 0.381 0.333 0.376 0.542 0.490 0.335 0.372 0.324 0.363 0.369 0.396 
+
+336 0.360 0.380 0.374 0.386 0.372 0.397 0.391 0.404 0.377 0.399 0.367 0.396 0.541 0.492 0.371 0.391 0.359 0.385 0.410 0.423 
+
+AVG 0.305 0.344 0.322 0.356 0.325 0.366 0.338 0.371 0.330 0.369 0.317 0.362 0.540 0.484 0.313 0.355 0.307 0.350 0.357 0.385 
+
+> ETTm2
+
+48 0.124 0.221 0.128 0.226 0.136 0.234 0.142 0.243 0.134 0.230 0.130 0.229 0.181 0.289 0.127 0.223 0.130 0.224 0.144 0.247 
+
+96 0.162 0.251 0.164 0.252 0.179 0.261 0.178 0.268 0.180 0.266 0.178 0.267 0.209 0.299 0.166 0.254 0.168 0.253 0.212 0.300 
+
+192 0.221 0.292 0.221 0.291 0.237 0.306 0.232 0.304 0.243 0.301 0.233 0.304 0.266 0.331 0.226 0.296 0.237 0.298 0.278 0.343 
+
+336 0.276 0.329 0.275 0.325 0.296 0.351 0.286 0.338 0.281 0.330 0.292 0.343 0.308 0.361 0.285 0.332 0.285 0.333 0.326 0.373 
+
+AVG 0.196 0.273 0.197 0.274 0.212 0.288 0.209 0.288 0.210 0.281 0.208 0.286 0.241 0.320 0.201 0.276 0.205 0.277 0.240 0.316 
+
+> Exchange
+
+48 0.048 0.151 0.044 0.143 0.047 0.153 0.058 0.173 0.052 0.159 0.047 0.154 0.058 0.172 0.053 0.161 0.046 0.150 0.053 0.166 
+
+96 0.084 0.205 0.088 0.205 0.097 0.223 0.102 0.227 0.099 0.221 0.095 0.219 0.103 0.232 0.100 0.223 0.103 0.228 0.110 0.239 
+
+192 0.200 0.328 0.192 0.307 0.197 0.317 0.187 0.311 0.238 0.346 0.188 0.315 0.214 0.335 0.196 0.317 0.180 0.302 0.236 0.354 
+
+336 0.313 0.424 0.356 0.428 0.395 0.456 0.325 0.415 0.393 0.451 0.356 0.435 0.378 0.452 0.425 0.477 0.355 0.432 0.444 0.488 
+
+AVG 0.161 0.277 0.170 0.271 0.184 0.287 0.168 0.281 0.196 0.294 0.172 0.281 0.188 0.298 0.193 0.294 0.171 0.278 0.211 0.312 
+
+> Traffic
+
+48 0.383 0.260 0.394 0.275 0.347 0.252 0.402 0.276 0.363 0.263 0.352 0.256 0.414 0.264 0.342 0.237 0.367 0.262 0.329 0.243 
+
+96 0.397 0.266 0.411 0.280 0.371 0.258 0.416 0.279 0.388 0.276 0.376 0.268 0.425 0.266 0.364 0.252 0.376 0.261 0.363 0.260 
+
+192 0.410 0.275 0.424 0.285 0.393 0.264 0.430 0.287 0.407 0.284 0.395 0.276 0.432 0.268 0.399 0.278 0.413 0.288 0.385 0.270 
+
+336 0.428 0.285 0.436 0.291 0.422 0.293 0.443 0.295 0.421 0.291 0.409 0.282 0.442 0.272 0.420 0.297 0.428 0.295 0.392 0.274 
+
+AVG 0.405 0.272 0.416 0.283 0.383 0.267 0.423 0.284 0.395 0.278 0.383 0.270 0.428 0.267 0.381 0.266 0.396 0.276 0.367 0.262 Weather  48 0.116 0.160 0.136 0.184 0.120 0.169 0.146 0.200 0.118 0.163 0.114 0.155 0.153 0.207 0.120 0.163 0.116 0.157 0.131 0.176 
+
+96 0.145 0.196 0.174 0.224 0.155 0.209 0.183 0.236 0.151 0.204 0.150 0.198 0.184 0.244 0.156 0.209 0.149 0.199 0.167 0.221 
+
+192 0.188 0.237 0.217 0.259 0.194 0.242 0.225 0.269 0.197 0.250 0.197 0.244 0.225 0.273 0.202 0.250 0.189 0.237 0.207 0.254 
+
+336 0.242 0.278 0.264 0.293 0.242 0.279 0.273 0.304 0.249 0.288 0.254 0.287 0.272 0.307 0.249 0.284 0.242 0.279 0.257 0.291 
+
+AVG 0.173 0.218 0.198 0.240 0.178 0.225 0.207 0.252 0.179 0.226 0.179 0.221 0.208 0.257 0.182 0.226 0.174 0.218 0.191 0.235 
+
+19 Figure 8: Forecasting visualization examples on eight benchmark datasets with input length L = 336 
+
+and prediction length H = 96 . Each panel compares the predicted trajectory of our model with representative baselines against the ground truth, providing a qualitative view of how GatedLinear tracks diverse temporal patterns across datasets. 20 Figure 9: Forecasting visualizations with weighted tri-branch contributions on ECL and Traffic, using input length L = 336 and prediction length H = 336 . For each dataset, the top panel shows the fused prediction together with the weighted contributions from the global, difference-based, and phase-aligned branches, and the bottom panel compares the final forecast with the ground truth. 21 Figure 10: Performance comparison of GatedLinear under different input lengths across benchmark datasets, with prediction length fixed to H = 96 . The results show the effect of using different historical context windows for a fixed forecasting horizon. 
+
+Figure 11: Parameter sensitivity study on the ETTh1 dataset. The left panel varies the fusion temperature τ in the fusion gate, and the right panel varies the number of phase cycles K. MSE and MAE are reported to show how these two hyperparameters affect forecasting performance. 22 NeurIPS Paper Checklist 
+
+1. Claims 
+
+Question: Do the main claims made in the abstract and introduction accurately reflect the paper’s contributions and scope? Answer: [Yes] Justification: The abstract and introduction state the proposed tri-basis GatedLinear frame-work, its Tri-Factorized Fusion Gate, interpretability, and efficiency claims. These claims are evaluated through the methodology, main results, ablations, interpretability analysis, and efficiency analysis. Guidelines: • The answer [N/A] means that the abstract and introduction do not include the claims made in the paper. • The abstract and/or introduction should clearly state the claims made, including the contributions made in the paper and important assumptions and limitations. A [No] or [N/A] answer to this question will not be perceived well by the reviewers. • The claims made should match theoretical and experimental results, and reflect how much the results can be expected to generalize to other settings. • It is fine to include aspirational goals as motivation as long as it is clear that these goals are not attained by the paper. 2. Limitations 
+
+Question: Does the paper discuss the limitations of the work performed by the authors? Answer: [Yes] Justification: The appendix includes a dedicated limitations section discussing the channel-independent design, dependence on meaningful periods and future phase indices, and the limited expressiveness of the three linear forecasting bases. Guidelines: • The answer [N/A] means that the paper has no limitation while the answer [No] means that the paper has limitations, but those are not discussed in the paper. • The authors are encouraged to create a separate “Limitations” section in their paper. • The paper should point out any strong assumptions and how robust the results are to violations of these assumptions (e.g., independence assumptions, noiseless settings, model well-specification, asymptotic approximations only holding locally). The authors should reflect on how these assumptions might be violated in practice and what the implications would be. • The authors should reflect on the scope of the claims made, e.g., if the approach was only tested on a few datasets or with a few runs. In general, empirical results often depend on implicit assumptions, which should be articulated. • The authors should reflect on the factors that influence the performance of the approach. For example, a facial recognition algorithm may perform poorly when image resolution is low or images are taken in low lighting. Or a speech-to-text system might not be used reliably to provide closed captions for online lectures because it fails to handle technical jargon. • The authors should discuss the computational efficiency of the proposed algorithms and how they scale with dataset size. • If applicable, the authors should discuss possible limitations of their approach to address problems of privacy and fairness. • While the authors might fear that complete honesty about limitations might be used by reviewers as grounds for rejection, a worse outcome might be that reviewers discover limitations that aren’t acknowledged in the paper. The authors should use their best judgment and recognize that individual actions in favor of transparency play an impor-tant role in developing norms that preserve the integrity of the community. Reviewers will be specifically instructed to not penalize honesty concerning limitations. 3. Theory assumptions and proofs 
+
+23 Question: For each theoretical result, does the paper provide the full set of assumptions and a complete (and correct) proof? Answer: [Yes] Justification: Appendix C states the assumptions for a non-stationary integrated random walk with drift, derives the corresponding MMSE predictor, and analyzes why a global basis is not shift-invariant under this setting. The same appendix shows that the difference-based basis recovers the MMSE predictor structure and remains invariant to arbitrary level shifts under the stated assumptions. Guidelines: • The answer [N/A] means that the paper does not include theoretical results. • All the theorems, formulas, and proofs in the paper should be numbered and cross-referenced. • All assumptions should be clearly stated or referenced in the statement of any theorems. • The proofs can either appear in the main paper or the supplemental material, but if they appear in the supplemental material, the authors are encouraged to provide a short proof sketch to provide intuition. • Inversely, any informal proof provided in the core of the paper should be complemented by formal proofs provided in appendix or supplemental material. • Theorems and Lemmas that the proof relies upon should be properly referenced. 4. Experimental result reproducibility 
+
+Question: Does the paper fully disclose all the information needed to reproduce the main ex-perimental results of the paper to the extent that it affects the main claims and/or conclusions of the paper (regardless of whether the code and data are provided or not)? Answer: [Yes] Justification: The paper and supplemental material describe the architecture, datasets, splits, metrics, optimizer, evaluated horizons, random-seed protocol, and hyperparameter settings used to obtain the main results. The supplemental code package provides the implementation and reproduction instructions for the reported experiments. Guidelines: • The answer [N/A] means that the paper does not include experiments. • If the paper includes experiments, a [No] answer to this question will not be perceived well by the reviewers: Making the paper reproducible is important, regardless of whether the code and data are provided or not. • If the contribution is a dataset and/or model, the authors should describe the steps taken to make their results reproducible or verifiable. • Depending on the contribution, reproducibility can be accomplished in various ways. For example, if the contribution is a novel architecture, describing the architecture fully might suffice, or if the contribution is a specific model and empirical evaluation, it may be necessary to either make it possible for others to replicate the model with the same dataset, or provide access to the model. In general. releasing code and data is often one good way to accomplish this, but reproducibility can also be provided via detailed instructions for how to replicate the results, access to a hosted model (e.g., in the case of a large language model), releasing of a model checkpoint, or other means that are appropriate to the research performed. • While NeurIPS does not require releasing code, the conference does require all submis-sions to provide some reasonable avenue for reproducibility, which may depend on the nature of the contribution. For example (a) If the contribution is primarily a new algorithm, the paper should make it clear how to reproduce that algorithm. (b) If the contribution is primarily a new model architecture, the paper should describe the architecture clearly and fully. (c) If the contribution is a new model (e.g., a large language model), then there should either be a way to access this model for reproducing the results or a way to reproduce the model (e.g., with an open-source dataset or instructions for how to construct the dataset). 24 (d) We recognize that reproducibility may be tricky in some cases, in which case authors are welcome to describe the particular way they provide for reproducibility. In the case of closed-source models, it may be that access to the model is limited in some way (e.g., to registered users), but it should be possible for other researchers to have some path to reproducing or verifying the results. 5. Open access to data and code 
+
+Question: Does the paper provide open access to the data and code, with sufficient instruc-tions to faithfully reproduce the main experimental results, as described in supplemental material? Answer: [Yes] Justification: The experiments use standard public forecasting benchmarks, and the supple-mental material includes an anonymized code package with instructions for reproducing the main results. The authors plan to release a public repository after the review process. Guidelines: • The answer [N/A] means that paper does not include experiments requiring code. • Please see the NeurIPS code and data submission guidelines ( https://neurips.cc/ public/guides/CodeSubmissionPolicy ) for more details. • While we encourage the release of code and data, we understand that this might not be possible, so [No] is an acceptable answer. Papers cannot be rejected simply for not including code, unless this is central to the contribution (e.g., for a new open-source benchmark). • The instructions should contain the exact command and environment needed to run to reproduce the results. See the NeurIPS code and data submission guidelines ( https: //neurips.cc/public/guides/CodeSubmissionPolicy ) for more details. • The authors should provide instructions on data access and preparation, including how to access the raw data, preprocessed data, intermediate data, and generated data, etc. • The authors should provide scripts to reproduce all experimental results for the new proposed method and baselines. If only a subset of experiments are reproducible, they should state which ones are omitted from the script and why. • At submission time, to preserve anonymity, the authors should release anonymized versions (if applicable). • Providing as much information as possible in supplemental material (appended to the paper) is recommended, but including URLs to data and code is permitted. 6. Experimental setting/details 
+
+Question: Does the paper specify all the training and test details (e.g., data splits, hyperpa-rameters, how they were chosen, type of optimizer) necessary to understand the results? Answer: [Yes] Justification: The experimental setup specifies the benchmark datasets, train/validation/test split, input and prediction lengths, metrics, optimizer, validation-based hyperparameter selection, and random-seed averaging. Additional hyperparameter and implementation details are provided in the appendix and supplemental material. Guidelines: • The answer [N/A] means that the paper does not include experiments. • The experimental setting should be presented in the core of the paper to a level of detail that is necessary to appreciate the results and make sense of them. • The full details can be provided either with the code, in appendix, or as supplemental material. 7. Experiment statistical significance 
+
+Question: Does the paper report error bars suitably and correctly defined or other appropriate information about the statistical significance of the experiments? Answer: [No] 25 Justification: Reported numbers are averaged over three random seeds, and the main conclusions are supported by mean performance across multiple datasets, horizons, and ablations. Explicit standard deviations, confidence intervals, or significance tests are not included due to space constraints. Guidelines: • The answer [N/A] means that the paper does not include experiments. • The authors should answer [Yes] if the results are accompanied by error bars, confidence intervals, or statistical significance tests, at least for the experiments that support the main claims of the paper. • The factors of variability that the error bars are capturing should be clearly stated (for example, train/test split, initialization, random drawing of some parameter, or overall run with given experimental conditions). • The method for calculating the error bars should be explained (closed form formula, call to a library function, bootstrap, etc.) • The assumptions made should be given (e.g., Normally distributed errors). • It should be clear whether the error bar is the standard deviation or the standard error of the mean. • It is OK to report 1-sigma error bars, but one should state it. The authors should preferably report a 2-sigma error bar than state that they have a 96% CI, if the hypothesis of Normality of errors is not verified. • For asymmetric distributions, the authors should be careful not to show in tables or figures symmetric error bars that would yield results that are out of range (e.g., negative error rates). • If error bars are reported in tables or plots, the authors should explain in the text how they were calculated and reference the corresponding figures or tables in the text. 8. Experiments compute resources 
+
+Question: For each experiment, does the paper provide sufficient information on the com-puter resources (type of compute workers, memory, time of execution) needed to reproduce the experiments? Answer: [Yes] Justification: The paper reports the GPU information used for the experiments and includes an efficiency analysis comparing training time, forecasting accuracy, and peak GPU memory. These details provide the compute context needed to reproduce and interpret the reported experiments. Guidelines: • The answer [N/A] means that the paper does not include experiments. • The paper should indicate the type of compute workers CPU or GPU, internal cluster, or cloud provider, including relevant memory and storage. • The paper should provide the amount of compute required for each of the individual experimental runs as well as estimate the total compute. • The paper should disclose whether the full research project required more compute than the experiments reported in the paper (e.g., preliminary or failed experiments that didn’t make it into the paper). 9. Code of ethics 
+
+Question: Does the research conducted in the paper conform, in every respect, with the NeurIPS Code of Ethics https://neurips.cc/public/EthicsGuidelines ?Answer: [Yes] Justification: The work is a forecasting-method study using standard benchmark time-series datasets and does not involve human-subject experiments, private data collection, or high-risk model release. The research conforms to the NeurIPS Code of Ethics. Guidelines: • The answer [N/A] means that the authors have not reviewed the NeurIPS Code of Ethics. 26 • If the authors answer [No], they should explain the special circumstances that require a deviation from the Code of Ethics. • The authors should make sure to preserve anonymity (e.g., if there is a special consid-eration due to laws or regulations in their jurisdiction). 10. Broader impacts 
+
+Question: Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed? Answer: [No] Justification: The paper does not include a separate broader-impact discussion because it presents a general methodological contribution for time series forecasting rather than an application-specific deployed system. The work is evaluated on standard public benchmarks and aims to improve the accuracy, efficiency, and interpretability of forecasting models; any societal benefits or risks would primarily depend on the downstream domain in which such a forecaster is deployed. Guidelines: • The answer [N/A] means that there is no societal impact of the work performed. • If the authors answer [N/A] or [No], they should explain why their work has no societal impact or why the paper does not address societal impact. • Examples of negative societal impacts include potential malicious or unintended uses (e.g., disinformation, generating fake profiles, surveillance), fairness considerations (e.g., deployment of technologies that could make decisions that unfairly impact specific groups), privacy considerations, and security considerations. • The conference expects that many papers will be foundational research and not tied to particular applications, let alone deployments. However, if there is a direct path to any negative applications, the authors should point it out. For example, it is legitimate to point out that an improvement in the quality of generative models could be used to generate Deepfakes for disinformation. On the other hand, it is not needed to point out that a generic algorithm for optimizing neural networks could enable people to train models that generate Deepfakes faster. • The authors should consider possible harms that could arise when the technology is being used as intended and functioning correctly, harms that could arise when the technology is being used as intended but gives incorrect results, and harms following from (intentional or unintentional) misuse of the technology. • If there are negative societal impacts, the authors could also discuss possible mitigation strategies (e.g., gated release of models, providing defenses in addition to attacks, mechanisms for monitoring misuse, mechanisms to monitor how a system learns from feedback over time, improving the efficiency and accessibility of ML). 11. Safeguards 
+
+Question: Does the paper describe safeguards that have been put in place for responsible release of data or models that have a high risk for misuse (e.g., pre-trained language models, image generators, or scraped datasets)? Answer: [N/A] Justification: The paper does not release high-risk models or scraped datasets, and the proposed forecasting architecture is evaluated on standard benchmark time-series data. No special controlled-release safeguards are therefore applicable. Guidelines: • The answer [N/A] means that the paper poses no such risks. • Released models that have a high risk for misuse or dual-use should be released with necessary safeguards to allow for controlled use of the model, for example by requiring that users adhere to usage guidelines or restrictions to access the model or implementing safety filters. • Datasets that have been scraped from the Internet could pose safety risks. The authors should describe how they avoided releasing unsafe images. 27 • We recognize that providing effective safeguards is challenging, and many papers do not require this, but we encourage authors to take this into account and make a best faith effort. 12. Licenses for existing assets 
+
+Question: Are the creators or original owners of assets (e.g., code, data, models), used in the paper, properly credited and are the license and terms of use explicitly mentioned and properly respected? Answer: [Yes] Justification: The paper properly credits the benchmark datasets and baseline methods through citations, and the appendix provides the official repositories for the compared baselines. The experiments use public benchmark assets and baseline implementations according to their original licenses and terms of use, with additional asset and license information documented in the supplemental material where applicable. Guidelines: • The answer [N/A] means that the paper does not use existing assets. • The authors should cite the original paper that produced the code package or dataset. • The authors should state which version of the asset is used and, if possible, include a URL. • The name of the license (e.g., CC-BY 4.0) should be included for each asset. • For scraped data from a particular source (e.g., website), the copyright and terms of service of that source should be provided. • If assets are released, the license, copyright information, and terms of use in the package should be provided. For popular datasets, paperswithcode.com/datasets 
+
+has curated licenses for some datasets. Their licensing guide can help determine the license of a dataset. • For existing datasets that are re-packaged, both the original license and the license of the derived asset (if it has changed) should be provided. • If this information is not available online, the authors are encouraged to reach out to the asset’s creators. 13. New assets 
+
+Question: Are new assets introduced in the paper well documented and is the documentation provided alongside the assets? Answer: [Yes] Justification: The paper introduces GatedLinear and provides an anonymized supplemental code package for the proposed model. The released code is documented with instructions for environment setup, data preparation, training, evaluation, hyperparameter settings, and reproduction of the main experiments; a public repository will be released after the review process. Guidelines: • The answer [N/A] means that the paper does not release new assets. • Researchers should communicate the details of the dataset/code/model as part of their submissions via structured templates. This includes details about training, license, limitations, etc. • The paper should discuss whether and how consent was obtained from people whose asset is used. • At submission time, remember to anonymize your assets (if applicable). You can either create an anonymized URL or include an anonymized zip file. 14. Crowdsourcing and research with human subjects 
+
+Question: For crowdsourcing experiments and research with human subjects, does the paper include the full text of instructions given to participants and screenshots, if applicable, as well as details about compensation (if any)? Answer: [N/A] 28 Justification: The paper does not involve crowdsourcing, participant studies, or other research with human subjects. All experiments are conducted on time-series forecasting benchmarks. Guidelines: • The answer [N/A] means that the paper does not involve crowdsourcing nor research with human subjects. • Including this information in the supplemental material is fine, but if the main contribu-tion of the paper involves human subjects, then as much detail as possible should be included in the main paper. • According to the NeurIPS Code of Ethics, workers involved in data collection, curation, or other labor should be paid at least the minimum wage in the country of the data collector. 15. Institutional review board (IRB) approvals or equivalent for research with human subjects 
+
+Question: Does the paper describe potential risks incurred by study participants, whether such risks were disclosed to the subjects, and whether Institutional Review Board (IRB) approvals (or an equivalent approval/review based on the requirements of your country or institution) were obtained? Answer: [N/A] Justification: The work does not include human-subject research or crowdsourcing experi-ments. IRB or equivalent approval is therefore not applicable to the described study. Guidelines: • The answer [N/A] means that the paper does not involve crowdsourcing nor research with human subjects. • Depending on the country in which research is conducted, IRB approval (or equivalent) may be required for any human subjects research. If you obtained IRB approval, you should clearly state this in the paper. • We recognize that the procedures for this may vary significantly between institutions and locations, and we expect authors to adhere to the NeurIPS Code of Ethics and the guidelines for their institution. • For initial submissions, do not include any information that would break anonymity (if applicable), such as the institution conducting the review. 16. Declaration of LLM usage 
+
+Question: Does the paper describe the usage of LLMs if it is an important, original, or non-standard component of the core methods in this research? Note that if the LLM is used only for writing, editing, or formatting purposes and does not impact the core methodology, scientific rigor, or originality of the research, declaration is not required. Answer: [N/A] Justification: The core method is a linear time-series forecasting architecture with a struc-tured fusion gate and does not use LLMs as an original or non-standard methodological component. Guidelines: • The answer [N/A] means that the core method development in this research does not involve LLMs as any important, original, or non-standard components. • Please refer to our LLM policy in the NeurIPS handbook for what should or should not be described. 29
