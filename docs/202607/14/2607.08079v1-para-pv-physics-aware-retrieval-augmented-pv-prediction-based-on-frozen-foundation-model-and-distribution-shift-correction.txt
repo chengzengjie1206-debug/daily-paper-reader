@@ -1,0 +1,1400 @@
+Title: PARA-PV: Physics-Aware Retrieval-Augmented PV Prediction Based on Frozen Foundation Model and Distribution Shift Correction
+
+URL Source: https://arxiv.org/pdf/2607.08079v1
+
+Published Time: Fri, 10 Jul 2026 00:32:58 GMT
+
+Number of Pages: 36
+
+Markdown Content:
+# PARA-PV: Physics-Aware Retrieval-Augmented PV Prediction Based on Frozen Foundation Model and Distribution Shift Correction 
+
+Hang Fan a, Weican Liu b, ∗, Ying Lu a, Dunnan Liu a, Long Cheng c, Wei Wei d, ∗∗ 
+
+> aSchool of Economics and Management, North China Electric Power University, 102206, Beijing, China
+> bSchool of Electrical and Electronic Engineering, Nanyang Technological University, 639798, 50 Nanyang Avenue, Singapore
+> cSchool of Control and Computer Engineering, North China Electric Power University, 102206, Beijing, China
+> dDepartment of Electrical Engineering, Tsinghua University, 100084, Beijing, China
+
+Abstract 
+
+Accurate photovoltaic (PV) power forecasting is essential for reliable grid dispatch and renewable energy integration, yet it remains challenging because PV generation is jointly shaped by weather variability, day-night transitions, regime-dependent dynamics, and strict physical constraints. Existing data-driven methods typically improve temporal representation learning by increasing model complexity, but they insufficiently exploit PV-specific physical knowledge and may produce biased forecasts under peak, ramping, or low-power conditions. To address these limitations, we propose PARA-PV, a Physics-Aware Retrieval-Augmented framework that embeds physical knowledge throughout the forecasting process. The framework first encodes multivariate PV observations into patch-level representations and, through a physics-aware retrieval-augmented learner, retrieves historical patches and analog trajectories that are consistent with the current window in temporal shape, power level, PV operating state, and intra-day pe-riod; this yields a physically grounded base forecast. To supplement local memory with broader temporal knowledge, the base forecast is then calibrated against a frozen Chronos time-series foundation-model prior through a lightweight residual adapter, so that general temporal regularities are adapted to PV-specific dynamics without overriding the physically grounded prediction. Because residual conditional distribution shifts persist when weather and diurnal regimes change, a physics-aware distribution shift correction module subsequently adjusts the preliminary forecast using power, weather, timestamp, and day/night conditions, applying gated mean-shift and scale corrections selectively. Finally, a physics-constrained loss function partitions the samples into peak, ramping, night-time, and regular regimes and adaptively reweights their error contributions, preventing the dominant regular regime from suppressing learning of operationally critical states. Experiments on two geographically distinct PV farms demonstrate that PARA-PV consistently outperforms seven representative baselines across multiple forecasting hori-zons, achieving lower point-forecast errors and sharper prediction intervals with fewer than 1M trainable parameters. Our code is available at https://github.com/weican1103/PARA-PV .
+
+Keywords: Artificial intelligence, Foundation models, Physics-aware learning, PV power forecasting, Retrieval-augmented prediction. 
+
+> ∗W. Liu is the Corresponding author (Email: weican001@e.ntu.edu.sg).
+> ∗∗ W. Wei is the Co-corresponding author (Email: wei-wei04@mails.tsinghua.edu.cn). arXiv:2607.08079v1 [cs.AI] 9 Jul 2026
+
+1. Introduction 
+
+1.1. Background and motivation 
+
+With the continuous growth of global energy demand, the development of reliable and low-carbon energy systems has become an urgent priority. Among renewable energy sources, solar energy offers clear advantages in terms of cleanliness, scalability, and wide geographical availability. Driven by advances in PV technology and policy support, PV generation has expanded rapidly and is becoming an increasingly important component of modern power systems [1]. Accurate PV power forecasting is essential for grid integration of solar power and energy management [2, 3, 4, 5, 6]. However, PV forecasting remains challenging because power output is jointly affected by multiple meteorological and temporal variables, such as irradiance, cloud movement, and diurnal cycles, while also being constrained by physical operating regimes including night-time zero generation, capacity limits, peak production, and rapid ramping dynamics, which make it difficult to learn hidden information [7]. Although PV forecasting models have evolved from statistical methods to deep temporal architectures, their predictive reliability remains limited under complex meteorological and operating conditions. First, many existing models mainly pursue more expressive data-driven architectures, but they insufficiently incorporate the physical constraints of PV generation, such as zero output at night, capacity limits, peak-generation regimes, and rapid ramping behavior. These models may fit historical observations well but still produce physically inconsistent or regime-biased forecasts when weather conditions and operating states change. Second, most studies have not fully exploited recent advances in time-series foundation models, whose general temporal modeling capability can provide useful priors for prediction when properly calibrated. Third, existing approaches often focus on improving the forecasting model itself while paying less attention to post-prediction distribution shift correction. However, meteorological variations and temporal conditions can shift the distribution of PV output. Therefore, simply using weather or time variables as model inputs may improve accuracy, but it does not fundamentally correct the distributional bias of prediction. 
+
+1.2. Related work 
+
+Recently, high-accuracy PV power forecasting models have developed rapidly. According to previous studies, forecasting models can be broadly classified into physical models, statistical models, and artificial intelligence models. Physical models estimate power generation by describing the energy conversion process of PV systems based on solar irradiance, module characteristics, and system configuration. For example, Zhi et al. proposed a physical model that combines meteorological parameter prediction, irradiance calculation, an equivalent circuit model and an improved maximum power tracking algorithm for rooftop PV power prediction, achieving a mean absolute error of 15.9% under various weather conditions [8]. While these models are generally interpretable and physically consistent, their performance often depends on the accuracy of meteorological inputs and detailed system parameters [9]. Statistical models, including ARIMA (Autoregressive Integrated Moving Average) [10] and regression-based models [11], mainly establish mathematical relationships between historical PV power observations and relevant explanatory variables, offering efficient prediction. For example, Doubleday et al. proposed a Bayesian model averaging post-processing method for probabilistic utility-scale PV forecasting, which calibrates biased numerical weather prediction ensembles through weighted probability density functions [12]. Although statistical models can capture trend variations, they often face challenges in modeling complex nonlinear relationships [13]. 2Driven by recent advances in artificial intelligence, machine learning methods, such as Support Vector Regression (SVR) [14], Random Forest (RF) [15], and Gradient Boosting Decision Tree (GBDT) [16], have been increasingly applied to time-series forecasting tasks. For example, Eseye et al. proposed a Hy-brid Wavelet-PSO-SVM model, which integrates wavelet transform and support vector machine to model nonlinear relationships between numerical weather prediction variables and PV power [17]. Hategan et al. proposed a weighted ensemble model that combines machine learning and sky-image-based methods, improving intra-hour PV power forecasting accuracy [18]. Although machine learning models have been widely used for PV power forecasting, their performance is often limited by strong data dependence, weak physical interpretability, and reduced robustness under rapidly changing weather conditions [19]. Deep learning models have been increasingly used for PV power forecasting due to their stronger ability to capture nonlinear temporal patterns, such as recurrent neural network-based models [20], graph convolu-tional network-based models [21], and Transformer-based models [22]. For example, Liu et al. proposed a PBiLSTM-CNN model that combines multimodal decomposition with parallel bidirectional long short-term memory and convolutional neural network to extract key meteorological and temporal features, thus improving the accuracy of short-term PV power forecasting [23]. Kim et al. proposed PVTransNet, a Transformer-based model that integrates historical PV power, weather observations, weather forecasts, and solar geometry data for multi-step day-ahead forecasting, thus improving the accuracy of next-day PV power prediction [24]. Beyond short-term and day-ahead forecasting, patch-based long-sequence architectures have also been explored for mid-term PV forecasting; for example, Tian and Liang proposed PVMTF, an end-to-end framework that combines patch-based temporal modeling with information-fusion coding to enhance mid-term PV power prediction [25]. Recent studies have increasingly focused on incorporating physical constraints into PV power forecast-ing, as forecasting accuracy is closely related to whether the model can respect the inherent characteristics of solar generation, such as non-generation at night, capacity limits, and ramping behavior under ir-radiance changes. For example, Liu et al. proposed a dual-physics-driven framework that integrates physics-consistent data reconstruction with a boundary-constrained DLSTM predictor, thereby improving defective PV data correction and robust rooftop PV forecasting [26]. In addition, the emergence of large language models and time-series foundation models has introduced a new modeling paradigm for PV forecasting, in which general temporal knowledge learned from large-scale data can be adapted to energy time-series prediction. For example, Gao et al. proposed an LLM-based reprogramming framework that transfers prior knowledge from a frozen pre-trained LLM to few-shot day-ahead solar-irradiation forecasting [27]. He et al. proposed a prompt-learning and two-stage fine-tuned LLM framework that transforms PV forecasting into a text-generation task and aligns textual prompts with numerical features through cross-attention and DQ-LoRA [28]. Furthermore, since meteorological variables are strongly correlated with PV generation, exploring effective methods for weather information fusion has become a central topic in recent PV forecasting research. For example, Dai et al. proposed a PV forecasting method based on weather-type credibility prediction and multi-model dynamic combination, which estimates the reliability of day-ahead weather-type forecasts and adaptively selects forecasting models [29]. Although these studies have advanced PV forecasting by incorporating physical constraints, adapting foundation-model architectures, and exploiting meteorological information, several challenges remain. The research gap can be summarized as follows: (1) Many existing methods still treat physical knowledge as an auxiliary constraint rather than integrating it throughout the forecasting process, which may limit their ability to model PV generation under different operating regimes. (2) Despite the growing interest in LLM-based forecasting, how to effectively adapt general temporal priors to PV-specific dynamics remains insufficiently explored. (3) Meteorological information is often introduced as input features, 3but its interaction with temporal patterns and changing PV operating states is not always explicitly modeled. (4) Most forecasting models are still optimized with generic error objectives, making it difficult to balance prediction accuracy across normal, extreme, and transition periods. These gaps indicate that PV forecasting research still has considerable room for improvement. 
+
+1.3. Contributions 
+
+In this paper, we propose the PARA-PV model, a physics-aware retrieval-augmented framework for PV power forecasting. Specifically, PARA-PV first encodes multivariate PV observations into patch-level temporal representations and retrieves physically consistent historical patterns from a memory bank. It then calibrates the prediction using a frozen Chronos temporal prior, corrects regime-dependent distribution shifts through a physics-aware correction module, and trains the model with a customized loss function that assigns explicit importance to peak, ramping, night-time, and regular generation periods. The major contributions are summarized as follows: 
+
+• A physics-aware retrieval-augmented learner module for PV forecasting: We develop PA-RAL, a retrieval-augmented forecasting module that incorporates historical PV patterns under physically comparable operating conditions. PA-RAL maintains a patch memory bank that stores two com-plementary forms of historical information: latent patch representations for feature-level memory enhancement and analog power trajectories for trajectory-level forecasting guidance. During the forecasting process, the current sequence is encoded into patch-level representations and retrieves top-ranked historical patches using a similarity score that jointly considers temporal shape, power-level consistency, PV-state agreement, and intra-day proximity. The retrieved patch representations are transformed into a local memory and fused with the global temporal memory extracted from the current input through a gate mechanism. In parallel, the corresponding retrieved analog trajectories are aggregated according to retrieval confidence and aligned to the latest observed power value, so that their evolution patterns can serve as a trajectory prior without directly copying mismatched absolute magnitudes. A learnable gate then determines the contribution of this before the output. 
+
+• A Chronos-guided temporal prior calibration strategy to enhance PV prediction: We introduce this module to exploit the general temporal modeling capability of a time-series foundation model while adapting its output to the physical characteristics of PV generation. Specifically, the normal-ized historical PV sequence is fed into a frozen Chronos model, which produces a future temporal prior for the target power trajectory. This prior is not directly used as the final forecast because a foundation model trained on broad time-series data may not fully capture local PV operating constraints. Instead, our model combines the Chronos prior with the PA-RAL base prediction, their residual difference, recent power observations, local variability, and PV-state metadata as the input to a lightweight residual adapter. The adapter estimates a correction term, which is added to the PA-RAL output to form the calibrated prediction. 
+
+• A physics-aware distribution shift correction module for reducing prediction bias: PV power generation is highly sensitive to weather variability, day-night transitions, and operating regimes, which can lead to conditional distribution shifts between historical training samples and future forecasting scenarios. To address this problem, we design PA-DSC as a post-prediction correction module that adjusts the prediction. Specifically, PA-DSC constructs four input channels: the historical power sequence, a TOPSIS-based weather score, timestamp information, and a day/night indicator. These physical and temporal conditions are first projected into a hidden representation 4and then processed by a compact dilated temporal convolutional network to capture local and multi-scale correction patterns. Finally, the module outputs three correction factors, namely a mean shift, a scale adjustment, and a correction gate, which are applied to the preliminary target-power prediction in a gated manner. 
+
+• A physics-constrained loss function for imbalanced-sample optimization: We formulate a data-driven segment-balanced loss function to guide model training toward PV-relevant operating regimes. Standard forecasting losses assign the same importance to all time steps, which may weaken the learning signal for sparse but operationally important cases such as peak generation and rapid ramping. To address this limitation, the proposed objective restores the target sequence to the physical power scale, partitions samples into peak, ramping, night-time, and regular regimes, and adaptively balances their loss contributions. This design encourages the model to improve overall forecasting accuracy while maintaining sensitivity to physically critical PV generation patterns. The rest of the paper proceeds as follows: Section 2 introduces the problem formulation. Section 3 presents the proposed PARA-PV methodology in detail, covering the overall framework, the physics-aware retrieval-augmented learner, Chronos-guided temporal prior calibration, physics-aware distribution shift correction, and the physics-constrained learning loss function. Section 4 reports the experimental verification, including the experimental settings, comparative studies for point and probabilistic forecast-ing, ablation analysis, computational complexity evaluation, and sensitivity study. Finally, Section 5 concludes this paper. 
+
+2. Problem Formulation 
+
+In this section, we first define the multivariate PV observation sequence and the historical input window. Then, we formulate deterministic point forecasting and probabilistic forecasting. 
+
+Definition 1 PV data: We define the multivariate PV data as xt = [ zt, y t] ∈ RC , where yt ∈ R is the PV power output at time step t, and zt ∈ RC−1 denotes the associated covariates, such as solar irradiance, temperature, humidity, atmospheric pressure, and temporal markers. Given a look-back window of length 
+
+L, the historical input is defined as Xt−L+1: t = [ xt−L+1 , xt−L+2 , . . . , xt] ∈ RL×C . The corresponding future PV power trajectory over a prediction horizon H is Yt+1: t+H = [ yt+1 , y t+2 , . . . , y t+H ] ∈ RH .
+
+Definition 2 PV point forecasting problem: Given a historical observation window Xt−L+1: t, the objective is to learn a parameterized mapping fθ : RL×C → RH that captures temporal dependencies and produces a deterministic estimate of the future PV power trajectory: 
+
+ˆYt+1: t+H = fθ(Xt−L+1: t). (1) The model parameters θ are optimized by minimizing the forecasting error over all training windows: 
+
+θ∗ = arg min 
+
+> θ
+
+1
+
+N
+
+> N
+
+X
+
+> i=1
+
+Lpoint 
+
+ ˆY(i) 
+
+> t+1: t+H
+
+, Y(i)
+
+> t+1: t+H
+
+
+
+, (2) where N is the number of training samples and Lpoint (·) denotes a point-wise forecasting loss. 
+
+Definition 3 PV probabilistic forecasting problem: Given the historical window Xt−L+1: t, probabilistic forecasting aims to estimate the conditional distribution pθ(Yt+1: t+H | Xt−L+1: t), thus quantifying the 5uncertainty of future PV generation. In this work, the distribution is represented by predictive quantiles. For each quantile level τ ∈ T , the model outputs: 
+
+ˆQτ,t +1: t+H = qτθ (Xt−L+1: t) ∈ RH , (3) where ˆQτ,t +1: t+H denotes the conditional τ -quantile of the future PV power. The model parameters are learned by minimizing the average pinball loss over all training samples and quantile levels: 
+
+θ∗ = arg min 
+
+> θ
+
+1
+
+N |T | 
+
+> N
+
+X
+
+> i=1
+
+X 
+
+> τ∈T
+
+ρτ
+
+
+
+Y(i) 
+
+> t+1: t+H
+
+− ˆQ(i)
+
+> τ,t +1: t+H
+
+
+
+, (4) where ρτ (u) = max( τ u, (τ − 1) u) is the pinball loss. 
+
+3. Methodology 
+
+3.1. Overall framework of PARA-PV 
+
+PARA-PV is designed as a physics-aware forecasting framework that integrates historical analog retrieval, foundation-model temporal priors, distribution correction, and a physically-guided loss function for PV power forecasting. First, the physics-aware retrieval-augmented learner (PA-RAL) retrieves physically consistent historical patches from a memory bank and fuses their latent representations and analog trajectories to produce the base forecast. Second, a frozen Chronos time-series foundation model provides a general temporal prior, which is calibrated by a lightweight residual adapter and fused with the PA-RAL prediction to improve PV-specific temporal modeling. Third, the physics-aware distribution shift correction module (PA-DSC) uses recent power observations, weather-derived scores, timestamp information, and day/night indicators to correct regime-dependent prediction bias after forecasting. Finally, a physics-constrained learning loss partitions PV samples into operating regimes and adaptively reweights forecasting errors, encouraging the model to learn both dominant generation patterns and important low-power, peak, and ramping states. The detailed architecture is shown in Fig. 1 .
+
+3.2. Physics-aware retrieval-augmented Learner (PA-RAL) 
+
+PV power forecasting remains difficult because future generation cannot be inferred from temporal patterns alone. It depends on the interaction between historical dynamics, meteorological conditions, diurnal cycles, and the physical operating regime of the PV system. Two PV sequences may show similar short-term variations but correspond to different generation states, such as low output, rapid ramping, or peak production. Conversely, physically comparable sequences may contain useful information even when their raw temporal shapes differ. Most temporal models encode the current input window as a latent representation and learn a direct mapping to future power, which makes it difficult to reuse historical PV behaviors observed under similar physical conditions explicitly. Retrieval-based methods can introduce historical context; however, retrieval based solely on feature similarity may select samples that are close in representation space while differing in power level, operating state, or intra-day position. We design the Physics-Aware Retrieval-Augmented Learner (PA-RAL) to retrieve and integrate historical PV patterns under physically comparable conditions. PA-RAL combines patch-level temporal retrieval with PV-specific metadata, including power level, operating state, and intra-day bucket, allowing the model to build a physically meaningful memory rather than a purely data-driven nearest-neighbor set. As a result, the forecasting process can use both the learned representation of the current input and historical generation patterns associated with similar PV regimes. The detailed architecture is illustrated in Fig. 2 .6Figure 1: Architecture of the overall framework. 
+
+3.2.1. Patch representation and physics-aware memory bank 
+
+Patch embedding: Given a normalized multivariate PV input sequence Xt ∈ RB×L×C , where B,
+
+L, and C denote the batch size, sequence length, and number of variables, respectively. PA-RAL first divides each channel-wise time series into overlapping patches of length P with stride S. Each patch is linearly projected into a dmodel -dimensional latent space, producing patch embeddings 
+
+Et = PatchEmbed( Xt) ∈ RBC ×Np×dmodel , (5) where Np = L+Pad −PS
+
+ + 1 is the number of patches and Pad denotes the padding length used before patch extraction. In this form, each variable channel is represented as a sequence of local temporal tokens, enabling retrieval to be performed on short-term temporal patterns rather than on the raw input sequence. 
+
+Physics-aware memory bank: It is used to store historical PV patterns in both latent and physical forms. The complete memory bank is defined as: 
+
+M = {M j }Mj=1 = {(mj , rj , p j , s j , b j )}Mj=1 , (6) where M is the maximum memory size. Each memory item contains a compact latent representation, an analog trajectory, and three PV-related metadata variables. This design allows the retrieval process to consider not only representation similarity, but also the physical operating condition under which each 7Figure 2: Architecture of the physics-aware retrieval-augmented learner module. 
+
+historical pattern was observed. The first component, mj ∈ Rdmodel , is the stored latent representation used for feature-level retrieval. Let (tj , c j ) denote the forecasting origin and variable channel associated with the j-th memory item. We define a shared mean-pooling operator for a channel-wise patch sequence as: 
+
+P  Etj ,c j
+
+ = 1
+
+NpNp
+
+X
+
+> n=1
+
+Etj ,c j ,n . (7) The latent key stored in the j-th memory item is then defined as: 
+
+mj = P  Etj ,c j
+
+ ∈ Rdmodel . (8) The second component, rj ∈ RH , denotes the historical analog trajectory, where H is the prediction horizon. The rj is extracted from the most recent H time steps of the normalized historical input sequence associated with the memory item. Hence, it does not contain future-label information; instead, it preserves the recent evolution shape of a historical PV pattern and is later used as a trajectory-level prior. The remaining components describe the physical context associated with each memory item. Specif-ically, pj ∈ R denotes the average target-power level of the corresponding historical window measured in the physical power scale, sj denotes a categorical PV operating state, and bj denotes the intra-day temporal bucket. The PV state is defined as sj ∈ { 0, 1, 2, 3}, corresponding to low-power, regular gen-eration, peak-generation, and ramping states, respectively. The temporal bucket bj ∈ { 0, 1, . . . , B d − 1}
+
+records the time-of-day position of the memory item, where Bd is the number of daily buckets; in our implementation, Bd = 24 .These metadata are computed from the historical PV window before the normalization. For a window 8associated with the j-th memory item, let yj = [ yj, 1, . . . , y j,L ] denote the target-power sequence. The power level is defined as: 
+
+pj = 1
+
+L
+
+> L
+
+X
+
+> ℓ=1
+
+yj,ℓ . (9) To assign the operating state, we compute the maximum power and ramping strength of the window: 
+
+ymax  
+
+> j
+
+= max  
+
+> ℓ
+
+yj,ℓ , ∆j = max  
+
+> ℓ> 1
+
+|yj,ℓ − yj,ℓ −1|. (10) Given data-driven thresholds for low-power, peak-generation, and ramping regimes, denoted by τlow ,
+
+τpeak , and τramp , respectively, which are estimated from the training split. Specifically, τlow is set to the 1st percentile of positive training power values, τpeak is set to the 90th percentile of non-low-power training samples, and τramp is set to the 80th percentile of non-zero absolute power differences between adjacent training time steps. The state label is assigned as: 
+
+sj =
+
+
+
+0, pj ≤ τlow ,
+
+2, ymax  
+
+> j
+
+> τ peak ,
+
+3, ∆j ≥ τramp , p j > τ low , y max  
+
+> j
+
+≤ τpeak ,
+
+1, otherwise .
+
+(11) The intra-day bucket bj is obtained by discretizing the hour of the last time step in the window into Bd circular daily intervals. Hence, mj supports retrieval in the latent representation space, rj
+
+provides analogical trajectory guidance, and (pj , s j , b j ) constrains retrieval toward historical samples with comparable PV operating conditions and intra-day positions. 
+
+3.2.2. Physics-aware retrieval mechanism 
+
+Given the physics-aware memory bank, PA-RAL retrieves historical samples by jointly considering latent temporal similarity and PV operating-context consistency. For the current input at forecasting origin t, the patch-token sequence of the c-th variable channel is denoted by Et,c . Using the same pooling operator defined in Eq. (7), we construct the current query as: 
+
+qt,c = P (Et,c ) ∈ Rdmodel . (12) For each memory item Mj = ( mj , rj , p j , s j , b j ), PA-RAL computes four similarity terms. The first term measures temporal-shape similarity in the latent representation space by cosine similarity: 
+
+Sshape (qt,c , mj ) = q⊤
+
+> t,c
+
+mj
+
+∥qt,c ∥2∥mj ∥2
+
+. (13) The second term measures the consistency of power levels between the current window and the historical memory item: 
+
+Spower (pt, p j ) = 11 + |pt − pj |/σ p
+
+, (14) where σp is a scale factor used to normalize power-level differences. The third term encourages retrieval 9from the same PV operating state: 
+
+Sstate (st, s j ) = I(st = sj ), (15) where I(·) is the indicator function. The fourth term measures the proximity of intra-day positions. Since the time of day is periodic, we first compute the circular bucket distance: 
+
+db(bt, b j ) = min ( |bt − bj |, B d − | bt − bj |) , (16) and then define the bucket similarity as: 
+
+Sbucket (bt, b j ) = max 
+
+
+
+0, 1 − db(bt, b j )
+
+Bd/2
+
+
+
+. (17) The final retrieval score is obtained by a learnable weighted combination of the four similarity terms: 
+
+St,c,j = ω1Sshape (qt,c , mj ) + ω2Spower (pt, p j )+ ω3Sstate (st, s j ) + ω4Sbucket (bt, b j ), (18) where the weights are normalized by: 
+
+ω = softmax( η), ω = [ ω1, ω 2, ω 3, ω 4], (19) where, η is a set of learnable retrieval logits. This design allows PA-RAL to adaptively determine the relative importance of temporal shape, power level, PV state, and intra-day position during training. Based on the retrieval score, PA-RAL selects the top-K memory items: 
+
+NK (t, c ) = TopK j (St,c,j ) , (20) and converts their scores into normalized retrieval weights: 
+
+αt,c,j = exp( St,c,j )
+
+P  
+
+> k∈N K(t,c )
+
+exp( St,c,k ), j ∈ N K (t, c ). (21) The retrieved latent representations {mj }j∈N K (t,c ) are used to construct a feature-level local memory. Therefore, PA-RAL retrieves historical patterns that are not only close in learned temporal representation but also consistent with the physical generation regime and intra-day context of the current window. 
+
+3.2.3. Local and global memory fusion 
+
+After retrieving physically consistent historical samples, PA-RAL fuses the retrieved external memory with the temporal dependencies extracted from the current input window. For the query associated with the c-th variable channel at forecasting origin t, let NK (t, c ) denote the set of top-K retrieved memory indices. The corresponding latent representations {mj }j∈N K (t,c ) are first transformed by a local memory network floc (·) and then averaged to obtain a retrieved local context: 
+
+hret  
+
+> t,c
+
+= 1
+
+K
+
+X 
+
+> j∈N K(t,c )
+
+floc (mj ) ∈ Rdmodel . (22) 10 This retrieved context is injected into the current patch-token sequence through a residual connection: 
+
+Hloc  
+
+> t,c,n
+
+= Et,c,n + hret  
+
+> t,c
+
+, n = 1 , . . . , N p. (23) Thus, each current patch token is enhanced by historical contexts retrieved from physically comparable PV regimes, while the original temporal representation is preserved. In parallel, PA-RAL computes a global memory from the current patch sequence using multi-head self-attention. Let Et,c = [ Et,c, 1, . . . , Et,c,N p ] denote the patch-token sequence of one channel. The global dependency representation is computed as: 
+
+Zt,c = MHA ( Et,c , Et,c , Et,c ) ∈ RNp×dmodel , (24) where MHA( ·) denotes multi-head self-attention. This operation captures the internal temporal depen-dencies among patches within the current input window. The global context is summarized as: 
+
+hglob  
+
+> t,c
+
+= 1
+
+NpNp
+
+X
+
+> n=1
+
+Zt,c,n ∈ Rdmodel . (25) The local and global memories are finally combined to form the memory-enhanced representation: 
+
+Hmem  
+
+> t,c,n
+
+= Hloc  
+
+> t,c,n
+
++ hglob  
+
+> t,c
+
+, (26) where, Hloc  
+
+> t,c,n
+
+carries historical information retrieved from physically similar PV samples, whereas hglob 
+
+> t,c
+
+encodes the temporal structure of the current input sequence. The fused representation is flattened and mapped to the prediction horizon by a forecasting head: 
+
+ˆymem  
+
+> t,c
+
+= fpred 
+
+ Flatten  Hmem 
+
+> t,c
+
+ ∈ RH , (27) where H is the prediction horizon. The resulting ˆymem  
+
+> t,c
+
+serves as the memory-based base prediction of PA-RAL, which is further refined by the trajectory-level analog prior in the subsequent fusion stage. 
+
+3.2.4. Analog trajectory enhanced fusion 
+
+The retrieved latent patch representations enhance the representation of the current input, but they do not explicitly describe how PV power evolved in the corresponding historical windows. To further exploit this trajectory-level information, PA-RAL uses the analog trajectories stored in the same retrieved memory items as an additional forecasting prior. For the query associated with channel c at forecasting origin t, the normalized analog prior is computed as: 
+
+¯at,c = X 
+
+> j∈N K(t,c )
+
+αt,c,j ¯rj , (28) where ¯rj ∈ RH is the normalized trajectory attached to the j-th retrieved memory item. The analog prior is then aligned with the latest normalized observation of the query channel: 
+
+˜at,c = ¯ xt,c 1H + (¯ at,c − ¯at,c, 11H ) . (29) All terms in Eq. (29) are dimensionless quantities in the window-normalized space. After prediction 11 and analog fusion, the output is transformed back to the original scale using the mean and standard deviation of the corresponding query channel. We further estimate the reliability of the retrieved analog prior. When the retrieval weights are close to a uniform distribution, no single historical trajectory is strongly supported by the retrieval mechanism; when one retrieved item dominates, the analog prior is more reliable. For K > 1, the score is defined as: 
+
+ρt,c = max j∈N K (t,c ) αt,c,j − 1/K 
+
+1 − 1/K , ρt,c ∈ [0 , 1] . (30) This score is used to modulate the contribution of the analog prior during fusion. Let ˆymem  
+
+> t,c
+
+∈ RH be the memory-based prediction produced by the local–global memory fusion stage, and let et,c denote the PV metadata embedding used for gating. PA-RAL computes a reliability-aware fusion coefficient as: 
+
+λt,c = ρt,c gϕ
+
+  ˆymem  
+
+> t,c
+
+, ˜at,c , ρ t,c , et,c 
+
+ , (31) where gϕ(·) is a learnable gating network and λt,c ∈ [0 , 1] . The final PA-RAL prediction is then obtained by a convex interpolation between the memory-based prediction and the aligned analog prior: 
+
+ˆyPA -RAL  
+
+> t,c
+
+= (1 − λt,c )ˆ ymem  
+
+> t,c
+
++ λt,c ˜at,c . (32) Through this, PA-RAL injects trajectory-level historical guidance only when the retrieved analogs are reliable with the current forecasting condition. The model can benefit from historical PV evolution patterns without directly copying trajectories whose absolute magnitudes may be mismatched. 
+
+3.3. Chronos-guided temporal prior calibration 
+
+Although PA-RAL brings physically consistent historical retrieval into PV forecasting, its predictions still mainly depend on patterns in the available PV data and the retrieved local memory. This works well when similar operating regimes are well represented in the memory bank, but it can be less reliable when the current forecasting window contains temporal dynamics that are rarely seen in local historical samples. Time-series foundation models offer a natural complement because they learn general temporal structures from large and diverse time-series corpora, providing a broader prior beyond local PV memory. Directly using such a model as a standalone PV forecaster, however, is not suitable, since PV generation is governed by domain-specific physical constraints, such as capacity limits, low nighttime output, and regime-dependent responses to weather conditions. We use Chronos not to replace PA-RAL, but as a frozen temporal prior generator whose output is adapted through PV-specific residual learning. In this way, PARA-PV can draw on the general temporal modeling ability of Chronos while retaining the physically grounded and regime-aware behavior learned by PA-RAL. Chronos is a time-series foundation model that casts forecasting as sequence modeling [30]. Rather than learning a separate forecaster for each task, it learns broad temporal regularities from large time-series corpora by discretizing real-valued observations into tokens and using a pretrained Transformer to model their future evolution. As a result, Chronos can provide transferable forecasting priors for unseen time-series domains, either in a zero-shot setting or as a frozen prior. In this work, we employ the 120M-parameter, encoder-only Chronos-2 model as a frozen temporal prior generator. All Chronos-2 parameters are fixed during training, and only the lightweight residual adapter is optimized for the downstream PV forecasting task. Given the normalized historical PV sequence as Xt−L+1: t = [ zt−L+1: t, yt−L+1: t], where 12 yt−L+1: t denotes the historical target-power sequence and zt−L+1: t denotes the associated covariates. The frozen Chronos model then produces a future quantile forecast over the prediction horizon H:
+
+cτt = FChronos (Xt−L+1: t; τ ) ∈ RH , (33) where τ is the selected quantile level. In our implementation, we use the median quantile, i.e. τ = 0 .5,as the temporal prior: ct = c0.5 
+
+> t
+
+.Before residual calibration, we constrain the Chronos prior using the physical bounds of PV generation. The zero-power level and PV capacity are first mapped to the normalized prediction space, and the Chronos prior is then clipped to this interval. For windows classified as nighttime or low-power states, the prior is further pulled toward the normalized zero-power boundary. This step prevents the general-purpose temporal prior from producing physically infeasible PV estimates. To calibrate the Chronos prior, we construct a context-aware input for a lightweight residual adapter. Let ˆyral  
+
+> t
+
+∈ RH denote the PA-RAL base prediction for the target-power channel, and let ¯ct ∈ RH denote the physically clipped Chronos prior over the same horizon. We first compute their discrepancy as: 
+
+dt = ¯ ct − ˆyral  
+
+> t
+
+, (34) which represents the correction direction suggested by the frozen temporal foundation model relative to the PV-aware PA-RAL prediction. In addition, we include the latest normalized target-power value expanded to the prediction horizon, which is defined as lt = xpow  
+
+> t
+
+1H ∈ RH . The PV operating metadata inherited from PA-RAL is represented as: epv  
+
+> t
+
+=
+
+h
+
+OneHot( st), ˜pt, ˜bt
+
+i
+
+, where OneHot( st) encodes the PV operating state, ˜pt is the normalized power level, and ˜bt is the normalized intra-day bucket. And the recent local variability is defined as 
+
+σrec  
+
+> t
+
+= Std  xpow  
+
+> t−Lr+1: t
+
+, where Lr denotes the length of the recent window used to estimate local power variability. The final adapter input is then defined as: 
+
+ut = ˆyral  
+
+> t
+
+, ¯ct, dt, lt, epv  
+
+> t
+
+, σ rec 
+
+> t
+
+ . (35) The residual adapter then maps the calibration input ut to a PV-specific correction term: 
+
+∆yt = fada (ut) ∈ RH , (36) where fada (·) is a lightweight multilayer adapter composed of linear projection, layer normalization, nonlinear activation, dropout, and a final linear output layer. Instead of replacing the PA-RAL prediction with the Chronos output, the adapter only learns the residual correction needed to align the PA-RAL forecast with the useful temporal prior provided by Chronos. The calibrated target-power prediction is defined as: 
+
+ˆycal  
+
+> t
+
+= ˆ yral  
+
+> t
+
++ ∆ yt. (37) Overall, the Chronos-guided temporal prior calibration module uses Chronos as a frozen source of general temporal knowledge rather than as a standalone PV forecaster. This design preserves the physics-aware retrieval-enhanced prediction of PA-RAL, while allowing PARA-PV to benefit from the broader temporal modeling capability of the foundation model. 13 3.4. Physics-aware distribution shift correction (PA-DSC) 
+
+PV power generation is highly sensitive to weather variability, diurnal transitions, and regime-dependent operating conditions. These factors can create shifts in conditional distributions between historical observations and future forecasting windows. Although PA-RAL and Chronos-guided calibra-tion provide a physics-aware and temporally informed preliminary forecast, the predicted target power may still show systematic bias when weather conditions or day/night regimes change. To this end, we introduce PA-DSC as a post-prediction correction module, which refines the preliminary target-power forecast using weather information, timestamps, and physical day/night cues. This correction reduces regime-dependent bias while maintaining the feasibility of PV generation. Fig. 3 shows the architecture of the distribution shift correction module. 
+
+> Figure 3: Architecture of the Physics-aware distribution shift correction.
+
+3.4.1. TOPSIS-based weather score construction 
+
+Weather is one of the main sources of distributional variation in PV power. Rather than passing several meteorological variables directly to the correction module, PA-DSC compresses them into a weather score that describes how favorable the current weather state is. Given the normalized historical input sequence, we use the Cw non-target variables as weather covariates. The weather matrix is written as 14 Wt = [ wt−L+1 , . . . , wt] ∈ RL×Cw . Each weather variable is normalized along the temporal dimension: 
+
+˜wℓ,k = wℓ,k − min ℓ wℓ,k 
+
+max ℓ wℓ,k − min ℓ wℓ,k + ϵ, (38) where ℓ indexes time, k indexes the weather variable, and ϵ is a small constant. The normalized values are then converted into temporal proportions, which are defined as qℓ,k = ˜wℓ,k    
+
+> PLℓ=1 ˜wℓ,k +ϵ
+
+. We compute the information entropy of the k-th weather variable and its adaptive weight as: 
+
+ek = − 1log L
+
+> L
+
+X
+
+> ℓ=1
+
+qℓ,k log( qℓ,k + ϵ), (39) 
+
+βk = 1 − ek
+
+PCw
+
+> r=1
+
+(1 − er) + ϵ. (40) Weather variables with stronger temporal variation and lower entropy are assigned larger weights. The weighted weather representation is given by 
+
+vℓ,k = βk ˜wℓ,k . (41) We then measure how close each time step is to the positive and negative ideal weather states using a TOPSIS-style closeness score. The two ideals are defined as v+ 
+
+> k
+
+= max ℓ vℓ,k , v − 
+
+> k
+
+= min ℓ vℓ,k . The distances to the positive and negative ideals are defined as: 
+
+D+ 
+
+> ℓ
+
+=
+
+> Cw
+
+X
+
+> k=1
+
+(vℓ,k − v+ 
+
+> k
+
+)2
+
+!1/2
+
+, D− 
+
+> ℓ
+
+=
+
+> Cw
+
+X
+
+> k=1
+
+(vℓ,k − v− 
+
+> k
+
+)2
+
+!1/2
+
+. (42) The weather score at time step ℓ is calculated as: 
+
+swea  
+
+> ℓ
+
+= D−
+
+> ℓ
+
+D+ 
+
+> ℓ
+
++ D− 
+
+> ℓ
+
++ ϵ. (43) A larger score means that the weather state is closer to the positive ideal and farther from the negative ideal. The weather score sequence is finally aligned with the prediction horizon H:
+
+swea  
+
+> t
+
+= Align H
+
+ [swea 
+
+> t−L+1
+
+, . . . , s wea  
+
+> t
+
+] ∈ RH×1, (44) where Align H (·) keeps the latest H steps when the sequence is longer than H and pads the sequence with its last value when it is shorter. This TOPSIS-based score gives PA-DSC a compact and interpretable weather signal for correcting weather-induced distribution shifts. 
+
+3.4.2. Timestamp information and day/night indicator construction 
+
+PV generation is also closely tied to temporal position, especially the diurnal cycle. PA-DSC uses two time-related correction signals: a normalized timestamp sequence, which describes the temporal position to describe the variety of seasons, and a day/night indicator, which specifies whether solar generation is physically available at each predicted step. 15 For each predicted time step h, the raw timestamp contains complete calendar information, denoted as 
+
+(Yt,h , M t,h , D t,h , H t,h , U t,h , S t,h ), where Y , M , D, H, U , and S represent year, month, day, hour, minute, and second, respectively. We convert this timestamp into a normalized annual time index. Let doy t,h be the day-of-year computed from (Yt,h , M t,h , D t,h ), and let sod t,h = 3600 Ht,h + 60 Ut,h + St,h denote the seconds elapsed since the beginning of the day. The normalized timestamp is then defined as: 
+
+τt,h = doy t,h − 1
+
+DY
+
++ sod t,h 
+
+DY × 86400 , (45) where DY is the number of days in year Yt,h , i.e., 365 or 366 for a leap year. The timestamp sequence over the prediction horizon is τt = [ τt, 1, τ t, 2, . . . , τ t,H ] ∈ RH .Then, the timestamp information is transformed into temporal encoding features. PA-DSC uses the temporal marks of the prediction horizon to derive the hour-of-day νt+h and the normalized day-of-year 
+
+ρt+h. Based on these two quantities, we approximate the seasonal daylight half-width around noon as: 
+
+at+h = 6 + 1 .5 cos 
+
+
+
+2π
+
+
+
+ρt+h − 172 365 
+
+ 
+
+, (46) where the constant 172 /365 approximately aligns the maximum daylight duration with the summer solstice. The coefficients 6 and 1.5 define the baseline half-daylight duration and its seasonal variation, respectively. Consequently, 12 − at+h and 12 + at+h approximate the sunrise and sunset times. The day/night indicator is then defined as: 
+
+zt+h = I (12 − at+h ≤ νt+h ≤ 12 + at+h) , (47) where zt+h = 1 denotes a daylight period and zt+h = 0 denotes a night-time period. The vector 
+
+zt = [ zt+1 , . . . , z t+H ] is used as a physical condition in PA-DSC, enabling the correction module to distinguish feasible PV generation intervals from night-time regimes. 
+
+3.4.3. Gated distribution shift correction 
+
+After constructing the power sequence, TOPSIS-based weather score, timestamp feature, and day/night indicator, PA-DSC performs a gated post-prediction correction on the target-power forecast. Let ˆypre  
+
+> t
+
+∈ RH
+
+denote the preliminary target-power prediction. For each forecasting step, we construct the input of the PA-DSC module as: 
+
+Ct = [ xpow  
+
+> t
+
+, qt, τt, zt] ∈ RH×4, (48) where xpow  
+
+> t
+
+is the aligned recent power sequence, qt is the weather score, τt is the timestamp feature, and 
+
+zt is the day/night indicator. The matrix is first projected into a hidden space and then processed by a compact dilated temporal convolutional network: 
+
+H(0)  
+
+> t
+
+= Conv 1×1
+
+ C⊤
+
+> t
+
+ , (49) 
+
+H(ℓ) 
+
+> t
+
+= H(ℓ−1)  
+
+> t
+
++ Fℓ
+
+
+
+H(ℓ−1) 
+
+> t
+
+
+
+, ℓ = 1 , . . . , L dsc , (50) where Fℓ(·) denotes a depthwise separable temporal convolution block. This design allows PA-DSC to capture local and multi-scale correction patterns while keeping the correction module lightweight. The 16 output head first produces three unconstrained latent factors: 
+
+hμt , hst , hgt = Head 
+
+
+
+H(Ldsc )
+
+> t
+
+
+
+. (51) These factors are transformed as: 
+
+μt = tanh ( hμt ) , st = σ (hst ) , gt = σ (hgt ) , (52) where μt ∈ RH is a mean-shift term, st ∈ RH is a scale-adjustment factor, gt ∈ RH is a correction gate, and σ(·) denotes the sigmoid function. PA-DSC forms a distribution-corrected candidate: 
+
+˜ydsc  
+
+> t
+
+= st ⊙ ˆypre  
+
+> t
+
++ μt, (53) and then blends it with the preliminary prediction through the learned gate: 
+
+¯ydsc  
+
+> t
+
+= ˆ ypre  
+
+> t
+
++ gt ⊙  ˜ydsc  
+
+> t
+
+− ˆypre 
+
+> t
+
+ . (54) The correction is applied selectively. The gate allows PA-DSC to revise the forecast only when the learned physical and temporal context indicates that a distributional correction is needed. 
+
+3.5. Physics-constrained learning loss function 
+
+Common point-forecasting losses, such as MAE and MSE, assign the same weight to every prediction error. This assumption is not well suited to PV power generation, whose behavior changes markedly across regimes defined by operating conditions. As a result, the training data are often imbalanced across physical regimes. Regular generation periods typically comprise the majority of the dataset, while nighttime, peak-generation, and ramping-transition periods occur less frequently but remain crucial for reliable operation. A uniform error objective may bias the model toward the dominant regular regime and weaken its ability to handle low-power, high-power, or rapidly changing conditions. To this end, we introduce a physics-constrained learning loss that divides the target sequence by PV operating regime and adaptively reweights the forecasting errors. This encourages the model to learn both the average temporal pattern and the physical behavior. To make the loss function consistent with PV operating conditions, the target sequence is first inter-preted in the physical power scale. For a normalized target value yi,h , its physical-scale value is obtained by yphy  
+
+> i,h
+
+= yi,h σdata + μdata , where μdata and σdata denote the dataset-level mean and standard deviation of the target power. Based on yphy  
+
+> i,h
+
+, we partition each valid prediction point into four PV operating regimes. We categorize each target value into different physical regimes according to its physical-scale PV power yphy  
+
+> i,h
+
+. Specifically, the night or low-power regime is identified as Mlow  
+
+> i,h
+
+= I(yphy  
+
+> i,h
+
+≤ τlow ), while the peak-generation regime is defined as Mpeak  
+
+> i,h
+
+= I(yphy  
+
+> i,h
+
+> τ peak ). To capture rapid changes in PV output, the physical ramp magnitude is calculated as ∆yphy  
+
+> i,h
+
+= |yphy  
+
+> i,h
+
+− yphy 
+
+> i,h −1
+
+|, and the ramping regime is further defined as Mramp  
+
+> i,h
+
+= I
+
+
+
+∆yphy  
+
+> i,h
+
+≥ τramp and Mlow  
+
+> i,h
+
+= 0 and Mpeak  
+
+> i,h
+
+= 0 
+
+
+
+. Here, τlow , τpeak , and τramp are data-driven thresholds estimated from the training set. To ensure mutually exclusive regime assignments, peak-generation points are first identified, followed by ramping points and low-power points, while the remaining valid samples are regarded as regular-generation points. The thresholds used for regime partition are estimated only from the training split in the physical power scale and are then kept fixed during model training and evaluation. Let Ytr = {yphy  
+
+> n
+
+}Ntr  
+
+> n=1
+
+denote 17 the target-power values in the training set, and let Qα(·) denote the empirical α-quantile. The low-power threshold is obtained from the lower tail of positive power values: 
+
+τlow = max  Q0.01 
+
+ {y ∈ Y tr | y > 0} , ϵ 0
+
+ , (55) where ϵ0 is a small constant. The peak-generation threshold is computed from non-low-power samples: 
+
+τpeak = Q0.90 
+
+ {y ∈ Y tr | y > τ low } . (56) For ramping states, we first calculate the absolute temporal variation in the training target sequence, 
+
+dn = yphy  
+
+> n
+
+− yphy  
+
+> n−1
+
+, (57) and define the ramp threshold as: 
+
+τramp = Q0.80 ({dn | dn > 0}) . (58) These data-driven thresholds allow the loss function to adapt to the power range and variability of each PV farm, rather than relying on manually specified operating boundaries. After the physical regimes are determined, we construct adaptive segment weights according to the sample frequency of each regime. Let Ω denote the set of valid prediction points in a mini-batch, and let Ωk denotes the subset belonging to the regime k ∈ { peak , ramp , low , regular }. The number of valid samples and regime-specific samples is denoted as N = |Ω| and Nk = |Ωk|.For each regime, an unnormalized weight is computed as: 
+
+¯wk =
+
+r NNk + ϵ, (59) where ϵ avoids numerical instability when a regime contains very few samples. Each prediction point inherits the weight of its assigned regime: 
+
+¯wi,h = X
+
+> k
+
+¯wkI (( i, h ) ∈ Ωk) . (60) Finally, the weights are normalized by their mini-batch mean: 
+
+wi,h = ¯wi,h 
+
+> 1
+> N
+
+P 
+
+> (i,h )∈Ω
+
+¯wi,h 
+
+. (61) Given the adaptive regime weights, the physics-constrained point forecasting loss is defined as a weighted MAE over all valid prediction points: 
+
+Lphy = 1
+
+|Ω|
+
+X
+
+> (i,h )∈Ω
+
+wi,h |ˆyi,h − yi,h | , (62) where ˆyi, h and yi, h denote the predicted and ground-truth target power values, respectively, and wi,h is the adaptive weight determined by the physical regime of yi,h . The weights are estimated from regime 18 statistics in the physical scale and then applied to the training error. In this way, the loss keeps the standard regression objective while placing greater optimization weight on physically important PV states. For probabilistic forecasting, PARA-PV predicts a set of quantile outputs {ˆy(q) 
+
+> i,h
+
+}q∈Q , where Q denotes the predefined quantile levels. The probabilistic objective is formulated as the average quantile loss: 
+
+Lprob = 1
+
+|Ω||Q| 
+
+X
+
+> (i,h )∈Ω
+
+X
+
+> q∈Q
+
+ρq
+
+
+
+yi,h − ˆy(q)
+
+> i,h
+
+
+
+, (63) where ρq(·) is the pinball loss function ρq(e) = max ( qe, (q − 1) e), e = yi,h − ˆy(q) 
+
+> i,h
+
+denotes the quantile prediction error. This objective aims to encourage the predicted quantiles to approximate the conditional predictive distribution of PV power, thus supporting uncertainty-aware PV forecasting. 
+
+4. Experimental verification 
+
+4.1. Experiment setting 
+
+Data selection : In this study, we selected two different PV power stations with distinct geographical locations and installed capacities. The data were obtained from the publicly available PV dataset released for the Chinese State Grid Renewable Energy Generation Forecasting Competition [31]. Specifically, Dataset 1 has an installed capacity of 50 MW and contains records for the full year of 2019, whereas Dataset 2 has an installed capacity of 35 MW and covers the two years from 2019 to 2020. Dataset 1 contains 35,040 data points, and Dataset 2 contains 70,176 data points, both recorded at a 15-minute resolution. The datasets include historical power generation and relevant meteorological features. Missing values were imputed using a moving-window method. The training, validation, and test sets were split at a ratio of 8:1:1. 
+
+Evaluation metrics : To comprehensively assess the proposed model, we employ metrics for both point and probabilistic forecasting. All metrics reported in subsequent experiments are calculated on the standardized target scale. The standardization parameters are estimated exclusively from the correspond-ing training set and applied unchanged to the validation and test sets. For point forecasting, we adopt four widely used metrics: mean squared error (MSE), mean absolute error (MAE), root mean squared error (RMSE), and the coefficient of determination ( R2). These metrics are defined as follows [32]: 
+
+MSE = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+(yi − ˆyi)2
+
+MAE = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+|yi − ˆyi|
+
+RMSE = 
+
+vuut 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+(yi − ˆyi)2
+
+R2 = 1 −
+
+PNi=1 (yi − ˆyi)2
+
+PNi=1 (yi − ¯y)2
+
+where yi and ˆyi denote the observed and predicted PV power values, ¯y is the mean of the observations, and 
+
+N is the number of samples. For probabilistic forecasting, the prediction interval coverage probability, 19 prediction interval normalized average width, and average quantile loss are used to assess the reliability, sharpness, and quantile accuracy of the interval. They are formulated as: 
+
+PICP = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+I(Li ≤ yi ≤ Ui)PINAW = 1
+
+N R 
+
+> N
+
+X
+
+> i=1
+
+(Ui − Li)AQL = 1
+
+N |Q| 
+
+> N
+
+X
+
+> i=1
+
+X
+
+> q∈Q
+
+ρq(yi − ˆyqi )
+
+where Li and Ui are the lower and upper bounds of the prediction interval, R denotes the range of the observed values, Q is the set of quantile levels, ˆyqi is the predicted q-th quantile, and ρq(e) = e(q−I(e < 0)) 
+
+is the quantile loss function. Lower values of MSE, MAE, RMSE, PINAW, and AQL indicate better performance, while a higher R2 and a PICP closer to the nominal confidence level are preferred. 
+
+Baseline models : To comprehensively evaluate the forecasting performance of PARA-PV, we compare it with seven representative baseline models covering recurrent networks, Transformer-based architec-tures, linear models, period-aware models, and LLM-based forecasting paradigms. Specifically, LSTM 
+
+is a classical recurrent neural network that captures temporal dependencies through gated memory mech-anisms [33]. Informer is an efficient Transformer-based model designed for long-sequence forecasting by reducing the computational cost of self-attention [34]. DLinear decomposes the input series into trend and seasonal components and performs forecasting with simple linear mappings [35]. iTransformer 
+
+treats variables as tokens and applies attention across variables to model multivariate dependencies [36]. 
+
+TimesNet transforms one-dimensional time series into two-dimensional period-based representations to capture multi-period temporal patterns [37]. TimeLLM adapts pre-trained large language models to time-series forecasting by reprogramming numerical sequences into LLM-compatible representations [38]. TimeVLM introduces vision-language modeling into time-series forecasting by converting temporal patterns into multimodal representations and leveraging pre-trained vision-language knowledge [39]. 
+
+Parameter design : Hyperparameter settings are critical for ensuring fair comparisons, reproducibility, and stable model training. In this study, the main experimental configurations are kept consistent across the proposed PARA-PV and all baseline models whenever applicable, including the input length, forecasting horizons, batch size, and number of training epochs. Model-specific hyperparameters are then configured according to the architectural characteristics and requirements of each method. The detailed parameter settings of PARA-PV and all baseline models are provided in Appendix A .
+
+Operation environment : All experiments were conducted on a workstation equipped with an Intel i7-9700 CPU running at 3.00 GHz, 16 GB of RAM, and two NVIDIA GeForce RTX 3090 GPUs. The proposed model was implemented in PyTorch, with PyCharm used as the development environment. 
+
+4.2. Point forecasting comparative model study 
+
+To rigorously evaluate the performance of the proposed model, we conduct a comprehensive compara-tive study on two distinct PV power datasets, namely Data 1 (50 MW) and Data 2 (35 MW). The evaluation spans multiple prediction horizons, including 4, 16, 48, and 96 steps ahead to verify the robustness of models across short-term and long-term forecasting scenarios. We benchmark PARA-PV against seven state-of-the-art baselines encompassing classical recurrent networks, advanced transformers, and large 20 language model adaptations. Performance is quantified using four standard evaluation metrics, including MSE, MAE, RMSE, and the R2. The results of the comparison are shown in Fig. 4 , and Fig. 5 .0 100 200 300 400 020 40 
+
+> Power (MW)
+
+(a) Horizon = 4 steps     
+
+> 0100 200 300 400 020 40
+> Power (MW)
+
+(b) Horizon = 16 steps     
+
+> 0100 200 300 400
+
+Data points 
+
+> 020 40
+> Power (MW)
+
+(c) Horizon = 48 steps     
+
+> 0100 200 300 400
+
+Data points 
+
+> 020 40
+> Power (MW)
+
+(d) Horizon = 96 steps 
+
+> True LSTM Informer DLinear iTransformer TimesNet TimeLLM TimeVLM PARA-PV
+
+Figure 4: The results of point forecasting in Data 1 (50 MW). 0 100 200 300 400 010 20 
+
+> Power (MW)
+
+(a) Horizon = 4 steps     
+
+> 0100 200 300 400 010 20
+> Power (MW)
+
+(b) Horizon = 16 steps     
+
+> 0100 200 300 400
+
+Data points 
+
+> 010 20
+> Power (MW)
+
+(c) Horizon = 48 steps     
+
+> 0100 200 300 400
+
+Data points 
+
+> 010 20
+> Power (MW)
+
+(d) Horizon = 96 steps 
+
+> True LSTM Informer DLinear iTransformer TimesNet TimeLLM TimeVLM PARA-PV
+
+Figure 5: The results of point forecasting in Data 2 (35 MW). 
+
+The experimental results for Data 1, representing a 50 MW capacity system, are summarized in 
+
+Table 1 . A critical observation is that while LSTM demonstrates the top performance at the shortest forecasting horizon of 4 steps with an MSE of 0.0384 and an R2 of 0.9493, its accuracy degrades sharply 21 as the prediction window elongates, with the MSE surging to 0.2887 at horizon 48. In contrast, PARA-PV maintains remarkable stability and establishes clear superiority in all extended horizons. At the longest horizon of 96 steps, PARA-PV achieves an MSE of 0.1272 and an R2 of 0.8305, outperforming the second-best baseline, TimeVLM, which obtains an MSE of 0.1433 and an R2 of 0.8091. Looking at the overall average performance, PARA-PV delivers the lowest average MSE of 0.0962 and the highest R2
+
+of 0.8723, marking a substantial advancement over modern transformer-based architectures and LLM-tailored variants like TimeLLM, which struggles significantly with an average MSE of 0.1652. 
+
+Table 1. Point forecasting comparison across multiple prediction horizons in Data 1. 
+
+Horizon Metric Model LSTM Informer DLinear iTransformer TimesNet TimeLLM TimeVLM PARA-PV 
+
+4MSE 0.0384 0.0459 0.0491 0.0488 0.0505 0.1455 0.0519 0.0458 MAE 0.0802 0.1050 0.1180 0.1232 0.1258 0.2435 0.1239 0.0962 RMSE 0.1960 0.2144 0.2215 0.2208 0.2247 0.3815 0.2279 0.2140 R2 0.9493 0.9394 0.9352 0.9357 0.9334 0.8079 0.9315 0.9396 16 MSE 0.1364 0.1586 0.1224 0.1179 0.1148 0.1783 0.1198 0.0949 
+
+MAE 0.1921 0.1946 0.2208 0.2157 0.2157 0.2888 0.2075 0.1343 
+
+RMSE 0.3693 0.3982 0.3499 0.3433 0.3388 0.4222 0.3462 0.3081 
+
+R2 0.8193 0.7899 0.8378 0.8438 0.8479 0.7638 0.8412 0.8742 
+
+48 MSE 0.2887 0.1887 0.1540 0.1425 0.1615 0.1769 0.1413 0.1168 
+
+MAE 0.3023 0.2258 0.2660 0.2230 0.2304 0.2726 0.2207 0.1526 
+
+RMSE 0.5373 0.4344 0.3924 0.3775 0.4018 0.4206 0.3759 0.3418 
+
+R2 0.6170 0.7496 0.7958 0.8109 0.7858 0.7654 0.8125 0.8450 
+
+96 MSE 0.1560 0.1693 0.1586 0.1595 0.1731 0.1602 0.1433 0.1272 
+
+MAE 0.2246 0.2417 0.2746 0.2356 0.2473 0.2530 0.2230 0.1575 
+
+RMSE 0.3950 0.4114 0.3982 0.3993 0.4161 0.4003 0.3786 0.3567 
+
+R2 0.7921 0.7744 0.7887 0.7875 0.7693 0.7865 0.8091 0.8305 
+
+MSE ↓ 0.1549 0.1406 0.1210 0.1172 0.1250 0.1652 0.1141 0.0962 
+
+MAE ↓ 0.1998 0.1918 0.2198 0.1994 0.2048 0.2645 0.1938 0.1352 
+
+RMSE ↓ 0.3744 0.3646 0.3405 0.3352 0.3454 0.4062 0.3322 0.3052 AVG 
+
+R2 ↑ 0.7944 0.8133 0.8394 0.8445 0.8341 0.7809 0.8486 0.8723  
+
+> Note: The best results are shown in BOLD , and the second-best results are UNDERLINED.
+
+Table 2 presents the comparative evaluation on Data 2, a 35 MW capacity system, which further substantiates the architectural benefits of the proposed framework. Similar to the trends observed in the first dataset, LSTM excels primarily at the ultra-short horizon of 4 steps, capturing an MSE of 0.0268, whereas PARA-PV secures the best MAE of 0.0637. However, as the horizon scales to 16, 48, and 96 steps, PARA-PV consistently dominates all metrics. For instance, at horizon 96, PARA-PV compresses the MSE to 0.1000 and elevates the R2 to 0.8958, outperforming the second-best baseline, DLinear, which reports an MSE of 0.1143 and an R2 of 0.8809. Interestingly, LSTM remains the second-best model on average for Data 2, achieving a mean MSE of 0.0788 and an R2 of 0.9179, indicating that simpler sequential or linear structures can occasionally outperform overly complex representations like TimeLLM in specific capacity contexts, yet they still fall short of the robust generalized representations captured by PARA-PV, which secures an average MSE of 0.0689 and an R2 of 0.9282. 22 Table 2. Point forecasting comparison across multiple prediction horizons in Data 2. 
+
+Horizon Metric Model LSTM Informer DLinear iTransformer TimesNet TimeLLM TimeVLM PARA-PV 
+
+4MSE 0.0268 0.0286 0.0320 0.0292 0.0316 0.1025 0.0382 0.0275 MAE 0.0651 0.0882 0.0933 0.0859 0.0951 0.2128 0.1139 0.0637 
+
+RMSE 0.1637 0.1690 0.1788 0.1708 0.1778 0.3202 0.1954 0.1659 R2 0.9720 0.9701 0.9666 0.9695 0.9669 0.8928 0.9601 0.9712 16 MSE 0.0678 0.1135 0.0818 0.0787 0.0744 0.1013 0.0807 0.0601 
+
+MAE 0.1157 0.1736 0.1757 0.1485 0.1398 0.1878 0.1630 0.0977 
+
+RMSE 0.2604 0.3369 0.2861 0.2806 0.2728 0.3182 0.2841 0.2451 
+
+R2 0.9292 0.8814 0.9145 0.9178 0.9223 0.8942 0.9157 0.9372 
+
+48 MSE 0.1007 0.1299 0.1070 0.1085 0.1095 0.1285 0.1138 0.0878 
+
+MAE 0.1671 0.1878 0.1920 0.1802 0.1776 0.2175 0.1974 0.1212 
+
+RMSE 0.3173 0.3604 0.3271 0.3294 0.3310 0.3585 0.3374 0.2963 
+
+R2 0.8950 0.8645 0.8884 0.8868 0.8858 0.8660 0.8813 0.9084 
+
+96 MSE 0.1198 0.1151 0.1143 0.1169 0.1169 0.1306 0.1235 0.1000 
+
+MAE 0.1895 0.1730 0.1984 0.2004 0.1980 0.2221 0.2076 0.1228 
+
+RMSE 0.3461 0.3393 0.3381 0.3420 0.3420 0.3614 0.3515 0.3163 
+
+R2 0.8753 0.8801 0.8809 0.8782 0.8782 0.8640 0.8713 0.8958 
+
+MSE ↓ 0.0788 0.0968 0.0838 0.0833 0.0831 0.1157 0.0890 0.0689 
+
+MAE ↓ 0.1343 0.1557 0.1648 0.1537 0.1526 0.2100 0.1705 0.1014 
+
+RMSE ↓ 0.2719 0.3014 0.2825 0.2807 0.2809 0.3396 0.2921 0.2559 AVG 
+
+R2 ↑ 0.9179 0.8990 0.9126 0.9131 0.9133 0.8792 0.9071 0.9282  
+
+> Note: The best results are shown in BOLD , and the second-best results are UNDERLINED.
+
+In summary, the experimental results yield the following conclusions. First, local temporal dependen-cies captured by recurrent structures are highly effective for immediate, short-term predictions, but they fail to sustain accuracy over broader horizons due to error accumulation. Second, while sophisticated large-scale models like TimeLLM and TimeVLM introduce powerful cross-domain representations, their performance heavily depends on the underlying data scale and capacity characteristics, which can occa-sionally lead to suboptimal results in specialized regression tasks. Ultimately, PARA-PV successfully bridges this gap by striking a balance between immediate precision and long-term stability. It consistently yields the lowest average errors and highest variance explanation across diverse capacities, establishing itself as a highly reliable and robust solution for multi-horizon PV power forecasting. 
+
+4.3. Probabilistic forecasting comparative model study 
+
+To comprehensively assess the capability of the models in uncertainty quantification, this section presents a comparative study on probabilistic forecasting. The evaluation is conducted across multiple prediction horizons, including 4, 16, 48, and 96 steps ahead on both Data 1 and Data 2. We analyze the performance of the proposed PARA-PV model against seven prominent baselines: LSTM, Informer, DLinear, iTransformer, TimesNet, TimeLLM, and TimeVLM. The models are evaluated using three standard probabilistic metrics: Prediction Interval Coverage Probability (PICP) and Prediction Interval Normalized Average Width (PINAW) at both 80% and 90% confidence levels, alongside Average Quantile Loss (AQL), providing a holistic overview of interval reliability and sharpness. 23 The experimental results for Data 1 are detailed in Table 3 , illuminating distinct behaviors across different horizons. At the shortest horizon of 4 steps, LSTM shows strong initial probabilistic calibration with a PICP 80 of 0.9071 and an AQL of 0.0239, while TimeVLM achieves the top PICP 90 of 0.9563. However, as the prediction horizon extends to 48 and 96 steps, PARA-PV demonstrates an exceptional capability to optimize interval sharpness without severe under-coverage. Specifically, at horizon 96, PARA-PV achieves the narrowest interval widths with a PINAW 80 of 0.1583 and a PINAW 90 of 0.1813, substantially outperforming baselines like TimeVLM, which exhibits an over-conservative PINAW 90 of 0.3810 despite its high PICP 90 of 0.9648. On average, DLinear secures the lowest overall AQL of 0.0374, whereas PARA-PV achieves a competitive average AQL of 0.0417, matching iTransformer while maintaining the lowest average interval widths of 0.1303 for PINAW 80 and 0.1625 for PINAW 90 .
+
+Table 3. Probabilistic forecasting comparison across multiple prediction horizons in Data 1. 
+
+Horizon Metric Model LSTM Informer DLinear iTransformer TimesNet TimeLLM TimeVLM PARA-PV 
+
+4PICP 80 0.9071 0.4374 0.8530 0.7140 0.6340 0.8590 0.9003 0.8258 PINAW 80 0.0878 0.0853 0.0901 0.0819 0.0851 0.2317 0.1412 0.0881 PICP 90 0.9519 0.6420 0.9104 0.9116 0.8536 0.9474 0.9563 0.8862 PINAW 90 0.1257 0.1213 0.1251 0.1217 0.1218 0.4089 0.2311 0.1219 AQL 0.0239 0.0278 0.0259 0.0272 0.0284 0.0547 0.0347 0.0290 16 PICP 80 0.7793 0.3885 0.7796 0.5932 0.4601 0.7957 0.7793 0.8497 
+
+PINAW 80 0.1750 0.1522 0.1347 0.1294 0.1277 0.2724 0.1627 0.1306 PICP 90 0.9208 0.5789 0.8919 0.7957 0.7354 0.9382 0.9232 0.8906 PINAW 90 0.2434 0.1994 0.1916 0.1822 0.1974 0.4347 0.2502 0.1604 
+
+AQL 0.0491 0.0428 0.0383 0.0455 0.0486 0.0645 0.0464 0.0426 48 PICP 80 0.7751 0.4540 0.8223 0.6923 0.7434 0.8231 0.8657 0.8166 PINAW 80 0.2360 0.1682 0.1984 0.1600 0.1814 0.3192 0.2613 0.1442 
+
+PICP 90 0.8982 0.7160 0.9566 0.8785 0.9014 0.9305 0.9689 0.8866 PINAW 90 0.3224 0.2240 0.2746 0.2226 0.2453 0.4306 0.3621 0.1863 
+
+AQL 0.0664 0.0495 0.0415 0.0475 0.0491 0.0623 0.0498 0.0460 96 PICP 80 0.7825 0.7670 0.8219 0.7613 0.7593 0.8157 0.8366 0.8518 
+
+PINAW 80 0.2486 0.2178 0.2265 0.2175 0.2566 0.3488 0.2856 0.1583 
+
+PICP 90 0.9330 0.9155 0.9607 0.9353 0.9383 0.9210 0.9648 0.8852 PINAW 90 0.3183 0.2762 0.3101 0.2972 0.3413 0.4473 0.3810 0.1813 
+
+AQL 0.0545 0.0512 0.0438 0.0467 0.0516 0.0647 0.0523 0.0492 PICP 80 ↑ 0.8110 0.5117 0.8192 0.6902 0.6492 0.8234 0.8455 0.8360 PINAW 80 ↓ 0.1868 0.1559 0.1624 0.1472 0.1627 0.2930 0.2127 0.1303 
+
+PICP 90 ↑ 0.9260 0.7131 0.9299 0.8803 0.8572 0.9343 0.9533 0.8872 PINAW 90 ↓ 0.2525 0.2052 0.2253 0.2059 0.2264 0.4304 0.3061 0.1625 AVG 
+
+AQL ↓ 0.0485 0.0428 0.0374 0.0417 0.0444 0.0615 0.0458 0.0417  
+
+> Note: The best results are shown in BOLD , and the second-best results are UNDERLINED.
+
+Table 4 provides the probabilistic forecasting comparison on Data 2, further validating the efficiency of the proposed framework under a different capacity distribution. In the short-term 4-step horizon, LSTM leads with an AQL of 0.0216, followed tightly by PARA-PV at 0.0219. As the forecasting horizon scales up to long-term intervals, PARA-PV progressively outpaces the baselines in both sharpness and quantile 24 loss optimization. At horizon 48, PARA-PV achieves the lowest AQL of 0.0365 and reduces PINAW 90 
+
+to 0.1895. Looking at the overall average performance, PARA-PV delivers the lowest average PINAW 80 
+
+of 0.1251, the lowest average PINAW 90 of 0.1718, and the minimum average AQL of 0.0326. While TimeLLM attains the highest average PICP 90 of 0.9708, its average interval width of 0.3805 implies a loss of practical resolution, highlighting the superior calibration-sharpness balance achieved by PARA-PV. 
+
+Table 4. Probabilistic forecasting comparison across multiple prediction horizons in Data 2. 
+
+Horizon Metric Model LSTM Informer DLinear iTransformer TimesNet TimeLLM TimeVLM PARA-PV 
+
+4PICP 80 0.9321 0.6235 0.9006 0.6171 0.9083 0.8201 0.9037 0.8857 PINAW 80 0.0971 0.0977 0.1092 0.0929 0.0957 0.2170 0.1400 0.0931 PICP 90 0.9683 0.9515 0.9406 0.9452 0.9527 0.9670 0.9665 0.9424 PINAW 90 0.1491 0.1432 0.1536 0.1459 0.1382 0.3768 0.2033 0.1317 
+
+AQL 0.0216 0.0233 0.0235 0.0228 0.0231 0.0467 0.0312 0.0219 16 PICP 80 0.9065 0.4359 0.8215 0.8305 0.7780 0.7977 0.7288 0.8352 PINAW 80 0.1265 0.1431 0.1504 0.1298 0.1280 0.2600 0.1693 0.1150 
+
+PICP 90 0.9618 0.5310 0.9435 0.9529 0.8995 0.9686 0.9396 0.9279 PINAW 90 0.1748 0.2004 0.2100 0.1838 0.1750 0.3821 0.2436 0.1616 
+
+AQL 0.0301 0.0371 0.0323 0.0309 0.0349 0.0512 0.0384 0.0312 48 PICP 80 0.8464 0.5587 0.8455 0.7676 0.7659 0.8534 0.8442 0.7721 PINAW 80 0.1691 0.2038 0.2073 0.1913 0.1636 0.2800 0.2340 0.1241 
+
+PICP 90 0.9451 0.7696 0.9680 0.9512 0.9218 0.9753 0.9707 0.9028 PINAW 90 0.2214 0.2686 0.2766 0.2624 0.2247 0.3704 0.3067 0.1895 
+
+AQL 0.0389 0.0451 0.0378 0.0400 0.0418 0.0467 0.0419 0.0365 
+
+96 PICP 80 0.7619 0.6550 0.8746 0.7993 0.8119 0.8906 0.7976 0.7666 PINAW 80 0.1870 0.2151 0.2217 0.2142 0.2365 0.3033 0.2443 0.1684 
+
+PICP 90 0.9261 0.8849 0.9785 0.9630 0.9659 0.9723 0.9579 0.9173 PINAW 90 0.2482 0.2857 0.2812 0.2843 0.3081 0.3929 0.3074 0.2043 
+
+AQL 0.0440 0.0487 0.0378 0.0405 0.0409 0.0497 0.0416 0.0409 PICP 80 ↑ 0.8617 0.5683 0.8606 0.7536 0.8160 0.8405 0.8186 0.8149 PINAW 80 ↓ 0.1449 0.1649 0.1721 0.1571 0.1559 0.2651 0.1969 0.1251 
+
+PICP 90 ↑ 0.9503 0.7843 0.9577 0.9531 0.9350 0.9708 0.9587 0.9226 PINAW 90 ↓ 0.1984 0.2245 0.2303 0.2191 0.2115 0.3805 0.2652 0.1718 AVG 
+
+AQL ↓ 0.0336 0.0386 0.0329 0.0336 0.0352 0.0486 0.0383 0.0326  
+
+> Note: The best results are shown in BOLD , and the second-best results are UNDERLINED.
+
+Synthesizing the empirical evidence from both tables highlights a crucial trade-off between interval coverage and sharpness in probabilistic PV power forecasting. Large language model adaptations, such as TimeLLM and TimeVLM, frequently yield higher coverage probabilities but do so by generating excessively wide uncertainty intervals that offer reduced actionable value for power grid dispatching. Conversely, PARA-PV avoids this over-conservative behavior, consistently producing narrower prediction intervals across all extended horizons while maintaining reliable coverage boundaries. By minimizing both the normalized interval widths and the average quantile loss across diverse data profiles, the proposed model establishes a robust and practical standard for multi-horizon solar power probabilistic forecasting. 25 4.4. Ablation study 
+
+To thoroughly investigate the individual contribution of each core component within the proposed framework and validate its necessity in driving forecasting performance, we conduct a rigorous ablation study. By systematically disabling specific modules, we can gain a deeper understanding of the explicit benefits each mechanism provides to predictive accuracy and robustness. To this end, we construct five distinct model variants for comparison: (1) w/o PA-RAL, which eliminates the physics-aware mechanism to rely solely on raw retrieval-augmented learner; (2) w/o Chronos, which excludes the frozen time-series foundation model used for prior correction; (3) w/o PA-DSC, which drops the physics-aware distribution shift correction module to evaluate its capability in handling distribution alignment; (4) w/o Loss, which discards the proposed physics-constrained loss function and employs only the traditional MSELoss; and (5) PA-RAL only, which retains PA-RAL and the adaptive segment-balanced loss while excluding Chronos calibration and PA-DSC. The experiment results are presented in Fig. 6 , Table 5 , and Table 6 .4 16 48 96    
+
+> Prediction horizon (steps)
+> 0.05
+> 0.10
+> 0.15
+> 0.20
+> MAE ↓
+> (a) Data1
+> 416 48 96
+> Prediction horizon (steps)
+> (b) Data2
+> w/o PA-RAL w/o Chronos w/o PA-DSC w/o Loss PA-RAL only PARA-PV
+> Figure 6: MAE variation across prediction horizons in the ablation study.
+
+Data 1 demonstrates the distinct impact of each architectural component across different forecasting horizons. The full PARA-PV model achieves the best overall performance, yielding the lowest average MSE of 0.0962 and the highest average R2 of 0.8723. Disabling the time-series foundation model prior correction (w/o Chronos) results in a notable performance drop at the short-term 4-step horizon, where the MSE increases to 0.0548, indicating that foundation model priors are instrumental in capturing immediate temporal patterns. Conversely, for long-term forecasting at 96 steps, omitting the physics-aware distribution shift correction module (w/o PA-DSC) triggers the most severe degradation, causing the MAE to increase to 0.2237. This highlights the indispensable role of the distribution correction module in combating cumulative distribution discrepancies over extended windows. The w/o PA-RAL variant emerges as the second-best model on average, suggesting that while the physics-aware retrieval-augmented learning module is beneficial, its potential is fully realized only when tightly coupled with distribution alignment and structural loss constraints. Data 2 exhibits a horizon-dependent effect of the PA-RAL design. At the 4- and 16-step horizons, Raw RAL (w/o PA-RAL) marginally outperforms the full model on several metrics. For example, its 26 Table 5. Ablation study of PARA-PV model across multiple prediction horizons in Data 1. 
+
+Horizon Metric Variant w/o PA-RAL w/o Chronos w/o PA-DSC w/o Loss PA-RAL only PARA-PV 
+
+4MSE 0.0465 0.0548 0.0480 0.0468 0.0496 0.0458 
+
+MAE 0.0892 0.1015 0.1269 0.1028 0.1265 0.0962 RMSE 0.2157 0.2341 0.2192 0.2164 0.2227 0.2140 
+
+R2 0.9386 0.9277 0.9366 0.9382 0.9345 0.9396 
+
+16 MSE 0.0992 0.1151 0.1012 0.1033 0.1106 0.0949 
+
+MAE 0.1389 0.1544 0.1784 0.1530 0.1820 0.1343 
+
+RMSE 0.3150 0.3393 0.3181 0.3213 0.3325 0.3081 
+
+R2 0.8685 0.8475 0.8659 0.8632 0.8535 0.8742 
+
+48 MSE 0.1268 0.1360 0.1409 0.1242 0.1327 0.1168 
+
+MAE 0.1553 0.1642 0.2139 0.1735 0.1923 0.1526 
+
+RMSE 0.3561 0.3688 0.3754 0.3525 0.3643 0.3418 
+
+R2 0.8317 0.8196 0.8131 0.8352 0.8240 0.8450 
+
+96 MSE 0.1455 0.1468 0.1581 0.1568 0.1342 0.1272 
+
+MAE 0.1637 0.1644 0.2237 0.1807 0.1906 0.1575 
+
+RMSE 0.3814 0.3832 0.3976 0.3960 0.3663 0.3567 
+
+R2 0.8062 0.8044 0.7893 0.7911 0.8212 0.8305 
+
+MSE ↓ 0.1045 0.1132 0.1121 0.1078 0.1068 0.0962 
+
+MAE ↓ 0.1368 0.1461 0.1857 0.1525 0.1729 0.1352 
+
+RMSE ↓ 0.3170 0.3314 0.3276 0.3216 0.3215 0.3052 AVG 
+
+R2 ↑ 0.8613 0.8498 0.8512 0.8569 0.8583 0.8723  
+
+> Note: The best results are shown in BOLD , and the second-best results are UNDERLINED.
+
+R2 values are 0.9713 and 0.9377, compared with 0.9712 and 0.9372 for PARA-PV. However, these differences are small and are not consistent across all metrics, since the full model achieves a slightly lower MAE at the 4-step horizon. Therefore, these single-run results do not establish that PA-RAL degrades short-horizon forecasting. At the 48- and 96-step horizons, the full model achieves clearer improvements, suggesting that physics-aware retrieval and analog guidance become more useful as the forecasting horizon increases. Among the degraded variants, the model lacking the physics-constrained loss function (w/o Loss) serves as the closest runner-up, obtaining an average MSE of 0.0708 and an R2
+
+of 0.9262. Meanwhile, the isolated PA-RAL only configuration demonstrates the worst overall metrics, which confirms that individual modules require the cooperative framework of prior corrections and regularized losses to maintain stability. The empirical results from both datasets indicate a clear complementary relationship among the core modules of the proposed framework. Chronos foundation model priors are critical for short-term precision, while the physics-aware distribution shift correction and specialized loss functions act as regularizers to prevent error propagation over long forecasting horizons. The performance drop of the PA-RAL only variant shows that a single retrieval mechanism is insufficient for complex photovoltaic power regression. Overall, the full PARA-PV model strikes a balance between short-term flexibility and long-term stability across various capacity profiles, confirming the effectiveness of an integrated framework. 27 Table 6. Ablation study of PARA-PV model across multiple prediction horizons in Data 2. 
+
+Horizon Metric Variant w/o PA-RAL w/o Chronos w/o PA-DSC w/o Loss PA-RAL only PARA-PV 
+
+4MSE 0.0274 0.0306 0.0303 0.0281 0.0393 0.0275 MAE 0.0638 0.0703 0.0872 0.0707 0.1229 0.0637 
+
+RMSE 0.1656 0.1748 0.1740 0.1676 0.1982 0.1659 R2 0.9713 0.9680 0.9684 0.9706 0.9589 0.9712 16 MSE 0.0597 0.0658 0.0677 0.0616 0.0861 0.0601 MAE 0.0967 0.1024 0.1359 0.1074 0.1667 0.0977 RMSE 0.2443 0.2565 0.2602 0.2483 0.2934 0.2451 R2 0.9377 0.9312 0.9292 0.9356 0.9101 0.9372 48 MSE 0.0948 0.1008 0.0989 0.0895 0.1155 0.0878 
+
+MAE 0.1192 0.1242 0.1572 0.1464 0.1858 0.1212 RMSE 0.3078 0.3175 0.3145 0.2991 0.3398 0.2963 
+
+R2 0.9012 0.8949 0.8969 0.9067 0.8796 0.9084 
+
+96 MSE 0.1041 0.1043 0.1070 0.1038 0.1224 0.1000 
+
+MAE 0.1248 0.1254 0.1583 0.1549 0.1871 0.1228 
+
+RMSE 0.3227 0.3229 0.3272 0.3222 0.3499 0.3163 
+
+R2 0.8915 0.8914 0.8885 0.8919 0.8725 0.8958 
+
+MSE ↓ 0.0715 0.0754 0.0760 0.0708 0.0908 0.0689 
+
+MAE ↓ 0.1011 0.1056 0.1346 0.1199 0.1656 0.1014 RMSE ↓ 0.2601 0.2679 0.2690 0.2593 0.2953 0.2559 AVG 
+
+R2 ↑ 0.9254 0.9214 0.9208 0.9262 0.9053 0.9282  
+
+> Note: The best results are shown in BOLD , and the second-best results are UNDERLINED.
+
+4.5. Computational complexity study 
+
+To evaluate the computational efficiency of the proposed model, we conduct a complexity analysis using Data 1 under the forecasting task with a prediction horizon of 96. Specifically, we statistically compare the baseline models and the proposed PARA-PV model in terms of training time, inference time, trainable parameters, and peak GPU memory consumption. This setting enables a consistent assessment of the computational overhead introduced by the proposed architecture while reflecting its practical deployment cost in long-horizon PV power forecasting scenarios, as summarized in Table 7 .
+
+Fig 7 further shows the trade-off between forecasting accuracy and model complexity. The proposed PARA-PV strikes a competitive trade-off between large-scale forecasting architec-tures and lightweight baselines in terms of computational efficiency. Compared to large models like TimesNet and TimeLLM, PARA-PV substantially reduces trainable parameters to 993.22K, compared to 112529.82K for TimesNet and 66991.02K for TimeLLM. This parameter efficiency lowers the peak GPU memory to 681.52MB, approximately half that of TimesNet (1329.56MB) and less than one-fifth of TimeLLM (3450.58MB). PARA-PV also requires 201.5256 s/epoch for training and 0.00006902 s/step for inference, outperforming both models in execution speed. Although TimeVLM trains faster (98.2159 s/epoch) and infers quicker (0.00002826 s/step), PARA-PV maintains a smaller parameter size and lower memory footprint than TimeVLM (1081.37K parameters and 754.09MB memory). In contrast, compared to lightweight baselines such as DLinear, iTransformer, Informer, and LSTM, PARA-PV incurs higher 28 Table 7. Computational efficiency comparison of baseline models and PARA-PV. 
+
+Model Efficiency Metrics 
+
+Ttrain ↓ Tinf ↓ Params ↓ Mem. ↓
+
+LSTM 6.4791 0.00000044 231.39K 89.09MB Informer 22.6946 0.00000211 915.33K 77.84MB DLinear 4.2642 0.00000013 37.06K 17.92MB iTransformer 12.8515 0.00000067 565.47K 24.46MB TimesNet 971.8936 0.00012840 112529.82K 1329.56MB TimeLLM 268.3760 0.00007062 66991.02K 3450.58MB TimeVLM 98.2159 0.00002826 1081.37K 754.09MB 
+
+PARA-PV 201.5256 0.00006902 993.22K 681.52MB Note: Ttrain denotes the training time per epoch, measured in s/epoch; Tinf denotes the average inference time per predicted step and is calculated as Tinf =  
+
+> PBtest
+> b=1 ∆tb
+> Ntest H
+
+, where ∆tb is the synchronized wall-clock inference time of the b-th test batch, 
+
+Ntest is the number of test samples, and H is the prediction horizon. Params denotes the number of trainable parameters, and Mem. denotes peak GPU memory usage. Lower values indicate better computational efficiency. 0.15 0.16    
+
+> 0.35
+> 0.37
+> 0.39
+> 0.41
+> 0.43
+> PARA-PV
+> 0.22 0.24 0.26 0.28
+> Parameters
+> 1 M 50 M 100 M
+> LSTM Informer DLinear iTransformer TimesNet TimeLLM TimeVLM
+> MAE ↓ RMSE ↓
+
+Figure 7: Forecasting performance versus model complexity on Data1 at the 96-Step horizon. 
+
+computational overhead due to its more complex architecture designed for long-horizon forecasting. For instance, DLinear requires only 37.06K parameters, 4.2642 s/epoch training time, and 17.92MB peak memory. However, by keeping its total parameters under 1M, PARA-PV avoids excessive resource growth, ensuring practical feasibility for deployment. 
+
+4.6. Sensitivity study 
+
+This section analyzes the sensitivity of the proposed PARA-PV framework to key hyper-parameters. We selected three representative hyper-parameters, including learning rate (LR), dropout rate (DR), and 29 PA-RAL patch configuration (PC). Here, PC denotes the patch length and stride used in the physics-aware retrieval branch. The candidate settings are LR = {0.00005, 0.0001 ∗, 0.00015, 0.0002}, DR = {0.05, 0.1 ∗, 0.2, 0.3}, and PC = {(8,4), (16 ∗,8 ∗), (24,12), (32,16)}. The asterisk indicates the adopted best setting. LR ϕ(DR, PC) denotes changing LR while keeping DR and PC unchanged; DR ϕ(LR, PC) and PC ϕ(LR, DR) are defined similarly. We report MSE, MAE, RMSE, and R2 under different settings, and use the standard deviation (STD) to measure the sensitivity of PARA-PV to each hyper-parameter. The experimental results are summarized in Table 8 . For a given evaluation metric under K candidate settings of a hyper-parameter, the STD is calculated as follows: 
+
+STD = 
+
+vuut 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+(mk − ¯m)2, ¯m = 1
+
+K
+
+> K
+
+X
+
+> k=1
+
+mk, (64) where mk denotes the metric value obtained under the k-th hyper-parameter setting, and ¯m is the mean value across all candidate settings. 
+
+Table 8. Sensitivity analysis results of PARA-PV.                                                         
+
+> Dataset Metric 16-step 96-step LR ϕ(DR, PC) DR ϕ(LR, PC) PC ϕ(LR, DR) LR ϕ(DR, PC) DR ϕ(LR, PC) PC ϕ(LR, DR) Data 1 MSE 0.001728 0.003932 0.001834 0.001355 0.001265 0.000957 MAE 0.001623 0.005742 0.002337 0.001965 0.002078 0.001674 RMSE 0.002770 0.006186 0.002927 0.001871 0.001748 0.001335 R20.002289 0.005210 0.002429 0.001805 0.001685 0.001274 Data 2 MSE 0.001441 0.002280 0.000455 0.002725 0.002576 0.000913 MAE 0.000957 0.005075 0.001108 0.002102 0.004867 0.000241 RMSE 0.002859 0.004503 0.000911 0.004248 0.004000 0.001426 R20.001505 0.002382 0.000476 0.002838 0.002683 0.000951
+
+The sensitivity analysis demonstrates the inherent robustness of the proposed PARA-PV framework, as reflected by the consistently low STD values across all parameter variations. Across both datasets and both forecasting horizons, the performance fluctuations induced by altering the LR, DR, and PC remain minimal, with all reported STD values staying well below 0.0062. Even the maximum variance observed, which occurs for the DR under the 16-step horizon on Data 1, yields an RMSE STD of only 0.006186, indicating that the model performance remains tightly bounded. For the long-term forecasting task (96-step), this insensitivity becomes even more pronounced, where the STDs for MSE across all three hyperparameters span a narrow and low range between 0.000913 and 0.002725. The structural parameter PC exhibits the highest stability, achieving an exceptionally low MAE STD of 0.000241 on Data 2 under the 96-step setting. These uniformly small metrics across different evaluation dimensions, datasets, and horizons demonstrate that PARA-PV is highly insensitive to hyperparameter choices, mitigating the need for exhaustive fine-tuning and ensuring stable deployment in practical scenarios. 
+
+5. Conclusion 
+
+This paper introduces PARA-PV, a physics-aware retrieval-augmented framework for multi-step PV power forecasting. The framework addresses the challenges of regime-biased and physically inconsistent 30 predictions caused by weather variability, diurnal cycles, and complex physical constraints. The frame-work integrates four primary components. First, a physics-aware retrieval-augmented learner (PA-RAL) uses patch-level temporal embeddings to capture historical analog contexts from a memory bank. Sec-ond, a Chronos-guided temporal prior calibration module incorporates the broad temporal knowledge of a frozen foundation model into local PV constraints via a lightweight residual adapter. Third, a physics-aware distribution shift correction (PA-DSC) module employs a dilated temporal convolutional network to reduce post-prediction bias induced by shifting environmental and temporal conditions. Finally, a physics-constrained loss function balances optimization weights across distinct operational regimes. Deterministic and probabilistic forecasting experiments on real-world datasets show that PARA-PV con-sistently outperforms representative baseline models. The results demonstrate that the framework achieves high prediction accuracy, reliable interval calibration under uncertainty, and strong generalization across different horizons, while maintaining a low computational burden. In practical deployment, PARA-PV can support power grid dispatch, energy storage management, and electricity market operations. By providing reliable forecasts of solar generation trends and rapid ramping behaviors, the model helps operators optimize resource allocation, improve grid acceptance of volatile renewable energy, and enhance overall system reliability. However, several limitations remain. The current retrieval mechanism relies on a static memory bank, restricting its adaptability to long-term equipment degradation and environmental changes. Additionally, the framework has only been evaluated on solar power data. Future work will address these deployment challenges in two directions. We plan to develop an online continuous learning paradigm with a dynamic memory update mechanism to incorporate real-time system feedback without full offline retraining. We also intend to extend the physics-aware retrieval and segment-balanced optimization architectures to wind energy and load forecasting, providing a generalized forecasting solution for multi-energy microgrid management. 
+
+Data availability 
+
+We have utilized public datasets. 
+
+Acknowledgment 
+
+This work was supported by the Natural Science Foundation of Hebei Province (G2025502003), by the Research on Electricity Price Forecasting and Intelligent Bidding Strategy of Compressed Air Energy Storage in Qinghai Spot Market (KFKT-26LAB-01), and by the Fundamental Research Funds for the Central Universities (2025JC002). 
+
+Appendix A. Parameter settings 
+
+To improve the reproducibility of the experiments, we summarize the key hyperparameters used in this study in two tables. Table A.9 reports the main hyperparameters of the proposed PARA-PV framework, including the common experimental settings, backbone representation parameters, PA-RAL retrieval configuration, Chronos prior calibration settings, PA-DSC correction parameters, and loss function. During each forward pass, representations and associated metadata from all channels in the current mini-batch are inserted into the PA-RAL memory bank. The memory bank is continuously updated online under a fixed-capacity constraint. Once its capacity is reached, incoming items overwrite the oldest stored entries through a circular replacement strategy, maintaining an up-to-date collection of recent patterns. 31 Table A.10 lists the corresponding hyperparameters of the baseline models used for comparison, covering both shared training settings and model-specific configurations. These settings are kept consistent across forecasting horizons whenever possible, so that the experimental comparison mainly reflects the modeling capability of each method rather than differences in training protocols. 
+
+Table A.9. Key parameters of PARA-PV. 
+
+Module Parameter Value Input length L 192 Prediction horizon H {4, 16 , 48 , 96 }
+
+Number of input variables 7Experimental setting Batch size 32 Training epochs 50 Learning rate 0.001 Dropout 0.1 Hidden dimension dmodel 128 Number of attention heads 8Backbone representation Encoder layers 2Feed-forward dimension 768 Normalization constant 0.4 Patch length 16 Patch stride 8PA-RAL Patch memory size {100 , 512 , 1024 , 2048 , 4096 ∗, 8192 }
+
+Retrieved neighbors K 5Intra-day buckets 24 Chronos prior calibration Chronos quantile 0.5 Adapter hidden dimension 96 Adapter dropout 0.1 Version Chronos-2 120M PA-DSC Hidden dimension 128 Low-power margin 0.1 Loss function Quantile levels {0.05 , 0.10 , 0.50 , 0.90 , 0.95 }
+
+> Note: * indicates the optimal parameter configuration.
+
+32 Table A.10. Key parameters of baseline models. 
+
+Model Parameter Value Input length L 192 Prediction horizon H {4, 16 , 48 , 96 }
+
+All baselines Batch size 32 Training epochs 50 Learning rate 0.001 Dropout 0.1 LSTM Hidden dimension 128 Number of recurrent layers 2Model dimension dmodel 128 Number of attention heads 8Informer Encoder layers 2Decoder layers 1Feed-forward dimension 768 Attention factor 1DLinear Decomposition kernel size 25 Individual linear layers False Model dimension dmodel 128 iTransformer Number of attention heads 8Encoder layers 2Feed-forward dimension 768 Model dimension dmodel 128 Number of TimesBlocks 2TimesNet Top-k periods 5Number of convolution kernels 6Feed-forward dimension 768 LLM backbone GPT-2 LLM hidden dimension 768 TimeLLM Number of LLM layers 1Patch length 16 Patch stride 8VLM backbone CLIP Image size 224 TimeVLM Patch length 16 Patch stride 8Patch memory size 100 Learnable image mapping True 33 References 
+
+[1] H. Fan, W. Liu, Z. Zhang, Y. Lu, W. Run, D. Liu, IDS-Net: A novel framework for few-shot photovoltaic power prediction with interpretable dynamic selection and feature information fusion, Advanced Engineering Informatics 72 (2026) 104455. [2] J. Huang, B. Shao, Y. Ke, Y. Gao, S. Mazzoni, PV-MM-diffusion: An end-to-end multi-modal diffusion model for ultra-short-term probabilistic photovoltaic forecasting, Applied Energy 413 (2026) 127816. [3] C. Xia, Y. Xu, N. Tai, H. Sun, A dual-layer feature-selection transformer network for transferable probabilistic forecasting of PV power, Applied Energy 406 (2026) 127331. [4] Z. Tian, Y. Chen, G. Wang, Enhancing PV power forecasting accuracy through nonlinear weather correction based on multi-task learning, Applied Energy 386 (2025) 125525. [5] T. Wang, Y. Xu, Y. Qin, X. Wang, F. Zheng, W. Li, Short-term PV forecasting of multiple scenarios based on multi-dimensional clustering and hybrid transformer-BiLSTM with ECPO, Energy 334 (2025) 137654. [6] X. Huang, T. Zhao, B. Huang, Z. Zhang, M. Yue, Advancing energy system optimization via data-centric task-oriented forecasting: An application in PV-battery operation, Applied Energy 378 (2025) 124753. [7] Y. Yang, Y. Liu, Y. Zhang, S. Shu, J. Zheng, DEST-GNN: A double-explored spatio-temporal graph neural network for multi-site intra-hour PV power forecasting, Applied Energy 378 (2025) 124744. [8] Y. Zhi, T. Sun, X. Yang, A physical model with meteorological forecasting for hourly rooftop photovoltaic power prediction, Journal of Building Engineering 75 (2023) 106997. [9] B. Wolff, J. Kühnert, E. Lorenz, O. Kramer, D. Heinemann, Comparing support vector regression for PV power forecasting to a physical modeling approach using measurement, numerical weather prediction, and cloud motion data, Solar Energy 135 (2016) 197–208. [10] Y. Li, Y. Su, L. Shu, An ARMAX model for forecasting the power output of a grid connected photovoltaic system, Renewable Energy 66 (2014) 78–89. [11] A. A. H. Lateko, H.-T. Yang, C.-M. Huang, Short-term PV power forecasting using a regression-based ensemble method, Energies 15 (11) (2022) 4171. [12] K. Doubleday, S. Jascourt, W. Kleiber, B.-M. Hodge, Probabilistic solar power forecasting using bayesian model averaging, IEEE Transactions on Sustainable Energy 12 (1) (2021) 325–337. [13] R. Ahmed, V. Sreeram, Y. Mishra, M. Arif, A review and evaluation of the state-of-the-art in PV solar power forecasting: Techniques and optimization, Renewable and Sustainable Energy Reviews 124 (2020) 109792. [14] U. K. Das, K. S. Tey, M. Seyedmahmoudian, M. Y. Idna Idris, S. Mekhilef, B. Horan, A. Stojcevski, SVR-based model to forecast PV power generation under different weather conditions, Energies 10 (7) (2017) 876. 34 [15] G. Xie, Z. Lin, RSMD-RF-BGSkip based PV generation prediction method, IEEE Access 12 (2024) 65799–65809. [16] S. Wang, J. Ma, A novel GBDT-BiLSTM hybrid model on improving day-ahead photovoltaic prediction, Scientific Reports 13 (1) (2023) 15113. [17] A. T. Eseye, J. Zhang, D. Zheng, Short-term photovoltaic solar power forecasting using a hybrid Wavelet-PSO-SVM model based on SCADA and Meteorological information, Renewable Energy 118 (2018) 357–367. [18] S.-M. Hategan, N. Stefu, D. Petreus, E. Szilagyi, T. Patarau, M. Paulescu, Short-term forecasting of PV power based on aggregated machine learning and sky imagery approaches, Energy 316 (2025) 134595. [19] W. Liu, M. Gai, PV-MLP: A lightweight patch-based multi-layer perceptron network with time– frequency domain fusion for accurate long-sequence photovoltaic power forecasting, Renewable Energy 251 (2025) 123277. [20] H. K. Ahn, N. Park, Deep RNN-based photovoltaic power short-term forecast using power IoT sensors, Energies 14 (2) (2021) 436. [21] X. Wang, M. Hu, X. Luo, X. Guan, Spatio-temporal photovolatic power forecasting via bayesian-optimized dynamic graph convolutional networks with temporal convolutional networks, Journal of Cleaner Production 542 (2026) 147641. [22] G. Piantadosi, S. Dutto, A. Galli, S. De Vito, C. Sansone, G. Di Francia, Photovoltaic power forecasting: A Transformer based framework, Energy and AI 18 (2024) 100444. [23] Q. Liu, Y. Li, H. Jiang, Y. Chen, J. Zhang, Short-term photovoltaic power forecasting based on multiple mode decomposition and parallel bidirectional long short term combined with convolutional neural networks, Energy 286 (2024) 129580. [24] J. Kim, J. Obregon, H. Park, J.-Y. Jung, Multi-step photovoltaic power forecasting using transformer and recurrent neural networks, Renewable and Sustainable Energy Reviews 200 (2024) 114479. [25] Z. Tian, B. Liang, PVMTF: End-to-end long-sequence time-series forecasting frameworks based on patch technique and information fusion coding for mid-term photovoltaic power forecasting, Applied Energy 396 (2025) 126263. [26] Z. Liu, Y. Zhang, Y. Ning, Dual-physics-driven anomaly reconstruction and constrained deep learning for robust rooftop PV forecasting with defective data, Measurement 277 (2026) 121439. [27] Y. Gao, Z. Hu, K. Yan, J. Otomo, N. Li, M. Liu, T. Xu, Y. Ruan, W. Gao, Reprogramming language models for energy: Few-shot solar forecasting across urban Japan, Advanced Engineering Informatics 74 (2026) 104765. [28] H. He, R. Hong, D. Luo, S. Huang, X. Dai, Photovoltaic power forecasting based on large language models: A prompt-learning and two-stage fine-tuning approach, Electric Power Systems Research 252 (2026) 112461. 35 [29] H. Dai, Z. Zhen, F. Wang, Y. Lin, F. Xu, N. Duić, A short-term PV power forecasting method based on weather type credibility prediction and multi-model dynamic combination, Energy Conversion and Management 326 (2025) 119501. [30] A. F. Ansari, O. Shchur, J. Küken, A. Auer, B. Han, P. Mercado, S. S. Rangapuram, H. Shen, L. Stella, X. Zhang, M. Goswami, S. Kapoor, D. C. Maddix, P. Guerron, T. Hu, J. Yin, N. Erickson, P. M. Desai, H. Wang, H. Rangwala, G. Karypis, Y. Wang, M. Bohlke-Schneider, Chronos-2: From univariate to universal forecasting, arXiv preprint arXiv:2510.15821 (2025). [31] Y. Chen, J. Xu, Solar and wind power data from the chinese state grid renewable energy generation forecasting competition, Scientific Data 9 (2022) 577. [32] Z. Tian, C. Wu, Enhancing long-sequence photovoltaic power forecasting accuracy through multi-modal learning: Integrating satellite cloud images and time–frequency domain fusion, Advanced Engineering Informatics 74 (2026) 104622. [33] S. Hochreiter, J. Schmidhuber, Long short-term memory, Neural Computation 9 (8) (1997) 1735– 1780. [34] H. Zhou, S. Zhang, J. Peng, S. Zhang, J. Li, H. Xiong, W. Zhang, Informer: Beyond efficient transformer for long sequence time-series forecasting, in: Proceedings of the AAAI Conference on Artificial Intelligence, Vol. 35, 2021, pp. 11106–11115. [35] A. Zeng, M. Chen, L. Zhang, Q. Xu, Are transformers effective for time series forecasting?, in: Proceedings of the AAAI conference on Artificial Intelligence, Vol. 37, 2023, pp. 11121–11128. [36] Y. Liu, T. Hu, H. Zhang, H. Wu, S. Wang, L. Ma, M. Long, itransformer: Inverted transformers are effective for time series forecasting, in: International Conference on Learning Representations, Vol. 2024, 2024, pp. 11116–11140. [37] H. Wu, T. Hu, Y. Liu, H. Zhou, J. Wang, M. Long, TimesNet: Temporal 2d-variation modeling for general time series analysis, in: International Conference on Learning Representations, 2023. [38] M. Jin, S. Wang, L. Ma, Z. Chu, J. Zhang, X. Shi, P.-Y. Chen, Y. Liang, Y.-F. Li, S. Pan, Q. Wen, Time-LLM: Time series forecasting by reprogramming large language models, in: International Conference on Learning Representations, 2024. [39] S. Zhong, W. Ruan, M. Jin, H. Li, Q. Wen, Y. Liang, Time-VLM: Exploring multimodal vision-language models for augmented time series forecasting, in: International Conference on Machine Learning, 2025. 36
