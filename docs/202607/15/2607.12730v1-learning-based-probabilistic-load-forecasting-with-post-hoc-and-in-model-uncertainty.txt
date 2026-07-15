@@ -1,0 +1,542 @@
+Title: Learning-based Probabilistic Load Forecasting with Post-hoc and In-model Uncertainty
+
+URL Source: https://arxiv.org/pdf/2607.12730v1
+
+Published Time: Wed, 15 Jul 2026 11:58:54 GMT
+
+Number of Pages: 30
+
+Markdown Content:
+# Learning-based Probabilistic Load Forecasting with Post-hoc and In-model Uncertainty ⋆
+
+Sarah Al-Shareeda a,b , Gulcihan Ozdemir b, ∗, Heung Seok Jeon c
+
+> aComputer System and Technology Department, Faculty of Computer Science and Information Technology, University of Malaya, Malaysia
+> bInformatics Institute, Istanbul Technical University, Turkey
+> cComputer Engineering Department Konkuk University South Korea
+
+Abstract 
+
+Smart-building load forecasters are often trained offline on dense, multivariate, high-frequency data, but deployment may provide only hourly, feature-limited inputs. Miss-ing features must then be reconstructed, and their errors can propagate through the model. If this input uncertainty is not reflected, prediction intervals may become mis-calibrated, affecting demand-response scheduling. Our work examines where uncertainty should be placed once inference inputs are reconstructed. We develop a unified one-day-ahead probabilistic forecasting framework that aligns temporal resolution, reconstructs the unavailable inputs, and derives causal features, and we compare a modular post-hoc residual-quantile scheme with an integrated in-model quantile-learning scheme. The comparison uses three mid-scale Deep Learning (DL) backbones: recurrent, hybrid recur-rent, and attention-based Temporal Fusion Transformer (TFT) models, under identical inputs, forecasting horizon, preprocessing rules, and training budgets. Results show that uncertainty placement is backbone-dependent. Integrated quantile learning is most re-liable with the TFT, yielding 2.2-3.6% MAPE and 28-83 W RMSE on the labeled test window, while producing intervals about 5 × narrower than the modular intervals at the closest-to-nominal coverage level. Diebold-Mariano tests support the TFT ranking and the mixed behavior of the recurrent backbones. A reconstruction-sensitivity test shows that reconstructed inputs increase the Quantile Score (QS) by 106% while interval width remains nearly unchanged, indicating that the model does not automatically absorb reconstruction-induced uncertainty. Robustness checks against non-DL baselines and seasonal hold-out weeks support this ranking. Our results expose the limits of post-hoc residual quantiles when inference depends on reconstructed inputs. 
+
+Keywords: Smart grid, Smart building, Short-term load forecasting, Probabilistic forecasting, Uncertainty quantification, Feature-asymmetric deployment, Reconstruction error, Deep learning, Temporal Fusion Transformer, Quantile loss, Missing data imputation    
+
+> ⋆This work is supported by the Research Fund of the Istanbul Technical University Project Num-ber: 47198. Authors Email addresses: salshareeda@um.edu.my and alshareeda@itu.edu.tr (Sarah Al-Shareeda), ozdemirg@itu.edu.tr (Gulcihan Ozdemir), and hsjeon@kku.ac.kr (Heung Seok Jeon).
+> ∗Corresponding Author arXiv:2607.12730v1 [cs.LG] 14 Jul 2026
+
+1. Introduction 
+
+Smart-grid and smart-building operation is seeing an increased reliance on forecasts to guide resource management and scheduling. With accurate forecasts, operators can efficiently coordinate Photovoltaic (PV) generation and battery storage, thereby reduc-ing unnecessary operating costs Arévalo et al. (2025); Almihat and Munda (2025); El Maghraoui et al. (2024). However, in practice, forecasting does not occur under ideal in-ference conditions. Deployment data may be sparse, low-resolution, and feature-limited due to sensor faults and communication disturbances. As a result, forecasting models trained with rich, multivariate, and high-resolution data may face asymmetric conditions at inference Al-Shareeda et al. (2025a). Feature asymmetry requires missing inputs to be reconstructed prior to forecasting. Since reconstructed variables are proxy inputs and not true measurements, reconstruction error can propagate through the forecasting model Xu et al. (2026). In probabilistic forecasting, the predicted distribution is then conditioned on such reconstructed inputs as if they were reliable. If this additional input uncertainty is not learned or reflected, the resulting prediction intervals may become miscalibrated. How well a forecasting model absorbs this input uncertainty depends on where uncertainty is built into the forecasting process. Probabilistic forecasting methods address this design choice in modular and integrated ways. In the modular probabilis-tic scheme, a point forecaster is trained first and uncertainty is appended post-hoc using residual quantiles or error distributions Khajeh and Laaksonen (2022); Kaur et al. (2022); Meisenbacher et al. (2022). In the integrated, in-model scheme, uncertainty is learned during training by embedding a pinball loss, a distributional likelihood, or Bayesian infer-ence Lucas Segarra et al. (2021); Brusaferri et al. (2022); Mahajan et al. (2024); Ozdemir (2024b). Although both designs are well established, they are rarely compared under reconstructed, feature-limited inference; which placement keeps intervals calibrated once the inputs are reconstructed is the open question this work examines. To answer this question, this paper develops a unified probabilistic forecasting frame-work for one-day-ahead smart-building active-power prediction under feature-asymmetric deployment. The framework reconstructs the unavailable inference-time inputs and eval-uates three mid-scale Deep Learning (DL) backbones, namely Bidirectional Long Short-Term Memory (BiLSTM), Bidirectional Gated Recurrent Unit-LSTM (BiGRU-LSTM), and Temporal Fusion Transformer (TFT), under two uncertainty placements: a modular post-hoc residual-quantile scheme and an integrated in-model quantile-learning scheme. Our controlled setup isolates the effect of uncertainty placement on accuracy, calibration, sharpness, and operational behavior. As positioned in Fig. 1, we do not propose a new forecasting architecture; rather, we make the following contributions: C1. A unified one-day-ahead probabilistic forecasting framework is proposed for smart-building active-power prediction under feature-asymmetric deployment. The frame-work harmonizes the temporal resolution of the official 2025 Electric Energy Con-sumption Forecasting Competition dataset Gomes et al. (2025), reconstructs un-available inference-time features using validation-selected estimators, derives causal temporal features, and applies train-only normalization. C2. A controlled uncertainty-placement benchmark is developed using three representa-tive mid-scale DL backbones: BiLSTM, BiGRU-LSTM, and TFT. The benchmark compares a modular post-hoc residual-quantile scheme with an integrated in-model 2Figure 1. Positioning of this work contributions. 
+
+3quantile-learning scheme under identical data splits, reconstructed inputs, forecast-ing horizon, recursive rollout, preprocessing rules, and training budget. C3. The effect of reconstruction-induced input uncertainty on probabilistic forecast quality is assessed under feature-limited inference. The two uncertainty placements are evaluated using point-forecast accuracy, quantile loss, interval coverage, interval width, interval score, and statistical significance tests. C4. The operational reliability of the uncertainty schemes is evaluated beyond aggre-gate error metrics. The analysis examines peak tracking, ramp-rate behavior, and demand-temperature loop consistency on the labeled test window, and further tests robustness against non-DL baselines, input-reconstruction choices, and seasonal hold-out periods. The remainder of the paper is organized as follows. Section 2 reviews related work, with particular emphasis on smart-grid data preprocessing, feature reconstruction, and uncertainty-aware load forecasting. Section 3 presents the unified framework, describing the forecasting models employed and the two uncertainty schemes. Section 4 outlines the experimental setup, evaluation metrics, and results. Section 5 concludes with key findings and future directions. 
+
+2. Literature Review 
+
+Short-term load forecasting supports the reliable, cost-efficient operation of smart buildings and grids. Because the deployment setting is typically feature-asymmetric, forecast uncertainty becomes as important as point accuracy, especially when operating margins are tight. Our review focuses on preprocessing methods that clean, impute, align, or reconstruct smart-building data, and forecasting methods that estimate future demand as point values or probabilistic outputs. 
+
+2.1. Smart Grid Data Challenges and Preprocessing 
+
+Reliable load forecasting depends on accurate, complete, and temporally consistent inputs, but smart-building telemetry often violates these conditions, and preprocessing repairs such defects before forecasting. Sensor faults and communication dropouts cre-ate missing values, which data-quality methods address through imputation, denoising, feature fusion, and outlier removal; for example, Wang et al. (2025) use a Reinforce-ment Learning (RL) agent to score data reliability before filtering low-quality entries, improving dispatch robustness under renewable-energy uncertainty (RL has been ap-plied to decision-making under uncertainty in Al-Shareeda et al. (2025b,c); Al–Shareeda et al. (2025)). Heterogeneous sampling rates cause temporal-resolution mismatch, and at deployment the model trained on dense multivariate data must infer from sparse, feature-limited inputs; alignment and reconstruction methods handle both, resampling heterogeneous data streams and estimating unavailable channels before forecasting Sun-dararajan et al. (2022); Xu et al. (2024). Noisy or adversarial readings can bias the feature-target relationship, which robustness-oriented methods counter; the Deep Deter-ministic Policy Gradient (DDPG) framework of Liu et al. (2025), for example, reweights 4multi-modal features to enhance PV forecasts. Consumption data are also privacy-sensitive, so raw measurements often cannot be centralized or freely shared across build-ings; privacy-preserving methods use distributed measurements without exposing raw data, as in blockchain-based federated BiLSTM training for Electric Vehicle (EV) load Danish et al. (2025) and multi-party cryptographic computation for household forecasts Lei et al. (2024). Preprocessing improves data quality, but the uncertainty it adds, espe-cially when missing channels are reconstructed, is not carried into the forecast intervals. Reconstruction restores the expected input structure without recovering the real mea-surements, so the filled-in channels add no information beyond the signals available at inference. Our framework in Section 3 therefore tests the forecasts using the same re-constructed inputs the model would face in deployment, so we can measure how much the reconstruction affects interval calibration and sharpness instead of assuming it has no effect. 
+
+2.2. Uncertainty-unaware and Uncertainty-aware Forecasting 
+
+Forecasting methods have advanced through several generations. Early statistical models, AutoRegressive Integrated Moving Average (ARIMA), Seasonal ARIMA (SARIMA), Holt-Winters, Gaussian Processes (GP), and Kalman Filters (KF), are computationally lightweight Ozdemir (2024b), but their linear structure struggles with nonlinear demand and long temporal dependencies. Classical Machine Learning (ML) models loosen these limits; Back-Propagation NN (BPNN), Multi-Layer Perceptrons (MLP), Support Vector Regression (SVR), tree ensembles such as Gradient Boosting Machines (GBM) and Ran-dom Forests (RF), and wavelet-NN hybrids capture nonlinear structure Ozdemir (2024a), but depend on manual feature engineering and poorly scale with the high dimension of smart-grid data. Deep Learning (DL) removes much of the burden; for example, LSTM and GRU networks learn long-range dependencies directly. Hybrid DL designs extend the capabilities; El-Afifi et al. (2025) use ARIMA-LSTM to forecast EV-charging de-mand, and the LSTM-Transformer of Pentsos et al. (2025) couples sequential memory with global attention at higher data and computation cost. More specialized AI meth-ods have followed. Zhang et al. (2025a) fine-tune a GPT variant for ultra-short-term PV forecasting, improving sparse-site accuracy at the cost of interpretability and data demand, and RL has been used to tie load prediction to asset-aware control Zhang et al. (2024). Most of these models use a single point forecast, which is not enough as occupant-driven variability, Heating, Ventilation and Air Conditioning (HVAC) cycling, and behind-the-meter PV generation, and external-forecast errors all make the load uncertain. Prob-abilistic load forecasting presents an answer, by modeling uncertainty inside the network or appending it afterward. In-model methods learn the predictive interval during train-ing; quantile-regression heads add an output layer that minimizes the pinball loss and returns a set of conditional quantiles directly, with no assumption about the shape of the distribution Zhang et al. (2025b), while Bayesian and distributional heads, Bayesian Neural Networks (BNN), Mixture Density Networks (MDN), and parametric likelihood layers, place a full predictive density on the target Mahajan et al. (2024); Brusaferri et al. (2022); Ozdemir (2024b). Post-hoc methods take a different route, leaving a trained point forecaster untouched and fitting a separate error model, empirical residual quantiles, Kernel Density Estimation (KDE), or conformal calibration, to its residuals Khajeh and Laaksonen (2022); Kaur et al. (2022); Lucas Segarra et al. (2021). Post-hoc methods are 5model-agnostic, need only a held-out calibration set, and add little training cost, but the appended module never sees the forecaster’s internal state, so its intervals lose calibration and sharpness once the inputs become noisy, incomplete, or distribution-shifted. Among post-hoc options, residual-quantile estimation is the most widely used. Related post-hoc interval methods occur across adjacent forecasting domains, including an LSTM-GRU backbone with KDE intervals for wave height Wang and Ying (2023), a decomposition-GRU with KDE intervals for offshore wind speed Wang et al. (2024a), and a Temporal Convolutional Network (TCN)-GRU-attention model with error-distribution analysis for multistep wave height Wang et al. (2026). Although in-model and post-hoc uncertainty methods are well studied individually, their effect is rarely isolated under feature-asymmetric deployment, where models trained on rich, high-resolution data must forecast from sparse, feature-limited inputs. We com-pare modular uncertainty and integrated quantile learning using the same DL backbones, BiLSTM, BiGRU-LSTM, and TFT, within a fixed forecasting pipeline. Data, features, reconstruction, rollout, horizon, and training budget are held constant, so differences in accuracy, calibration, and sharpness reflect the uncertainty formulation. Our study therefore quantifies the cost of the post-hoc route rather than assuming its reliability. Table 1 summarizes representative studies and positions our work against them. 
+
+3. Modular and Integrated Probabilistic Forecasting Framework 
+
+Operational load forecasting has two requirements: predicting a building’s day-ahead consumption and quantifying prediction uncertainty. In this section, we present the framework shown in Fig. 2 to address both under feature-asymmetric deployment, where inference-time inputs are sparser and lower resolution than the training data. The frame-work consists of three stages: 1) smart-building data ingestion; 2) preprocessing and fea-ture engineering; and 3) DL-based forecasting with BiLSTM, BiGRU-LSTM and TFT models. Stages 1 and 2 prepare and align the data, while Stage 3 performs the core eval-uation by comparing the forecasting models under two uncertainty schemes: a modular scheme, where uncertainty is added after training a point forecaster, and an integrated scheme, where quantile forecasts are directly learned. 
+
+3.1. Problem Formulation 
+
+We address one-day-ahead probabilistic forecasting of smart-building active power consumption under feature-asymmetric deployment. At each time step t, the objective is to predict the next H hourly load values using the most recent L historical observations and the known future inputs available over the prediction horizon, such as calendar variables and ambient temperature T . The forecasting sample is defined as 
+
+St = ( Xt, Z t+1: t+H , P t+1: t+H ) , (1) where 
+
+Xt = {xt−L+1 , . . . , x t} ∈ RL×D (2) is the historical input window with D features per time step, Zt+1: t+H is the set of known future inputs over the forecasting horizon, and 
+
+Pt+1: t+H = {Pt+1 , . . . , P t+H } (3) 6Table 1 Representative studies across preprocessing and forecasting. The Uncertainty column reports how each study treats uncertainty: None for a point forecast, Post-hoc for intervals appended to a trained point model, In-model for uncertainty learned within the model, Mixed for surveys spanning several approaches, and N/A for preprocessing-only studies that produce no forecast. 
+
+Study Domain Uncertainty Approach Surveys / Reviews Khajeh and Laaksonen (2022) Smart grids Post-hoc Review of probabilistic forecasting; uncertainty estimation mainly residual-based Kaur et al. (2022) Smart grids Mixed Survey of probabilistic deep learning for energy forecasting Meisenbacher et al. (2022) Time Series Mixed Automated time series pipelines; preprocessing-forecasting fragmentation Data preprocessing only Wang et al. (2025) Power dispatch N/A RL-based filtering to improve forecast input quality Danish et al. (2025) EV charging N/A Federated BiLSTM + blockchain for privacy Lei et al. (2024) Household load N/A Cryptographic Multi-Party Computation (MPC) + LSTM; secure data sharing Liu et al. (2025) PV forecasting N/A RL-based robustness against adversarial noise Forecasting: point El-Afifi et al. (2025) EV charging None ARIMA + LSTM for ops optimization Pentsos et al. (2025) Residential load None Hybrid LSTM + Transformer; compute-intensive Zhang et al. (2025a) PV generation None GPT fine-tuning for ultra-short-term PV Zhang et al. (2024) Energy management None DL + RL; links load forecasts to battery aging Ozdemir (2024a) Long-term demand None Stepwise Linear Regression (SLR) vs. NN, Genetic Algo-rithm (GA), Differential Evolution (DE), Particle Swarm Optimization (PSO), Gaussian Process Regression (GPR) for long-term load Forecasting: probabilistic Mahajan et al. (2024) Building energy In-model Bayesian NNs for calibrated intervals Brusaferri et al. (2022) Electric load In-model Bayesian MDN Ozdemir (2024b) Distribution load In-model Probabilistic load via Normal/Weibull/Gamma/Lognormal fits Zhang et al. (2025b) Multi-energy load In-model Quantile-regression PatchTST; pinball-trained quantiles Lucas Segarra et al. (2021) Buildings Post-hoc Building Energy Model (BEM) + Kernel Density Estima-tion (KDE) residuals for interval forecasts Wang and Ying (2023) Wave height Post-hoc LSTM-GRU point + post-hoc residual intervals Wang et al. (2024a) Offshore wind Post-hoc Decomposition-GRU; post-hoc residual intervals Wang et al. (2026) Wave height Post-hoc TCN-GRU-attention; post-hoc KDE intervals Hybrid preprocessing + forecasting Xu et al. (2024) Smart-grid time series In-model Multi-output GP; joint imputation+forecast Li et al. (2025) Smart-grid time series None Self-distillation Transformer; robust to missingness Sundararajan et al. (2022) PV + load None Data-quality-aware switching for drift/missingness Al-Shareeda et al. (2025a) Smart building/grid None Lightweight GRU-LSTM + preprocessing; handles gaps This study Modular Smart building Post-hoc BiLSTM, BiGRU-LSTM, TFT; residual-based quantiles Integrated Smart building In-model BiLSTM, BiGRU-LSTM, TFT; pinball-trained quantiles 
+
+7Figure 2. Proposed three-stage framework for probabilistic load forecasting under feature-asymmetric deployment. Stages 1 and 2 ingest and align the data; Stage 3 compares the BiLSTM, BiGRU-LSTM, and TFT models under the modular and integrated schemes. 
+
+is the target active-power trajectory. Both the input length L and forecasting horizon H
+
+are set to 24 hourly samples. The goal is to estimate the future load trajectory Pt+1: t+H and quantify its uncer-tainty. For each forecast step h = 1 , . . . , H , the model predicts conditional quantiles 
+
+bP (q) 
+
+> t+h
+
+= f (q) 
+
+> θ
+
+(Xt, Z t+1: t+H ) , q ∈ Q, (4) where Q is the set of target quantile levels and θ denotes the trainable parameters. The conditioning window is advanced over the prediction horizon at inference time, as detailed in Section 3.4. The resulting intervals are evaluated by calibration, measuring whether they contain the true load at the expected rate, and sharpness, measuring whether they remain sufficiently narrow. The main challenge is the train-deployment asymmetry. Dur-ing training, the model observes a rich, high-resolution feature set Ftrain , while inference uses a reduced, low-resolution set Ftest . In particular, only timestamps and ambient temperature T are available at inference, while the target load P and several electrical channels are unobserved. The feature mismatch Ftest ̸ = Ftrain defines the central con-straint of the problem. We aim to determine which uncertainty design is more reliable under this constraint: the modular or the integrated scheme. 
+
+3.2. Stage 1: Smart-building Data Ingestion 
+
+The framework ingests a multivariate time series from a smart building: 
+
+xt = {Vt, I t, T t, P P V t , P t}, t ∈ Z, (5) where Vt is voltage, It is current, Tt is ambient temperature, P P V t is behind-the-meter PV generation, and Pt is active power consumption, the forecasting target. From each timestamp t we derive calendar features for hour-of-day ( hod ) and day-of-week ( dow ). Together with the provided temperature forecasts {hod t+h, dow t+h, T f orecast t+h }, these are available in advance and treated as known-future inputs. The data are drawn from the 8official 2025 Electric Energy Consumption Forecasting Competition dataset Gomes et al. (2025), split as follows: 
+
+• Training set d1: Dec 01 2023 to Dec 01 2024, sampled every 5 min with the full feature set {t, V, I, T, P P V , P }.
+
+• Validation set d2: Dec 01 2024 to Jan 10 2025 (40 consecutive days) at 5 min resolution with the same features as d1.
+
+• Test set d3: Jan 10 to Jan 14 2025, sampled hourly with inputs restricted to {t, T }.The target P is hidden at inference and revealed only for evaluation of Jan 10-12, 2025. These splits illustrate the train-test asymmetry of Section 3.1: d1, d 2 are multivariate and high-frequency; d3 is sparse, hourly, and missing most features. The validation and test windows fall in winter, so temperature and PV drop well below the training-year averages (Table 2). Active power and current are near-collinear ( P ≈ V I at near-constant V ), so the true current I is target-equivalent and, like P , hidden at inference. Cross-building and multi-year generalization are out of the scope of this work; seasonal robustness within the year is assessed on held-out weeks as will be seen in Section 4.2.             
+
+> Table 2 Dataset summary by split. V, I, P P V are observed in d1, d 2and reconstructed in d3;d3inputs are
+> {t, T }and the target Pis hidden at inference (labeled days are Jan 10-12, 2025).
+
+Split Period Freq. Hours T (◦C) P P V (W) P (W) 
+
+d1 (train) Dec 01 2023-Dec 01 2024 5 min 8,760 17.0 715 1909 ±1036 
+
+d2 (val) Dec 01 2024-Jan 10 2025 5 min 960 12.5 258 2077 ±2028 
+
+d3 (test) Jan 10-14 2025 1 h 120 12.5 - hidden 
+
+3.3. Stage 2: Preprocessing and Feature Engineering 
+
+In Stage 2, the dense ( d1, d 2) and sparse ( d3) datasets are transformed into standard-ized supervised windows, constructed without using future or test-set information, as detailed below. 
+
+3.3.1. Resolution Alignment 
+
+Both d1 and d2 are sampled every 5 min and d3 every 1 h. Therefore, we first down-sample d1, d 2 to 1 h by a 12-point block average, 
+
+x′ 
+
+> k
+
+= 112 
+
+P11  
+
+> i=0
+
+x12 k+i, (6) matching the hourly d3 grid. 
+
+3.3.2. Feature Reconstruction for d3
+
+The deployment set d3 is feature-deficient: while d1 and d2 contain {t, V, I, P P V , T, P },only {t, T } is available at inference time. To keep the input structure consistent, the missing channels {V, I, P P V } are reconstructed before forecasting. For each channel, two estimators are fitted on d1, and the one with the lower validation error on d2 is applied to d3:
+
+• Contextual mean filling: bmhod,dow = E[m | hod, dow ], m ∈ { V, I, P P V };9• Calendar-weather regression: bm = β(m)0 +β(m)1 T +β(m)2 hod +β(m)3 dow , m ∈ { V, I, P P V },where {β(m) 
+
+> j
+
+}3 
+
+> j=0
+
+are the regression coefficients estimated from d1 for channel m.The reconstruction uses only d1 and d2; the hidden d3 targets are never used, so no test information leaks into the procedure. All fitting and selection are performed after aggregating d1 and d2 to the hourly inference grid, ensuring that training, validation, and deployment use the same temporal resolution. The reconstructed channels are used as proxy inputs to preserve a consistent feature structure between training, validation, and deployment. They are not recovered measurements or additional information be-yond (hod, dow, T ). The practical effect of this reconstruction is examined through the sensitivity test in Section 4.2. 
+
+3.3.3. Causal Feature Engineering 
+
+To capture short-term load persistence, we add causal features from past active power: lags {Pt−1, P t−2} and rolling means over 3 and 6 h, {M A 3, M A 6}. On d1 and d2, they are computed from observed load. On d3, where load is hidden at inference, the rollout is seeded from the last valid values of d2 and the features are updated recursively from the model’s predictions, so no hidden d3 target is used. 
+
+3.3.4. Normalization and Supervised Windows 
+
+With the channels reconstructed and the causal features derived, the per-timestep input is complete. It is standardized using d1 statistics only, via standard scaling x∗ =(x−μ)/σ with mean and standard deviation (μ, σ ) estimated on d1 and applied unchanged to d2 and d3, and assembled into the supervised windows of (1) with per-timestep vector 
+
+xt = Vt, I t, P P V t , T t, hod t, dow t, P t−1, P t−2, M A 3,t , M A 6,t 
+
+, (7) thus D = 10 , where (V, I, P P V ) are observed in d1, d 2 and reconstructed in d3.
+
+3.4. Stage 3: Forecasting with Modular and Integrated Schemes 
+
+Stage 3 compares two uncertainty schemes on the standardized inputs from Stage 2. We do not introduce new architectures but isolate the effect of how uncertainty is incor-porated; both schemes share the input window and horizon of (1), data, features, and training, so performance differences arise only from the uncertainty formulation. We use three mid-scale models of increasing complexity, a recurrent model (BiLSTM), a hybrid recurrent model (BiGRU-LSTM), and an attention-based model (TFT), all established in smart-building and grid forecasting: 
+
+• BiLSTM / BiLSTM Prob (Fig. 3a): Two bidirectional LSTM layers encode the length-
+
+L input window, with forward and backward hidden states concatenated, pooled, and regularized by dropout; reading both directions captures local context under noisy/imputed inputs. At each time step t, the LSTM cell maps the input xt and previous state (ht−1, c t−1) to a new state through input ( it), forget ( ft), and output (ot) gates, 
+
+it = σ(wi[ht−1, x t] + bi), ft = σ(wf [ht−1, x t] + bf ),ot = σ(wo[ht−1, x t] + bo), ˜ct = tanh( wc[ht−1, x t] + bc),ct = ft ⊙ ct−1 + it ⊙ ˜ct, ht = ot ⊙ tanh( ct),
+
+(8) where σ(·) is the logistic sigmoid, ⊙ element-wise multiplication, [·, ·] concatenation, and w, b the gate weights and biases. 10 • BiGRU-LSTM / BiGRU-LSTM Prob (Fig. 3b): A bidirectional GRU extracts short-term fluctuations and a unidirectional LSTM preserves slower cycles such as HVAC patterns, combining GRU efficiency with LSTM memory. The GRU cell uses update (zt) and reset ( rt) gates, 
+
+zt = σ(wz [ht−1, x t] + bz ), rt = σ(wr [ht−1, x t] + br ),
+
+˜ht = tanh( wh[rt ⊙ ht−1, x t] + bh), ht = (1 − zt) ⊙ ht−1 + zt ⊙ ˜ht. (9) 
+
+• TFT / TFT Prob (Fig. 3c): To reweight features adaptively and model multi-scale dependencies, the TFT integrates Variable Selection Networks (VSNs), Gated Residual Networks (GRNs), local LSTMs, and multi-head self-attention in a fusion decoder. Its variable processing uses the GRN with Gated Linear Unit (GLU) and Exponential Linear Unit (ELU) 
+
+GRN (a) = LayerN orm  a + GLU (w2 ELU (w1a)) , (10) combined with an LSTM encoder-decoder for local processing and interpretable multi-head attention for long-range dependencies, following the standard formulation Lim et al. (2021). The variable selection in the TFT, which emphasizes informative inputs and down-weights uninformative ones, parallels data-driven neural surrogate models that approximate expensive engineering simulations from limited or partially observed data using learned representations and adaptive feature weighting Zhang et al. (2022a); Wang et al. (2024b); Zhang et al. (2022b). This shared ability to reweight inputs makes an attention-based backbone such as the TFT well suited to feature-asymmetric deployment, where some inputs are reconstructed or information-limited. The three models span complementary inductive biases: bidirectional recurrence for local context (BiLSTM), an added LSTM stage for longer cycles (BiGRU-LSTM), and attention with variable selection that spans the window directly, not only through recur-rence (TFT). Hence, the modular-versus-integrated comparison holds across architectures rather than being confounded with a single backbone. 
+
+3.4.1. Modular Scheme 
+
+In the modular scheme, each model is a point forecaster with a Dense(1) head that predicts Pt+1 from Xt under the Mean Squared Error (MSE) loss: 
+
+LM SE (θ) = 1
+
+|d1|
+
+X
+
+> t∈d1
+
+ Pt+1 − gθ (ϕθ (Xt)) 2, (11) where θ are the trainable parameters, ϕθ (·) the encoder, and gθ (·) the output head. Forecasts are produced recursively; at horizon step h, the prediction bPt+h is inserted back into the lag and rolling features, and the updated input Xt+h generates the next step. The rollout is seeded from the last L hours of d2, mimicking deployment. Uncertainty is then appended. At each h, the residual is 
+
+rt+h = Pt+h − bP point t+h|t+h−1. (12) Residuals are grouped by horizon h and context c. The context ct = ( hod t, dow t) is the calendar bucket of timestep t, and residuals are pooled within each bucket. For each 11 (a) BiLSTM / BiLSTM P rob . (b) BiGRU-LSTM / BiGRU-LSTM P rob .
+
+(c) TFT / TFT P rob .
+
+Figure 3. The three DL architectures under the two uncertainty schemes. 
+
+12 group, quantiles are estimated on d2:
+
+br(q) 
+
+> h|c
+
+= Quantile q ({ rt+h : ct = c, t ∈ d2}) , (13) with sparse cases smoothed by KDE. At inference, the contextual quantiles adjust the point forecast: 
+
+bP (q) 
+
+> t+h
+
+= bP point t+h|t+h−1 + br(q) 
+
+> h|ct
+
+, q ∈ Q, (14) and a non-crossing adjustment (a per-step sort of the predicted quantiles) enforces or-dered intervals. Such augmentation is lightweight, requiring only contextual statistics in addition to the point forecaster. We include it as a deliberate post-hoc baseline rather than a recommended method, to isolate the value of integrated quantile training. Algo-rithm 1 summarizes the procedure. 
+
+Algorithm 1 Modular residual-quantile forecasting Input: Training set d1, validation set d2, window L=24 , horizon H=24 , quantile set Q
+
+Output: Quantile forecasts { bP (q)
+
+> t+h
+
+}q∈Q for h = 1 , . . . , H  
+
+> 1:
+
+Train the point model gθ on d1 with the MSE loss (11).  
+
+> 2:
+
+Roll out recursively over H=24 h, feeding each prediction back into the lag and rolling features.  
+
+> 3:
+
+On d2, compute residuals (12), group by (h, c ), estimate quantiles (13), and KDE-smooth sparse buckets.  
+
+> 4:
+
+At inference, add the contextual residual quantiles to the point forecast (14); sort the quantiles to enforce non-crossing. 
+
+3.4.2. Integrated Scheme 
+
+The integrated scheme embeds uncertainty directly in the forecaster. A Dense( |Q|)head outputs all target quantiles simultaneously, trained with the quantile (pinball) loss: 
+
+LQ(θ) = 1
+
+|d1|
+
+X
+
+> t∈d1
+
+X
+
+> q∈Q
+
+ρq
+
+
+
+Pt+1 − gθ (ϕθ (Xt)) (q)
+
+, (15) where ρq (u) = max {q u, (q − 1) u} asymmetrically penalizes under- and over-estimation. At inference, the model emits { bP (q)
+
+> t+h
+
+}q∈Q directly and rolls forward recursively over the 
+
+H=24 h horizon; the median forecast bP (0 .5)  
+
+> t+h
+
+is fed back to update the lag and rolling features, as the point forecast is in the modular scheme. An optional non-crossing sort keeps the intervals ordered. Producing the full quantile set in one pass, the integrated scheme models the trajectory and its uncertainty jointly, without a separate residual step. Algorithm 2 summarizes the procedure. 
+
+Algorithm 2 Integrated quantile forecasting Input: Training set d1, window L=24 , horizon H=24 , quantile set Q
+
+Output: Quantile forecasts { bP (q)
+
+> t+h
+
+}q∈Q for h = 1 , . . . , H  
+
+> 1:
+
+Train the model with a Dense( |Q|) head minimizing the pinball loss (15).  
+
+> 2:
+
+Roll out recursively over H=24 h, feeding back the median bP (0 .5) to update lag and rolling features.  
+
+> 3:
+
+Output the quantiles directly; sort them to enforce non-crossing. 13 Both schemes share recursive rollout and feature updates and use comparable pa-rameter scales and training budgets, so any performance gap reflects the uncertainty formulation, not the rollout or model capacity. Next, we evaluate which scheme is more accurate and reliable under these asymmetric training-testing conditions. 
+
+4. Simulations and Analysis 
+
+In this section, we present the experimental setup, training configuration, and results under the asymmetric train-test conditions. All experiments use the official competition dataset Gomes et al. (2025), which mirrors a deployment in which the full feature set is unavailable at inference. As in Section 3.2, the data are partitioned into d1 (training), d2
+
+(validation), and d3 (test). The test set spans five consecutive days, Jan 10-14, 2025, at 1 h resolution, and the task is one day ahead, H = 24 . Since the models predict one hour at a time, the H = 24 horizon is generated by a recursive rollout; each prediction is reinserted into the input window to forecast the next hour until the full day is obtained. Per the competition rules, only timestamped ambient temperature T is available at inference, and the target P is released later only for the labeled window (Jan 10-12, 2025). The missing features {V, I, P P V } are reconstructed as in Stage 2. All variables are standardized with 
+
+d1 statistics, and outputs are inverse-transformed to Watts before evaluation. All models are trained with Adam at batch size 32, with an initial Learning Rate (LR) of 10 −3 for the recurrent models and 3 × 10 −4 for the TFT. Training stops early once the validation loss stops improving (patience 5 epochs for the recurrent models, 10 for the TFT), restoring the best weights. For the recurrent models, a scheduler halves the LR after 3 stagnant epochs, down to 10 −6. Hyperparameters, in particular hidden size and dropout, are selected by grid search on d2; the per-model configurations are listed in Table 3. Architectures, training budgets, and preprocessing are identical across schemes. Experiments run on Google Colab (Python 3, Google Compute Engine backend) on a single NVIDIA A100 GPU with 40 GB VRAM and 83.5 GB RAM. 
+
+> Table 3 Model configurations.
+
+Setting BiLSTM BiGRU-LSTM TFT Input / output window 24 h / 24 h Batch size 32 Quantiles {0.1, 0.5, 0.9}
+
+Core architecture 2×BiLSTM BiGRU + LSTM 2×LSTM + attention Hidden units 256,128 128 Attention heads - 4Dropout 0.3 0.2 Optimizer / LR Adam / 10 −3 Adam / 3 × 10 −4
+
+Max epochs (patience) 50 (5) 60 (10) Total parameters ≈1.2 M ≈0.74 M ≈1.2 M 
+
+4.1. Evaluation Metrics 
+
+Both schemes are assessed with a unified metric set spanning four aspects: point accu-racy, probabilistic quality, interval calibration and sharpness, and efficiency Al-Shareeda 14 et al. (2025a). 
+
+4.1.1. Point Accuracy 
+
+The prediction bPk at step k = 1 , . . . , N is the point forecast bP point k for the modular scheme and the median bP (0 .5)  
+
+> k
+
+for the integrated scheme. It is scored against the ob-served load Pk by the Root MSE (RMSE), Mean Absolute Error (MAE), Mean Absolute Percentage Error (MAPE), and a normalized accuracy score: 
+
+RM SE (W ) = 
+
+q 1
+
+> N
+
+PNk=1 ( bPk − Pk)2, (16) 
+
+M AE (W ) = 1
+
+> N
+
+PNk=1 | bPk − Pk|, (17) 
+
+M AP E (%) = 100 
+
+> N
+
+PNk=1      
+
+> |bPk−Pk||Pk|+ε
+
+, (18) 
+
+Accuracy (%) = 100 1 −
+
+> 1
+> N
+
+PNk=1 | bPk − Pk|
+
+max( P ) − min( P )
+
+!
+
+, (19) with ε guarding against division by zero. 
+
+4.1.2. Probabilistic Quality 
+
+The Quantile Score (QS) is the pinball loss averaged over Q = {0.1, 0.5, 0.9}:
+
+QS (W ) = 1
+
+> |Q|
+> 1
+> N
+
+X
+
+> q∈QN
+
+X
+
+> k=1
+
+ρq
+
+ Pk − bP (q)
+
+> k
+
+, (20) where ρq penalizes under- and over-prediction asymmetrically. Lower QS rewards sharper, statistically consistent forecasts; evaluated at the three quantiles, it is a discrete approx-imation of the Continuous Ranked Probability Score (CRPS). 
+
+4.1.3. Interval Calibration and Sharpness 
+
+At each step k, the 0.1 and 0.9 quantiles yield an 80% interval [Lo k, U p k] = [ bP (0 .1)  
+
+> k
+
+, bP (0 .9)  
+
+> k
+
+],scored by the Prediction Interval Coverage Probability (PICP), the Mean Prediction In-terval Width (MPIW), and the Mean Interval Score (MIS): 
+
+P ICP 80 = 1
+
+> NN
+
+X
+
+> k=1
+
+I{Lo k ≤ Pk ≤ U p k}, (21) 
+
+M P IW 80 (W ) = 1
+
+> NN
+
+X
+
+> k=1
+
+(U p k − Lo k), (22) 
+
+M IS 80 (W ) = 1
+
+> NN
+
+X
+
+> k=1
+
+(U p k − Lo k) + 2 
+
+> α
+
+(Lo k − Pk) I{Pk < Lo k} + 2 
+
+> α
+
+(Pk − U p k) I{Pk > U p k}.
+
+(23) 
+
+P ICP 80 should approach 0.8; lower values indicate under-coverage, higher ones mean over-coverage. M P IW 80 (W) measures sharpness, smaller is better. M IS 80 (W), with 
+
+α = 0 .2, is the mean Winkler score, penalizing both excess width and missed observations, weighing calibration against sharpness. 15 4.1.4. Model Computational Efficiency 
+
+Efficiency is reported as inference latency (sec) per 24 h forecast. 
+
+4.2. Results and Discussion 
+
+Our experiments answer the question posed in Section 3.1: under feature-asymmetric deployment, which uncertainty design yields more accurate and reliable forecasts, the modular or the integrated scheme, and does it depend on the backbone? As the active load for Jan 13-14, 2025 is unreleased, evaluation covers Jan 10-12. Throughout, point 
+
+denotes the point forecast of the modular pipeline before uncertainty augmentation, mod-ular its residual-quantile output, and integrated the quantile-trained probabilistic model. We first assess forecast quality and its statistical significance. Next is the operational behavior. Finally, we analyze robustness against non-deep baselines, to the input recon-struction, and across seasons. 
+
+4.2.1. Forecast Quality and Significance Point-Forecast Accuracy. Table 4 and Table 5 show that the scheme effect depends on the backbone. For TFT, integrated training is decisively better, 2.7% MAPE and 99.0% accuracy, with per-day RMSE of 28-83 W. For the recurrent models the two schemes perform similarly; BiGRU-LSTM attains its lowest MAPE there. Across backbones, TFT leads by a wide margin while the recurrent models stay at 43-55% MAPE for BiGRU-LSTM and 60-70% for BiLSTM.   
+
+> Table 4 Point-forecast accuracy across models (W, %). Teal marks the best method within each model. Values are means over the three labeled days (Jan 10-12).
+
+Model Method RMSE ↓ MAE ↓ MAPE ↓ Accuracy ↑
+
+BiLSTM Point 944.1 747.5 62.2 77.2 Modular 1194.4 948.0 69.8 69.8 Integrated 1079.8 740.1 60.2 77.7 Average 1072.8 811.9 64.1 74.9 BiGRU-LSTM Point 814.8 553.0 44.2 83.7 Modular 812.2 605.4 43.2 81.6 Integrated 923.4 651.8 55.1 80.5 Average 850.1 603.4 47.5 81.9 TFT Point 227.0 181.0 14.4 94.9 Modular 224.1 165.8 12.0 95.4 Integrated 48.4 35.7 2.7 99.0 Average 166.5 127.5 9.7 96.4 
+
+Interval Calibration and Sharpness. Operators need a confidence range, not only an ex-pected value, so each model emits an 80% interval that should contain the true load 80% of the time; a good interval is calibrated with coverage near nominal and sharp, i.e., narrow at that coverage. Table 6 shows the integrated scheme yields more reliable inter-vals than the modular one, clearly for TFT. Under the modular scheme, the recurrent models produce wide, mis-centered intervals with coverage as low as 12.5%. The inte-grated TFT is best with P ICP 80 ≈ 67% (75% on individual days), M P IW 80 = 67 W, 16 Table 5 Per-day point accuracy on the labeled days. 
+
+Model Day Method RMSE ↓ MAE ↓ MAPE ↓ Acc ↑
+
+BiLSTM Jan 10 Point 902.2 739.3 63.6 76.5 Modular 1352.0 1110.3 75.5 64.7 Integrated 996.6 644.6 57.3 79.5 Jan 11 Point 1012.7 772.2 59.5 70.5 Modular 1420.7 1092.4 69.8 58.3 Integrated 1097.2 765.1 60.5 70.8 Jan 12 Point 917.4 731.0 63.6 84.6 Modular 810.6 641.5 64.2 86.5 Integrated 1145.6 810.6 63.0 82.9 BiGRU-LSTM Jan 10 Point 677.4 433.2 41.2 86.2 Modular 803.7 614.9 43.5 80.4 Integrated 854.0 575.0 55.0 81.7 Jan 11 Point 774.6 545.2 45.7 79.2 Modular 811.1 607.8 42.4 76.8 Integrated 911.5 646.3 55.0 75.3 Jan 12 Point 992.4 680.6 45.8 85.6 Modular 821.8 593.6 43.5 87.5 Integrated 1004.8 734.2 55.2 84.5 TFT Jan 10 Point 122.9 108.9 10.7 96.5 Modular 156.3 126.1 10.2 96.0 Integrated 28.2 24.0 2.2 99.2 Jan 11 Point 184.5 163.9 13.0 93.7 Modular 157.5 111.7 8.0 95.7 Integrated 33.8 27.3 2.4 99.0 Jan 12 Point 373.6 270.2 19.5 94.3 Modular 358.4 259.5 17.9 94.5 Integrated 83.2 55.7 3.6 98.8 17 and M IS 80 = 176 W. Table 7 confirms this on every labeled day. The evaluation uses   
+
+> Table 6 Interval metrics for the modular and integrated schemes. Teal marks the best per metric within each model. Values are averages over the three labeled days (Jan 10-12).
+
+Model Method P ICP 80 ↔ (%) M P IW 80 ↓ (W) M IS 80 ↓ (W) BiLSTM Modular 12.5 947.5 6661.0 Integrated 30.6 893.3 4649.6 BiGRU-LSTM Modular 31.9 966.6 3422.4 Integrated 25.0 755.5 4929.4 TFT Modular 54.2 372.0 859.2 Integrated 66.7 67.3 175.7 
+
+> Table 7 Per-day interval metrics at the 80% level on the labeled days.
+
+Model Day Method P ICP 80 ↔ M P IW 80 ↓ M IS 80 ↓
+
+BiLSTM Jan 10 Modular 4.2 970.9 7806.8 Integrated 37.5 876.7 4000.6 Jan 11 Modular 8.3 800.8 7917.6 Integrated 29.2 866.3 4775.6 Jan 12 Modular 25.0 1070.7 4258.6 Integrated 25.0 937.0 5172.5 BiGRU-LSTM Jan 10 Modular 29.2 985.7 3906.6 Integrated 29.2 765.0 4302.7 Jan 11 Modular 33.3 887.6 3560.8 Integrated 25.0 716.9 4988.1 Jan 12 Modular 33.3 1026.5 2799.8 Integrated 20.8 784.5 5497.4 TFT Jan 10 Modular 54.2 396.4 676.0 Integrated 62.5 48.0 117.5 Jan 11 Modular 70.8 357.6 647.5 Integrated 75.0 50.2 123.7 Jan 12 Modular 37.5 362.1 1254.2 Integrated 62.5 103.6 285.8 a single 80% level because it matches the emitted quantiles (q0.1, q 0.5, q 0.9); other levels would require retraining with matching quantiles, which we leave to future work. The level choice does not bias the ranking: M IS 80 already weighs calibration against sharp-ness by construction, and the distribution-level QS agrees, again ranking the integrated TFT first at 11 .8 W versus 273-278 W for the recurrent models (Fig. 4). Fig. 5 combines both views: (a) point accuracy by method and (b) the coverage-width trade-off, where the ideal sits at 80% coverage with small width. The integrated TFT lies closest to this ideal; the recurrent models under-cover despite wider intervals. 18 Figure 4. Pinball-loss distributions at q ∈ { 0.1, 0.5, 0.9} for Jan 10-12, 2025. The TFT achieves the lowest and most stable losses. 
+
+Figure 5. Mean point accuracy and interval trade-off across the three labeled days. 
+
+19 Statistical Significance. The rankings above rest on metric differences over only 72 la-beled hours (three days × 24 h), so we test the schemes with the Diebold-Mariano (DM) test under the Harvey-Leybourne-Newbold (HLN) small-sample correction. Table 8 shows that a negative statistic favors the integrated scheme. Comparing the schemes on pinball losses, integrated training significantly improves TFT ( DM = −7.00 , p < 10 −8)and BiLSTM ( DM = −2.70 , p = 0 .009 ), while BiGRU-LSTM favors the modular pipeline (DM = +2 .20 , p = 0 .031 ), consistent with its mixed interval behavior. Comparing the models under the integrated scheme on squared-error losses, TFT significantly out-performs BiLSTM ( DM = −4.50 , p ≈ 2 × 10 −5) and BiGRU-LSTM ( DM = −4.50 ,
+
+p ≈ 3 × 10 −5), and BiGRU-LSTM outperforms BiLSTM ( DM = −3.90 , p ≈ 2 × 10 −4).   
+
+> Table 8 DM tests over the labeled period ( n= 72 hours, HLN-corrected). Top: integrated vs. modular using pinball losses, where negative values favor the integrated scheme. Bottom: between-model comparisons under the integrated scheme using squared-error losses, where negative values favor the first-named model.
+
+Comparison DM statistic p-value 
+
+Integrated vs. modular 
+
+BiLSTM −2.70 0.009 
+
+BiGRU-LSTM +2 .20 0.031 
+
+TFT −7.00 < 10 −8
+
+Models under integrated scheme 
+
+TFT vs. BiLSTM −4.50 ≈ 2 × 10 −5
+
+TFT vs. BiGRU-LSTM −4.50 ≈ 3 × 10 −5
+
+BiGRU-LSTM vs. BiLSTM −3.90 ≈ 2 × 10 −4
+
+4.2.2. Operational Behavior Daily Pattern, Peak, and Ramp Reproduction. We next check how each model reproduces the demand curve. Fig. 6 plots the median forecast and 80% interval against the actual load on a moderate day (Jan 10) and a high-stress day (Jan 12). On the moderate day all three models track the daily shape, overshooting the peak by different margins, about 11% for BiLSTM, 8% for BiGRU-LSTM, under 1% for TFT. TFT’s interval adapts, narrow over the calm overnight hours (about 50 W) and widening to several hundred Watts around the stress-day peak. Zooming in on the peak, Table 9 gives the peak-timing ( ∆h) and magnitude ( ∆P ) errors; Fig. 7 and Fig. 8 show where peaks fall and how ramps compare. On the moderate day all models find the peak hour, with small magnitude errors, BiGRU-LSTM and TFT within about 150 W, BiLSTM overshooting by ≈500 W. The stress day separates them more clearly; the recurrent models miss the peak by 4-6 h and underestimate it by over 1 kW, falling −61% and −57% short at the true peak hour, while TFT holds timing to about 1 h and magnitude to a few percent. The ramp maps in Fig. 8 show that TFT reproduces the up- and down-ramps which the recurrent models exaggerate or flatten. Scheme differences stay smaller than model differences; the point forecasts capture timing but distort peak height, and the integrated variants are the steadiest. 
+
+Demand-Temperature Loop Tracking. A final operational concern is whether the fore-casts preserve the temperature-demand relationship. Demand typically lags tempera-20 (a) BiLSTM Jan 10 (b) BiLSTM Jan 12   
+
+> (c) BiGRU-LSTM Jan 10 (d) BiGRU-LSTM Jan 12
+> (e) TFT Jan 10 (f) TFT Jan 12
+
+Figure 6. Actual vs. predicted demand on a moderate day (Jan 10) and a high-stress day (Jan 12), 2025. Each sub-figure shows the median forecast and the 10-90% interval for one model. 
+
+21 Figure 7. Actual demand over the hod × dow grid, with each model’s predicted peak marked. The closer a marker sits to the actual peak cell, the better the peak timing.       
+
+> (a) BiLSTM (Point) (b) BiLSTM (Modular) (c) BiLSTM (Integrated)
+> (d) BiGRU-LSTM (Point) (e) BiGRU-LSTM (Modular) (f) BiGRU-LSTM (Integrated)
+> (g) TFT (Point) (h) TFT (Modular) (i) TFT (Integrated)
+
+Figure 8. Hour-to-hour ramp rate ( ∆P ) for the actual demand and each model-method combination. Diverging colors show up- vs. down-ramps. 
+
+22 Table 9 Peak timing and magnitude errors by model and method. ∆h is the peak-hour error; ∆Ppeak2peak is the predicted-minus-actual magnitude at each peak; ∆Pat actual is the error at the actual peak hour. Teal = good ( |∆h| ≤ 1 or |∆P | < 200 W); Red = poor ( |∆h| ≥ 4 or |∆P | > 1000 W); uncolored = intermediate. 
+
+Model Day ∆h (h) ∆Ppeak2peak (W) ∆Pat actual (W) Point BiLSTM Jan 10 0 502.1 502.1 Jan 12 6 -705.6 -2555.7 BiGRU-LSTM Jan 10 0 13.4 13.4 Jan 12 5 -1111.4 -3423.6 TFT Jan 10 0 -151.3 -151.3 Jan 12 5 -153.5 -1267.2 Modular BiLSTM Jan 10 -1 2002.0 1320.9 Jan 12 4 140.2 -1280.0 BiGRU-LSTM Jan 10 -4 1065.1 709.6 Jan 12 3 -862.7 -2661.1 TFT Jan 10 0 120.1 120.1 Jan 12 5 90.8 -1059.8 Integrated BiLSTM Jan 10 1 436.2 352.5 Jan 12 6 -673.5 -3221.0 BiGRU-LSTM Jan 10 1 288.4 175.8 Jan 12 6 -842.9 -3013.2 TFT Jan 10 0 -14.3 -14.3 Jan 12 4 -12.1 -291.9 23 ture, forming a clockwise daily loop in the demand-temperature plane: morning and evening loads follow different paths even at similar T . Fig. 9 shows this behavior for the moderate and stress days. On Jan 12, the stress-day loop is about 6.5× larger than the moderate-day loop (10,729 versus 1,642 W ·◦C), indicating a stronger, more asymmetric load response. The integrated TFT tracks the observed loop best, reducing the mean loop deviation 1 by 79.0% relative to the point forecast and 79.3% relative to the modular variant, and best matching the morning and evening branches on the moderate day. The one exception is the stress-day turning-point T , where it is slightly worse ( 1.9◦C versus 
+
+1.7◦C), a small trade-off against its loop-tracking gains. 
+
+> Figure 9. Demand-temperature phase loops for Jan 10 and 12, 2025, illustrating the clockwise loop.
+
+4.2.3. Robustness Analysis Comparison with Baselines. We further test whether the gain of the integrated TFT is due merely to using a deep model. To this end, we compare it with GBM, RF, BPNN/MLP, and SARIMAX under the same inputs, reconstruction procedure, data splits, and horizon H. Table 10 shows the non-deep baselines score 43-61% MAPE, close to the recurrent deep models at 44-70%, but far from the integrated TFT at 2.7%. Depth alone thus does not explain the improvement. We attribute the gap to how the architectures handle the reconstructed variables, whose strong training-time correlation with P weakens at test time; the baselines weight them as fixed inputs, whereas the TFT’s variable-selection network can re-weight them adaptively. Although the integrated TFT is more robust than the baselines, the following sensitivity analysis isolates the residual cost of reconstruction. 
+
+Reconstruction Sensitivity. To isolate the residual cost of reconstruction, we re-evaluate the integrated TFT on d2 using observed versus reconstructed {V, I, P P V } channels. Results are pooled over one-day-ahead rollouts on the last fourteen validation days. As shown in Table 11, replacing observed channels with reconstructed ones nearly doubles             
+
+> 1Loop deviation is the mean absolute difference between the predicted and observed demand-temperature curves over the 24 h points of each day, summed over the two days.
+
+24 Table 10 Statistical and ML baselines vs. the integrated TFT on the labeled days (Jan 10-12) under identical inputs, reconstruction, and splits. 
+
+Model RMSE ↓ MAE ↓ MAPE ↓ Accuracy ↑ Train/Infer time (s) SARIMAX 769.0 653.2 61.0 86.2 21 / 0.011 GBM 744.1 631.0 57.1 86.7 1.8 / 0.001 RF 760.4 649.3 59.6 86.3 18 / 0.026 BPNN/MLP 678.5 530.0 43.0 88.8 22 / 0.001 TFT (integrated) 48.4 35.7 2.7 99.0 2,040 / 0.41 the QS ( 16 .5 → 34 .0 W) and lowers coverage from 0.41 to 0.17 , while the interval width remains almost unchanged ( 66 .8 → 65 .5 W). Hence, the model does not compensate for reconstruction error by widening its intervals; instead, the predictive distribution shifts, increasing the number of misses. Reconstruction is therefore a major measured source of degradation under feature asymmetry, affecting both sharpness and calibration. Nevertheless, under the same reconstructed inputs, the integrated TFT remains well ahead of the baselines.   
+
+> Table 11 Sensitivity to reconstructed inputs on d2using the integrated TFT. Reconstructed inputs worsen QS and coverage while leaving interval width nearly unchanged.
+
+Metric Observed Reconstructed Change 
+
+QS (W) 16.5 34.0 +106% PICP 80 0.41 0.17 −0.24 MPIW 80 (W) 66.8 65.5 −1.9% 
+
+Seasonal Robustness. The labeled competition window is limited to winter, so we test whether the performance is season-specific. We hold out one week each from Apr, Jul, and Oct 2024 from d1, apply identical preprocessing, and re-evaluate the integrated TFT. In Table 12, MAPE stays within 1.4-2.9% across the held-out weeks, consistent with the winter window at 2.7%. Interval behavior is also stable; coverage meets or exceeds the nominal 80% (Apr 100%, Jul 81%, Oct 93%) at low MIS 80 , so the intervals widen on unseen seasons rather than collapse, while the in-distribution winter week is sharper but under-covered (67%). The good performance of the integrated TFT is thus not confined to the winter competition period. One limitation of this test is that it changes the evaluation season while keeping the training data fixed at the full year, so it does not isolate the effect of the training window on its own. The accuracy and coverage nonetheless stay stable across the held-out weeks, which indicates that full-year training generalizes beyond the winter window rather than overfitting to it. Whether a recent or season-matched training window would give comparable calibration is left to future work. 
+
+4.2.4. Remarks and Implications 
+
+Under feature-asymmetric deployment, the uncertainty design matters as much as the backbone. The point forecasts keep timing but develop amplitude bias under stress, and the modular augmentation corrects little, yielding wide, weakly covering intervals and inflated peaks (Table 6). The integrated scheme improves calibration without degrading 25 Table 12 Integrated TFT seasonal evaluation. One held-out week per season versus the winter competition window, under identical preprocessing. 
+
+Season (week) MAPE ↓ (%) PICP 80 (%) MIS 80 ↓ (W) Apr 2024 1.4 100.0 260.2 Jul 2024 2.9 81.0 244.7 Oct 2024 1.6 92.9 199.5 Jan 2025 2.7 66.7 175.7 point accuracy (Figs. 4 and 9). The backbone ranking is equally clear; TFT attains the lowest errors, the most reliable intervals, and the closest daily patterns (Table 4; Fig. 6). Its edge is suitability to feature asymmetry, not depth. The baselines stay at 43-61% MAPE under the same setup (Table 10), and accuracy and calibration hold across held-out seasons (Table 12). The remaining bottleneck is the reconstruction itself, which degrades both sharpness and coverage (Table 11). Reliable deployment thus requires integrated probabilistic training with an asymmetry-tolerant backbone such as the TFT, paired with better inference-time reconstruction; the modular augmentation serves better as a diagnostic than an operational scheme. 
+
+5. Conclusion and Future Work 
+
+Reliable uncertainty estimates in short-term load forecasting affect reserve allocation and demand-response scheduling, yet they are difficult to obtain when deployment inputs are sparse and feature-limited. In the setting studied here, training data are dense and multivariate, whereas inference-time inputs must first be reconstructed from the limited variables available at deployment. Using a three-stage pipeline for data ingestion, tem-poral alignment, feature reconstruction, and causal feature engineering, we compared two uncertainty strategies, a modular residual-quantile add-on and integrated quantile training, across three deep models: BiLSTM, BiGRU-LSTM, and TFT. The results show that uncertainty placement matters as much as the forecasting backbone. The modular scheme leaves the recurrent backbones with wide, mis-centered intervals and undercov-erage as low as 12.5% on the labeled days. Integrated quantile training narrows the intervals for all three backbones, with the largest gain for the TFT. The integrated TFT gives the lowest errors (RMSE 28-83 W, MAE 24-56 W, MAPE 2.2-3.6%, and accuracy near 99%), the narrowest intervals, the lowest interval scores, and the coverage closest to nominal at about 67%. Direct quantile learning is therefore more reliable than post-hoc uncertainty augmentation under the feature-asymmetric deployment studied here, particularly when coupled with an attention-based backbone. Two limitations define the scope of our findings. First, reconstruction error remains the main technical constraint. Although the reconstructed features preserve the ex-pected input structure, they do not add measured information beyond the available calendar variables and ambient temperature T . The true versus reconstructed sensitiv-ity test shows that relying on reconstructed inputs raises the QS by 106% and drives the 80% coverage below nominal while leaving the interval width nearly unchanged, so the model does not automatically widen its intervals to reflect reconstruction-induced uncertainty. Second, as our quantitative evaluation rests on one building and 72 labeled 26 hourly observations across three days, the reported rankings should be read as evidence for this deployment setting rather than as population-level conclusions across buildings; we support the rankings with Diebold-Mariano tests under a small-sample correction and with consistent behavior on held-out weeks from other seasons. Future work fol-lows two directions, each addressing one of the limitations above. The first targets the reconstruction-induced miscalibration; uncertainty-aware reconstruction will be coupled with the forecaster so that errors introduced before prediction propagate into the forecast intervals, and lightweight pre-trained sequence models will be explored to build richer representations from the few variables available under sparse sensing. The second broad-ens evaluation from a single offline deployment toward operational use; the framework will be tested across additional buildings, longer labeled windows, and varying training periods to establish robustness beyond the present setting, and the calibrated forecasts will then drive adaptive control and scheduling through RL-based decision policies. 
+
+References 
+
+Al-Shareeda, S., Ozdemir, G., Jeon, H.S., Ahmad, K., 2025a. A lightweight dl model for smart grid power forecasting with feature and resolution mismatch, in: 2025 IEEE PES Conference on Innovative Smart Grid Technologies - Middle East (ISGT Middle East), pp. 1–5. doi: 10.1109/ISGTMiddleEast65737.2025.11314216 .Al-Shareeda, S., Saim, M., Jabr, B., Salamah, Y.B., Alanazi, F., Yurdakul, G., Ozguner, F., Ozguner, U., 2025b. When pedestrians hesitate: Ppo-based rl collision avoidance in uncertain scenarios, in: 2025 International Conference on Smart Applications, Com-munications and Networking (SmartNets), pp. 1–7. doi: 10.1109/SmartNets65254. 2025.11106806 .Al-Shareeda, S., Srinivasan, V., AlMudhaf, M., Salamah, Y.B., Jabr, B., Ozguner, F., 2025c. Evaluating handover impact on ibc-authenticated task offloading in c-v2x vtens, in: 2025 IEEE Vehicular Networking Conference (VNC), pp. 1–8. doi: 10.1109/VNC64509.2025.11054162 .Almihat, M.G.M., Munda, J.L., 2025. The role of smart grid technologies in urban and sustainable energy planning. Energies 18. doi: 10.3390/en18071618 .Al–Shareeda, S., Ozguner, F., Redmill, K., Duong, T.Q., Canberk, B., 2025. Lightweight authenticated task offloading in 6g-cloud vehicular twin networks, in: 2025 IEEE Wire-less Communications and Networking Conference (WCNC), pp. 01–06. doi: 10.1109/ WCNC61545.2025.10978324 .Arévalo, P., Benavides, D., Ochoa-Correa, D., Ríos, A., Torres, D., Villanueva-Machado, C.W., 2025. Smart microgrid management and optimization: A systematic review towards the proposal of smart management models. Algorithms 18. doi: 10.3390/ a18070429 .Brusaferri, A., Matteucci, M., Spinelli, S., Vitali, A., 2022. Probabilistic electric load forecasting through bayesian mixture density networks. Applied Energy 309, 118341. doi: 10.1016/j.apenergy.2021.118341 .27 Danish, S.M., Hameed, A., Ranjha, A., Srivastava, G., Zhang, K., 2025. Block-fedl: Electric vehicle charging load forecasting using federated learning and blockchain. IEEE Transactions on Vehicular Technology 74, 2048–2056. doi: 10.1109/TVT.2024. 3406946 .El-Afifi, M.I., Eladl, A.A., Sedhom, B.E., Hassan, M.A., 2025. Enhancing ev charg-ing station integration: A hybrid arima-lstm forecasting and optimization framework. IEEE Transactions on Industry Applications 61, 4924–4935. doi: 10.1109/TIA.2025. 3540788 .El Maghraoui, A., El Hadraoui, H., Ledmaoui, Y., El Bazi, N., Guennouni, N., Chebak, A., 2024. Revolutionizing smart grid-ready management systems: A holistic framework for optimal grid reliability. Sustainable Energy, Grids and Networks 39, 101452. doi: 10. 1016/j.segan.2024.101452 .Gomes, L., Vale, Z., Faria, P., Soares, J., 2025. 2025 competition on electric energy con-sumption forecast adopting multi-criteria performance metrics. doi: 10.5281/zenodo. 15939751 .Kaur, D., Islam, S.N., Mahmud, M.A., Haque, M.E., Dong, Z.Y., 2022. Energy forecast-ing in smart grid systems: recent advancements in probabilistic deep learning. IET Generation, Transmission & Distribution 16, 4461–4479. doi: 10.1049/gtd2.12603 .Khajeh, H., Laaksonen, H., 2022. Applications of probabilistic forecasting in smart grids: A review. Applied Sciences 12. doi: 10.3390/app12041823 .Lei, J., Wang, L., Pei, Q., Sun, W., Lin, X., Liu, X., 2024. Privgrid: Privacy-preserving individual load forecasting service for smart grid. IEEE Transactions on Information Forensics and Security 19, 6856–6870. doi: 10.1109/TIFS.2024.3422876 .Li, X., Li, L., Zhang, K., Chen, X., Feng, T., Zhao, Y., Yin, S., 2025. Multivariate correlation self-distillation transformer for time series forecasting with incomplete data. IEEE Transactions on Industrial Informatics 21, 4734–4744. doi: 10.1109/TII.2025. 3545099 .Lim, B., Arık, S.O., Loeff, N., Pfister, T., 2021. Temporal fusion transformers for inter-pretable multi-horizon time series forecasting. International Journal of Forecasting 37, 1748–1764. doi: 10.1016/j.ijforecast.2021.03.012 .Liu, J., Zang, H., Cheng, L., Ding, T., Wei, Z., Sun, G., 2025. Robust photovoltaic power forecasting against multi-modal adversarial attack via deep reinforcement learning. IEEE Transactions on Sustainable Energy 16, 2386–2396. doi: 10.1109/TSTE.2025. 3548089 .Lucas Segarra, E., Ramos Ruiz, G., Fernández Bandera, C., 2021. Probabilistic load forecasting optimization for building energy models via day characterization. Sensors 21. doi: 10.3390/s21093299 .Mahajan, A., Das, S., Su, W., Bui, V.H., 2024. Bayesian-neural-network-based approach for probabilistic prediction of building-energy demands. Sustainability 16. doi: 10. 3390/su16229943 .28 Meisenbacher, S., Turowski, M., Phipps, K., Rätz, M., Müller, D., Hagenmeyer, V., Mikut, R., 2022. Review of automated time series forecasting pipelines. WIREs Data Mining and Knowledge Discovery 12, e1475. doi: 10.1002/widm.1475 .Ozdemir, G., 2024a. Long-term electrical energy demand forecasting by using artifi-cial intelligence/machine learning techniques. Electrical Engineering 106, 5229–5251. doi: 10.1007/s00202-024-02364-1 .Ozdemir, G., 2024b. Probabilistic cdf-based load forecasting model in a power distri-bution system. Sustainable Energy, Grids and Networks 38, 101311. doi: 10.1016/j. segan.2024.101311 .Pentsos, V., Tragoudas, S., Wibbenmeyer, J., Khdeer, N., 2025. A hybrid lstm-transformer model for power load forecasting. IEEE Transactions on Smart Grid 16, 2624–2634. doi: 10.1109/TSG.2025.3535407 .Sundararajan, A., Olama, M., Ferrari, M., Ollis, B., Liu, G., 2022. A data quality-aware framework to reliably forecast photovoltaic generation and consumer load for an improved resilience of microgrids, in: 2022 IEEE 13th International Symposium on Power Electronics for Distributed Generation Systems (PEDG), pp. 1–6. doi: 10. 1109/PEDG54999.2022.9923109 .Wang, M., Ying, F., 2023. Point and interval prediction for significant wave height based on lstm-gru and kde. Ocean Engineering 289, 116247. doi: 10.1016/j.oceaneng.2023. 116247 .Wang, M., Ying, F., Nan, Q., 2024a. Refined offshore wind speed prediction: Leveraging a two-layer decomposition technique, gated recurrent unit, and kernel density esti-mation for precise point and interval forecasts. Engineering Applications of Artificial Intelligence 133, 108435. doi: 10.1016/j.engappai.2024.108435 .Wang, M., Ying, F., Zhu, Y., 2026. A novel multistep point and interval prediction framework for accurate short-term wave height estimation incorporating the tcn-gru-attention model and error distribution analysis. Renewable Energy 256, 124222. doi: 10.1016/j.renene.2025.124222 .Wang, X., Zhang, Y., Liu, Q., Wang, H., 2024b. Prediction of the pore-pressure built-up and temperature of fire-loaded concrete with Pix2Pix. Computers, Materials & Continua 79, 2907–2922. doi: 10.32604/cmc.2024.050736 .Wang, Y., Wang, J., Song, J., 2025. Data purification for improved power dispatch against renewable uncertainty. IEEE Transactions on Industrial Informatics 21, 4703– 4712. doi: 10.1109/TII.2025.3545092 .Xu, J., Li, K., Li, D., 2024. Multioutput framework for time-series forecasting in smart grid meets data scarcity. IEEE Transactions on Industrial Informatics 20, 11202–11212. doi: 10.1109/TII.2024.3396347 .Xu, N., Fu, L., Wang, X., Lin, Z., 2026. Missing data recovery for electric load curves based on adaptive curve grafting and noise decomposition. IEEE Transactions on Power Systems , 1–12doi: 10.1109/TPWRS.2026.3655678 .29 Zhang, H., Yang, J., Fan, S., Geng, H., Shao, C., 2025a. An ultra-short-term distributed photovoltaic power forecasting method based on gpt. IEEE Transactions on Sustain-able Energy 16, 2746–2754. doi: 10.1109/TSTE.2025.3564975 .Zhang, H., Zhang, G., Zhao, M., Liu, Y., 2024. Load forecasting-based learning system for energy management with battery degradation estimation: A deep reinforcement learning approach. IEEE Transactions on Consumer Electronics 70, 2342–2352. doi: 10. 1109/TCE.2024.3371568 .Zhang, W., Zhan, H., Sun, H., Yang, M., 2025b. Probabilistic load forecasting for integrated energy systems based on quantile regression patch time series transformer. Energy Reports 13, 303–317. doi: 10.1016/j.egyr.2024.11.057 .Zhang, Y., Gao, Z., Wang, X., Liu, Q., 2022a. Image representations of numerical simulations for training neural networks. CMES - Computer Modeling in Engineering and Sciences 134, 821–833. doi: 10.32604/cmes.2022.022088 .Zhang, Y., Gao, Z., Wang, X., Liu, Q., 2022b. Predicting the pore-pressure and tem-perature of fire-loaded concrete by a hybrid neural network. International Journal of Computational Methods 19, 2142011. doi: 10.1142/S0219876221420111 .30
