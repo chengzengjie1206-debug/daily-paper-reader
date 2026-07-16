@@ -1,0 +1,947 @@
+Title: GNet: A scalable and flexible Gaussian process network with nonparametric neurons
+
+URL Source: https://arxiv.org/pdf/2607.10735v2
+
+Published Time: Thu, 16 Jul 2026 01:30:28 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# GNet: A scalable and flexible Gaussian process network with nonparametric neurons 
+
+Mengyang Gu ∗
+
+Department of Statistics and Applied Probability, University of California, Santa Barbara, CA 
+
+Abstract 
+
+We develop GNet, a scalable and flexible Gaussian process network with nonparametric activation functions modeled by Gaussian processes. To reduce computational and storage costs, we introduce the jointly inverse Kalman filter, a fast algorithm together with closed-form expressions of gradients for accelerating model training and predictions without the need to form covariance matrices. Using a unified optimization setting, GNet shows competitive performance across a diverse range of test problems, including predicting nonlinear functions, nonparametric regression of real-world data, and predicting one-body direct correlation functions with high-dimensional inputs in classical density function theory. The strong performance of GNet, accelerated by the jointly inverse Kalman filter, suggests broad applicability to large-scale predictive modeling with substantially reduced computational and storage costs. 
+
+# 1 Introduction 
+
+Predictive models capable of learning nonlinear relationships are a foundation for modern sta-tistical learning and artificial intelligence. Gaussian processes [29] and neural networks [35] are two widely used classes of predictive models. In a Gaussian process, output correlation is formed by a kernel function acting on a distance measure between pairs of inputs, with a smaller input dis-tance inducing stronger correlation between outputs. Gaussian processes have several advantages, including a small number of parameters requiring numerical optimization, relatively high predictive accuracy with small sample sizes, and predictive uncertainty assessment. Because of these advan-tages, Gaussian processes have been widely used for predicting expensive computer simulations [11], modeling spatial data [2], and nonparametric regression [29]. Despite these advantages, Gaussian processes have two main limitations. First, Gaussian pro-cesses require high storage and computational cost for large data sets, as storing a covariance matrix requires storage cost to increase quadratically with the sample size, and computing its in-verse or Cholesky factor increases cubically. Many approximation methods of Gaussian processes were developed [40, 23, 20, 6, 18, 45], yet achieving higher predictive accuracy often requires higher computational costs. Second, the distance metric between two inputs is determined by a ker-nel function in a Gaussian process, which may be restrictive. To overcome this limitation, deep Gaussian processes model latent inputs as Gaussian processes [5], however, estimating latent input representations often induces high computational cost even with approximation approaches [34]. Neural networks, in contrast, represent nonlinear relationships through compositional struc-tures. The most basic unit of a neural network contains parametric activation functions such as the 
+
+> ∗Correspondence should be addressed to Mengyang Gu (mengyang@pstat.ucsb.edu)
+
+1arXiv:2607.10735v2 [stat.ME] 15 Jul 2026 rectified linear unit, applied to one-dimensional (1D) transformed inputs from the previous layer, followed by weighted summation and bias adjustment. This basic unit has been widely integrated into modern neural network models, such as transformers [39], which have become the standard architecture of large language models. However, neural networks often require massive training samples and parameters, leading to high computational and storage costs. In this work, we develop GNet, a Gaussian process network with nonparametric activation functions modeled as Gaussian processes and fast algorithms to accelerate the computation. The contributions are threefold. First, we observe that the activation function has 1D inputs, a key property that motivates us to develop the jointly inverse Kalman filter for accelerating covariance matrix-vector multiplication induced by dynamical linear models. The computational order is re-duced from Opn2q to Opnq 2q, where n is the sample size and q is the dimension of latent states. For commonly used Mat´ ern covariances with smoothness parameters 1 {2 or 5 {2, we have q “ 1and q “ 3, respectively. This complexity is also smaller than a recent approach [9], by avoiding the need to run a Kalman filter. Second, we derived closed-form expressions of loss gradients of GNets, enabling the computation to be carried out without forming covariance matrices. The closed-form gradients are essential for scalability, as directly applying automatic differentiation [3] to iterative computation in the jointly inverse Kalman filter can generate prohibitively large computational graphs. Third, we integrate the jointly inverse Kalman filter with a Nystr¨ om preconditioned con-jugate gradient algorithm for accelerating computation [42, 31]. For a pretrained GNet, the cost of predicting each test input only increases logarithmically with the training sample size, or log pnq,allowing scalable predictions for many concurrent users. We demonstrate the scalability and efficiency of GNet by a diverse collection of numerical stud-ies, including predicting simulated nonlinear functions, real-world measurements [21], and classical density functional theory calculations with high dimensional inputs [33]. Across all experiments, we use a unified optimization setting to evaluate two GNet architectures: a one-layer model with 10 neurons and a two-layer model with 30 neurons in each layer. We include two feedforward neural networks, two Kolmogorov-Arnold networks [24], an exact Gaussian process [12], Vecchia and scaled Vecchia approximate Gaussian processes [18, 19], as benchmarks in comparison. GNet models substantially reduce out-of-sample predictive error in most scenarios (Figure 2, Figure S2, Figure 4 and Figure 6). Furthermore, for the motivating example with around 10 5 training sam-ples and 201-dimensional inputs studied in Section 5.3, GNet models require approximately 5-20 minutes on a desktop computer without parallel computation (Figure 6). We do not expect GNet to replace existing approaches. Rather, these results under the unified optimization setting sug-gest that GNet, accelerated by the joint inverse Kalman filter, can serve as a scalable and flexible alternative for predictive modeling. 
+
+# 2 Gaussian process networks accelerated by a fast algorithm 
+
+2.1 The Gaussian process network and its predictive distribution 
+
+A Gaussian process network (GNet) replaces parametric activation with nonparametric activa-tion modeled by Gaussian processes (GPs). The output ypxq P R at any input x P Rp follows 
+
+ypxq “ 
+
+> dL
+
+ÿ
+
+> j“1
+
+σj zL,j pxq ` ϵ, (1) where ϵ „ N p0, σ 20 q is an independent Gaussian noise, σj is a scale parameter in the last layer or the Lth layer, for j “ 1, ..., d L. Here the vector zlpxq “ p zl, 1p˜xl, 1q, ..., z l,d l p˜xl,d l qq T contains dl
+
+2activation values at layer l, where the 1D input to neuron j is ˜ xl,j “ wTl,j zl´1pxq, with a weight vector wl,j P Rdl´1 , for j “ 1, ..., d l and l “ 1, ..., L . The jth activation function at the lth layer is modeled by a zero-mean, unit variance GP, zl,j p¨q „ GP p0, c l,j p¨ , ¨qq , with kernel function cl,j p¨ , ¨q , as the scales of the activation functions are modeled by the scale and weight parameters. Furthermore, let z0pxq “ x, the input vector, and d0 “ p. Model (1) can be extended to include a mean function, or heteroscedastic noise, which will not be studied herein. We assume cl,j is a kernel function corresponding to a dynamic linear model (DLM) [41, 8], which includes some widely used kernel functions, such as the Mat´ ern kernel with the half-integer smoothness parameter ν “ p 2q ´ 1q{ 2 and q P N` [15], and a GP having the Mat´ ern kernel with ν
+
+is q0 times mean squared differentiable if and only if ν ą q0 with q0 P N [29]. For instance, a GP having the Mat´ ern kernel with ν “ 2.5 at any two inputs ˜ xl,j and ˜ x1 
+
+> l,j
+
+follows 
+
+cl,j p˜xl,j , ˜x1 
+
+> l,j
+
+q “ 
+
+˜
+
+1 ` 5 12 βl,j |˜xl,j ´ ˜x1 
+
+> l,j
+
+| ` 5β2 
+
+> l,j
+
+|˜xl,j ´ ˜x1 
+
+> l,j
+
+|2
+
+3
+
+¸
+
+exp 
+
+´
+
+´5 12 βl,j |˜xl,j ´ ˜x1 
+
+> l,j
+
+|
+
+¯
+
+, (2) where βl,j is an inverse range parameter, for j “ 1, ..., d l and l “ 1, ..., L . The Mat´ ern kernel in (2) has been used as a default kernel class in software packages of GP predictive models [30, 12]. When the smoothness parameter is ν “ 1{2, the Mat´ ern kernel becomes an exponential kernel: 
+
+cl,j p˜xl,j , ˜x1 
+
+> l,j
+
+q “ exp `´βl,j |˜xl,j ´ ˜x1 
+
+> l,j
+
+|˘ . (3) Assume that we have n observations, y “ p y1, ..., y nqT , with yi “ ypxiq for i “ 1, ..., n . Integrat-ing out the GPs for last layer neuron activations, zL, and conditional on the input of the last layer ˜xL “ p ˜xL, 1, ..., ˜xL,d L q with ˜ xL,j “ p ˜xL,j, 1, ..., ˜xL,j,n qT , for j “ 1, ..., d L, inverse range parameters 
+
+βL, 1: dL “ p βL,j , ..., β L,d L qT and the scale parameters σ20: dL “ p σ20 , σ 21 , ..., σ 2 
+
+> dL
+
+q, the distribution of the observations follows a multivariate normal distribution 
+
+y | ˜xL, βL, 1: dL , σ20: dL „ N
+
+´
+
+0n, ˜ΣL
+
+¯
+
+, (4) where the covariance of the data follows an additive form, ˜ΣL “ řdL 
+
+> j“1
+
+σ2 
+
+> j
+
+RL,j ` σ20 In, with the 
+
+pi, i 1qth entry of the correlation matrix RL,j being RL,j pi, i 1q “ cL,j p˜xL,j,i , ˜xL,j,i 1 q.For any input x˚, the predictive distribution conditional on the parameters and the transformed inputs of the last layers follows a normal distribution 
+
+pypx˚q | y, ˜xL, βL, 1: dL , σ20: dL q „ N `ˆypx˚q, ˆσ2 
+
+> y
+
+px˚q˘ , (5) where the predictive mean and predictive variance follow ˆypx˚q “ p Σ˚
+
+> L
+
+qT ˜Σ´1 
+
+> L
+
+y, (6) ˆσ2 
+
+> y
+
+px˚q “ 
+
+> dL
+
+ÿ
+
+> j“1
+
+σ2 
+
+> j
+
+` σ20 ´ p Σ˚
+
+> L
+
+qT ˜Σ´1 
+
+> L
+
+Σ˚
+
+> L
+
+, (7) where Σ˚ 
+
+> L
+
+“ řdL 
+
+> j“1
+
+σ2 
+
+> j
+
+R˚ 
+
+> L,j
+
+and R˚ 
+
+> L,j
+
+“ p cL,j p˜x˚ 
+
+> L,j
+
+, ˜xL,j, 1q, ..., c L,j p˜x˚ 
+
+> L,j
+
+, ˜xL,j,n qq T .
+
+2.2 Acceleration of the computation by the jointly inverse Kalman filter 
+
+In this subsection, we develop a fast algorithm for computing DLM-induced covariance matrix-vector multiplication. For simplicity, we drop the dependence of l in this subsection. Let us consider 3a continuous-time DLM for an observation ˜ yi P R [28]: ˜yi “ Fθi ` ˜ϵi, (8) 
+
+θi “ Giθi´1 ` ˜wi, (9) where F is a q-dimensional row vector that maps the latent state vector θi “ θp˜xpsq 
+
+> i
+
+q at a non-decreasing input ˜ xpsq 
+
+> i
+
+to ˜ yi, ˜ ϵi „ N p0, ˜σ20 q, Gi is a q ˆ q transition matrix, and ˜wi „ N p0, ˜Wiq with 
+
+˜Wi being a q ˆ q matrix, for i “ 2, ..., n . The stationary distribution follows θi „ N p0, ˜W1q.For many continuous-time DLMs, we observe that the transition matrices are commutative: 
+
+GiGi1 “ Gi1 Gi. (10) As an example, a GP with a Mat´ ern kernel and a half-integer parameter follows the DLM repre-sentation in Equations (8)-(9), and as the transition matrices can be written as Gi “ eJp˜xpsq 
+
+> i´˜xpsq
+> i´1q
+
+with J being a q ˆ q matrix, it satisfies Equation (10). The terms F, Gi and ˜Wi have closed-form expressions for Mat´ ern kernel with half-integer parameters. For instance, we have F “ 1 for expo-nential kernel in Equation (3) and F “ p 1, 0, 0q for Mat´ ern kernel in Equation (2). The rest of the parameters are provided in Section S1 in the Supplementary Material. We develop a fast algorithm to compute b “ Σv , where v “ p v1, ..., v nqT is any n-dimensional real-valued vector, and Σ “ cov rz1: n, z1: ns where zi “ Fθi with θi being the ith latent state vector in Equation (9) and its transition matrices satisfy Equation (10). The proofs of Lemma 1 and Theorem 1 are provided in Section S2 in the Supplementary Material. 
+
+Lemma 1. The covariance matrix between the latent states θi and θi1 in Equation (9) follows 
+
+Σθi,i 1 “
+
+> i
+
+ź
+
+> r“i1`1
+
+Gr ˜W1, when i ą i1, (11) 
+
+with śir“i1`1 Gr “ GiGi´1 ¨ ¨ ¨ Gi1`1, for i “ 2, ..., n , and Σθi,i “ ˜W1, for i “ 1, ..., n . Define 
+
+a´ 
+
+> i
+
+“
+
+> i
+
+ÿ
+
+> i1“1
+
+vi1 Σθi,i 1 FT for i “ 1, ..., n, (12) 
+
+a` 
+
+> i
+
+“
+
+> n
+
+ÿ
+
+> i1“i`1
+
+vi1 Σθi1,i FT for i “ 1, ..., n ´ 1, (13) 
+
+and a` 
+
+> n
+
+“ 0q. Then, for i “ 1, ..., n , the ith entry of b “ p b1, ..., b nqT “ Σv follows 
+
+bi “ Fa ´ 
+
+> i
+
+` Fa ` 
+
+> i
+
+. (14) To compute b “ Σv , Lemma 1 shows that each entry bi can be computed by Fa ´ 
+
+> i
+
+and Fa ` 
+
+> i
+
+,which collect the summation of the first i terms and the remaining n ´ i terms, for i “ 1, ..., n .
+
+Theorem 1. Assume that Gi satisfies the commutative property for i “ 1, ..., n in Equation (10). Let a´ 
+
+> 1
+
+“ v1Σθ
+
+> 1,1
+
+FT and a` 
+
+> n
+
+“ 0q. Equations (12) and (13) can be iteratively computed by 
+
+a´ 
+
+> i
+
+“ Gia´ 
+
+> i´1
+
+` vi ˜W1FT , for i “ 2, ..., n, (15) 
+
+a` 
+
+> i
+
+“ Gi`1a` 
+
+> i`1
+
+` vi`1Gi`1 ˜W1FT , for i “ n ´ 1, ..., 1. (16) 410 −310 −210 −110 010 1              
+
+> 10 3.3 10 3.6 10 3.9 10 4.2 10 4.5 10 4.8 10 5.1
+> n
+> time (s)
+> Matérn 5/2, JIKF Exponential, JIKF
+> Matérn 5/2, Direct Exponential, Direct
+
+(a) 10 010 1               
+
+> 10 2.7 10 310 3.3 10 3.6 10 3.9 10 4.2 10 4.5
+> n
+> time (s)
+> Direct CG
+> JIKF−PCG
+
+(b) Figure 1: (a) Computational time for b “ ˜ΣLy by direct matrix-vector multiplication and by the JIKF for the exponential kernel and Mat´ ern kernel in Equations (3) and (2), respectively. Both methods are exact. The solid squares and diamonds overlap. (b) Time to compute pΣ˚
+
+> L
+
+qT ˜Σ´1 
+
+> L
+
+y for predicting n˚ “ 10 4 inputs by direct computation, conjugate gradient (CG) approach with direct matrix-vector multiplication, and JIKF-PCG. In both panels, dL “ 10 and p “ 2. The average root mean squared error (RMSE) between JIKF-PCG and direct computation, plotted in Figure S1 (a) in the Supplementary Material, is smaller than 10 ´8. Each experiment is repeated five times. Theorem 1 provides a fast algorithm to compute the n vectors of a´ 
+
+> i
+
+and a` 
+
+> i
+
+, for i “ 1, ..., n , from Equations (12) and (13), with Opnq 2q operations given the sorted inputs. By Lemma 1 and Theorem 1, we reduce the computational order of DLM-induced covariance matrix-vector multiplication from 
+
+Opn2q in direct matrix-vector multiplication to Opnq 2q, where q is the dimension of the latent states. For exponential kernel in (3) and Mat´ ern kernel in (2), q “ 1 and q “ 3, respectively. We call the iterative algorithm in Theorem 1 for computing b “ Σv , the jointly inverse Kalman filter (JIKF), where the name originates from the Kalman filter, which scalably computes L´1v
+
+where L is the Cholesky factor of the covariance matrix Σ. Compared to a previous study in [9], the JIKF does not require running a separate Kalman filter first, which costs Opnq 3q. Consequently, the computational cost substantially reduces in practice. Figure 1 (a) compares the computational cost of DLM-induced covariance matrix-vector prod-uct by JIKF and by direct computation with simulation details provided in Section S3.4 in the Supplementary Material. JIKF is much faster than direct matrix-vector multiplication, and both give exact results without approximation. We split the computation of the predictive mean in Equation (6) into two parts with the JIKF algorithm repeatedly used in all places involving DLM-induced covariance matrix-vector multiplication. First, we develop the JIKF-PCG algorithm, which uses a preconditioned conjugate gradient (PCG) approach with Nystr¨ om preconditioner [42, 31] for computing α “ ˜Σ´1 
+
+> L
+
+y, where the JIKF is used to accelerate the matrix-vector multiplication ˜ΣLv for a certain vector v in each iteration of the PCG algorithm. The Nystr¨ om preconditioner utilizes a subset of the columns of 
+
+ΣL to construct a low-rank approximation to reduce the number of iterations. Second, we compute 
+
+pΣ˚
+
+> L
+
+qT α by JIKF. We highlight that the cost of predicting each test input by a pretrained GNet only increases logarithmically with the sample size, which enables fast predictions for many concurrent users. The computational details are given in Section S3.1 in the Supplementary Material. Figure 1 (b) shows that JIKF-PCG is more scalable for computing the predictive mean than either direct computation or CG with direct matrix-vector product. The error due to PCG in the JIKF-PCG is plotted in Figure S1 (a) in the Supplementary Material, which shows the average 5RMSE between JIKF-PCG and the exact predictive mean is smaller than 10 ´8 for all sample sizes when both direct computation and JIKF-PCG are available. Furthermore, Figure S1 (b) in the Supplementary Material shows that the Nystr¨ om preconditioner in the JIKF-PCG dramatically reduces the number of iterations compared to the CG algorithm. Together, the JIKF and JIKF-PCG substantially accelerate computing the prediction when the sample size is large. Directly computing the predictive variance of a large number of prediction inputs in Equa-tion (7) is costly. We developed a scalable way to quantify the predictive uncertainty in GNets, which requires only a small fraction of the training cost in Section S3.5 in the Supplementary Ma-terial. Obtaining reliable uncertainty assessment without compromising predictive accuracy and computational scalability remains a future direction for GNet and neural network models. 
+
+# 3 Model training accelerated by the jointly inverse Kalman filter 
+
+We use Adam, an adaptive stochastic gradient descent algorithm [22], to train GNets. Other optimization methods can be used. At each iteration, the training data are partitioned into a model building batch tXB , yB u and a validation batch tXV , yV u, with the number of observations being nB and nV , respectively. The superscripts B and V mean the model building batch and the validation batch, respectively. As the noise independently follows a Gaussian distribution with a homogeneous variance, we update the parameters by minimizing the mean squared error 
+
+E “ 1
+
+nVnVÿ
+
+> i“1
+
+`yVi ´ ˆyVi
+
+˘2 , (17) where yVi “ ypxVi q and ˆ yVi “ ˆypxVi q are the ith validation observation and prediction, respectively. We derive closed-form derivatives of parameters in GNet at the last layer and the previous hidden layers in the following Lemma 2 and Lemma 3, respectively. These closed-form gradients avoid numerical differentiation and allow the derivative of the DLM-induced covariance matrix-vector product to be computed by the JIKF algorithm. Directly applying automatic differentiation [3] to the iterative JIKF and JIKF-PCG algorithms is infeasible for large data, as it will create a huge computational graph, leading to prohibitively high computational and storage cost. We denote ˜ σ2 
+
+> j
+
+“ log pσ2 
+
+> j
+
+q and ˜βl,j 1 “ log pβl,j 1 q, for j “ 0, ..., d L, j1 “ 1, ..., d l, and l “ 1, ..., L .Let ˜ΣBL “ ΣBL ` σ20 InB where ΣBL “ řdL 
+
+> j“1
+
+σ2 
+
+> j
+
+RBL,j with RBL,j being an nB ˆ nB correlation matrix, and ΣV,B L “ řdL 
+
+> j“1
+
+σ2 
+
+> j
+
+RV,B L,j with RV,B L,j being an nV ˆ nB matrix, where the pi, i 1qth entry being 
+
+cL,j p˜xVL,j,i , ˜xBL,j,i 1 q, for i “ 1, ..., n V and i1 “ 1, ..., n B . Furthermore, for C P t B, V u, let ZCl´1 be an nC ˆ dl´1 matrix containing activation function values at l ´ 1th layer, and ˜ xCl,j “ ZCl´1wl,j 
+
+is a vector of nC dimensions. Lemma 2 and Lemma 3 apply to differentiable kernels, including the Mat´ ern kernel in Equation (2). The proofs of these lemmas are available in Section S4 in the Supplementary Material. For non-differentiable kernels, such as the exponential kernel in Equation (3), one may remove data with zero input distances for training models. It is a future direction to improve model training stability for non-differentiable kernels. 
+
+Lemma 2 (Gradients of a GNet at the final layer L and the one-layer model) . Consider a GNet with differentiable kernels and the loss function in (17), let 
+
+u “ p ˜ΣBL q´1yB , ˜u “ p ˜ΣBL q´1pΣV,B L qT ∆yV , and ∆yV “ ˆyV ´ yV
+
+nV
+
+. (18) 61. The gradient for ˜σ20 and ˜σ2 
+
+> j
+
+for j “ 1, ..., d L follows 
+
+BE
+
+B˜σ20
+
+“ ´ 2 exp p˜σ20 q˜uT u, (19) 
+
+BE
+
+B˜σ2
+
+> j
+
+“ 2 exp p˜σ2 
+
+> j
+
+qp ∆TyV RV,B L,j u ´ ˜uT RBL,j uq. (20) 
+
+2. The gradient of ˜βL,j , for j “ 1, ..., d L, follows 
+
+BE
+
+B ˜βL,j 
+
+“2 exp p˜σ2 
+
+> j
+
+q exp p ˜βL,j q
+
+´
+
+∆TyV DβL,j RV,B L,j u ´ ˜uT DβL,j RBL,j u
+
+¯
+
+, (21) 
+
+where DβL,j RV,B L,j u “ pB RV,B L,j {B βL,j qu and DβL,j RBL,j u “ pB RBL,j {B βL,j qu.3. The gradient of wL,j for j “ 1, ..., d L, and j1 “ 1, ..., p , follows 
+
+BE
+
+BwL,j 
+
+“ p ZBL´1qT ˜gBL,j ` p ZVL´1qT ˜gVL,j , j “ 1, . . . , d L, (22) 
+
+where ˜gVL,j “ dE {d˜xVL,j and ˜gBL,j “ dE {d˜xBL,j are given by 
+
+˜gBL,j “ 2 exp p˜σ2 
+
+> j
+
+q
+
+!
+
+u ˝
+
+”
+
+D2pRV,B L,j qT ∆yV
+
+ı
+
+´ ˜u ˝ p D1RBL,j uq ´ u ˝ p D1RBL,j ˜uq
+
+)
+
+, (23) ˜gVL,j “ 2 exp p˜σ2 
+
+> j
+
+q ∆yV ˝
+
+´
+
+D1RV,B L,j u
+
+¯
+
+, (24) 
+
+with ˝ denoting the elementwise product. Here for any n1 ˆ n2 matrix M with Mi,i 1 “
+
+cpx1,i , x 2,i 1 q, any two vectors v and ˜v of sizes n1 and n2, respectively, each entry of the row-wise and column-wise derivatives of the matrix-vector product is 
+
+pD1M˜vqi “
+
+> n2
+
+ÿ
+
+> i1“1
+
+Bcpx1,i , x 2,i 1 qBx1,i 
+
+˜vi1 , and pD2MT vqi1 “
+
+> n1
+
+ÿ
+
+> i“1
+
+Bcpx1,i , x 2,i 1 qBx2,i 1
+
+vi,
+
+for i “ 1, ..., n 1 and i1 “ 1, ..., n 2.
+
+For a one-layer GNet, i.e. L “ 1, Lemma 2 gives the gradients of all parameters, with ZB 
+
+> 0
+
+“ XB
+
+and ZV 
+
+> 0
+
+“ XV , the input matrices of building and validating the model, respectively. The covariance matrix-vector in Equations (21), (23)-(24) enables JIKF to accelerate the computation of gradients. Furthermore, we found that optimizing the full set of parameters typically requires fewer iterations than some other ways of imposing constraints for certain parameters. For L ą 1, directly marginalizing out the latent process zl,j p¨q is generally intractable. Let zKl,j 
+
+be the ml,K -vector of knot values, with prespecified 1D knots inputs ˜ xKl,j , for l “ 1, ..., L ´ 1 and 
+
+j “ 1, ..., d l, where the superscript K denotes knots. Denote RKl,j , the knot correlation matrix, with the pi, i 1qth entry cl,j p˜xKl,j,i , ˜xKl,j,i 1 q. Further define RB,K l,j with the pi, i 1qth entry being cl,j p˜xBl,j,i , ˜xKl,j,i 1 q
+
+and RV,K l,j with the pi, i 1qth entry being cl,j p˜xVl,j,i , ˜xKl,j,i 1 q. For l “ 1, ..., L ´ 1, and C P t B, V u, denote 
+
+zCl,j “ RC,K l αKl,j , (25) where αKl,j “ p LKl,j q´T zK,W l,j and zK,W l,j “ p LKl,j q´1zKl,j , with LKl,j being the Cholesky factor of RKl “
+
+LKl,j pLKl,j qT , which does not need to be computed directly. The whitened knot values zK,W l,j will be optimized. As ˜ xl,j,i is 1D, we use a small number of knots, with ml,K “ 10 used in all numerical studies for l “ 1, ..., L ´ 1 when L ą 1, and mL,K “ 0 as no knot is required for the final layer. 7Lemma 3 (Gradients of a GNet at any layer 1 ď l ă L with L ě 2) . Consider a GNet with differentiable kernels and the loss function in Equation (17). For any non-final layer l ă L and any component j “ 1, . . . , d l, we have 
+
+BE
+
+Bwl,j 
+
+“ p ZBl´1qT ˜gBl,j ` p ZVl´1qT ˜gVl,j , (26) 
+
+BE
+
+B ˜βl,j 
+
+“ exp p ˜βl,j q ÿ 
+
+> CPt B,V u
+
+”
+
+pgCl,j qT ´
+
+Dβl,j RC,K l,j αKl,j ` RC,K l,j Dβl,j αKl,j 
+
+¯ı 
+
+, (27) 
+
+BE
+
+BzK,W l,j 
+
+“ p LKl,j q´1 ”
+
+pRB,K l,j qT gBl,j ` p RV,K l,j qT gVl,j 
+
+ı
+
+, (28) 
+
+where Dβl,j αKl,j “ B αKl,j {B βl,j , and for any C P t B, V u, ˜gCl,j “ B E{B ˜xCl,j and gCl,j “ B E{B zCl,j follow 
+
+˜gCl,j “ gCl,j ˝
+
+´
+
+D1RC,K l,j αKl,j 
+
+¯
+
+, (29) 
+
+gCl,j “
+
+> dl`1
+
+ÿ
+
+> j1“1
+
+wl`1,j 1,j ˜gCl`1,j 1 , (30) 
+
+for l “ 1, ..., L ´ 1, and ˜gBL,j and ˜gVL,j in the last layer are defined in (23) and (24), respectively. 
+
+All products between DLM-induced covariances and vectors are accelerated by the JIKF during model training. In Lemma 2, for instance, this includes u and ˜ u in (18); DβL,j RV,B L,j u, DβL,j RBL,j u for computing BE{B ˜βL,j in (21); D2RV,B L,j ∆yV , D1RBL,j u, D1RBL,j v, D1RV,B L,j u for computing BE{B wL,j 
+
+in (22). The computational details are summarized in Section S5 in the Supplementary Material. 
+
+# 4 Computational complexity and comparison with other approaches 
+
+The feedforward neural network (FNN) or multilayer perceptron (MLP) is one of the most commonly used building blocks for modern AI architectures, including transformers [39]. The output of FNNs between two layers is modeled by 
+
+zl,j pxq “ ψpwTl,j zl´1pxq ` bl,j q,
+
+where ψ is a parametric activation function, such as the rectified linear unit (ReLU) or softplus, with wTl,j and bl being the weight and bias parameters with j “ 1, ..., d l and l “ 1, ..., L , respectively. Learning activation functions in FNN from data has been studied in [1]. Kolmogorov-Arnold Networks (KANs) [24] for instance, model latent values between the l and l ` 1 layers by: 
+
+zl`1,j pxq “ 
+
+> dl
+
+ÿ
+
+> j1“1
+
+ϕl`1,j,j 1
+
+`zl,j 1 pxq˘ , (31) for j1 “ 1, ..., d l and j “ 1, ..., d l`1. In KAN, each of the dl`1 ˆ dl edge functions is repre-sented by a spline expansion and a residual base function for any scalar input ˜ x, ϕl`1,j,j 1 p˜xq “ 
+
+aspline 
+
+> l`1,j,j 1
+
+řm0`m1 
+
+> t“1
+
+ωl`1,j,j 1,t ϕ0 
+
+> t,m 0
+
+p˜xq ` abase  
+
+> l`1,j,j 1
+
+bp˜xq, where ϕ0 
+
+> t,m 0
+
+p˜xq are B-spline basis functions of or-der m0, m1 is the grid size, ωl`1,j,j 1,t are spline coefficients estimated by data, bp˜xq is the base function modeled by a Sigmoid linear unit function, aspline  
+
+> l`1,j,j 1
+
+and abase  
+
+> l`1,j,j 1
+
+are scale parameters for spline and baseline functions, respectively. The total number of parameters is at the order of 
+
+dl`1dlmKAN at the pl ` 1qth layer with mKAN “ m0 ` m1 ` 2. 8Model Training order Prediction order of n˚ points by a pretrained model FNN OtnB
+
+řLl“1 dl´1dlu Otn˚ řLl“1 dl´1dlu
+
+KAN OtnB mKAN 
+
+řLl“1 dl´1dlu Otn˚mKAN 
+
+řLl“1 dl´1dlu
+
+GNet C1pnBV q ` C2pnB q C3pn˚q
+
+GP Otn2p ` n3u Opn˚np q
+
+Table 1: Computational order of FNN, KAN, GNet, and GP. Here nB and nV denote the batch sample sizes for model building and validation, respectively, nBV “ nB ` nV , and n˚ de-notes the number of prediction points. The terms kpcg and mpcg are the total number of PCG iterations and the subset size for constructing the Nystr¨ om preconditioner, respectively, with 
+
+mpcg ă nB in model training, and mpcg ă n in final predictions. For any sample size ns, de-note C1pnsq “ O
+
+!řLl“1 dl
+
+“pns ` ml,K q `q2 ` log pns ` ml,K q˘ ` dl´1ns ` ml,K q3‰)
+
+, where d0 “ p
+
+and mL,K “ 0, and C2pnsq “ O ␣nspkpcg dLq2 ` kpcg mpcg ` dLmpcg ` m2
+
+> pcg
+
+q( being the cost re-lated to the PCG algorithm. Building the GNet pre-trained model requires one-time computa-tion with the order C1pnq ` C2pnq, and predicting n˚ points by a GNet pretrained model costs 
+
+C3pn˚q “ O
+
+!
+
+n˚
+
+”řL´1 
+
+> l“1
+
+dlplog pml,K q ` dl´1 ` q2q ` dLpdL´1 ` q2 ` log pnqq 
+
+ı) 
+
+. FNN, KAN, and GNet are trained by stochastic algorithms with data partitioned into minibatches, while the GP is often trained using all training data in each parameter update. The training order is for one update of the parameters. The computational order of FNN, KAN, GNet, and GP in model training and making predic-tions separately for n˚ test inputs is given in Table 1. A one-layer GNet contains dLpp ` 2q ` 1parameters, with p being the input dimension, and dL being the number of neurons. Even a one-layer GNet model with 5-10 neurons is flexible and accurate for problems with low-dimensional inputs in Section 5.1 and high-dimensional inputs in Section 5.3. Compared with the sample size n,which can be at the order of 10 5 studied in numerical examples, dL, ml,K , kpcg , and q are relatively small, leading to fast computation. For instance, for the Mat´ ern kernel with smoothness parameter 5{2 used for all numerical studies, the dimension of the latent states is q “ 3. The GNet is also closely related to generalized additive models [16] and additive Gaussian processes [43], which decompose functions with multi-dimensional inputs into additive functions of marginal effects. However, a large number of additive functions may be needed to capture interactions across different input variables due to the lack of input transformation and compo-sitional structures. Furthermore, though Gaussian process models of activation functions were studied [38, 25], key computational strategies that integrate the JIKF and JIKF-PCG algorithms for accelerating the computation were not developed before. The GNet differs from the deep Gaussian processes (deep GPs) [5, 34], where the inputs in covariance functions are modeled by GPs, which require efficient optimization or sampling of multi-dimensional latent inputs. In comparison, the additive nonparametric activation functions acting on 1D inputs in GNet enables the JIKF algorithm to accelerate the covariance matrix-vector mul-tiplication. Furthermore, after building the pre-trained model in GNet, the cost only increases logarithmically along with the sample size n, or log pnq, substantially faster than a GP, which make a pre-trained GNet suitable to be used by a large number of concurrent users. 95 Numerical studies 
+
+We consider three groups of numerical studies, simulated datasets with three functions at eight different sample sizes in Section 5.1, five different types of observations from UCI machine learning repository [21] in Section 5.2, and predicting classical density functional theory with unsmoothed functional inputs discretized on p “ 201 grids in Section 5.3. We compared methods from the following five categories. First, we build two GNet models. The first GNet model (GNet-1L) contains only one layer and 10 neurons ( L “ 1 and dL “ 10), and the second GNet model (GNet-2L) contains two layers, each having 30 neurons ( L “ 2 and dL´1 “ dL “ 30). Both GNet models use the Mat´ ern kernel in Equation (2). Across all scenarios in Sections 5.1-5.3, we use Adam optimization with the default moment parameters [22], and the learning rate is set to be 0 .02 across all experiments. We let batch and validation size be nB “ min p1000 , tn{2uq and nV “ min p1000 , n ´ nB q. The minimum number of epochs is set to be 100, and it satisfies the minimum number of iterations being 3000. Second, we build an exact GP model, referred as GP, using mostly the default setting of the 
+
+rgasp function in RobustGaSP R package [12], which includes a product kernel function with a Mat´ ern kernel in (2) for each input variable, and the robust marginal posterior mode estimation [13]. As the data are noisy, we add an estimated nugget parameter by setting nugget.est=T in the 
+
+rgasp function, as the default setting of RobustGaSP does not include the noise. Third, we test two approximate GPs, including the Vecchia [14] and scaled Vecchia (SVecchia) approximations [19]. We choose search neighbors and conditioning sizes larger than the default settings of the packages to have better performance. For the Vecchia approximation, we let the conditioning size be 60 and 120 in two sequential optimizations for training models, and conditioning size to be 200 for making predictions, In comparison, the default setting of Vecchia approximation in [14] uses conditioning sizes 10 and 30 for two sequential optimizations for training models and 60 for predictions. The larger conditioning sizes used here lead to better predictive accuracy. For SVecchia, we let the conditioning size be 120 for training the model and 200 for making predictions. The conditioning sizes are also larger than the ones in the default setting of SVecchia implementation. We do not include deep GP approaches in comparison, due to their high computational cost. Fourth, we built two FNN models: a regular-sized FNN (FNN-R) with three hidden layers each having 512 neurons, and a small FNN (FNN-S) with two hidden layers, each having 30 neurons based on the keras3 R package [17]. For both FNNs, we use softplus activation, ψpxq “ log p1 ` exq
+
+as it has better predictive accuracy than the ReLU activation for these numerical studies. We use Adam for optimization with a conventional batch size of 256 for FNNs. The learning rate in Adam for FNN-S is set to 0 .02, and 0 .001 for FNN-R for most experiments. However, learning rate is reduced to be 0 .005 for the problem with high-dimensional inputs in Section 5.3, as the larger learning rate does not improve the predictive error from the baseline. Lastly, we test two KAN models: KAN-1L contains one layer with 10 neurons and KAN-2L contains 2 layers with 30 neurons per layers. For compariosn, their batch size and learning rate are set to be the same as the GNet models. We do not aim to enumerate all available predictive models. The selected models are widely used in practice and include approaches that achieve state-of-the-art performance across a large number of data sets [32]. Furthermore, neural networks often require model and optimization tuning. Indeed, other choices of GNets, such as the number of neurons, layers, optimization algorithms and their parameters, may improve the predictive accuracy of some examples. Automating the choice of these parameters remains an open question in training neural networks in general. In this article, we will instead use a unified optimization scheme for the two GNet models across all testbeds. 10 Branin DetPep Park                                                               
+
+> 10 2.7 10 310 3.3 10 3.6 10 3.9 10 4.2 10 4.5 10 4.8 10 2.7 10 310 3.3 10 3.6 10 3.9 10 4.2 10 4.5 10 4.8 10 2.7 10 310 3.3 10 3.6 10 3.9 10 4.2 10 4.5 10 4.8
+> 10 −2.5 10 −210 −1.5 10 −1
+> n
+> NRMSE
+> GNet−1L KAN−1L FNN−R GP SVecchia Branin DetPep Park
+> 4×10 36.4 ×10 44×10 36.4 ×10 44×10 36.4 ×10 4
+> 10 010 110 210 3
+> n
+> Time (s)
+> GNet−1L KAN−1L FNN−R SVecchia
+
+Figure 2: Comparison of the NRMSE (first row) and computational time (second row) at different training inputs for GNet-1L, KAN-1L, FNN-R, exact GP and approximate GP with scaled Vecchia approximation. The GP is only applied up to the sample size n “ 2000 in recording the NRMSE in the first row due to its high computational cost. For all numerical studies, we consider the normalized root of mean squared error (NRMSE) NRMSE “
+
+˜ řn˚
+
+> i“1
+
+pˆypxiq ´ ysignal pxiqq 2
+
+řn˚
+
+> i“1
+
+pˆypxiq ´ ¯yq2
+
+¸ 12
+
+, (32) where ysignal pxiq is the latent function at a held-out input xi in Section 5.1, ysignal pxiq “ ypxiq is a held-out observation in Sections 5.2-5.3, and ¯ y is the mean of the observations. We also record the proportion of the held-out sample covered in the 95% predictive intervals and the average length of the normalized 95% predictive intervals by the two GNet models and exact GP for UQ. Due to the limitation of the space, we leave the definition of these metrics in Section S6.1 and provide the results of UQ in Sections S6.2-S6.4 in the Supplementary Material. The computational time of all methods is recorded. For GP, GNet-1L and GNet-2L, this includes both the cost of prediction and UQ, while other approaches only include the cost of prediction, as UQ is not available from their implementations. Numerical studies were performed in macOS Ventura system with an 8-core Intel i9 processor running at 3.60 GHz and 32 GB of RAM from an iMac desktop purchased in 2019. All methods except for FNNs do not use parallel computing, while FNNs use the default parallel computing by multiple CPU cores from the keras3 R package. 
+
+5.1 Simulated experiments 
+
+We first compare three simulated datasets with two to four input variables, which include the Branin function [26], the Dette and Pepelyshev curved function (DetPep) [7], and the Park function 11 KAN−1L KAN−2L Vecchia SVecchia                   
+
+> GNet−1L GNet−2L FNN−S FNN−R
+> −5 0510 −5 0510 −5 0510 −5 0510
+> 0510 15
+> 0510 15
+> x1
+> x2
+> Residual
+> −5 05
+
+Figure 3: The residual of the predictions on regular grids by different approaches in one experiment for the Branin function at the largest sample size, n “ 64 , 000. [27]. Their expressions are provided in Section S6.2 in the Supplementary Material. For each scenario, the data is generated by ypxq “ ysignal pxq ` ϵ, where ysignal pxq is the latent function at input x, and ϵ is a zero-mean Gaussian noise with the variance assumed to be 0 .01 of the variance of the latent function. We consider 8 different scenarios with inputs uniformly sampled from the input domain, and training sample size n “ 500 , 1, 000 , 2, 000 , ..., 64 , 000. We further generate n˚ “ 10 , 000 held-out test inputs for evaluating the performance. Each experiment is repeated 5 times and we report the the average performance metrics. For better visualization, we plot the NRMSE of five approaches, including GNet-1L, KAN-1L, FNN-R, GP and SVecchia, in the first row of Figure 2. The NRMSE of the other four approaches, including GNet-2L, KAN-2L, FNN-S, and Vecchia, are plotted in Figure S2 in the Supplementary Material. When the sample size is small, we found that the exact GP approach in [12] performs the best for predicting these smooth latent functions, consistent with [32], however its computational cost limits its use for large sample sizes. Thus, we only run the exact GP up to training size 
+
+n “ 2000. SVecchia and scaled Vecchia are excellent approximations to the GP, which reduce the cost at large sample sizes, with some loss of predictive accuracy compared with the exact GP model. When the sample size is large, the two GNet models achieve the smallest NRMSE among all approaches, shown in Figure 2 and Figure S2. The average NRMSE from the two GNet models is typically less than the half of the best non-GNet approach for large sample sizes in these three examples. As n “ 64 , 000, for instance, the average NRMSE of GNet-1L and GNet-2L for the Branin function is around 0 .0030 and 0 .0026, respectively, compared with 0 .0091 by SVecchia, the best performance excluding the GNet approaches. When the sample size is small, GNet-1L is more accurate than the GNet-2L, as fewer parameters need to be trained, and a smaller model can already capture the smooth latent functions. Furthermore, the reduction of the error from GNet models shows an approximately linear trend in log-log plots in Figure 2 and Figure S2, consistent with the power-law decay in this range of sample sizes for all three test cases, with a fixed number of layers, neurons, and unified optimization setting. In Figure 3, we plot the residuals between the prediction and the truth in one experiment of the Branin testbed at the largest sample size, which shows a smaller predictive error by the GNet models. In Figure S4 in the Supplementary Material, we plot the estimated neuron functions at 12 GNet−1L GNet−2L KAN−1L KAN−2L FNN−S FNN−R GP Vecchia SVecchia     
+
+> 10 −0.58 10 −0.54 10 −0.5 10 −0.46
+> Concrete
+> Average NRMSE
+> 10 −1.1 10 −0.72 10 −0.39 10 −0.057
+> Parkinsons 10 −1.4 10 −1.1 10 −0.81 10 −0.49
+> Energy−cool 10 −1.5 10 −1.4 10 −1.2 10 −1.1
+> Energy−heat 10 −0.83 10 −0.55 10 −0.27 10 0.0093
+> Airfoil
+
+Figure 4: The average NRMSE for five response variables from four UCI data sets. The total sample size nall and input dimension p are: Concrete ( nall “ 1030, p “ 8), Parkinsons ( nall “ 5875, 
+
+p “ 19), Energy-heat load and Energy-cool ( nall “ 768, p “ 8), and Airfoil ( nall “ 1503, p “ 5). The exact GP is omitted for Parkinsons data set due to its computational cost. the final layer by GNet-1L and GNet-2L of one experiment in each testbed, which demonstrate the flexibility compared with parametric neuron functions. The average length of 95% predictive intervals, and the proportion of the held-out samples covered in the 95% predictive intervals by GP, GNet-1L, and GNet-2L are plotted in Figure S3 in the Supplementary Material. For all methods, around 95% of the held-out data was covered by the 95% predictive intervals for most scenarios. GNet-2L tends to overfit the data when the sample size is small, which leads to an empirical coverage probability less than the nominal level, while the empirical coverage probability becomes close to the nominal level when the sample size is large. The computational time of different approaches at two training sample sizes n “ 4, 000 and 
+
+n “ 64 , 000 is provided in the second row of Figure 2 and Figure S2. We do not include the exact GP as it is computationally prohibitive at these sizes. The cost of FNN-S is the smallest, partly because FNNs are the only models where parallel computation is used. However, predictions from FNNs are not as accurate as other approaches for these examples. Both GNet models are compu-tationally scalable because of the closed-form derivatives and the JIKF algorithm for accelerating the computation. The cost of GNet includes the cost of computing predictive intervals, while other approaches, except for the exact GP, do not provide predictive uncertainty quantification. 
+
+5.2 Nonparametric regression for real-world data 
+
+We consider five response variables from four different datasets from UCI machine learning repository [21], including concrete compressive strength (Concrete) [44], Parkinson’s telemonitoring (Parkinsons) [36], energy efficiency with heating load (Energy-heat) and cooling load (Energy-cool) [37], and airfoil self-noise (Airfoil) [4]. For each dataset, we use five-fold cross validation where 80% of the data are used for model training, and the remaining 20% are used for testing in each fold. The NRMSE of the methods, input dimensions, and total number of observations are given in Figure 4. The GNet-2L consistently outperforms the other methods. For 4 of the 5 datasets, including Concrete, Energy-cool, Energy-heat, and Airfoil, the NRMSE by the GNet-2L is around 10%-30% smaller than the second best approach, including the exact GP approach. For the Parkin-sons data set, the NRMSE of SVecchia is close to GNet-2L, but the computational time of the GNet-2L is only around 1 {4 of the Svecchia for this example, shown in Figure S5 in the Supple-mentary Material. The sample sizes are not large in this example, which suggests that GNet-2L 13 −8                  
+
+> −6
+> −4
+> 0510 15 20
+> s
+> y
+> GNet −1L GNet −2L FNN −SFNN −RKAN −1L KAN −2L Truth
+> 0
+> 1
+> 2
+> 3
+> 0510 15 20
+> s
+> ρ
+> −3
+> −2
+> −1
+> 0
+> 1
+> 2
+> 0510 15 20
+> s
+> Vext
+> 𝐿 "
+
+𝑎 "𝑎 "  
+
+> (a) (b)
+> (c) (d)
+
+Figure 5: (a) One-dimensional hard-rod system with particle length ˜ a and domain length ˜L. (b) Truth and predictions of the one-body direct correlation function, and the curves almost overlap. The nearly unnoticeable blue shaded area is the 95% predictive interval by GNet-1L. (c) One sampled external potential Vext psq. The red segment in panel (d) highlights the 201 local particle density values used to predict one value of the one-body direct correlation function in panel (b). can efficiently learn complex nonlinear relationships for small to moderate sample sizes. The average normalized length of 95% predictive intervals and the proportion of the held-out data covered in the intervals by the GP, GNet-1L, and GNet-2L are plotted in Figure S6 in the Supplementary Material. For all three approaches, the proportion of samples covered in the interval is close to the nominal level, and the normalized predictive intervals are short. 
+
+5.3 Classical density functional theory with high-dimensional inputs 
+
+Finally, we focus on predicting the one-body direct correlation function, an important physical quantity in classical Density Functional Theory (cDFT), which has a wide range of applications, such as modeling inhomogeneous fluids [33]. We consider a one-dimensional hard-rod system of total length ˜L studied in [33, 10], where its grand potential in cDFT can be written as Ωrρs “ fid rρs ` fex rρs ` 
+
+ż 8´8 
+
+ρpsqr Vext psq ´ μchem sds, (33) with ρpsq being the unnormalized particle density, Vext psq being the external potential function at location s, μchem being a scalar-valued chemical potential, fid rρs and fex rρs being the ideal gas and excess free-energy functionals, respectively. The ideal-gas functional satisfies βth fid rρs “ ş ρpsqt ln rρpsqΛ3s´ 1uds , where βth is the inverse of thermal energy and Λ is the thermal wavelength, both assumed to be 1 here, i.e. βth “ 1 and Λ “ 1. The excess free-energy functional follows 
+
+βth fex rρs “ ´ ş8´8 ρpsq log 
+
+´
+
+1´şss´˜a ρps1qds 1
+
+¯
+
+ds , where ˜ a is the particle length. The integral satisfies 
+
+şss´˜a ρps1qds 1 ď 1 as each of length ˜ a can contain up to one particle. A schematic overview of the system is plotted in panel (a) in Figure 5. The equilibrium particle density profile minimizes Ω and thus satisfies the Euler-Lagrange (E-L) equation [10]: 
+
+ρpsq “ exp 
+
+"
+
+μchem ´ Vext psq ´ δf ex rρs
+
+δρ psq
+
+*
+
+. (34) 14 where δf ex rρs{ δρ denotes the functional derivative of excess free-energy fex with respect to particle density ρ. In a 1D hard-rod system, 
+
+δf ex rρs
+
+δρ psq “ 
+
+ż s`˜as
+
+ρps1q
+
+1 ´ şs1 
+
+> s1´˜a
+
+ρps2qds 2 ds 1 ´ log 
+
+´
+
+1 ´
+
+ż ss´˜a
+
+ρps1qds 1¯
+
+. (35) The one-body direct correlation function, defined as yrρs “ ´ βth δf ex rρs{ δρ , depends on local particle density twice the particle length, 2˜ a, often much smaller than ˜L. This crucial property substantially reduces the input dimension from system length to twice the particle length [33]. Our goal is to predict the one-body direct correlation function yrρsp sq at all s by local particle density ρ of length 2˜ a. We follow [33] to test predictions for systems with chemical potential 
+
+μchem P Unif p´ 5, 10 q, and a large class of unsmoothed external potential: 
+
+Vext psq “ 
+
+> 4
+
+ÿ
+
+> t1“1
+
+At1 sin 
+
+ˆ 2πst 1
+
+˜L ` ϕt1
+
+˙
+
+`
+
+> mlin
+
+ÿ
+
+> t“1
+
+vlin  
+
+> t
+
+psq, (36) with ˜ a{2 ă s ă ˜L ´ ˜a{2 and zero elsewhere, where At1 „ N p0, 2.5q, ϕt1 P Up0, 2πq with U denoting the uniform distribution, and mlin is uniformly sampled from t1, . . . , 5u. The piecewise linear term follows vlin  
+
+> t
+
+pxq “ vt, 1 ` p vt, 2 ´ vt, 1qp s ´ st, 1q{p st, 2 ´ st, 1q with st, 1 ă s ă st, 2 and zero elsewhere, where vt, 1, v t, 2 „ N p0, 4q, st, 1, s t, 2 „ Up0, ˜Lq and we swap st, 1 and st, 2 if st, 1 ą st, 2. After μchem and 
+
+Vext psq are generated, the particle density is obtained numerically by the Picard algorithm to solve Equation (34) with details provided in Section S6.4 in the Supplementary Material. Following [33], we assume the system length ˜L “ 20, particle length ˜ a “ 1, and grid spacing ∆s “ 0.01, leading to 2001 grids of the entire system. As each location, the input xpsq “ r ρps ´
+
+˜aq, ρ ps ´ ∆sq..., ρ ps ` ˜aqs T is 201-dimensional vector of the local particle density. Figure 5 (c) gives a sample of the external potential by Equation (36), which contain sharp changes, and Figure 5 plots the resulting unsmoothed particle density. The red segment in panel (d) highlights the local particle density of 201 grids, which is used as the input to predict one value in the one-body direct correlation function. The high-dimensional, unsmoothed functional inputs pose challenges for predictions. Furthermore, the particle density is positive, i.e. ρpsq P R`, and the one-body direct correlation function is a real-valued quantity arising from the E-L equation in (34), i.e. yrρsp sq P R. These physical quantities differ from probability density and correlation. We generate 100 densities based on different external potential functions in (36), with the last 50 densities held out as testing. As the particle can only appear in the domain range r ˜L´ ˜a{2, ˜L´ ˜a{2s,we have 1901 grids for each particle density profile. We five scenarios with 10 , 20 , ..., 50 densities used as training data sets, corresponding to the number of observations n “ 19 , 010 , 38 , 020 , ..., 95 , 050, and we hold out n˚ “ 95 , 050 observations for testing. The input dimension is p “ 201. Figure 6 compares six methods. We omit GP, Vecchia, and SVecchia approaches. The exact GP is prohibitively expensive at these sample sizes, and subsampling to fit a GP leads to large predictive errors. Vecchia approximation requires costly nearest-neighbor search when both n and 
+
+p are large. Besides, the similarity of the input function at nearby grid points leads to unstable parameter estimation. Due to these reasons, the Vecchia approximation of GPs implemented in [14] does not improve predictive accuracy from the baseline with a feasible computational cost for this example. For SVecchia, an extra challenge comes from optimizing one range parameter for each input variable when the input dimension is large. Figure 6 (a) shows that the GNet-1L and GNet-2L outperform other approaches, including the FNN-R model, which contains the softplus activation functions, three hidden layers each containing 512 neurons, proposed in [33]. At n “ 95 , 050, for example, the predictive NRMSE by the GNet-1L 15 10 −23 × 10 −210 −13 × 10 −1                     
+
+> 1.9 ×10 43.8 ×10 45.7 ×10 47.6 ×10 49.5 ×10 4
+> n
+> NRMSE
+> GNet−1L GNet−2L FNN−S
+> FNN−R KAN−1L KAN−2L
+
+(a) 10 010 110 210 310 4           
+
+> 5.7 ×10 49.5 ×10 4
+> n
+> Time (s)
+> GNet−1L GNet−2L FNN−S
+> FNN−R KAN−1L KAN−2L
+
+(b) Figure 6: (a) NRMSE by different approaches across training sample sizes. (b) Computational time at training sample sizes n “ 57 , 030 and n “ 95 , 050 by different approaches. and GNet-2L are around 0 .013 and 0 .012, respectively, while all other approaches have NRMSE larger than 0 .030. Between the two GNet models, the GNet-1L performs better in the scenarios with a smaller sample size. Furthermore, GNet-1L and GNet-2L are both scalable shown in Figure 6 (b). For sample size n “ 95 , 050 and input dimension p “ 201, fitting GNet-1L, making predictions and computing the predictive uncertainty only costs around 5 minutes on a desktop computer. The predictions corresponding to three randomly sampled densities at n “ 95 , 050 are shown in Figure S7 in the Supplementary Material. All predictions are visually close to the truth. The 95% predictive intervals of the GNet-1L in Figure S7, are narrow, and they cover around 95% of the held-out samples, as shown in Figure S8 in the Supplementary Material. The GNet-1L only contains 1 layer and 10 neurons, but it can effectively capture complex structures from unsmoothed input functions, leading to better performance compared to larger models, such as FNN-R. In this example, the number of parameters in GNet-1L is 2 , 031, while the number of parameters in FNN-R is 629 , 249, corresponding to more than 300 times reduction of the parameter size. These empirical evidence of GNets shows a potential route to address the computational and storage challenges in large-scale predictive modeling. 
+
+# 6 Concluding remarks 
+
+GNet opens doors for a wide range of research directions. First, GNet can be extended or inte-grated into different neural network architectures. Though we focus on demonstrating its predictive performance for real-valued inputs and outputs, it is of interest to perform tasks with categorical in-put sequences or categorical outcomes. Second, we focus on problems with scalar-valued outcomes, and extending GNet for problems with vectorized output is another direction. Third, obtaining reliable uncertainty quantification without reducing the predictive accuracy or substantially increas-ing the computational cost is another open problem for GNet and neural networks. Fourth, other optimization approaches can be applied in GNets, as the required number of parameters can be much smaller compared to neural network models. It is worthwhile to develop robust optimization approaches for training models with non-differentiable kernels, including the exponential kernel. 16 Acknowledgement 
+
+We acknowledge the support from the National Science Foundation under Award No. OAC-2411043. 
+
+# References 
+
+[1] Forest Agostinelli, Matthew Hoffman, Peter Sadowski, and Pierre Baldi. Learning activation functions to improve deep neural networks. arXiv preprint arXiv:1412.6830 , 2014. [2] Sudipto Banerjee, Bradley P Carlin, and Alan E Gelfand. Hierarchical modeling and analysis for spatial data . CRC Press, 2014. [3] Atilim Gunes Baydin, Barak A Pearlmutter, Alexey Andreyevich Radul, and Jeffrey Mark Siskind. Automatic differentiation in machine learning: a survey. Journal of Machine Learning Research , 18(153):1–43, 2018. [4] Thomas Brooks, D. Pope, and Michael Marcolini. Airfoil Self-Noise. UCI Machine Learning Repository, 1989. DOI: https://doi.org/10.24432/C5VW2C. [5] Andreas Damianou and Neil D Lawrence. Deep Gaussian processes. In Artificial intelligence and statistics , pages 207–215. PMLR, 2013. [6] Abhirup Datta, Sudipto Banerjee, Andrew O Finley, and Alan E Gelfand. Hierarchical nearest-neighbor Gaussian process models for large geostatistical datasets. Journal of the American Statistical Association , 111(514):800–812, 2016. [7] Holger Dette and Andrey Pepelyshev. Generalized Latin hypercube design for computer ex-periments. Technometrics , 52(4), 2010. [8] James Durbin and Siem Jan Koopman. Time series analysis by state space methods , volume 38. OUP Oxford, 2012. [9] Xinyi Fang and Mengyang Gu. The inverse Kalman filter. Biometrika , 112(4):asaf054, 2025. [10] Xinyi Fang, Mengyang Gu, and Jianzhong Wu. Reliable emulation of complex functionals by active learning with error control. The Journal of Chemical Physics , 157(21), 2022. [11] Robert B Gramacy. Surrogates: Gaussian process modeling, design, and optimization for the applied sciences . Chapman and Hall/CRC, 2020. [12] Mengyang Gu, Jesus Palomo, and James O. Berger. RobustGaSP: Robust Gaussian stochastic process emulation in R. The R Journal , 11(1):112–136, 2019. [13] Mengyang Gu, Xiaojing Wang, and James O Berger. Robust Gaussian stochastic process emulation. Annals of Statistics , 46(6A):3038–3066, 2018. [14] Joseph Guinness, Matthias Katzfuss, and Youssef Fahmy. GpGp: Fast Gaussian Process Computation Using Vecchia’s Approximation Functions , 2024. R package version 0.5.0. [15] Mark S Handcock and Michael L Stein. A Bayesian analysis of kriging. Technometrics ,35(4):403–410, 1993. 17 [16] Trevor Hastie and Robert Tibshirani. Generalized additive models. Statistical Science ,1(3):297–310, 1986. [17] Tomasz Kalinowski, Daniel Falbel, JJ Allaire, Fran¸ cois Chollet, Yuan Tang, Wouter Van Der Bijl, Martin Studer, and Sigrid Keydana. keras3: R Interface to ’Keras’ , 2026. R package version 1.5.1. [18] Matthias Katzfuss and Joseph Guinness. A general framework for Vecchia approximations of Gaussian processes. Statistical Science , 36(1):124–141, 2021. [19] Matthias Katzfuss, Joseph Guinness, and Earl Lawrence. Scaled Vecchia approximation for fast computer-model emulation. SIAM/ASA Journal on Uncertainty Quantification , 10(2):537– 554, 2022. [20] Cari G Kaufman, Mark J Schervish, and Douglas W Nychka. Covariance tapering for likelihood-based estimation in large spatial data sets. Journal of the American Statistical Association , 103(484):1545–1555, 2008. [21] Markelle Kelly, Rachel Longjohn, and Kolby Nottingham. The UCI machine learning reposi-tory. https://archive.ics.uci.edu , 2023. [22] Diederik P Kingma and Jimmy Ba. Adam: A method for stochastic optimization. arXiv preprint arXiv:1412.6980 , 2014. [23] Finn Lindgren, H˚ avard Rue, and Johan Lindstr¨ om. An explicit link between Gaussian fields and Gaussian markov random fields: the stochastic partial differential equation approach. 
+
+Journal of the Royal Statistical Society: Series B (Statistical Methodology) , 73(4):423–498, 2011. [24] Ziming Liu, Yixuan Wang, Sachin Vaidya, Fabian Ruehle, James Halverson, Marin Soljacic, Thomas Hou, and Max Tegmark. KAN: Kolmogorov–Arnold networks. In International con-ference on learning representations , volume 2025, pages 70367–70413, 2025. [25] Sergei Manzhos and Manabu Ihara. Neural network with optimal neuron activation func-tions based on additive Gaussian process regression. The Journal of Physical Chemistry A ,127(37):7823–7835, 2023. [26] Max D Morris, Toby J Mitchell, and Donald Ylvisaker. Bayesian design and analysis of computer experiments: use of derivatives in surface prediction. Technometrics , 35(3):243–255, 1993. [27] Jeong Soo Park. Tuning complex computer codes to data and optimal designs . PhD thesis, University of Illinois at Urbana-Champaign, 1991. [28] Giovanni Petris, Sonia Petrone, and Patrizia Campagnoli. Dynamic linear models . Springer, 2009. [29] Carl Edward Rasmussen. Gaussian processes for machine learning . MIT Press, 2006. [30] Olivier Roustant, David Ginsbourger, and Yves Deville. DiceKriging, DiceOptim: Two R packages for the analysis of computer experiments by Kriging-based metamodeling and opti-mization. Journal of Statistical Software , 51(1):1–55, 2012. 18 [31] Alessandro Rudi, Luigi Carratino, and Lorenzo Rosasco. FALKON: An optimal large scale kernel method. Advances in neural information processing systems , 30, 2017. [32] Kellin N Rumsey, Graham C Gibson, Devin Francom, and Reid Morris. All emulators are wrong, many are useful, and some are more useful than others: A reproducible comparison of computer model surrogates. arXiv preprint arXiv:2512.09060 , 2025. [33] Florian Samm¨ uller, Sophie Hermann, Daniel de Las Heras, and Matthias Schmidt. Neural functional theory for inhomogeneous fluids: Fundamentals and applications. Proceedings of the National Academy of Sciences , 120(50):e2312484120, 2023. [34] Annie Sauer, Andrew Cooper, and Robert B Gramacy. Vecchia-approximated deep Gaus-sian processes for computer experiments. Journal of Computational and Graphical Statistics ,32(3):824–837, 2023. [35] J¨ urgen Schmidhuber. Deep learning in neural networks: An overview. Neural networks , 61:85– 117, 2015. [36] Athanasios Tsanas, Max Little, Patrick McSharry, and Lorraine Ramig. Accurate telemoni-toring of Parkinson’s disease progression by non-invasive speech tests. IEEE Transactions on Bio-medical Engineering , 57(4):884–893, 2009. [37] Athanasios Tsanas and Angeliki Xifara. Accurate quantitative estimation of energy perfor-mance of residential buildings using statistical machine learning tools. Energy and buildings ,49:560–567, 2012. [38] Sebastian Urban, Marcus Basalla, and Patrick van der Smagt. Gaussian process neurons learn stochastic activation functions. arXiv preprint arXiv:1711.11059 , 2017. [39] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Lukasz Kaiser, and Illia Polosukhin. Attention is all you need. Advances in neural information processing systems , 30, 2017. [40] Aldo V Vecchia. Estimation and model identification for continuous spatial processes. Journal of the Royal Statistical Society Series B: Statistical Methodology , 50(2):297–312, 1988. [41] M. West and P. J. Harrison. Bayesian Forecasting & Dynamic Models . Springer Verlag, 2nd edition, 1997. [42] Christopher Williams and Matthias Seeger. Using the Nystr¨ om method to speed up kernel machines. Advances in neural information processing systems , 13, 2000. [43] Yun Yang and Surya T Tokdar. Minimax-optimal nonparametric regression in high dimensions. 
+
+The Annals of Statistics , 43(2):652 – 674, 2015. [44] I-C Yeh. Modeling of strength of high-performance concrete using artificial neural networks. 
+
+Cement and Concrete research , 28(12):1797–1808, 1998. [45] Yichen Zhu, Michele Peruzzi, Cheng Li, and David B Dunson. Radial neighbours for provably accurate scalable approximations of Gaussian processes. Biometrika , 111(4):1151–1167, 2024. 19

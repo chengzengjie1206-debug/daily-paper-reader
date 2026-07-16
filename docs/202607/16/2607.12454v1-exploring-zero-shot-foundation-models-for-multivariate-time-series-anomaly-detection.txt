@@ -1,0 +1,229 @@
+Title: Exploring Zero-Shot Foundation Models for Multivariate Time Series Anomaly Detection
+
+URL Source: https://arxiv.org/pdf/2607.12454v1
+
+Published Time: Wed, 15 Jul 2026 12:01:05 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# Exploring Zero-Shot Foundation Models for MultivariateTime Series Anomaly Detection 
+
+Martin Uray 1,2, Saverio Messineo 1, Roland Kwitt 2, and Stefan Huber 1 
+
+> 1
+
+Josef Ressel Centre for Intelligent and Secure Industrial Automation, Salzburg University of Applied Sciences, Austria 
+
+{martin.uray, saverio.messineo, stefan.huber}@fh-salzburg.ac.at  
+
+> 2
+
+Department of Artificial Intelligence and Human Interfaces, Paris Lodron University of Salzburg, Austria 
+
+roland.kwitt@plus.ac.at 
+
+Abstract. Multivariate Time Series Anomaly Detection (MTSAD) is essential for reliability and safety in domains such as industrial process monitoring and financial risk management, yet conventional approaches rely on application-specific models that are costly to train and hard to scale. Foundation Models (FMs), pre-trained on broad data with strong zero-shot generalization, have recently become available for univariate time series forecasting, raising the question of whether they can address MTSAD without task-specific training. We investigate the zero-shot ap-plication of a univariate forecasting FM, TimesFM, to industrial MT-SAD on the Secure Water Treatment (SWaT) benchmark, evaluating two strategies: treating the FM as a per-feature forecaster with thresholded prediction errors, and as an embedder whose intermediate representa-tions feed standard outlier detectors. Neither of our proposed setups is competitive with established baselines; embeddings reveal only par-tial separation between normal and anomalous segments, insufficient for reliable detection. The cause is that the FM is too effective at captur-ing temporal dynamics, yielding low error even within fully anomalous windows, so persistent anomalies become indistinguishable from normal behavior. However, these observations yield valuable insights: the error peaks at anomaly boundaries, indicating FMs reliably detect distribu-tion changes. We conclude that the proposed naive zero-shot FMs are unsuitable for MTSAD but promising for change-point detection. 
+
+Keywords: Multivariate Time Series · Anomaly Detection · Foundation Models · Zero-Shot Learning · Change-Point Detection. 
+
+## 1 Introduction 
+
+Multivariate Time Series Anomaly Detection (MTSAD) plays a vital role in en-suring the reliability and safety of numerous application domains, including in-
+
+This preprint has not undergone peer review or any post-submission improvements or corrections. The Version of Record of this contribution will be published in Computer Aided Systems Theory – EUROCAST 2026 , Lecture Notes in Computer Science, Springer. arXiv:2607.12454v1 [cs.LG] 14 Jul 2026 2 M. Uray et al. 
+
+dustrial process monitoring, predictive maintenance, fraud detection, and cyber-security [16]. The recorded data in these settings is typically high-dimensional, noisy, and strongly imbalanced, as anomalous events are rare and heterogeneous. Consequently, detection is commonly addressed by models tailored to a specific application and dataset — an approach that is costly to develop, energy-intensive to retrain, and difficult to scale across environments or distribution shifts. Forecasting-based methods are among the most widely adopted paradigms for MTSAD [16]. A model fθ is trained to predict future observations from a context window, e.g. ˆXt+1 = fθ (Xt−w:t), and anomalies are flagged when the prediction error et = ∥ ˆXt+1 − Xt+1 ∥ exceeds a threshold. The model must be trained on in-distribution data, however, which perpetuates the per-dataset specialization problem. Foundation Models (FMs) — large models pre-trained on broad, diverse data through self-supervision — offer a potential escape from this cycle [3]. They have demonstrated strong zero-shot performance across many domains, and dedicated univariate time series FMs have recently become available [4]. Applying such a model directly to MTSAD would eliminate the need for dataset-specific training while leveraging representations learned from large-scale temporal data. Despite this appeal, the zero-shot application of FMs to industrial MTSAD remains largely unexplored. We therefore investigate: Can a zero-shot univariate time series FM detect anomalies in industrial multivariate time series without any task-specific train-ing? We make the following contributions: 
+
+– We propose and evaluate two complementary zero-shot strategies for ap-plying a univariate forecasting FM to MTSAD: using it as a per-feature 
+
+forecaster with thresholded prediction errors, and as an embedder whose intermediate representations feed a standard outlier detector. 
+
+– We show that neither strategy is competitive with established baselines on the Secure Water Treatment (SWaT) benchmark, and identify the root cause: the FM adapts to anomalous dynamics just as effectively as to normal behav-ior, making persistent anomalies indistinguishable from normal operation. 
+
+– We identify change-point detection as a more suitable use case, supported by the observation that forecasting error peaks reliably at anomaly boundaries even in the zero-shot regime. 
+
+Related Work Classical forecasting-based MTSAD methods achieve strong performance by training directly on the target domain, but at the cost of requir-ing dataset-specific optimization [16]; in contrast, we study whether a pretrained, zero-shot FM can offer comparable detection capability without any such task-specific training. Early work on applying FMs to time series anomaly detection focused on univariate settings, as surveyed by [9]. The zero-shot transfer of FMs to MT-SAD has been explored on standard benchmarks such as SMAP and MSL [13]. More recently, ChronosAD [8] demonstrated that using Google’s Chronos FM as a feature extractor yields promising results across an extensive collection of Exploring Zero-Shot FMs for MTSAD 3
+
+MTSAD benchmarks, establishing FMs as a competitive approach when used in a representation-learning role. 
+
+## 2 Background 
+
+2.1 Multivariate Time Series Anomaly Detection 
+
+We denote by X ∈ RT ×C a multivariate time series with T time steps and C
+
+channels (variates). The time steps are indexed by t ∈ { 1, . . . , T } with a corre-sponding label y ∈ { 0, 1}T indicating benign ( yt = 0 ) or anomalous behaviour (yt = 1 ). The goal of unsupervised MTSAD is to identify anomalous observa-tions xt ∈ RC at each time step t, based on the joint temporal behavior across multiple channels. This is in contrast to univariate anomaly detection, which only considers a single channel in isolation. The procedure of unsupervised MTSAD typically involves two steps: first, a model is trained on the multivariate time series data to learn a representation of behavior under a benign regime. This model can then be leveraged to identify anomalous observations based on deviations from the learned representation of normal behavior. Classical approaches to MTSAD include reconstruction-based methods, such as autoencoders, and forecasting-based methods [16]. More re-cently, deep learning-based methods have been proposed, which leverage the ability of neural networks to capture complex temporal dependencies and cross-channel correlations [14]. To benchmark the performance of MTSAD methods, several datasets from different domains have been proposed, including NASA telemetry data [7], server machine data [1,17], water treatment plant data [2,6], and more recently, the Quanser Aero 2 Pick-and-Place Dataset (QAPPD) benchmark [12], which pro-vides a collection of multivariate time series data from a real-world industrial system under various operating conditions and fault scenarios. An example of a multivariate time series for anomaly detection is illustrated in Figure 1, showing two selected variates from a trace taken from the QAPPD benchmark [12]. This dataset is not used in this work; however, thanks to its periodic behavior, it nicely illustrates the anomalies. 
+
+2.2 Foundation Models 
+
+FMs are a class of machine learning models that are trained on large-scale datasets and can be adapted to a wide range of downstream tasks. The most prominent FMs are Large Language Models, which have achieved remarkable success in natural language processing, but FMs have also been applied to other modalities, such as image, audio, and video. Although the term FM is not re-stricted to a specific architecture [3], the Transformer architecture has become the de facto standard for FMs [9]. Formally, we define a univariate time series FM as a function fθ : Rw → Rh
+
+that maps an input sequence xt−w:t of context window length w to an output se-quence ˆxt+1: t+1+ h of the horizon length h, where θ are the pretrained parameters of the model. 4 M. Uray et al. 0.4     
+
+> 0.3
+> 0.2
+> 0.1
+> 0.0
+> 0.1
+> Position (deg)
+> Pitch
+> Anomaly
+> 100 200 300 400 500
+> Time (s)
+> 1.0
+> 0.8
+> 0.6
+> 0.4
+> 0.2
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> Position (deg)
+> Yaw
+> Anomaly
+
+Fig. 1: Illustration of anomalies on the QAPPD on two selected features: A mul-tivariate signal is monitored over time and anomalies (highlighted in red) are identified from deviations of the joint temporal behavior across multiple chan-nels rather than from a single variable in isolation. Illustration adapted from [12]. To make it more generic, we decompose the FM fθ into 
+
+fθ = ϕθ ◦ gθ
+
+an encoder gθ : Rw → Rd that maps the input sequence to a latent representation 
+
+v ∈ Rd and a decoder ϕθ : Rd → Rh that maps the latent representation to the output sequence. This work focuses on the application of univariate time series FMs only [4], although multivariate time series FMs are becoming more common, where cross-channel dependencies are explicitly modeled or each variate is treated as a sepa-rate channel in a multivariate time series [9]. However, recent works suggest that treating each channel independently suffices for MTSAD on published bench-marks [5,15,19]. 
+
+## 3 Methodology 
+
+For this exploratory work, we consider two ways of leveraging a univariate time series FM for multivariate time series anomaly detection, which are detailed in the following. For both approaches, we use a pretrained univariate time series FM fθ trained to predict the next h time steps of a univariate time series given a context window of length w.Exploring Zero-Shot FMs for MTSAD 5
+
+3.1 Forecasting-Based Anomaly Detection 
+
+Similar to classical forecasting-based anomaly detection methods [20,21], we can leverage a univariate time series FM to predict future values of each channel in a multivariate time series. Here we intentionally omit the cross-channel dependen-cies and treat each channel independently, which allows us to use a univariate FM for multivariate time series anomaly detection. Although this approach does not capture the cross-channel dependencies, recent works suggest that cross-channel dependencies are not critical for anomaly detection on published bench-marks [5,15,19]. As illustrated in Figure 2, we detect anomalies by comparing the predicted future values ˆXt with the observed future values Xt. For each time step t, we compute a joint prediction error et by aggregating the per-channel errors ec,t =
+
+∥ ˆXc,t − Xc,t ∥ over all channels, 
+
+et =
+
+> C
+
+X
+
+> c=1
+
+ec,t .
+
+To identify anomalous observations, the prediction error is then thresholded against a predefined value τerror 
+
+ˆyt = I(et > τ error ),
+
+where ˆyt is the predicted label for time step t and I is the indicator function. 
+
+3.2 Embedding-Based Anomaly Detection 
+
+In contrast to the forecasting-based approach, we can also leverage the latent representations of a univariate time series FM for anomaly detection. Here, we use the encoder gθ of the FM to map each channel of a multivariate time series to a latent representation vc,t ∈ Rd for each channel c and time step t. These per-channel representations serve as input features for a downstream anomaly detection method. The latent representations of all channels are then concate-nated to form a joint embedding vector zt ∈ RC·d for the multivariate observa-tion at time step t. This joint-embedding vector can then be used as input to a downstream anomaly detection method, such as an Isolation Forest (IF) [10], to identify anomalous observations based on their distance to the learned rep-resentation of normal behavior. The overall procedure of extracting the joint embedding vector is illustrated in Figure 3. Following the standard procedure of unsupervised anomaly detection meth-ods, we can then use the joint-embedding vectors zt to train an IF on the normal operating regime of the system and use it to identify anomalous observations based on their distance to the learned representation of normal behavior. 6 M. Uray et al. 
+
+> t
+> x1(t)
+> w
+
+# fθ t         
+
+> x1(t−w:t)ˆx1(t+ 1 : t+h)
+> tx2(t)
+
+# fθ t
+
+> t
+> xn(t)
+
+# . . . 
+
+# fθ t
+
+# . . .  
+
+> τerror
+> t
+> PNi=0 ∥ei∥
+
+Fig. 2: Forecasting-based anomaly detection with a FM. For each channel, a con-text window of length w is mapped by fθ to a forecast horizon of length h, and anomalies are assessed from the discrepancy between predicted and observed fu-ture values. The lower panel illustrates the aggregation of per-channel prediction errors into a joint score that can be compared against a threshold τerror .
+
+## 4 Experiments & Results 
+
+Experimental Setup. For all experiments, we use TimesFM [4] (version 1.2.0) via its publicly available implementation 3 as the univariate time series FM. TimesFM is a Transformer-based model pretrained on a large corpus of univari-ate time series data from various domains. Although it is possible to fine-tune the model on the target domain, we explicitly focus on the zero-shot regime in this work, where the pretrained model is directly applied to the target domain without any further training or adaptation. We use a context length of w = 100 , consistent with related work [18], and a forecast horizon of h = 32 , chosen as a trade-off between TimesFM’s long-horizon forecast capability and per-step prediction accuracy. All experiments are conducted on a single NVIDIA GeForce RTX 3090 with 24 GB of VRAM and an Intel(R) Core(TM) i9-10980XE CPU @ 3.00GHz. 
+
+Datasets. We evaluate the proposed approaches on the SWaT benchmark [6], which is a publicly available dataset that contains multivariate time series data from a real-world water treatment plant under various operating conditions and  
+
+> 3
+
+https://github.com/google-research/timesfm Exploring Zero-Shot FMs for MTSAD 7
+
+> t
+> x1(t)
+> w
+
+# gθ v00 v01 . . . v0d zt, 0
+
+> tx2(t)
+
+# gθ v10 v11 . . . v1d zt, 1
+
+> t
+> xn(t)
+
+# gθ vn0 vn1 . . . vnd zt,n 
+
+# . . . . . . 
+
+zt = [ zt, 0, z t, 1, . . . , z t,n ] ∈ Rd
+
+Fig. 3: Embedding-based anomaly detection with a FM. Each univariate input segment is processed by the encoder gθ to produce channel-wise latent represen-tations, which are then combined into a joint embedding vector zt ∈ RC·d for the multivariate observation at time t. This representation can subsequently be used by downstream anomaly scoring methods to detect abnormal system states in a zero-shot setting. fault scenarios. The dataset contains 51 channels and a total of 11 days of data, with 7 days of normal operation and 4 days of anomalous operation. The dataset is split into a training set of 7 days and a test set of 4 days, with the anomalous operation occurring in the test set. The dataset is preprocessed by normalizing each channel to have zero mean and unit variance, and by removing any missing values. 
+
+Metrics. We evaluate the performance of the proposed approaches using the F1 score, which is a commonly used metric for anomaly detection that bal-ances precision and recall. The threshold τerror for the prediction error in the forecasting-based approach is optimized on the test set to maximize the F1 score. 
+
+4.1 Qualitative View on Forecasting-Based Anomaly Detection 
+
+Figure 4 illustrates the per-channel and aggregated prediction error on a repre-sentative excerpt of the SWaT dataset. As shown in Figure 4a, the FM reconstructs the benign signal accurately, keeping the prediction error consistently low. The quantitative results are corre-spondingly poor, with an F1 score close to zero, confirming that the forecasting-based approach fails to detect persistent anomalies. The multivariate score profile in Figure 4b reveals the underlying cause. The prediction error is low during benign operation, spikes sharply at the transitions 8 M. Uray et al. 
+
+> (a) Exemplary forecast on a representative channel with its per-channel error profile on benign data; sharp transitions in the signal cause transient error spikes even in the normal regime.
+> (b) Aggregated multivariate score profile over a window containing an anomalous seg-ment; the score spikes at the entry and exit boundaries but collapses to near zero throughout the anomaly itself.
+
+Fig. 4: Anomaly scoring on the SWaT dataset using per-channel forecasts from a FM, with per-channel errors summed into a joint score. into and out of the anomalous region, but returns to near zero throughout the anomaly itself. This spike is transient: it persists only while the sliding window of length w straddles the boundary; once the window lies entirely within the anomalous segment, the FM adapts to the new dynamics and the score col-lapses. The model is therefore too effective at capturing temporal structure — it tracks anomalous behavior just as faithfully as normal behavior, rendering persistent anomalies indistinguishable from normal operation. Error peaks at anomaly boundaries do, however, make the FM a natural candidate for change-point detection. 
+
+4.2 Embedding-Based Anomaly Detection 
+
+We apply the encoder gθ independently to each variate and, for each channel, concatenate the intermediate representations from all transformer blocks into Exploring Zero-Shot FMs for MTSAD 9
+
+Fig. 5: PCA projection of TimesFM embeddings on the WaDi benchmark, col-ored by operating regime (normal vs. anomalous). The partial cluster separation indicates that zero-shot representations carry some regime-discriminative struc-ture, but the overlap explains why the downstream IF fails to reliably separate the two classes. a single feature vector. These per-channel vectors are then concatenated across channels to form the joint embedding zt per time step, as described in Section 3.2. An IF is trained on embeddings from the normal operating regime and used to score the test set. Figure 5 shows the embeddings extracted from the Water Distribution (WaDi) benchmark [2], projected to three dimensions via PCA. Normal and anomalous embeddings form partially overlapping clusters, suggesting that the FM encodes some structure correlated with the operating regime, though the separation is not pronounced enough for reliable detection in the full embedding space. Table 1 reports F1 scores on the SWaT benchmark. The proposed TimesFM + IF pipeline achieves an F1 of 0.480, well below all baselines — including simple heuristics such as L2-norm (0.782) and the best-performing method, PCA Error (0.833). The large gap to even the simplest baselines indicates that zero-shot embed-dings from a univariate forecasting FM do not provide a sufficiently discrimina-tive representation for downstream anomaly detection on industrial data. This is consistent with the qualitative observation in Figure 5: although some clus-ter structure is visible in the projected space, the embeddings of normal and 10 M. Uray et al. 
+
+Table 1: F1 scores on the SWaT benchmark. Baselines are taken from [16] and span simple heuristics (top group), lightweight neural methods (middle group), and the proposed zero-shot TimesFM + IF pipeline (bottom).            
+
+> Method SWaT
+> Random 0.218 Sensor range deviation 0.231 L2-norm 0.782 1-NN distance 0.782 PCA Error 0.833
+> 1-Layer MLP 0.771 Single block MLPMixer 0.780 Single Transformer block 0.787 1-Layer GCN-LSTM 0.829 TimesFM + IF 0.480
+
+anomalous segments overlap substantially, leaving the IF unable to separate them reliably. 
+
+## 5 Discussion & Future Work 
+
+Both strategies fail for the same underlying reason, but it is not the one in-tuitively expected: the FM does not lack domain knowledge — it generalizes too well. In the forecasting-based approach, the model adapts to anomalous dy-namics within a single sliding window, keeping the prediction error low even deep inside an anomalous segment. In the embedding-based approach, the same adaptability causes normal and anomalous segments to produce overlapping rep-resentations. The core issue is therefore not a failure to generalize, but a failure to specialize : a model pre-trained for accurate forecasting optimizes for recon-struction fidelity rather than anomaly sensitivity, and those two objectives are fundamentally at odds for persistent anomalies. This distinction is reflected in the baseline comparison: PCA Error, the strongest baseline in Table 1, fits a single global subspace of normal behav-ior over the entire training set, whereas the FM re-adapts locally within each sliding window. A persistent anomaly therefore remains a persistent outlier with respect to a fixed global model, while it is gradually absorbed into the FM’s local forecast. This negative result stands in contrast to ChronosAD [8], which reports strong performance using embeddings from a different FM (Chronos) as a fea-ture extractor across a broad collection of MTSAD benchmarks. We see several possible explanations for this discrepancy, which we cannot yet disambiguate from our results alone. First, Chronos and TimesFM differ in architecture and pretraining corpus, and may therefore encode different inductive biases with Exploring Zero-Shot FMs for MTSAD 11 
+
+respect to anomaly-relevant structure. Second, ChronosAD evaluates across a wide range of benchmarks, whereas our embedding analysis is limited to SWaT only; it is possible that our chosen datasets are simply less favorable to this representation-based approach. Third, downstream detector choice may matter: we pair embeddings with a single Isolation Forest, while ChronosAD’s pipeline may use a different or better-tuned scoring method. Disentangling these fac-tors — FM choice, benchmark choice, and detector choice — is an important direction for future work. This boundary-sensitivity property points to a more appropriate use case. Because the forecasting error spikes sharply at the transitions into and out of anomalous segments (Figure 4), the FM reliably signals distributional changes even in the zero-shot regime. This makes it a natural candidate for change-point detection , a related but distinct task from anomaly detection, where the goal is to locate the onset of a regime shift rather than to label every anomalous time step. 
+
+Future Work. Fine-tuning the FM on target-domain data, or even a few-shot adaptation, could shift the model toward anomaly sensitivity by exposing it to domain-specific normal behavior. A complementary direction is to replace the univariate FM with a genuinely multivariate one that explicitly models cross-channel dependencies. Although current benchmarks show limited bene-fit from cross-channel modeling in MTSAD [15], real-world industrial systems often exhibit strong inter-sensor correlations that a multivariate FM could ex-ploit. Finally, the boundary-detection property observed here suggests that FMs may support root cause analysis [11]: by identifying which channels exhibit the sharpest error spike at a transition, one could localize the origin of a fault without any task-specific training. 
+
+Limitations. The main limitation of this work is its narrow experimental scope: we evaluate a single univariate FM on a single benchmark dataset, which con-strains the generalizability of our conclusions. We further restrict our study to the zero-shot regime; performance may differ substantially under few-shot or fine-tuning settings. Likewise, we pair the FM with a single class of downstream anomaly detectors, leaving open whether other detection methods would yield different results. Finally, our setup assumes regularly sampled time series and does not address the sparse, irregularly sampled data frequently encountered in industrial practice [18]. 
+
+## 6 Conclusion 
+
+In this work, we investigated whether univariate time series FMs can be ap-plied to MTSAD in a zero-shot regime, without any task-specific training. Using TimesFM on the SWaT benchmark, we evaluated two complementary strategies: employing the FM as a per-feature forecaster with thresholded prediction errors, and as an embedder whose intermediate representations feed standard outlier de-tectors. Our results show that neither strategy is competitive with established 12 M. Uray et al. 
+
+baselines. The qualitative analysis attributes this to the FM being too effective at capturing temporal dynamics: it produces low forecasting error even within fully anomalous windows, rendering persistent anomalies indistinguishable from normal behavior. At the same time, this very property suggests a more promising use case. Since the forecasting error peaks at the transitions into and out of anomalous segments, FMs reliably respond to changes in the underlying data distribution, making them strong candidates for change-point detection rather than for de-tecting persistent anomalies. Future work should explore fine-tuning the FM on target-domain data to overcome the limitations of the zero-shot regime, evaluate genuinely multivari-ate FMs that capture cross-channel dependencies, and extend the analysis to a broader range of benchmarks and downstream detection methods. Investigating the use of FMs for change-point detection and root-cause analysis constitutes a further promising direction. 
+
+Acknowledgments. The financial support by the Austrian Federal Ministry of Econ-omy, Energy and Tourism, the National Foundation for Research, Technology and De-velopment and the Christian Doppler Research Association is gratefully acknowledged. 
+
+Disclosure of Interests. The authors have no competing interests to declare that are relevant to the content of this article. 
+
+## References 
+
+1. Abdulaal, A., Lancewicki, T.: Real-time synchronization in neural networks for multivariate time series anomaly detection. In: ICASSP 2021 - 2021 IEEE Inter-national Conference on Acoustics, Speech and Signal Processing (ICASSP). pp. 3570–3574 (2021). https://doi.org/10.1109/ICASSP39728.2021.9413847 2. Ahmed, C.M., Palleti, V.R., Mathur, A.P.: Wadi: a water distribution testbed for research in the design of secure cyber physical systems. In: Proceedings of the 3rd International Workshop on Cyber-Physical Systems for Smart Water Networks. p. 25–28. CPS Week ’17, ACM (Apr 2017). https://doi.org/10.1145/3055366.3055375 3. Bommasani, R., Hudson, D.A., Adeli, E., Altman, R., Arora, S., von Arx, S., Bernstein, M.S., Bohg, J., et al.: On the opportunities and risks of foundation models. ArXiv (2021), https://crfm.stanford.edu/assets/report.pdf 4. Das, A., Kong, W., Sen, R., Zhou, Y.: A decoder-only foundation model for time-series forecasting. In: Proceedings of the 41st International Conference on Machine Learning. ICML’24, JMLR (2024) 5. Garg, A., Zhang, W., Samaran, J., Savitha, R., Foo, C.S.: An evaluation of anomaly detection and diagnosis in multivariate time series. IEEE Transactions on Neural Networks and Learning Systems 33 (6), 2508–2517 (2022). https://doi.org/10.1109/ TNNLS.2021.3105827 6. Goh, J., Adepu, S., Junejo, K.N., Mathur, A.: A dataset to support research in the design of secure water treatment systems. In: Havarneanu, G., Setola, R., Nas-sopoulos, H., Wolthusen, S. (eds.) Critical Information Infrastructures Security. pp. 88–99. Springer International Publishing, Cham (2017) Exploring Zero-Shot FMs for MTSAD 13 7. Hundman, K., Constantinou, V., Laporte, C., Colwell, I., Soderstrom, T.: Detect-ing spacecraft anomalies using lstms and nonparametric dynamic thresholding. In: Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining. p. 387–395. KDD ’18, Association for Computing Ma-chinery, New York, NY, USA (2018). https://doi.org/10.1145/3219819.3219845 8. Khan, U., Capogrosso, L., Biondani, F., Magno, M., Fummi, F., Setti, F., Cristani, M.: Chronosad: Leveraging time series foundation models for accurate anomaly detection (2026) 9. Kottapalli, S.R.K., Hubli, K., Chandrashekhara, S., Jain, G., Hubli, S., Botla, G., Doddaiah, R.: Foundation models for time series: A survey (2025) 10. Liu, F.T., Ting, K.M., Zhou, Z.H.: Isolation forest. In: Proceedings of the 2008 Eighth IEEE International Conference on Data Mining. p. 413–422. ICDM ’08, IEEE Computer Society, USA (2008). https://doi.org/10.1109/ICDM.2008.17 11. Mueller, A.: Open challenges in time series anomaly detection: An industry per-spective (2025), https://arxiv.org/abs/2502.05392 12. Nosrati, K., Uray, M., Messineo, S., Sassnick, O., Huber, S.: Federated learning for multivariate time series anomaly detection in industrial automation (2026) 13. Olive, A., Comer, M.L., Delp, E.J., Desai, S.R., Foster, R.H., Chan, M.W.: A comparative analysis of forecasting foundation models for spacecraft multivariate time series anomaly detection. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) Workshops. pp. 10320–10328 (June 2026) 14. Pang, G., Shen, C., Cao, L., Hengel, A.V.D.: Deep learning for anomaly detec-tion: A review. ACM Comput. Surv. 54 (2) (Mar 2021). https://doi.org/10.1145/ 3439950 15. Pinet, M., Cumin, J., Berlemont, S., Vaufreydaz, D.: Anomalies in multivariate time series benchmarks are mostly univariate (2026), https://arxiv.org/abs/2606. 02670 16. Sarfraz, M.S., Chen, M.Y., Layer, L., Peng, K., Koulakis, M.: Position: quo vadis, unsupervised time series anomaly detection? In: Proceedings of the 41st Interna-tional Conference on Machine Learning. ICML’24, JMLR (2024) 17. Su, Y., Zhao, Y., Niu, C., Liu, R., Sun, W., Pei, D.: Robust anomaly detection for multivariate time series through stochastic recurrent neural network. In: Proceed-ings of the 25th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining. p. 2828–2837. KDD ’19, Association for Computing Machinery, New York, NY, USA (2019). https://doi.org/10.1145/3292500.3330672 18. Uray, M., Geng, D., Graf, F., Huber, S., Kwitt, R.: Anomaly detection for sparse and irregular multivariate time series with latent sdes (2026) 19. Wenig, P., Schmidl, S., Papenbrock, T.: Anomaly detectors for multivariate time series: The proof of the pudding is in the eating. In: 2024 IEEE 40th International Conference on Data Engineering Workshops (ICDEW). pp. 96–101 (2024). https: //doi.org/10.1109/ICDEW61823.2024.00018 20. Wu, H., Hu, T., Liu, Y., Zhou, H., Wang, J., Long, M.: Timesnet: Temporal 2d-variation modeling for general time series analysis. In: International Conference on Learning Representations (2023) 21. Xu, J., Wu, H., Wang, J., Long, M.: Anomaly transformer: Time series anomaly detection with association discrepancy. In: International Conference on Learning Representations (2022), https://openreview.net/forum?id=LzQQ89U1qm_
