@@ -6,56 +6,44 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-16
-- 运行时间：2026-07-16 20:50:51 UTC
+- 最新运行日期：2026-07-17
+- 运行时间：2026-07-17 21:06:09 UTC
 - 运行状态：成功
-- 本次总论文数：12
+- 本次总论文数：8
 - 精读区：4
-- 速读区：8
+- 速读区：4
 
 ### 今日简报（AI）
-今日精读两项高分研究，聚焦碳预测与全球气象预报新方法。最值得关注的是结合街景语义的卫星碳预测模型CarbonCLIP，以及针对时空-变量-历史三维建模的TSSM天气预测框架。建议后续多关注多模态数据融合与状态空间模型在环境预测中的应用。
-- 详情：[/202607/16/README](/202607/16/README)
+今日推荐8篇时序论文，重点聚焦OCELOT图-Transformer混合模型（9分）与AI时序预测综述（9分），兼顾峰值感知损失与通胀预测等应用。精读两篇高分论文分别从异质地球观测直接大气建模和经典方法论演进梳理了前沿方向。建议优先研读这两篇，以快速把握时空预测与AI时序的两大核心脉络。
+- 详情：[/202607/17/README](/202607/17/README)
 
 ### 精读区论文标签
-1. [CarbonCLIP: Enhance Carbon Prediction from Satellite Imagery via Integrated Street-View Semantics and Temporal Context Training](/202607/16/2607.07292v1-carbonclip-enhance-carbon-prediction-from-satellite-imagery-via-integrated-street-view-semantics-and-temporal-context-training)  
+1. [OCELOT: Direct Atmospheric Forecasting from Heterogeneous Earth Observations Using a Graph-Transformer Hybrid Model](/202607/17/2607.14196v1-ocelot-direct-atmospheric-forecasting-from-heterogeneous-earth-observations-using-a-graph-transformer-hybrid-model)  
+   标签：评分：9.0/10、query:aq-forecast
+   evidence：直接使用地球观测数据进行大气预测，与空气污染相关
+2. [From Vector Autoregressions to AI-based Time Series Forecasting: A Review](/202607/17/2607.14279v1-from-vector-autoregressions-to-ai-based-time-series-forecasting-a-review)  
+   标签：评分：9.0/10、query:aq-forecast
+   evidence：AI时序预测方法综述，涵盖多种前沿技术
+3. [Criticality and reduced dynamical resilience in PM2.5 pollution systems](/202607/17/2607.14632v1-criticality-and-reduced-dynamical-resilience-in-pm25-pollution-systems)  
    标签：评分：8.0/10、query:aq-forecast
-   evidence：基于卫星图像和时间上下文的碳排放预测
-2. [TSSM: Triaxial State Space Model for Global Station Weather Forecasting with Temporal-Variable-Historical Modeling](/202607/16/2607.13101v1-tssm-triaxial-state-space-model-for-global-station-weather-forecasting-with-temporal-variable-historical-modeling)  
+   evidence：PM2.5污染系统动力学临界性分析
+4. [Mixed-Frequency Time Series Forecasting via Depth-Separable Neural Networks](/202607/17/2607.14771v1-mixed-frequency-time-series-forecasting-via-depth-separable-neural-networks)  
    标签：评分：8.0/10、query:aq-forecast
-   evidence：全球站点天气时间序列预测
-3. [EMAGN: Efficient Multi-Attention Graph Network via Learned Clustering for Scalable Traffic Forecasting](/202607/16/2607.13241v1-emagn-efficient-multi-attention-graph-network-via-learned-clustering-for-scalable-traffic-forecasting)  
-   标签：评分：8.0/10、query:aq-forecast
-   evidence：可扩展的交通时间序列预测方法
-4. [Accuracy-Preserving Stability Regularization for Large-Scale Retail Demand Forecasting](/202607/16/2607.13331v1-accuracy-preserving-stability-regularization-for-large-scale-retail-demand-forecasting)  
-   标签：评分：8.0/10、query:aq-forecast
-   evidence：零售需求时间序列预测增加稳定性正则化
+   evidence：混合频率时间序列预测
 
 ### 速读区论文标签
-1. [Do We Really Need Transformers for Global Spatial Information Extraction in Traffic Forecasting?](/202607/16/2607.12462v1-do-we-really-need-transformers-for-global-spatial-information-extraction-in-traffic-forecasting)  
+1. [Asymmetric Peak-Aware Loss for Peak-Critical Time Series Forecasting](/202607/17/2607.14871v1-asymmetric-peak-aware-loss-for-peak-critical-time-series-forecasting)  
    标签：评分：7.0/10、query:aq-forecast
-   evidence：交通预测中的时空模型
-2. [The Value of Perfect Endpoint Forecasts for Offshore-Wind Thermal Firming](/202607/16/2607.13627v1-the-value-of-perfect-endpoint-forecasts-for-offshore-wind-thermal-firming)  
-   标签：评分：7.0/10、query:aq-forecast
-   evidence：海上风电热调度的端点预测分析
-3. [Improving Wind and Solar Power Prediction with Efficient Wrapper-based Feature Selection: An Empirical Study](/202607/16/2607.14024v1-improving-wind-and-solar-power-prediction-with-efficient-wrapper-based-feature-selection-an-empirical-study)  
-   标签：评分：7.0/10、query:aq-forecast
-   evidence：风能和太阳能预测中的特征选择
-4. [Physics-guided spatiotemporal neural models for fuel density prediction](/202607/16/2607.06999v1-physics-guided-spatiotemporal-neural-models-for-fuel-density-prediction)  
+   evidence：峰值关键时间序列预测损失函数
+2. [Forecasting Inflation with Microdata: An Adaptive Machine Learning Approach](/202607/17/2607.12345v1-forecasting-inflation-with-microdata-an-adaptive-machine-learning-approach)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：物理引导的时空神经网络用于燃料密度预测
-5. [GNet: A scalable and flexible Gaussian process network with nonparametric neurons](/202607/16/2607.10735v2-gnet-a-scalable-and-flexible-gaussian-process-network-with-nonparametric-neurons)  
+   evidence：时间序列预测的机器学习方法
+3. [Robustness of Deep Learning Models for PV Power Forecasting under NWP Forecast Errors: A Spatiotemporal and Physically Interpretable Analysis](/202607/17/2607.12954v1-robustness-of-deep-learning-models-for-pv-power-forecasting-under-nwp-forecast-errors-a-spatiotemporal-and-physically-interpretable-analysis)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：提出可扩展的GP网络GNet可用于回归任务，适用于时序预测
-6. [Exploring Zero-Shot Foundation Models for Multivariate Time Series Anomaly Detection](/202607/16/2607.12454v1-exploring-zero-shot-foundation-models-for-multivariate-time-series-anomaly-detection)  
+   evidence：基于NWP误差的预测鲁棒性分析
+4. [Parallel gradient boosting for flexible estimation of conditional distributions](/202607/17/2607.13550v1-parallel-gradient-boosting-for-flexible-estimation-of-conditional-distributions)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：使用时间序列基础模型进行异常检测，方法可迁移至预测
-7. [Robustness of Deep Learning Models for PV Power Forecasting under NWP Forecast Errors: A Spatiotemporal and Physically Interpretable Analysis](/202607/16/2607.12954v1-robustness-of-deep-learning-models-for-pv-power-forecasting-under-nwp-forecast-errors-a-spatiotemporal-and-physically-interpretable-analysis)  
-   标签：评分：6.0/10、query:aq-forecast
-   evidence：光伏功率预测鲁棒性评估框架，可迁移至空气污染预测
-8. [STKAN: Kolmogorov-Arnold Networks for Spatio-Temporal Forecasting](/202607/16/2607.13108v1-stkan-kolmogorov-arnold-networks-for-spatio-temporal-forecasting)  
-   标签：评分：6.0/10、query:aq-forecast
-   evidence：可迁移到时间序列预测的时空预测方法
+   evidence：梯度提升用于时间序列条件分布估计
 
 
 <div class="dpr-home-promo-card">

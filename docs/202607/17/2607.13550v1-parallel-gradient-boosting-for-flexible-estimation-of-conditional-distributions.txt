@@ -1,0 +1,1931 @@
+Title: Parallel gradient boosting for flexible estimation of conditional distributions
+
+URL Source: https://arxiv.org/pdf/2607.13550v1
+
+Published Time: Thu, 16 Jul 2026 00:58:20 GMT
+
+Number of Pages: 51
+
+Markdown Content:
+# Parallel gradient boosting for flexible estimation of conditional distributions 
+
+Rémy Chapelle 1,2,3 , Nicolas Vayatis 2, Bruno Falissard 1, and Mohammed Sedki 11Université Paris-Saclay, UVSQ, Inserm, CESP, 94807, Villejuif, France 
+
+> 2
+
+Université Paris-Saclay, Université Paris Cité, ENS Paris-Saclay, CNRS, SSA, Inserm, Centre Borelli, 91190, Gif-sur-Yvette, France 
+
+> 3
+
+École du Val-de-Grâce, Service de Santé des Armées, 75005, Paris, France 
+
+Abstract 
+
+Boosting is one of the most successful learning techniques for standard classification and regression tasks. Its extension to multi-output prediction problems has found an increasing number of applications in recent years. Among them is the prediction of entire conditional distributions rather than single functionals, which can often be framed as a multi-output regression problem, for example multiple quantile regression. Addressing such problems with classical implementations of boosting is computationally challenging, because usually one base model is trained for each target at every iteration. More efficient variants of boosting have been proposed to speed up training, but they tend to be tied to specific loss functions and classes of base learners, usually decision trees. In this work, we study a modification of the gradient boosting algorithm, which we call parallel gradient boosting, designed to circumvent all these limitations. The core idea is to use a common descent direction for all training observations. By doing so, only one base model is needed at each iteration, regardless of the number of targets, which allows for considerable performance gains. We establish sufficient conditions for the convergence of the algorithm, whose practical use is introduced via the multiple quantile regression setting. We show that in such a setting, it provides predictions of similar quality to state-of-the-art boosting libraries such as XGBoost, while being faster by several orders of magnitude. Then, we evaluate the properties of the resulting conditional distribution estimator, which is shown empirically to outperform other nonparametric and semiparametric estimators, especially in high-dimensional settings and in the presence of mixed and/or missing covariates. 
+
+1arXiv:2607.13550v1 [stat.ML] 15 Jul 2026 1 Introduction 
+
+The classical concern of supervised statistical learning is to determine properties of the conditional distribution of a dependent variable given some covariates. In the case of numeric labels, the property of interest is often the conditional mean, and many regression methods effectively provide estimates of this parameter. In modern applications of machine learning, estimating only some location pa-rameters can be unsatisfactory, and one would prefer modeling the whole conditional distribution. This allows for more versatile analyses and is especially valuable in fields where the distribution is potentially complex and/or multimodal, so that the sufficiency of such parameters is not guaranteed (see Figure 1). For example, in healthcare, the tails of the distribution are often of equal importance to its expected value, as they may identify individuals with extreme outcomes (Jones et al., 2015; E. V. Strobl & Visweswaran, 2021). Other applications of modeling entire conditional distributions include probabilistic forecasting (Krzysztofowicz, 2024), imputation of missing values (Enders, 2025), and data synthesis (Cormode et al., 2025). Distributional estimates can also be used to obtain prediction intervals, potentially with finite-sample guarantees for (conditional) coverage when done under the conformal prediction framework (Plassier et al., 2025; Zhou et al., 2025; Zou et al., 2026). 
+
+Figure 1: Estimation of conditional distributions which are bimodal for some values of the conditioning variable. The data originate from Lei and Wasserman (2014). The estimates were obtained using the parallel gradient boosting method presented in this paper. Modeling conditional distributions is straightforward if one assumes a parametric family. This indeed amounts to estimating a finite number of parameters, which can be done using traditional modeling techniques. In real-life applications, however, it is often difficult to specify such parametric forms, and one could prefer working with nonparametric models (Hill & Dixon, 1982). By adapting to the complexity of the 2data at hand, these models and the corresponding algorithms can prove more robust and produce more reliable estimates than their parametric counterparts (Leech & Onwuegbuzie, 2002). In the case of categorical labels, nonparametric prediction of class probabilities is already standard practice. It is at the core of major classification algorithms, such as the naive Bayes classifier (Berrar, 2025), and the output of many other algorithms can be interpreted similarly via their training loss function (Silva Filho et al., 2023). Unfortunately, these approaches are not applicable as-is to continuous labels, especially because in this case the observed data do not cover the entire support of the variable of interest. To address this difficulty, one intuitive strategy is to frame the corresponding learning problem as multiple regression ones (or, equivalently, as a multi-output regression one). The idea is then to base the estimate of the conditional distribution on estimates of several functionals of this distribution, for example, conditional quantiles (Qiu et al., 2026). In any case, the number of targets must grow with the training data for the resulting estimator to remain nonparametric, which poses computational challenges. If computation times were not an issue, boosted regression methods would make appealing candidates to perform such tasks (Bentéjac et al., 2021). They are based on iteratively combining weak learners (usually, trees) into a strong one, hence reducing the bias of the corresponding estimator (Schapire & Freund, 2013). Gradient boosting is remarkably effective for real-life prediction tasks, and has been the winner of many machine learning competitions since its introduction (Breiman, 1996; Nielsen, 2016). Its popularity grew even more in the last 10 years with the release of high-performance implementations such as XGBoost (T. Chen & Guestrin, 2016), LightGBM (Ke et al., 2017) and CatBoost (Prokhorenkova et al., 2018). However, these libraries do not provide both scalable and flexible solutions to perform multi-output regressions. More precisely, multi-output models returned either involve several single-output weak learners, or one multi-output weak learner per iteration. In the latter case, the class of base models used is tied to a specific loss, and generally makes the biased assumption that all targets are fully correlated (Joly et al., 2019). This makes these algorithms poorly suited to conditional distribution estimation using the approaches mentioned above. 
+
+Contributions. In this paper, we propose an efficient extension of the classical gradient boosting algorithm to the multi-output prediction setting. This approach, which we name parallel gradient boosting (PGB), is based on specifying a common direction of descent for all observations at the current iteration. By doing so, PGB requires training only one base model per iteration, which can be any univariate prediction rule, and naturally exploits any correlation between targets. Our formu-lation of PGB generalizes several strategies mentioned in the literature on decision tree boosting, which had not been studied on their own, nor applied to other classes of base learners. For separable loss functions, we propose an implementation of PGB with proved convergence in empirical risk to the minimum attainable with the chosen family of base models. We empirically evaluate the behavior of the algorithm on multiple quantile regression tasks and its extension to conditional 3density estimation. Our results show that PGB provides fast and reliable estimation of conditional distributions in settings traditionally considered challenging. These include high-dimensional data, irrelevant covariates, mixed-type variables, and the presence of missing values. An efficient implementation of the algorithm is provided within the R package opencesp available on CRAN (R. Chapelle, 2026). 
+
+Organization of this paper. The rest of the paper is organized as follows. In Section 2, we introduce our setting and discuss the connections of our contribution with the existing literature. In Section 3, we recall the general formulation of multi-output gradient boosting, before describing the PGB procedure in Section 4. We then describe our conditional distribution estimator based on PGB in Section 5. In Section 6, we evaluate the empirical performance of the PGB procedure in several experiments involving simulated and real data. We conclude by a discussion of our findings in Section 7. All theoretical proofs are deferred to the appendix. 
+
+# 2 Background 
+
+In this section, we introduce the setting and objectives of PGB before briefly reviewing the related literature. 
+
+2.1 Problem formulation 
+
+Let (X, Y ) be a pair of random variables taking values in X × R, with X being any 
+
+d-dimensional measurable feature set. We suppose that we are given n independent realizations Dn =  (x1, y 1), . . . , (xn, y n) of (X, Y ). In this work, we are interested in using the sample Dn to estimate the conditional distribution of Y given X.We require the estimator to be nonparametric and applicable to mixed-type and potentially high-dimensional covariates. Our approach is to frame this problem of conditional distribution estimation as a problem of multiple quantile regression, which PGB is designed to handle in an algorithmically efficient way. Although the techniques employed in PGB are especially well-suited to multiple quantile regression, they are, in theory, applicable to other multi-output learning tasks. PGB therefore lies at the intersection of several rich bodies of literature, which we briefly review below. 
+
+2.2 Related works 
+
+Some attempts have been reported in the literature to use gradient boosting for probabilistic predictions in a given parametric family (Duan et al., 2020; März, 2019; März & Kneib, 2022). We do not discuss these works in detail, as the nonparametric nature of PGB makes it primarily compete with other nonparametric estimators of conditional distributions. Such approaches can be classified according to many criteria. Here we consider a distinction between instance-based approaches and what we call (following Reisach et al., 2025) “regression-based” approaches. This distinction is only for expositional purpose, as some methods could qualify in both 4categories depending on how they are formulated. We give an overview of these two types of approaches (a more comprehensive review is provided e.g. in Izbicki, 2025, Chapter 3), before examining the literature on multi-output regression and multi-task learning, including methods based on gradient boosting. 
+
+Instance-based estimation of conditional distributions. Apart from direct approaches based on k-nearest neighbors (Benezet et al., 2025), the most classical nonparametric conditional density estimator is probably the kernel estimator (Rosen-blatt, 1969). It is a straightforward extension of marginal kernel density estimation to the estimation of conditional densities. The principle is to express the conditional density of Y given X in terms of their joint density and the marginal density of X,and to estimate both using the classical kernel density estimator. Unfortunately, the approach suffers the same limitation of the method it extends: it is only applicable to continuous data types (although some attempts have been made to extend it to mixed-type settings, see e.g. Racine et al., 2004), and notoriously fails in high di-mension due to the curse of dimensionality (Geenens, 2011). Additionally, the choice of the hyperparameters (i.e. the kernel functions and associated bandwidths) can be tedious in practice (Zhao & Tabak, 2025). Distributional random forests (Cevid et al., 2022) are a related approach that relies on specialized binary trees to obtain a weighting function on the set of covariates. By doing so, it inherits the desirable properties of supervised random forests (Scornet & Hooker, 2026), namely their flexibility and ease of hyperparameter tuning. Other, more marginal approaches are based on histograms (Sart, 2017; Yang & van Leeuwen, 2024). They share with the kernel methods described above a dependence on an explicit (rather than learned) geometry on the sample space, and therefore face similar limitations in high dimen-sion. Another line of work that is close to these instance-based approaches directly estimates the conditional density through least-squares density-ratio estimation (Sugiyama et al., 2010). 
+
+Regression-based estimation of conditional distributions. Most other meth-ods for estimating conditional distributions rely on estimating several functionals of these conditional distributions, i.e., performing multiple regressions. For these methods to qualify as nonparametric, the number of estimated functionals must grow with the size of the data (either explicitly or through hyperparameter optimization). One straightforward application of this idea is to estimate P (Y ≤ yτ | x) for several cutoffs yτ ∈ R, which is equivalent (by the definition of conditional expectations) to regressing 1{Y ≤ yτ } on X, where 1 represents the indicator function. This is the “distributional regression” approach, described in Hall et al. (1999) and Koenker et al. (2013). Another related approach is based on quantile regression (Gneiting & Raftery, 2007; Koenker, 2005; Tyralis et al., 2021; Vasseur & Aznarte, 2021; Verbois et al., 2018), where this time the conditional distribution is described through the corresponding conditional quantile function, estimated at several thresholds, each in 
+
+] 0, 1[. The estimation can be performed by gradient boosting, in which case limiting computation times can prove challenging (Landry et al., 2016; Papacharalampous & Langousis, 2022; Taieb et al., 2016). More sophisticated regression-based approaches 5include FlexCode (Izbicki & B. Lee, 2017), in which conditional probability den-sity functions (p.d.f.’s) are represented by a truncated orthogonal series expansion, and the expansion coefficients are estimated by regression. Other nonparametric approaches that are compatible with a broad range of regression methods (including gradient boosting) rely on pooled hazard regressions (Díaz Muñoz & Van Der Laan, 2011), Poisson regressions on discretized targets using Lindsey’s method (Gao & Hastie, 2022), or appropriately generated auxiliary samples (Reisach et al., 2025). Methods stemming from generative modeling, such as conditional diffusion models (Beltran Velez et al., 2024), also fall into this category, although they typically do not provide explicit estimates of the conditional distribution (instead, they provide a way of approximately sampling from this distribution). Neural networks have also found applications for the estimation of conditional distributions, either via such generative approaches (K. Liu & Altman, 2025; Melnychuk et al., 2023; Mirza & Osindero, 2014), or through more classical parameter estimation (Rothfuss et al., 2019; Q. Xu et al., 2017). 
+
+Multi-output regression. Multi-output regression algorithms simultaneously learn prediction rules for several numeric variables, with the aim of improving both predictive performance and computational efficiency by exploiting their relatedness (Borchani et al., 2015). This ambitious goal has led to several proposals of both parametric (J. Chen et al., 2013; Kim & Xing, 2012; Li et al., 2017) and nonpara-metric nature. The latter have especially focused on tree methods, in part because existing algorithms can be easily modified to support multiple targets. This is done by considering suitable splitting criteria (D’Ambrosio et al., 2017; Rahman et al., 2017; Simm et al., 2014), as well as by adapting prediction rules at terminal nodes (Jeong et al., 2020). Although such algorithms outperform their univariate counterparts in terms of computation times (Schmid et al., 2023), they are tied to a specific loss, and often make the implicit assumption that all targets are fully correlated, which introduces bias (Joly et al., 2019). These limitations also affect derived algorithms based on ensemble methods, such as random forests (Kocev et al., 2013) and gradient boosting (Emami & Martínez-Muñoz, 2025; P. Liu et al., 2019). Another way to use ensemble methods for multi-output regression is to assign to each base learner an appropriate univariate objective, chosen so that solving the (potentially infinite) set of such univariate problems is equivalent to solving the multivariate one. This is the approach followed in Joly et al. (2019), following Joly et al. (2014), where univariate targets are obtained by random projections of the output space. The intuition is close to ours, but is tied to decision trees, and the authors do not study their approach from an optimization point of view. For example, they do not establish how to choose the projection matrices to minimize the empirical risk. Similar ideas are also explored (among others) by Iosipoi and Vakhrushev (2022) in a framework named SketchBoost, with the same limitations. As such, PGB can be considered a generalization to arbitrary classes of base learners of a particular configuration of the works of Iosipoi and Vakhrushev (2022) and Joly et al. (2019) with desirable properties (especially, convergence). Finally, other proposed approaches to multi-output regression include those based on support 6vector regression (Tran et al., 2024; Vazquez & Walter, 2003), kernels (Alvarez et al., 2012; Arashloo & Kittler, 2022; Baldassarre et al., 2012), neural networks (Emami & Martínez-Muñoz, 2024), as well as the reformulation of the multivariate problem into several univariate ones, which are then often treated separately (Au et al., 2019; Wang et al., 2025). 
+
+Multi-task learning. Multi-task learning aims to solve several learning tasks jointly by leveraging their similarities (Argyriou et al., 2006; Zhang & Yang, 2021). This is a wide subfield of machine learning, which includes multi-output regression as a particular case (Thung & Wee, 2018). However, contrary to the classical setting in multi-output regression, in multi-task learning, each of the individual problems can involve a different feature space and target variables (D. Xu et al., 2019). The standard literature on multi-task learning is organized by the choices made to model how the task relates to one another. A historical and technical review of this literature is provided by X. Liu et al. (2025), J. Yu, Huang, et al. (2025), and J. Yu, Liu, et al. (2025). Briefly, one of the first proposals was to make neural-networks share hidden representations (Caruana, 1997); regularized methods then introduced shared and task-specific parameters (Evgeniou & Pontil, 2004), sparse common feature maps (Argyriou et al., 2006), low-rank structures, task covariance matrices, or task clusters (Jacob et al., 2008; Zhang & Yang, 2018). Recent works pursue these research directions, and also study the balancing of task losses or gradients to attain more homogeneous learning trajectories across tasks, hence improving the quality of the resulting model. A popular example of such methods for deep neural networks is called Gradnorm (Z. Chen et al., 2018); more recent alternatives include PCGrad (T. Yu et al., 2020) and CAGrad (B. Liu et al., 2021). Boosting has been less central in this literature, but several constructions have been proposed: AdaBoost variants with multi-task weak learners (Faddoul et al., 2010), boosted decision trees combined into one common as well as several task-specific prediction rules (O. Chapelle et al., 2011; Emami et al., 2023), boosted multi-output decision trees with task-dependent learning rates (Ying et al., 2022), and methods that use gradient boosting as a pre-processing step to determine clusters of related tasks (Emami et al., 2026). Another notable contribution is that of Zhang and Yeung (2012), which explores the same space of predictors as in PGB, i.e., linear combinations of scalar-valued functions with vector coefficients. However, in this approach, the coefficients are viewed as a means of regularization rather than optimization, which moves the algorithm beyond simple gradient descent in a function space, and incurs additional algorithmic steps and costs. 
+
+# 3 Gradient boosting for multi-output regression 
+
+In this section, we recall the classical formulation of gradient boosting for multi-output regression, from which PGB derives. We consider a differentiable loss 7function 1 L : R×RM → R+, and, for every predictor g : X → RM , the corresponding unnormalized empirical risk: 
+
+ˆRn(g(x1), . . . , g (xn)) = 
+
+> n
+
+X
+
+> i=1
+
+L(yi, g (xi)) .
+
+In what follows, we will use slightly overloaded notations, namely Li(g) instead of 
+
+L(yi, g (xi)) and ˆRn(g) instead of ˆRn(g(x1), . . . , g (xn)) . Keep in mind, however, that these are neither functionals nor functions of parameter values. Our aim is to find a predictor g minimizing the expected risk E[L(Y, g (X))] . For that, we are given a parametric family of base models (φθ)θ∈Θ, where Θ is some parameter space, and each φθ is a function from X to RM . In most implementations of single-output gradient boosting, default base models are limited-depth decision trees. In typical existing implementations of multi-output gradient boosting (see e.g. T. Chen and Guestrin, 2016), each model is formed by M trees. Boosting procedures explore the space of predictors of the following form: 
+
+g(x) = 
+
+> T
+
+X
+
+> t=0
+
+btφθt (x) (1) That is, they explore the linear span of the set of base functions, which we denote (slightly abusing notations) by span (φθ). The exploration is performed iteratively, producing a sequence of predictors (g0, . . . , g T ) up to some T ≥ 1. Before the first iteration, the model is a constant. To simplify the theoretical discussion, we choose to set g0(x) = 0 . At iteration t ≥ 1, the algorithm requires evaluating the gradient of L(yi, ·) at gt−1(xi) for i ∈ { 1, . . . , n }, which we denote by ∇2Li(gt−1) (making the same type of notational overload as above, and where the subscript in ∇2 indicates that the gradient is with respect to the second argument of L). In the case of multi-output regression, each of the n gradient values lies in RM . To update the prediction function (i.e. to obtain gt), we compute θt such that: 
+
+θt ∈ argmin 
+
+> θ∈Θ
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt−1), φ θ(xi)⟩. (2) That is, we look for parameter values minimizing the empirical inner product with the gradient of L (we assume throughout the paper that such values always exist). The motivation for this choice of parameters comes from a first-order approximation of the empirical risk function. For any b ∈ R and θ ∈ Θ, we write the following first order Taylor approximation: 
+
+> n
+
+X
+
+> i=1
+
+Li(gt−1 + bφ θ) ≈
+
+> n
+
+X
+
+> i=1
+
+(Li(gt−1) + ⟨∇ 2Li(gt−1), bφ θ(xi)⟩) (3) 
+
+=
+
+> n
+
+X
+
+> i=1
+
+Li(gt−1) + b
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt−1), φ θ(xi)⟩.  
+
+> 1In practice, the gradient boosting procedure has also been successfully applied to loss functions that are not everywhere differentiable, such as the L1loss (Natekin & Knoll, 2013).
+
+8Hence, solving Equation (2) provides a way of approximately minimizing the left-hand side of Equation (3) . The latter provides the maximum decrease in empirical risk attainable at iteration t. The assumption that motivates practical implementations of gradient boosting is that Equation (2) can be solved easily: this is the multi-output weak learner assumption. We then set: 
+
+gt = gt−1 + btφθt (4) for some appropriately chosen bt ∈ R. After T iterations, the predictor gT is of the form given in Equation (1). The learning procedure for M -dimensional predictions is therefore very similar to that for unidimensional predictions, which has been described in detail in the literature (Schapire & Freund, 2013). To analyze the convergence of the algorithm, we may rely on the following assumptions. 
+
+Assumption 1 (Smoothness of the loss) . The loss L is convex and K-smooth in its second argument. 
+
+Assumption 2 (Symmetry of base models) . For any θ ∈ Θ, there is a ¯θ ∈ Θ such that φθ = −φ¯θ.
+
+Assumption 3 (Boundedness of base models) . For any θ ∈ Θ, ∥φθ(xi)∥22 ≤ 1 
+
+> n
+
+.
+
+Assumption 4 (Compactness of predictions) . The set 
+
+Γ = {(g(x1), . . . , g (xn)) | g ∈ span( φθ), ˆRn(g) ≤ ˆRn(g0)}
+
+is compact. 
+
+Assumptions 1 and 2 are standard in the literature on gradient boosting (see Biau and Cadre, 2021). Assumption 3 is only for expositional convenience in the proofs of convergence, as it avoids the need for explicit upper bounds. Assumption 4 is useful to relate the empirical risk with the alignment between the gradient values and the predictions. It is actually satisfied as long as the set Γ is bounded (to see that, remark that Γ can be defined as an intersection of two closed sets, and that in RnM , compactness is equivalent to closedness and boundedness by the Borel-Lebesgue theorem). This is, for example, the case when L is a sum of M quadratic loss functions, one for each component of the prediction. Note that Assumption 4 immediately implies that argmin g∈span( φθ ) ˆRn(g) is non-empty. Under these assumptions, one can prove that multi-output gradient boosting converges in empirical risk for a suitable choice of step sizes, which would also be central to establishing its consistency (see e.g. Lugosi and Vayatis, 2004, and Bartlett and Traskin, 2006). The result is stated more formally in Theorems 1 and 2, of which proofs are given in Appendix A. 
+
+Theorem 1 (Convergence of multi-output gradient boosting with decreasing step sizes) . Grant Assumptions 1 to 4 and let g⋆ ∈ argmin g∈span( φθ ) ˆRn(g). Let the step size at iteration t ≥ 1 be chosen as: 
+
+bt = min { 1
+
+√t , κt
+
+K }
+
+9with κt = − Pni=1 ⟨∇ 2Li(gt−1), φ θt (xi)⟩, and let θt be chosen according to Equa-tion (2) . Then lim t→∞ ˆRn(gt) = ˆRn(g⋆).
+
+Theorem 2 (Convergence of multi-output gradient boosting with line search) .
+
+Grant Assumptions 1 to 4 and let g⋆ ∈ argmin g∈span( φθ ) ˆRn(g). Let the step size at iteration t ≥ 1 be chosen as bt = αη t, where α ∈ ] 0, 1] is a shrinkage parameter, and 
+
+ηt is such that: 
+
+ηt ∈ argmin 
+
+> η∈R+
+
+ˆRn(gt−1 + ηφ θt )
+
+with θt chosen according to Equation (2) . Then lim t→∞ ˆRn(gt) = ˆRn(g⋆).
+
+More involved versions of these proofs would be needed to establish the Bayes consistency of multi-output gradient boosting. For an example of such an effort with regularization by early stopping in the univariate case, see Bach (2024, Chapter 10). 
+
+# 4 Parallel gradient boosting 
+
+In this section, we describe the theoretical procedure of PGB. We then discuss the specific choices made in our implementation of the algorithm. 
+
+4.1 General procedure 
+
+As mentioned in the previous sections, direct implementations of gradient boosting for multi-output regression can be computationally demanding, because M base models are typically used at each step of the descent. One way to deal with this issue is to divide each of these learning problems into several simpler ones. Namely, we propose to treat the direction of the predictions φθ(x) separately from their norm. This is the core idea behind PGB. In PGB, we constrain the predictions of each of the base models φθ to be collinear (hence the chosen name). The only learning task remaining is then to predict the corresponding norms for each data point, which is a univariate prediction task. The principle is illustrated in Figure 2. To formalize that, consider now a family of single-output models (hw)w∈W ,where each hw is a function from X to R, and W is a finite-dimensional parameter space. For example, (hw)w∈W can represent linear stumps or standard single-output decision trees. This single-output family will be used to build a multi-output one, in a way made precise below. Analogously to the multi-output weak learner assumption mentioned above, we make a single-output weak learner assumption on (hw)w∈W .We suppose that the minimization problem 
+
+w⋆ ∈ argmin 
+
+> w∈W
+> n
+
+X
+
+> i=1
+
+aihw(xi) (5) can be solved easily for any real n-tuple (a1, . . . , a n). This is the standard assumption in single-output gradient boosting when models such as decision trees are used as base learners. 10 Figure 2: Principle of parallel vs classical gradient descent. Here, g1(x) and g2(x)
+
+represent the first and second component of a prediction g(x) on R2. The colors and contours represent the value of the loss function, while the white arrows are the targets to be learned: the negative gradient values in classical descent, and their projection on a given direction in parallel descent. In PGB, base models in (hw)w∈W are used to set the norm of a final, multivariate prediction. To handle the direction of these predictions, we consider a distinct parameter β ∈ SM −1, where SM −1 is the unit M − 1-sphere. The family of multi-output base models induced by (hw)w∈W , which is used in PGB, is defined as the family (φθ)θ∈Θ such that Θ = W × SM −1 and for each θ = ( w, β) ∈ Θ and x ∈ X ,
+
+φθ(x) = φw,β(x) = hw(x)β. (6) One can easily check that (by construction), ∥φθ(x)∥2 = |hw(x)|, and β gives the direction of the prediction. Such multi-output base models take values in RM , as in the previous section. The space of potential predictors explored in PGB lies in the linear span of this family, as in Equation (1) . Although only one single-output model is trained at each iteration, this space is, in many cases, as rich as in classical multi-output gradient boosting. A notable example is when M independent decision trees are fitted at each iteration, one for each component of the predictions: the same space of predictors can be explored by PGB, despite using only one tree per iteration. This is expressed more formally in Proposition 1, whose proof is straightforward and omitted for brevity. 
+
+Proposition 1. The linear span of the set of base functions given in Equation (6) 
+
+is span (hw)M , where span (hw) denotes the linear span of the set of base models in 
+
+(hw)w∈W .
+
+If one wanted to follow the procedure described in the previous section using the family thus defined, the multi-output weak learner hypothesis would be that the 11 negative gradient can be maximized in a relatively easy way, that is: 
+
+(w⋆, β⋆)t ∈ argmin  
+
+> (w,β)∈W× SM−1
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt−1), φ w,β(xi)⟩ (7) 
+
+= argmin  
+
+> (w,β)∈W× SM−1
+> n
+
+X
+
+> i=1
+
+hw(xi)⟨∇ 2Li(gt−1), β⟩
+
+can be found efficiently. This requirement is strong in the general case, and especially when (hw)w∈W corresponds to nonlinear models such as decision trees. Although specialized procedures could be designed to handle this problem, they would typically require repeated calls to the univariate learning algorithm (the “weak learner oracle”), hence undermining the algorithmic benefits of the whole approach. However, the minimization problem in w only (i.e. with β being fixed) is affordable under the single-output weak learner assumption. In PGB, only the latter is therefore made. The problem is then to find a way of approximately solving Equation (7) under this hypothesis only. One could imagine different types of approaches to address this problem, which would give rise to as many variants of PGB. In light of the preceding discussion, an appealing approach, that we follow in this work, is to choose a suboptimal value 
+
+˜βt for βt and then solve Equation (7) exactly under this choice. After that, the direction itself can be optimized in light of the value determined for wt, which may help the procedure converge without requiring an additional call to the weak learner oracle. As we discuss in Appendix B, this idea has been indirectly explored in a few previous works, but without dedicated analysis. Crucially, it raises the question of how to select the value for ˜βt, a question that, to our knowledge, has never been addressed explicitly either. In our implementation of PGB, we propose to use vectors of the canonical basis of RM for that. Our motivation is twofold. First, such a choice is computationally lightweight, as it only requires maintaining one column of the matrix of gradient values (or pseudo-residuals) at each iteration. Second, this configuration enables convergence of the procedure in empirical risk, as we now discuss. Our strategy for implementing PGB is based on the following requirements, which are used to ensure convergence. First, as said above, we require the use of any sequence of projection directions ( ˜βt)t∈N∗ such that for each t ≥ 1, ˜βt is an element of the canonical basis of RM , i.e. 
+
+˜βt = emt =  0, . . . , 0
+
+| {z } 
+
+> mt−1times
+
+, 1, 0, . . . , 0
+
+| {z }  
+
+> M−mttimes
+
+ (8) for some mt ∈ { 1, . . . , M }. Additionally, we require that each element of the canonical basis can be “visited” an infinite number of times. That is, we assume that there are M strictly increasing functions ρ1, . . . , ρ M , each from N∗ to N∗, such that for each m ∈ { 1, . . . , M } and s ≥ 1,
+
+˜βρm(s) = em. (9) 12 At iteration t ≥ 1, the single-output model is then chosen as in Equation (7): 
+
+wt ∈ argmin 
+
+> w∈W
+> n
+
+X
+
+> i=1
+
+hw(xi)⟨∇ 2Li(gt−1), ˜βt⟩. (10) Finally, the multi-output prediction rule is updated as: 
+
+gt = gt−1 + bthwt βt (11) where (analogously to Theorem 2), bt = αη t, with α ∈ ]0, 1] being a fixed shrinkage parameter, and ηt and βt are given by: 
+
+(ηt, βt) ∈ argmin  
+
+> (η, β)∈R+×SM−1
+
+ˆRn(gt−1 + ηh wt β).
+
+To simplify notations in what follows, we write γt = ηtβt. Note that in this case, we have: 
+
+γt ∈ argmin 
+
+> γ∈RM
+
+ˆRn(gt−1 + hwt γ).
+
+One can see the determination of the value of ηt and βt as a form of multidimen-sional line search. The reliance of this implementation of PGB on such a line search makes it especially convenient when working with separable loss functions because, in this case, each component of γt can be determined separately. For analogous reasons, working with a separable loss function is also useful for studying the convergence of the algorithm. This motivates the following additional assumptions. 
+
+Assumption 5 (Symmetry of univariate models) . For each w ∈ W , there is a 
+
+¯w ∈ W such that hw = −h ¯w.
+
+Assumption 6 (Separability) . The loss L is separable, i.e., is such that: 
+
+L(y, g t(x)) = 
+
+> M
+
+X
+
+> m=1
+
+ℓm(y, g t,m (x)) (12) 
+
+for some functions ℓm : R2 → R+, where gt,m (x) denotes the m-th component of 
+
+gt(x). Additionally, each of the ℓm’s is convex and K-smooth in its second argument. 
+
+In this setting, we have the following convergence result, which is proved in Appendix A. The idea is merely to apply Theorem 2 to each component of the loss function. In this case, the inner product ⟨∇ 2Li(gt−1), βt⟩ gives the i-th pseudo-residual that would be used at iteration t if one wanted to follow the univariate boosting procedure for the m-th component only. 
+
+Theorem 3 (Convergence of parallel gradient boosting) . Grant Assumptions 3, 5 and 6, as well as Assumption 4 applied to each elementary loss function ℓm. Let 
+
+α ∈ ] 0, 1 ]. Let g⋆ ∈ argmin g∈span( φθ ) ˆRn(g). At iteration t ≥ 1, let ˜βt be chosen as described in Equation (9) , and let wt be chosen according to Equation (5) , i.e., 
+
+wt ∈ argmin 
+
+> w∈W
+> n
+
+X
+
+> i=1
+
+hw(xi)⟨∇ 2Li(gt−1), ˜βt⟩.
+
+13 Finally, let the multidimensional step size γt be chosen as: 
+
+γt ∈ argmin 
+
+> γ∈RM
+
+ˆRn(gt−1 + hwt γ)
+
+and the model be updated as: 
+
+gt = gt−1 + αh wt γt.
+
+Then lim t→∞ ˆRn(gt) = ˆRn(g⋆).
+
+In Appendix C, we illustrate the convergence of our implementation of PGB when boosting linear models, thereby showing that our general formulation of the procedure applies beyond the most classical class of base learners considered in the literature, namely decision trees. 
+
+4.2 Implementation details 
+
+The practical steps of the PGB procedure that we propose are given in Algorithm 1. In practice, instead of choosing the descent directions βt in a deterministic way, we draw them at random. The sampling distribution for the directions is uniform, so that the condition of “infinite visits” of the canonical vectors in RM is almost surely met. In Appendix B, we explore the practical consequences of this strategy in terms of training times and test error for multiple quantile regression. We find that this choice makes PGB models especially fast to train, with a predictive performance comparable to or better than that obtained through alternative strategies. In our implementation of the algorithm, we use decision trees as base learners, with leaf-wise line search (Friedman, 2001). These are fitted using a pre-sorted, histogram-based algorithm to improve training speed (Ke et al., 2017; Ranka & Singh, 1998). As with classical gradient boosted decision trees (Si et al., 2017), they aim to solve the minimization problem stated in Equation (5) through an approximate objective, namely the minimization of the residual sum of squares. More precisely, the actual problem that each tree tries to solve is 
+
+w⋆ ∈ argmin 
+
+> w∈W
+> n
+
+X
+
+> i=1
+
+(−ai − hw(xi)) 2
+
+where (a1, . . . , a n) are projected pseudo-residuals. This idea is treated in more detail in Schapire and Freund (2013, Section 7.4.3), and its consequences on the convergence of the univariate gradient boosting algorithm are explored in Biau and Cadre (2021). We also allow subsampling at each iteration, as in stochastic gradient boosting (Friedman, 2002). In this variant, a given fraction of training observations are sampled (without replacement) at each iteration, and the base model for this iteration is fitted on this sample. Additionally, we can further limit the number of training observations used for the line search (for example, to a few hundred). We observed that this strategy reduces training times without degrading the model 14 performance. As for the early stopping parameter T , it can be determined using a validation set, or by cross-validation. Finally, we note that it would also be possible to stop updating individual components of the loss when the validation loss for these components stops decreasing. This would result in a potentially different number of boosting iterations for each component. We do not investigate this option here, because in our use case for PGB (namely, estimation of conditional distributions) using a common early stopping parameter provides some regularization in the Y direction and is therefore useful. 
+
+Algorithm 1: Parallel gradient boosting. 
+
+Data: a training dataset Dn =  (x1, y 1), . . . , (xn, y n), a family of univariate regression functions (hw)w∈W , a differentiable and separable loss function L : R × RM → R+, a maximum number of iterations T , a shrinkage parameter α ∈ ]0 , 1] .
+
+Result: a prediction function gT : X → RM .Initialize g0(x) = argmin γ∈RM
+
+Pni=1 L(yi, γ).
+
+for t = 1 , . . . , T do for i = 1 , . . . , n do 
+
+Compute the pseudo-residuals for observation i:
+
+∇2Li(gt−1) = 
+
+ ∂L (yi, g (xi)) 
+
+∂g (xi)
+
+
+
+> g=gt−1
+
+.
+
+end 
+
+Sample ˜βt uniformly from {e1, . . . , eM }.
+
+Choose wt as: 
+
+wt ∈ argmin 
+
+> w∈W
+> n
+
+X
+
+> i=1
+
+hw(xi)⟨∇ 2Li(gt−1), ˜βt⟩.
+
+Perform a multidimensional line search: 
+
+γt ∈ argmin 
+
+> γ∈RM
+> n
+
+X
+
+> i=1
+
+L(yi, g t−1(xi) + hwt (xi)γ).
+
+Update gt = gt−1 + αh wt γt.
+
+end return gT .
+
+# 5 Description of the conditional distribution estimator 
+
+Our estimator of conditional distributions is based on multiple quantile regression. We first describe how PGB can be used to do so. Then, we discuss how to obtain 15 estimates of conditional distributions from estimates of conditional quantiles. For both use cases, the PGB procedure is applied to binary trees as base learners. 
+
+5.1 Parallel gradient boosting for multiple quantile regression 
+
+One natural application of PGB is multiple quantile regression. In multiple quantile regression, a grid of quantile levels (or knots) 0 < τ 1 < . . . < τ M < 1 is fixed, and one tries to estimate the conditional quantile function of Y given X on this grid. The classical univariate loss for this aim is the pinball loss (Koenker & Hallock, 2001), defined for a quantile τm and a prediction function g : X → R by: 
+
+ℓτm (y, g (x)) = ( τm − 1{(y − g(x)) < 0})( y − g(x)) =
+
+(
+
+(τm − 1)( y − g(x)) if y < g (x),τm(y − g(x)) if y ≥ g(x).
+
+It can be shown (Steinwart & Christmann, 2011) that under mild conditions on the conditional distribution of Y given X = x, the Bayes predictor for the loss ℓτm is the conditional quantile F −1 
+
+> Y|x
+
+(τm) = inf {y ∈ R, F Y |x(y) ≥ τm}2. The pinball loss is piecewise-linear in its second argument, so it does not meet the usual assumptions that are used in proofs of convergence of gradient boosting (besides being non-differentiable at 0, it notably lacks the K-smoothness property). Still, boosted models trained to minimize this loss have shown satisfactory performance in practice (Bauer et al., 2024; Dudek et al., 2025; Karakaş et al., 2025; Nzarigema et al., 2022). Contrary to alternative loss functions designed specifically for boosting (see, e.g., Sluijterman et al., 2025), the pinball loss is also easier to optimize for line search (Fouillen et al., 2023), which is why we use it with PGB as well. In a multi-output setting, where g takes values in RM , one aims to minimize the sum of the pinball losses on the grid τ1, . . . , τ M . If the grid is equally spaced (i.e. 
+
+τ1 = 1 − τM = τm+1 − τm for each m ∈ { 1, . . . , M − 1}), this sum is known (up to a factor) as the weighted interval score (WIS; Bracher et al., 2021): 
+
+WIS( y, g (x)) = 1
+
+M
+
+> M
+
+X
+
+> m=1
+
+ℓτm (y, g m(x)) 
+
+where gm(x) denotes the m-th component of g(x). By interpolating between quantiles, a prediction g(x) of the conditional quantiles of Y given X = x can be used to obtain an estimate of the conditional quantile function F −1 
+
+> Y|x
+
+, and (by inversion), an estimate ˆFY |x of the conditional c.d.f. of Y given X = x. It can then be shown (Bracher et al., 2021; Brehmer & Gneiting, 2021; Duchemin & Obozinski, 2025) that as M → ∞ , minimizing the WIS with respect to g(x) becomes equivalent to minimizing the continuous ranked probability score (CRPS), defined as: 
+
+CRPS( y, ˆFY |x) = 
+
+Z +∞−∞ 
+
+( ˆFY |x(s) − 1{y ≤ s})2ds.          
+
+> 2In practice, it suffices that the conditional quantile function F−1
+> Y|xbe strictly increasing, and that Yhave finite conditional moments of all orders given X=x.
+
+16 The CRPS is a proper scoring rule, meaning that it is minimized by the actual conditional c.d.f. FY |x (Waghmare & Ziegel, 2026). This suggests using multiple quantile regression (on the densest possible quantile grid) to estimate conditional distributions (Koenker et al., 2013), a task for which it would be tempting to use gradient boosting (Sluijterman et al., 2025). However, the computational cost of fitting one base learner per quantile and iteration makes implementations of the standard algorithm of little practical use. This is a use case for which PGB could be particularly well suited. To illustrate the performance of PGB for multiple quantile regression, we fit a PGB model on a simulated dataset according to Lei and Wasserman (2014), with a target of 20 quantiles regularly spaced on ]0, 1 [. The dataset is the same as in Figure 1. We use a learning rate of 0.02, a subsampling rate of 0.5, and trees of depth 1 (stumps) with at least 5 observations per node. We discretize X in 256 discrete bins, and use 256 random training observations in each leaf and at each iteration to perform the line search. We randomly select 20% of the observations to serve as validation data for early stopping. We also fit an XGBoost model to the same data and with the same hyperparameters 3. The L1 and L2 regularization options of XGBoost are not used. The results of the experiment are represented in Figure 3. 
+
+Figure 3: Results of conditional quantile estimation with XGBoost and parallel gradient boosting on a simulated dataset. Quantile curves for which quantile crossing occurs are plotted in red. In multiple quantile regression, quantile crossing is a well-known phenomenon by which ˆF −1 
+
+> Y|x
+
+(τm1 ) < ˆF −1 
+
+> Y|x
+
+(τm2 ) for some x ∈ X , even though τm1 > τ m2 . This needs to be corrected if one wants to estimate the entire conditional quantile function 
+
+F −1 
+
+> Y|x
+
+, because by definition the latter is increasing (Chernozhukov et al., 2010; Moon et al., 2026). In Figure 3, we see that PGB results in no quantile crossing, whereas 
+
+> 3Note that the second-order approximation of the loss on which XGBoost usually relies to speed up convergence cannot be used here because the pinball loss has second derivative of zero.
+
+17 with XGBoost more than half of the quantiles are affected. We hypothesize that this is due to the fact that predictions for different quantiles share the same splits with PGB, as only one tree is used at each iteration for all of them. A similar observation has been made with at least one other method of boosting-based composite quantile regression (Sluijterman et al., 2025). Note that quantile crossing, while rare, can 
+
+still occur with PGB, especially with dense quantile grids. To investigate the performance of PGB compared to XGBoost on real data, we run a second experiment. In this experiment, we train a PGB model and an XGBoost model to perform multiple quantile regression on the baseball dataset (He et al., 1998), which has already been used by Y. Liu and Wu (2009) with a similar aim. More precisely, the task is to predict quantile values of the salaries of baseball players, given all other variables in the dataset. We run the experiment with an increasing number of regularly spaced quantiles. The hyperparameters used are the same as in the previous experiment, except that we boost trees of depth 3 instead of stumps. We randomly split the dataset into two parts of equal size, one of which is used to train the models and the other to estimate the generalization error. Among training observations, 20% are used as a validation set for early stopping. The procedure is repeated 50 times for each number of quantiles. The results of the experiment are given in Figure 4 in terms of computation times and WIS. 
+
+Figure 4: Results of conditional quantile estimation with XGBoost and parallel gradient boosting on the baseball dataset, for different number of target quantiles. Left: mean weighted interval score (WIS). Right: computation times in seconds. The error bars represent one standard deviation. Overall, XGBoost and PGB achieve similar test errors for all grids of quantiles. On the computational level, however, the performance gains of PGB are massive. Computation times vary linearly in the number of quantiles for both methods, but for PGB fitting the base models remains the main contributor to the overall computation times even for large numbers of quantiles. Hence, running the procedure for several tens of quantiles does not take significantly longer than for one quantile. In contrast, training an XGBoost model for 128 quantiles takes more than 50 times longer than training for one. This is especially impactful when one needs to run the procedure 18 several times, for example for hyperparameter tuning. 
+
+5.2 From conditional quantiles to conditional distributions 
+
+Multiple quantile regression provides estimates of the value of the conditional quantile function on a given quantile grid. To derive estimates of the entire quantile function from these, one possibility, which we follow, is to interpolate between the evaluation points. In this case, one must first resolve any quantile crossings to obtain valid estimates of the function. Our post-processing approach to deal with quantile crossings is as follows. Once the PGB model is trained, suppose that for some x ∈ X , and some m1 and m2
+
+in {1, . . . , M } such that τm1 > τ m2 we have gm1 (x) < g m2 (x), where gm1 (x) and 
+
+gm2 (x) represent the m1 and m2 components of g(x). To predict the conditional distribution, we work with the isotonic regression operator IR , defined by: 
+
+IR g(x) = argmin 
+
+> q∈RM
+> q1≤... ≤qM
+
+∥g(x) − q∥22.
+
+That is, we use the optimal projection of the original prediction on the set of ordered quantile values in the sense of the Euclidean norm. There already exist efficient algorithms to solve such problems (Pardalos & Xue, 1999). Isotonic regression has already been applied to multiple quantile regression (Jokiel-Rokita et al., 2024), and in this setting, Fakoor et al. (2023) proved that it can only improve the WIS. The most natural way of interpolating between appropriately processed quantiles is perhaps by linear interpolation. By inverting the estimated conditional quantile function, one obtains a piecewise-linear estimate of the conditional distribution function. Note that when τ1̸ = 0 and/or τM̸ = 1 , as is the case when minimizing the pinball loss, the interpolated c.d.f. is discontinuous, hence it does not naturally give rise to a Lebesgue density function. However, one can map every such c.d.f. to a valid Lebesgue p.d.f., with an arbitrarily small bias as M increases. Starting from an interpolated c.d.f. ˆFraw with knots τ1, . . . , τ M (we omit the subscript Y | x for clarity, although this discussion applies to conditional c.d.f.’s), we define its scaled version as: 
+
+ˆFscaled (y) = 
+
+( ˆFraw (y) if ˆFraw (y) ∈ { 0, 1},   
+
+> M+1
+> M−1
+
+( ˆFraw (y) − 1  
+
+> M+1
+
+) otherwise .
+
+It is easy to verify that ˆFscaled is absolutely continuous if the processed quantile values are strictly increasing. The resulting p.d.f. is used as a conditional p.d.f. estimate associated with the multiple quantile regression performed. Unfortunately, this conditional p.d.f. is piecewise-constant, which is generally undesirable, as it is often assumed that the true function is smooth. Additionally, it is supported only on a compact subset of R, hence not modeling the tails of the distribution and increasing bias. Figure 5 illustrates the relationship between estimated conditional quantiles, conditional c.d.f.’s and conditional p.d.f.’s obtained with this strategy. 19 Figure 5: Illustration of the linear interpolation between quantiles, and the resulting estimate of the conditional p.d.f. The smooth, dashed estimate on the right panel is that obtained by smoothing the piecewise-constant one using the method described in Section 5.2. The estimation is that of FY |0.77 , with the data of Figure 1 and a grid of 10 quantiles. To obtain smooth estimates of conditional p.d.f.’s supported on the whole real line, our approach is to convolve the initial piecewise-constant estimate of the conditional p.d.f. with a smoothing kernel. In practice, we use a Laplacian kernel, defined by: 
+
+Kλ(y, y ′) = λ
+
+2 exp( −λ|y − y′|)
+
+for each (y, y ′) ∈ R2, where λ is a smoothing parameter known as the bandwidth of the kernel. The use of this kernel rather than more traditional ones like the Gaussian kernel is to simplify computations of the convolution. We use the same bandwidth for every value of the covariates X. This does not preserve the quantile values on the grid that has been used to perform multiple quantile regression, but instead provides some regularization in the Y direction. For this reason, we consider the bandwidth of the kernel as a crucial hyperparameter, and choose its value by cross-validation to minimize the logarithmic score (Waghmare & Ziegel, 2026). For an estimate ˆfY |x of the conditional p.d.f. of Y given X = x (seen as a function of 
+
+x), it is defined as: 
+
+LogS( y, ˆfY |x) = − log( ˆfY |x(y)) .
+
+The logarithmic score is strongly tied to the likelihood function for parametric models. As such, it is computationally affordable to determine its optimal value on out-of-fold data, even for large values of M . In practice, our estimator uses a regular grid of M = max (20 , 2 × √n) (rounded to the nearest integer) quantiles. Our hypothesis is that this rule-of-thumb is enough to ensure that the approximation error (due to interpolating between quantile values) is dominated by the estimation error of the learning algorithm. As the latter has not been studied with PGB, we do not attempt to prove the theoretical soundness of choosing such number of quantiles. We instead provide experimental results supporting this choice in Appendix D. 20 6 Experiments 
+
+In this section, we report several experiments on synthetic as well as real datasets in order to assess the relative performance of PGB to estimate conditional distributions. PGB is compared to 3 other nonparametric or semiparametric estimators, namely: 
+
+• Distributional random forests (DRF; Cevid et al., 2022). This is a forest-based estimator inspired by quantile regression forests (Meinshausen & Ridgeway, 2006), but with a maximum mean discrepancy splitting criterion which is also suitable for multivariate distributions. The native algorithm provides stepwise-constant estimates of the conditional c.d.f.’s, where the steps correspond to the values of the dependent variable observed in the training sample. In the experiments, we use a smoothed version of these estimates using a Gaussian kernel, with a bandwidth determined by maximizing the out-of-bag logarithmic score. We use 5000 trees and leave the other hyperparameters at their default value. 
+
+• FlexCode (Izbicki & B. Lee, 2017). This estimator involves estimating the coefficients of an orthogonal series expansion of the unknown density function, thereby framing the conditional density estimation problem as a multiple regression one. Here we use the Lasso (Tibshirani, 1996) version of the estimator with up to 25 Fourier basis functions, and other hyperparameters determined on a validation set of 20% randomly selected observations. 
+
+• LinCDE (Gao & Hastie, 2022). This method is based on multiple Poisson regressions, which are performed using specialized binary trees. The regression results are combined sequentially in a boosting-like fashion. The algorithm admits many hyperparameters. In our experiments, we use trees of depth 
+
+min (d, 3) , with d being the dimension of the feature set, and leave the other hyperparameters at their default value (including the early stopping parameter set to 0.2). The hyperparameters used for PGB are the same as in the experiments of Section 5.1, except for the depth of trees which is chosen as min (d, 3) . The number of boosting iterations is determined by 5-fold cross-validation. Figure 6 gives an example of a predicted conditional density by each of these methods based on the data of Figure 1. The code for all experiments presented in this paper was written in R, and is available at https://github.com/rchapelle/PGB. It was executed on a standard personal computer, without parallelization to make the computation times easier to interpret. The corresponding software package was used for each candidate estimator. In these implementations, DRF, FlexCode and LinCDE do not support missing values or categorical predictors. The former are therefore imputed by the mean (for numeric variables) or mode (for categorical ones), while the latter are binarized into indicator variables. 21 Figure 6: Prediction of the conditional density of Y given X = 0 .77 by each of the candidate methods, with the data of Figure 1. The dashed area corresponds to the real conditional density (the oracle). 
+
+6.1 Performance on simulated data 
+
+In this experiment, we draw 100 realizations from known distributions with an increasing number of covariates. This modest number of observations is used because it makes the estimation of conditional distributions more challenging, as it worsens the signal-to-noise ratio. An independent test set of 100 observations from the same distribution is used to estimate the generalization error. Each experiment is repeated 50 times. We report the mean test error and computation times for each method. The latter comprise the time needed for training (including hyperparameter tuning) and that of prediction on the test set. The loss function used to evaluate the predictions of the candidate methods is the integrated squared error (ISE), given by: 
+
+ISE( ˆfY |· ) = 
+
+Z Z 
+
+( ˆfY |x(y) − fY |x(y)) 2dydF X (x) (13) where fY |x is the conditional p.d.f. of Y given X = x, and ˆfY |x is the corresponding estimate. For a fixed value x of X, we approximate the inner integral R ( ˆfY |x(y) −
+
+fY |x(y)) 2dy on a grid of 500 points by trapezoidal integration. In this experiment, we consider the following data generating processes, which are inspired by Izbicki and B. Lee (2017): 
+
+• Irrelevant covariates. Here, we let 
+
+X = ( X1, . . . , X d) ∼ N ((1 , . . . , 1) , 0.25 Id)
+
+and Y | x ∼ N (x1, (0 .25 |x2| + 0 .1) 2). Hence only the first two components of 
+
+X influence Y , respectively through its conditional mean and variance. 
+
+• Data on manifold. We introduce two parameters B1 and B2 each lying on the 
+
+d − 1-sphere, whose values are determined randomly before each replication of 22 the experiment as follows. First, B1 is sampled uniformly on the d − 1-sphere. Then, B2 is sampled uniformly among unit d-vectors orthogonal to B1. We also introduce a latent random variable Z ∼ U ([ 0, 2π]). The covariates X are given by X = cos (Z)B1 + sin (Z)B2, and we let Y | z ∼ N (z, (|cos (z)+ sin (z)|+0 .1) 2).Hence Y depends on X only through a one-dimensional latent variable. 
+
+• Non-sparse data. Here, we let X ∼ N ((0 , . . . , 0) , Id) and let 
+
+Y | x ∼ N ( 1
+
+d
+
+> d
+
+X
+
+> j=1
+
+xj , (0 .1 + 1
+
+d
+
+> d
+
+X
+
+> j=1
+
+|xj |)2).
+
+In this setting, all covariates are equally important to predict Y .The results of this experiment are given in Figure 7. As expected, the performance of all methods tends to decrease in the irrelevant covariates setting when the dimensionality of the features increases, whereas it improves in the non-sparse setting. With data on manifold, all methods maintain their performance when 
+
+d increases. This is unsurprising, because all of the underlying learning methods (namely, ensemble learning and the Lasso) are designed to adapt to the intrinsic dimensionality of the data (Hastie et al., 2009, Chapter 16). Regarding the relative performances of the methods in these three settings, we see that PGB and LinCDE perform significantly better than DRF and FlexCode in the presence of irrelevant covariates and with data on manifold. This relates to the properties of boosting, as opposed to e.g. random forests in such settings, which have been thoroughly described in the literature (Hastie et al., 2009, Chapter 15; Elith et al., 2008; Revelas et al., 2025). In contrast, PGB and DRF show better performance than the two other methods in the non-sparse setting. Hence PGB is competitive (and even best-performing) in each scenario, which illustrates its flexibility. As for computation times, they are significantly lower in this experiment with PGB compared to the other three methods. With PGB, there are clear differences in the relationship between computation times and the dimensionality of the covariates depending on the type of data generating process. This is because depending on the setting, the algorithm may use more trees as d increases, which reflects its adaptivity to the complexity of the data at hand. 
+
+6.2 Importance scores 
+
+When predicting probability distributions, it is often of interest to know which covariates have the most influence on the predictions. This can help refine the model, improve its interpretability, and provide valuable insights in data mining settings. For that, one usually attributes an importance score to each variable on which the model is fitted. For tree-based methods, various heuristics can be used to compute such scores, based e.g. on the gains in the splitting criterion (Breiman et al., 2017, Chapter 5; C. Strobl et al., 2007), random permutations (Kaneko, 2022), or Shapley values (Lundberg & Lee, 2017). Here, we consider a variant close to the Leave Out COvariates (LOCO) method (Lei et al., 2018), which we apply to PGB 23 Figure 7: Results of conditional density estimation on simulated datasets with an increasing number of covariates. The error bars represent one standard deviation. to evaluate its ability to identify the most important components of x to predict the distribution of Y . More specifically, we generate 2000 observations from the “irrelevant covariates” and “non-sparse data” models presented in Section 6.1, with 
+
+d = 15 in both cases. We train a PGB model on these data, which we denote ˆfY |· ,as well as on the 15 datasets obtained by removing one column from the feature matrix. We denote these 15 models by ˆf (−j)  
+
+> Y|·
+
+, for j ∈ { 1, . . . , 15 }. The importance score for feature j is given by the integrated squared difference (ISD) between ˆfY |· 
+
+and ˆf (−j)  
+
+> Y|·
+
+, defined analogously to Equation (13) as: 
+
+ISD( ˆfY |· , ˆf (−j)  
+
+> Y|·
+
+) = 
+
+Z Z 
+
+( ˆfY |x(y) − ˆf (−j)  
+
+> Y|x
+
+(y)) 2dydF X (x).
+
+The ISD is approximated as the ISE in the previous experiment (see Section 6.1). We follow the same process to obtain importance scores from DRF models. The results of this experiment are presented in Figure 8. In the irrelevant covariates setting, X1 is identified as the most important predictor for both PGB and DRF. However, only with PGB is X2 identified as contributing significantly more than the other features to the prediction. This suggests that PGB, contrary to DRF, effectively captures the dependence of Y on 
+
+X beyond the conditional mean. With non-sparse data, both methods attribute similar importance scores to all features, but the scores are more homogeneous in the case of PGB, which is desirable in this case. 24 Figure 8: Importance scores for data simulated according to the irrelevant covariates (left) and non-sparse data (right) models. The scores are normalized to sum to one. 
+
+6.3 Performance on real data 
+
+We now evaluate the performance of PGB compared to the competing estimators on real (medical) datasets, that were chosen for their diversity in terms of dimensionality, structure of predictors and distributions of the response variable. The characteristics of these datasets are given in Table 1. In order to conduct the experiment, they underwent a few pre-processing steps, including the removal of observations with missing values for the dependent variable, re-coding of some features, removal of constant or nearly constant features, and deletion of discrete components in numeric features, if applicable. The dependent variables were also standardized by their mean and variance to facilitate comparisons of the prediction errors. All of this explains slight differences with other versions of these datasets that can be found in public repositories. In this experiment, we randomly split each dataset into a training set and a test set of the same size. The training set is used to train the models (including the optimization of the hyperparameters). The test set is used to estimate the performance of each model in terms of expected CRPS. The experiment is run 50 times for each dataset and method, and the results are combined to obtain mean test errors and computation times, as well as the corresponding standard deviations. The results of the experiment are given in Tables 2 and 3. Overall, PGB performs better than the competing methods in this experiment, either in terms of test error or computation times. More specifically, PGB provides the best or second best estimates for 9 out of 10 datasets, and is also the fastest or second fastest method for 9 out of 10 datasets. These datasets are diverse in terms of number of observations, dimensionality, and patterns of missing data, 25 Name (source) n dnum dcat pmissing y                                              
+
+> Prostate
+> (Friendly, 2024) 97 810% log PSA
+> Supraclavicular
+> (Higgins, 2022) 102 12 40.4% log onset sensory
+> Blood storage
+> (Higgins, 2022) 315 514 0.6% log time to recurrence
+> Alzheimer’s disease
+> (Kuhn & Johnson, 2018) 333 128 30% Aβ42
+> Bone density
+> (Oldford & Waddell, 2025) 485 220.1% Relative spinal bone mineral density
+> Obstetrics
+> (Higgins, 2022) 823 108 58 20.8% GA at outcome
+> COVID
+> (Higgins, 2022) 870 588.4% CT result
+> Nutrition
+> (Huntington-Klein & Barrett, 2024) 1566 25 36 6.2% Weight change
+> Peak VO2
+> (Ishwaran & Kogalur, 2025) 2231 14 27 0% Peak VO2
+> Parkinson
+> (Tsanas & Little, 2009) 5875 20 10% Total UPDRS
+
+Table 1: Characteristics of the medical datasets used in this work. In the table, n
+
+refers to the number of observations, dnum to the number of numeric variables, dcat 
+
+to the number of categorical variables, pmissing to the proportion of missing values, and y to the name of the dependent variable chosen for each dataset. but PGB was used with the same hyperparameters and early stopping strategy in each case. This suggests that PGB can offer competitive performance without requiring extensive hyperparameter tuning. In many situations, using the same default hyperparameters as in this experiment should therefore provide satisfactory results. With large datasets, it is even possible that giving up the cross-validation strategy in favor of the more classical train-validation split would yield similar test errors but significantly lower training times. We do not explore this approach here, the strategy to tune the hyperparameters being kept unique in order to simplify the interpretation of the experiments. 
+
+# 7 Discussion 
+
+In this paper, we introduce PGB, a general approach for efficient multi-output gradient boosting that does not require specialized base learners and can therefore be easily integrated into any existing boosting framework. The approach finds a natural application in estimating conditional distributions via multiple quantile regression. In this setting, it is amenable to implementations that provide high 26 Dataset DRF FlexCode LinCDE PGB           
+
+> Prostate 0.561 (0.042) 0.468 (0.067) 0.454 (0.045)
+> 0.400 (0.040)
+> Supraclavicular 0.568 (0.036) 0.580 (0.049)
+> 0.516 (0.043)
+> 0.521 (0.040) Blood storage 0.554 (0.021) 0.569 (0.029)
+> 0.552 (0.026)
+> 0.559 (0.023) Alzheimer’s disease 0.548 (0.019)
+> 0.486 (0.029)
+> 0.502 (0.024) 0.500 (0.024) Bone density 0.430 (0.019) 0.460 (0.021) 0.435 (0.021)
+> 0.427 (0.021)
+> Obstetrics 0.247 (0.021) 0.185 (0.007) 0.190 (0.013)
+> 0.174 (0.007)
+> COVID 0.553 (0.009)
+> 0.556 (0.016) 0.557 (0.012) 0.555 (0.011) Nutrition 0.511 (0.016)
+> 0.508 (0.016)
+> 0.509 (0.017) 0.509 (0.015) Peak VO2 0.267 (0.005) 0.347 (0.006) 0.268 (0.005)
+> 0.242 (0.006)
+> Parkinson 0.075 (0.002) 0.291 (0.006) 0.171 (0.013)
+> 0.055 (0.001)
+
+Table 2: Test errors of the competing estimation methods applied to the datasets listed in Table 1. The loss function used is the continuous ranked probability score. Numbers in parentheses are the standard deviations derived from repeated trials of the experiment. performance in both the quality of the estimates and computation times. Its nonparametric nature and natural handling of mixed and missing covariates allow it to be applied to any tabular dataset. The flexibility of the method is illustrated by its competitive performance in various data generating scenarios, ranging from irrelevant features to dense covariates. Compared to other nonparametric and semiparametric estimators of conditional distributions, PGB often performs better. Its relative performance compared to historical estimation methods, such as kernel-based ones (Rosenblatt, 1969), or newer methods such as generative ones (Chin et al., 2026; Reisach et al., 2025), is not evaluated in this paper. The reason is that, in our view, such methods do not meet the requirements of an “off-the-shelf” procedure, which is the natural positioning of PGB in the statistical toolbox. For example, kernel conditional density estimators are hardly scalable to datasets of moderate to large size (Zhao & Tabak, 2025). Other methods admit many hyperparameters that may be hard to tune. We therefore do not consider these methods to be relevant competitors to PGB for conditional distribution estimation. A natural line of future research on PGB is to study its convergence rate and Bayes-risk consistency, as was done more than 20 years ago for single-output gradient boosting (Lugosi & Vayatis, 2004). A related open question is what properties the regression targets should possess for the algorithm to perform well. 27 Dataset DRF FlexCode LinCDE PGB           
+
+> Prostate 0.067 (0.010) 0.948 (0.011) 0.255 (0.035)
+> 0.059 (0.013)
+> Supraclavicular 0.070 (0.010) 1.011 (0.016) 0.269 (0.045)
+> 0.069 (0.011)
+> Blood storage 1.947 (0.066) 1.211 (0.041) 0.530 (0.137)
+> 0.184 (0.015)
+> Alzheimer’s disease 2.531 (0.050) 7.280 (0.287) 1.728 (0.109)
+> 0.624 (0.046)
+> Bone density 1.393 (0.014) 1.272 (0.051) 0.503 (0.050)
+> 0.350 (0.016)
+> Obstetrics 13.591 (0.213) 15.794 (1.360) 8.353 (0.507)
+> 2.846 (0.237)
+> COVID 9.243 (0.187) 1.711 (0.063) 1.009 (0.190)
+> 0.806 (0.030)
+> Nutrition 25.068 (0.430) 3.092 (0.162) 5.315 (0.514)
+> 2.162 (0.064)
+> Peak VO2 31.719 (0.241)
+> 3.053 (0.150)
+> 6.637 (0.357) 4.216 (0.129) Parkinson 85.988 (0.681)
+> 6.423 (0.099)
+> 15.239 (0.172) 46.428 (3.422)
+
+Table 3: Computation times (in seconds) of the competing estimation methods applied to the datasets listed in Table 1. Numbers in parentheses are the standard deviations derived from repeated trials of the experiment. In multiple quantile regression, for example, the targets are related through a common conditional probability distribution, which allows information to be shared between quantile levels. Closely related to this phenomenon is the fact that, in our implementation, using denser grids of quantiles seldom changes the output of the algorithm beyond a certain point. Understanding the conditions under which this property holds is important to find new applications of PGB, especially for more general multi-task learning problems. Conversely, it would be desirable to derive variants of the algorithm with better properties, either in terms of generalization, convergence rates, or adaptivity to other types of task relatedness. An especially tempting line of research in this regard would be to study the application of PGB to multiclass classification, and, if necessary, adapt the algorithm to better suit this class of problems. A natural starting point for that could be to adapt existing proposals that are specific to decision tree boosting (Iosipoi & Vakhrushev, 2022; Joly et al., 2019), and study their theoretical properties within the more general framework of PGB. 28 Appendix A Proof of theoretical results 
+
+A.1 Proof of Theorem 1 
+
+To prove Theorem 1, we will need intermediate technical results, which are given hereafter along with their proofs. In all of these, we denote 
+
+κt = −
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt−1), φ θt (xi)⟩
+
+for t ≥ 1, and let K be the smoothness constant mentioned in Assumption 1. In all of the following lemmas, we grant the same assumptions as in Theorem 1. 
+
+Lemma 1. Under the choice of step sizes stated in Theorem 1, there exists a strictly increasing extraction function σ : N → N such that bσ(s)+1 = κσ(s)+1  
+
+> K
+
+for all s ∈ N,and lim T →∞ 
+
+PTs=1 1 
+
+> σ(s)
+
+= ∞.Proof. After iteration t ≥ 0, by the definition of K-smoothness (Assumption 1), we have for each i ∈ { 1, . . . , n }, b ∈ R and θ ∈ Θ:
+
+Li(gt + bφ θ) ≤ Li(gt) + ⟨∇ 2Li(gt), bφ θ(xi)⟩ + K
+
+2 ∥bφ θ(xi)∥22.
+
+Hence, by summing from i = 1 to i = n,
+
+> n
+
+X
+
+> i=1
+
+Li(gt + bφ θ) ≤
+
+> n
+
+X
+
+> i=1
+
+(Li(gt) + ⟨∇ 2Li(gt), bφ θ(xi)⟩ + K
+
+2 ∥bφ θ(xi)∥22). (14) Note that by Assumption 3, 
+
+> n
+
+X
+
+> i=1
+
+K
+
+2 ∥bφ θ(xi)∥22 = Kb 2
+
+2
+
+> n
+
+X
+
+> i=1
+
+∥φθ(xi)∥22 ≤ Kb 2
+
+2 . (15) Hence (combining Equations (14) and (15) above): 
+
+ˆRn(gt + bφ θ) ≤ ˆRn(gt) + 
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), bφ θ(xi)⟩ + Kb 2
+
+2 . (16) By Assumption 2, note that κt+1 ≥ 0. Indeed, suppose the following: 
+
+κt+1 = −
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), φ θt+1 (xi)⟩ < 0.
+
+We would then have Pni=1 ⟨∇ 2Li(gt), φ θt+1 (xi)⟩ > 0, and using the symmetric parameter ¯θt+1 , we would have: 
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), φ ¯θt+1 (xi)⟩ = −
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), φ θt+1 (xi)⟩
+
+<
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), φ θt+1 (xi)⟩
+
+29 which would contradict the minimization principle stated in Equation (2). The rule for choosing step sizes given in Theorem 1 therefore leads to 0 ≤ bt+1 ≤ 
+
+> κt+1
+> K
+
+, hence κt+1 ≥ Kb t+1 and κt+1 bt+1 ≥ Kb 2
+
+> t+1
+
+. By inserting this in Equation (16) ,we get: 
+
+ˆRn(gt) − ˆRn(gt+1 ) ≥ bt+1 κt+1 − Kb 2
+
+> t+1
+
+2 ≥ Kb 2 
+
+> t+1
+
+− Kb 2
+
+> t+1
+
+2 = Kb 2
+
+> t+1
+
+2 .
+
+As this is true for all t’s, we can write (using telescopic sums): 
+
+> S−1
+
+X
+
+> s=0
+
+Kb 2
+
+> s+1
+
+2 ≤
+
+> S−1
+
+X
+
+> s=0
+
+( ˆRn(gs) − ˆRn(gs+1 )) = ˆRn(g0) − ˆRn(gS )
+
+for each S ≥ 1. This leads to: 
+
+> S−1
+
+X
+
+> s=0
+
+b2 
+
+> s+1
+
+≤ 2( ˆRn(g0) − ˆRn(gS )) 
+
+K ≤ 2( ˆRn(g0) − ˆRn(g⋆)) 
+
+K .
+
+This implies that lim S→∞ 
+
+PSs=0 b2 
+
+> s+1
+
+< ∞. It follows that the set 
+
+A = {s ≥ 0 | bs+1 = κs+1 
+
+K }
+
+is infinite. Indeed, if it were not, there would be an index τ such that bs = 1√s
+
+for each s > τ . We would then have lim S→∞ 
+
+PSs=τ b2 
+
+> s+1
+
+= ∞, which contradicts the previous point. Let then σ : N → N be the strictly increasing enumeration of 
+
+A. Clearly, σ satisfies the first criterion of the lemma, i.e. bσ(s)+1 = κσ(s)+1  
+
+> K
+
+for all 
+
+s ∈ N. Let us now show that lim T →∞ 
+
+PTs=1 1 
+
+> σ(s)
+
+= ∞. Let ET = A ∩ { 0, . . . , T }
+
+and EcT = {0, . . . , T } \ ET for T ≥ 0. For each such T , we have 
+
+> T
+
+X
+
+> s=0
+
+1
+
+s + 1 = X
+
+> s∈ET
+
+1
+
+s + 1 + X
+
+> s∈EcT
+
+1
+
+s + 1 = X
+
+> s∈ET
+
+1
+
+s + 1 + X
+
+> s∈EcT
+
+b2
+
+> s+1
+
+.
+
+The left-hand side of the latter equation diverges, while we have already established that lim T →∞ 
+
+P
+
+> s∈EcT
+
+b2 
+
+> s+1
+
+< ∞. Therefore, we have 
+
+lim  
+
+> T→∞
+
+X
+
+> s∈ET
+
+1
+
+s + 1 = ∞,
+
+which implies that lim S→∞ 
+
+PSs=1 1 
+
+> σ(s)+1
+
+= ∞. As 1 
+
+> σ(s)+1
+
+≤ 1 
+
+> σ(s)
+
+for all s ≥ 1, we finally have: 
+
+lim  
+
+> T→∞
+> T
+
+X
+
+> s=1
+
+1
+
+σ(s) = ∞.
+
+30 Lemma 2. Writing 
+
+g⋆ =
+
+> T⋆
+
+X
+
+> s=1
+
+b⋆s φθ⋆s
+
+for some T⋆ ∈ N∗, where each b⋆s ∈ R+ (the requirement of positivity is without loss of generality because of Assumption 2) and θ⋆s ∈ Θ, let 
+
+B⋆ =
+
+> T⋆
+
+X
+
+> s=1
+
+b⋆s .
+
+For each t > 0, we have: 
+
+κt+1 ≥ ˆRn(gt) − ˆRn(g⋆)
+
+B⋆ + 2 √t .
+
+Proof. Let t > 0. As of the rule given in Theorem 1 for choosing step sizes, we have 
+
+bs ≤ 1√s for all s ≤ t, hence 0 ≤ Pts=1 bs < 2√t. Now, note that by Assumption 2, 
+
+−gt can be written as Pts=1 bsφ¯θs with bs > 0, s ∈ { 1, . . . , t }. Hence, g⋆ − gt can be written as : 
+
+g⋆ − gt = ( 
+
+> T⋆
+
+X
+
+> s=1
+
+b⋆s φθ⋆s ) + ( 
+
+> t
+
+X
+
+> s=1
+
+bsφ¯θs ),
+
+where all coefficients are positive and 0 ≤ (PT⋆ 
+
+> s=1
+
+b⋆s ) + ( Pts=1 bs) < B ⋆ + 2 √t. For each i ∈ { 1, . . . , n }, we therefore have: 
+
+⟨∇ 2Li(gt), g ⋆ − gt⟩ = ⟨∇ 2Li(gt),
+
+> T⋆
+
+X
+
+> s=1
+
+b⋆s φθ⋆s ⟩ + ⟨∇ 2Li(gt),
+
+> t
+
+X
+
+> s=1
+
+bsφ¯θs ⟩
+
+=
+
+> T⋆
+
+X
+
+> s=1
+
+b⋆s ⟨∇ 2Li(gt), φ θ⋆s ⟩ +
+
+> t
+
+X
+
+> s=1
+
+bs⟨∇ 2Li(gt), φ ¯θs ⟩
+
+Hence by summing from i = 1 to i = n,
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), g ⋆(xi) − gt(xi)⟩ = ( 
+
+> T⋆
+
+X
+
+> s=1
+
+b⋆snX
+
+> i=1
+
+⟨∇ 2Li(gt), φ θ⋆s (xi)⟩)+ ( 
+
+> t
+
+X
+
+> s=1
+
+bsnX
+
+> i=1
+
+⟨∇ 2Li(gt), φ ¯θs (xi)⟩).
+
+Let λt denote the minimum of 
+
+ min 
+
+> 1≤s≤T⋆
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), φ θ⋆s (xi)⟩, min 
+
+> 1≤s≤tn
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), φ ¯θs (xi)⟩ .
+
+By dividing by C = B⋆ + Pts=1 bs, we get: 
+
+λt ≤ 1
+
+C
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), g ⋆(xi) − gt(xi)⟩. (17) 31 Using the convexity of L with respect to its second argument, we have for all i’s: 
+
+Li(g⋆(xi)) ≥ Li(gt(xi)) + ⟨∇ 2Li(gt), g ⋆(xi) − gt(xi)⟩.
+
+Hence by summing over all indices: 
+
+ˆRn(g⋆) ≥ ˆRn(gt) + 
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), g ⋆(xi) − gt(xi)⟩. (18) Combining (17) and (18) leads to: 
+
+λt ≤ 1
+
+C
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), g ⋆(xi) − gt(xi)⟩ ≤ 1
+
+C ( ˆRn(g⋆) − ˆRn(gt)) .
+
+And because θt+1 is chosen according to Equation (2), we have: 
+
+−κt+1 ≤ 1
+
+C
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), g ⋆(xi) − gt(xi)⟩ ≤ 1
+
+C ( ˆRn(g⋆) − ˆRn(gt)) . (19) Hence 
+
+κt+1 ≥ ˆRn(gt) − ˆRn(g⋆)
+
+C ≥ ˆRn(gt) − ˆRn(g⋆)
+
+B⋆ + 2 √t . (20) The result follows immediately. We can now proceed with the proof of Theorem 1. 
+
+Proof of Theorem 1. For all t ≥ 0, by the definition of K-smoothness, we have (see the first developments in the proof of Lemma 1): 
+
+ˆRn(gt+1 ) ≤ ˆRn(gt) − bt+1 κt+1 + Kb 2
+
+> t+1
+
+2 .
+
+As bt+1 ≤ κt+1  
+
+> K
+
+, we have Kb 2 
+
+> t+1
+> 2
+
+≤ bt+1 κt+1  
+
+> 2
+
+, hence 
+
+ˆRn(gt+1 ) ≤ ˆRn(gt) − bt+1 κt+1 
+
+2 .
+
+Let ∆t = ˆRn(gt) − ˆRn(g⋆). The latter inequality gives: 
+
+∆t+1 ≤ ∆t − bt+1 κt+1 
+
+2 . (21) The sequence (∆ t)t∈N is bounded from below by 0. As it is also decreasing, it is convergent. Let l be the limit of (∆ t)t∈N. Then lim t→∞ ∆σ(t) = l, where σ is the extraction function introduced in Lemma 1. Now, by the definition of this extraction function, we have for all t:
+
+bσ(t)+1 κσ(t)+1 
+
+2 = κ2
+
+> σ(t)+1
+
+2K .
+
+32 By Lemma 2, κσ(t)+1 ≥ ∆σ(t)
+
+> B⋆+2
+
+√σ(t) . Hence: 
+
+κ2
+
+> σ(t)+1
+
+2K ≥ ∆2
+
+> σ(t)
+
+2K(B⋆ + 2 pσ(t)) 2 .
+
+Combining this last result with Equation (21) provides: 
+
+∆σ(t+1) ≤ ∆σ(t)+1 ≤ ∆σ(t) − ∆2
+
+> σ(t)
+
+2K(B⋆ + 2 pσ(t)) 2 .
+
+Let (c, t 0) ∈ (R+, N∗) be any constants such that 2K(B⋆ + 2 pσ(t))2 ≤ cσ (t) holds for each t ≥ t0 (such constants always exist, as shown by the elementary analysis of 
+
+(B⋆ + 2 pσ(t))2 seen as a function of σ(t)). From now on, we will indeed admit that 
+
+t ≥ t0. In this case, we have: 
+
+∆σ(t+1) ≤ ∆σ(t) − ∆2
+
+> σ(t)
+
+cσ (t) .
+
+By elementary results on the geometric series, this implies: 
+
+1∆σ(t+1) 
+
+− 1∆σ(t)
+
+≥ 1
+
+cσ (t) .
+
+Using telescopic sums, we get 
+
+1∆σ(T +1) 
+
+≥ 1∆σ(t0)
+
++ 1
+
+c
+
+> T
+
+X
+
+> t=t0
+
+1
+
+σ(t) .
+
+By Lemma 1, the right-hand part of this inequality diverges to ∞ when T → ∞ ,hence we also have lim t→∞ 1∆σ(t) = ∞, so l = 0 , which is the desired result. 
+
+A.2 Proof of Theorem 2 
+
+We now turn to the proof of Theorem 2. Compared to that of Theorem 1, it is simpler thanks to Assumption 4, which helps linking the empirical risk with the alignment between the predictions and the gradient values. In the following, we use the same definition for κt as in the previous subsection. 
+
+Proof of Theorem 2. As in the proof of Lemma 1, we begin by remarking that by the definition of K-smoothness, we have for every t ≥ 0 and b ∈ R,
+
+ˆRn(gt + bφ θt+1 ) ≤ ˆRn(gt) + 
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), bφ θt+1 (xi)⟩ + Kb 2
+
+2 .
+
+And because ηt+1 ∈ argmin η∈R+ ˆRn(gt + ηφ θt+1 ), we have: 
+
+ˆRn(gt + ηt+1 φθt+1 ) ≤ ˆRn(gt) + b
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt), φ θt+1 (xi)⟩ + Kb 2
+
+2= ˆRn(gt) − bκ t+1 + Kb 2
+
+2 .
+
+33 In particular, taking b = κt+1  
+
+> K
+
+, we get: 
+
+ˆRn(gt + ηt+1 φθt+1 ) ≤ ˆRn(gt) − κ2
+
+> t+1
+
+2K . (22) Now, remark that by the convexity of the empirical risk, we can write: 
+
+ˆRn(gt+1 ) = ˆRn(gt + αη t+1 φθt+1 )= ˆRn((1 − α)gt + α(gt + ηt+1 φθt+1 )) 
+
+≤ (1 − α) ˆRn(gt) + α ˆRn(gt + ηt+1 φθt+1 ). (23) Combining Equations (22) and (23) above, we obtain: 
+
+ˆRn(gt+1 ) ≤ ˆRn(gt) − ακ 2
+
+> t+1
+
+2K .
+
+We can now use telescopic sums as in the proof of Lemma 1, to obtain: 
+
+> S−1
+
+X
+
+> s=0
+
+ακ 2
+
+> s+1
+
+2K ≤
+
+> S−1
+
+X
+
+> s=0
+
+( ˆRn(gs) − ˆRn(gs+1 )) = ˆRn(g0) − ˆRn(gS )
+
+for each S ≥ 1, which leads to 
+
+> S
+
+X
+
+> s=1
+
+κ2 
+
+> s
+
+≤ 2Kα ( ˆRn(g0) − ˆRn(gS )) < ∞.
+
+As κs ≥ 0 for each s ≥ 1 (see the proof of Lemma 1), this implies that 
+
+lim  
+
+> s→∞
+
+κs = 0 . (24) We may now make use of Assumption 4. By the latter and the Bolzano-Weierstrass theorem, there exists an extraction function σ : N → N such that for each i ∈{1, . . . , n }, the sequence (gσ(s)(xi)) s∈N is convergent. We denote by g∞ any element of span (φθ) such that g∞(xi) = lim s→∞ gσ(s)(xi) (where the dependence on the extraction function is implicit). Such an element exists because the set Γ (defined in Assumption 4) is closed. Let now θ be any parameter value in Θ. After iteration 
+
+σ(t), because θσ(t)+1 is chosen according to Equation (2), we have: 
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gσ(t)), φ θ(xi)⟩ ≥ − κσ(t)+1 .
+
+And because of Assumption 2, we also have: 
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gσ(t)), φ θ(xi)⟩ ≤ κσ(t)+1 .
+
+Now, note that by Equation (24), 
+
+lim  
+
+> s→∞
+
+κσ(s)+1 = lim  
+
+> s→∞
+
+−κσ(s)+1 = 0 .
+
+34 Using the squeeze theorem, we therefore have: 
+
+lim 
+
+> s→∞
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gσ(s)), φ θ(xi)⟩ = 0 .
+
+By the K-smoothness of L in its second argument, we finally get: 
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(g∞), φ θ(xi)⟩ = 0 .
+
+This also holds for any linear combinations of base models because of the linearity of the inner product, i.e., for all f ∈ span( φθ), it holds that 
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(g∞), f (xi)⟩ = 0 .
+
+Now, recall that by the definition of convexity, we also have for all such functions: 
+
+ˆRn(g∞ + f ) ≥ ˆRn(g∞) + 
+
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(g∞), f (xi)⟩.
+
+Combining the two previous equations gives ˆRn(g∞ + f ) ≥ ˆRn(g∞) for each f ∈
+
+span (φθ), hence ˆRn(g∞) = ˆRn(g⋆). We therefore have lim s→∞ ˆRn(gσ(s)) = ˆRn(g⋆).As the sequence ( ˆRn(gs)) s∈N is lower bounded and decreasing (because of the line search), it is convergent. Hence lim s→∞ ˆRn(gs) = ˆRn(g⋆), which ends the proof. This result can easily be extended to the case where an exact line search is performed only in some iterations of the algorithm, and the other iterations do not increase the empirical risk. Such result is useful in proving the convergence of PGB for separable loss functions, and we introduce it as a corollary below. 
+
+Corollary 1. Grant the same assumptions as in Theorem 2. Consider a strictly increasing integer sequence (νs)s∈N in N. Let ν(N) be its image. Let g0 be a constant function and consider a sequence of predictors defined as: 
+
+gt+1 =
+
+(
+
+gt + bt+1 φθt+1 if t ∈ ν(N)
+
+ψt+1 (gt) otherwise for t ≥ 0, where ψt+1 (gt) is any element of span (φθ) such that ˆRn(ψt+1 (gt)) ≤
+
+ˆRn(gt), and bt+1 and θt+1 are chosen as in Theorem 2. Then lim t→∞ ˆRn(gt) = ˆRn(g⋆).Proof. Let t ≥ 0. Using the exact same reasoning as in the proof of Theorem 2, we have: 
+
+ˆRn(gν(t)+1 ) ≤ ˆRn(gν(t)) − ακ 2
+
+> ν(t)+1
+
+2K .
+
+35 Additionally, for t ≥ 1, because of the requirement of a non-increasing risk, we have 
+
+ˆRn(gν(t)) ≤ ˆRn(gν(t−1)+1 ), so that 
+
+ˆRn(gν(t)+1 ) ≤ ˆRn(gν(t−1)+1 ) − ακ 2
+
+> ν(t)+1
+
+2K .
+
+Using telescopic sums, we obtain: 
+
+> S
+
+X
+
+> s=1
+
+ακ 2
+
+> ν(s)+1
+
+2K ≤
+
+> S
+
+X
+
+> s=1
+
+( ˆRn(gν(s−1)+1 ) − ˆRn(gν(s)+1 )) = ˆRn(gν(0)+1 ) − ˆRn(gν(S)+1 )
+
+for each S ≥ 1, hence 
+
+lim  
+
+> s→∞
+
+κν(s)+1 = 0 .
+
+Analogously to the proof of Theorem 2, we can use the Bolzano-Weierstrass theorem and the boundedness of the sequence (gν(s))s∈N to prove the existence of an extraction function σ : N → N such that for each i ∈ { 1, . . . , n }, the sequence (gν(σ(s)) (xi)) s∈N
+
+converges. We also denote the corresponding limit by g∞. By the exact same reasoning as in the proof of Theorem 2, we have that ˆRn(g∞) = ˆRn(g⋆). As the sequence ( ˆRn(gs)) s∈N is lower bounded and decreasing (because of both the line search and the non-increase requirement for intermediate steps), it is convergent. We therefore have lim s→∞ ˆRn(gs) = ˆRn(g⋆), which is the desired result. 
+
+A.3 Proof of Theorem 3 
+
+The proof is a straightforward application of Corollary 1 to the decomposition of 
+
+L in elementary loss functions ℓm. It relies on an important property of the linear span of the family (φθ)θ∈Θ defined in Equation (6), which is given below. 
+
+Lemma 3. Let span (hw) denote the linear span of the set of base models in (hw)w∈W ,and let 
+
+Λ = {g : X → RM | ∀ m ∈ { 1, . . . , M }, g m ∈ span( hw)}
+
+where gm denotes the m-th coordinate function of g. Then span( φθ) = Λ .
+
+Proof. We first show that span( φθ) ⊂ Λ. Let g ∈ span( φθ). We can write 
+
+g =
+
+> T
+
+X
+
+> t=0
+
+btβthwt
+
+where each bt lies in R, each βt in SM −1 and each wt in W. Then for each 
+
+m ∈ { 1, . . . , M }, we have: 
+
+gm =
+
+> T
+
+X
+
+> t=0
+
+btβt,m hwt ∈ span( hw)
+
+36 where βt,m denotes the m-th component of βt. Hence span (φθ) ⊂ Λ. Let us now prove the converse relationship. Let now g ∈ Λ. Then 
+
+g =
+
+> M
+
+X
+
+> m=1
+
+emgm
+
+where em is the m-th element of the canonical basis of RM (see Equation (8) in Section 4). Writing gm = PTm 
+
+> t=0
+
+b(t,m )hw(t,m ) for each m, we get 
+
+g =
+
+> M
+
+X
+
+> m=1
+
+emTmX
+
+> t=0
+
+b(t,m )hw(t,m ) =
+
+> M
+
+X
+
+> m=1
+> Tm
+
+X
+
+> t=0
+
+b(t,m )emhw(t,m ) ∈ span( φθ).
+
+Hence Λ ⊂ span( φθ). As span( φθ) ⊂ Λ and Λ ⊂ span( φθ), span( φθ) = Λ .
+
+Proof of Theorem 3. For m ∈ { 1, . . . , M }, consider the sequence (νs)s∈N∗ defined by 
+
+νs = ρm(s) for each s ≥ 1. Let t ≥ 1. If t ∈ ν(N), we have gt,m = gt−1,m + αh wt γt,m ,where gt,m denotes the m-th component of gt and with γt,m being such that: 
+
+γt,m ∈ argmin 
+
+> γ∈R
+> n
+
+X
+
+> i=1
+
+ℓm(yi, g t−1,m (xi) + hwt (xi)γ).
+
+Otherwise, if t / ∈ ν(N), we still have 
+
+> n
+
+X
+
+> i=1
+
+ℓm(yi, g t,m (xi)) ≤
+
+> n
+
+X
+
+> i=1
+
+ℓm(yi, g t−1,m (xi)) 
+
+because of the line search. We can therefore apply Corollary 1 to the sequence of single-output predictors (gt,m )t∈N, to obtain: 
+
+lim 
+
+> t→∞
+> n
+
+X
+
+> i=1
+
+ℓm(yi, g t,m (xi)) = min  
+
+> fm∈span( hw)
+> n
+
+X
+
+> i=1
+
+ℓm(yi, f m(xi)) .
+
+As this is true for all m’s, we have: 
+
+lim 
+
+> t→∞
+
+ˆRn(gt) = 
+
+> M
+
+X
+
+> m=1
+
+min  
+
+> fm∈span( hw)
+> n
+
+X
+
+> i=1
+
+ℓm(yi, f m(xi)) . (25) Now, remark that, as span( φθ) = Λ (by Lemma 3), we have 
+
+ˆRn(g⋆) = min 
+
+> g∈Λ
+
+ˆRn(g) = 
+
+> M
+
+X
+
+> m=1
+
+min  
+
+> fm∈span( hw)
+> n
+
+X
+
+> i=1
+
+ℓm(yi, f m(xi)) . (26) Combining Equations (25) and (26) results in: 
+
+lim 
+
+> t→∞
+
+ˆRn(gt) = ˆRn(g⋆).
+
+37 Appendix B Strategy for choosing the projection direc-tion 
+
+In this section, we compare several strategies for choosing the projection directions 
+
+( ˜βt)t≥1 at each iteration of PGB. In our implementation of PGB, we propose a simple strategy by sampling coordinates from a uniform distribution. This has some theoretical advantages, such as requiring only one n-tuple of pseudo-residuals to be maintained at each iteration, instead of the entire gradient matrix. However, other strategies can be imagined, including (but not limited to) sampling the directions from other distributions. If the adopted strategy is adaptive to the current state of the algorithm, one may hope that this improves the dynamics of the descent and leads to better performance, either in terms of computation time or quality of the predictions. Although PGB had not been studied as such previously, there are a few published works containing edge cases that fit within the PGB framework, namely with decision trees as base learners (Iosipoi & Vakhrushev, 2022; Joly et al., 2019). They come with specific, adaptive and non-adaptive strategies for choosing the projection directions. Proving the theoretical superiority of one such strategy over the others is difficult. Even when one restricts the set of candidate directions to the canonical basis of RM ,the problem inherits the difficulty of block selection in block coordinate gradient descent (Nutini et al., 2022; recall that gradient boosting can be seen as gradient descent in a functional space), and is further complicated by the involvement of a potentially nonlinear class of base learners. Instead of seeking elaborate theoretical arguments, we therefore limit ourselves to an empirical comparison of such strategies. We consider the following candidate strategies, some of which are inspired by the works mentioned above (Iosipoi & Vakhrushev, 2022; Joly et al., 2019): 
+
+• Uniform sampling on the canonical basis ( Unif-basis ). This is the strategy chosen in our implementation of PGB, which is presented in more detail in Section 4. 
+
+• Uniform sampling on the sphere ( Unif-sphere ). Here, the direction ˜βt is not restricted to belong to the canonical basis of RM . Rather, it is sampled from the uniform measure on SM −1. For that, one draws an M -tuple z = ( z1, . . . , z M )
+
+from a standard multivariate Gaussian distribution. The direction ˜βt is then taken as z 
+
+> ∥z∥2
+
+(Muller, 1959). 
+
+• Adaptive sampling on the canonical basis ( Adapt-basis ). In this variant of the Unif-basis strategy, vectors of the canonical basis of RM are not sampled from a uniform distribution, but with probabilities proportional to the norm of the corresponding column of the gradient matrix. More specifically, the probability pm of sampling em for m ∈ { 1, . . . , M } is such that: 
+
+pm ∝
+
+vuut nX
+
+> i=1
+
+⟨∇ 2Li(gt−1), em⟩2
+
+38 where the actual probabilities used are normalized to sum to 1. 
+
+• Gauss-Southwell-type strategy ( Gauss-Southwell ). Analogously to the well-known rule for coordinate gradient descent (Nutini et al., 2015), this strategy takes as direction the vector of pseudo-residuals with the greatest Euclidean norm, i.e., ˜βt = ∇2Limax (gt−1), where 
+
+imax ∈ argmax 
+
+> 1≤i≤n
+
+∥∇ 2Li(gt−1)∥2.
+
+Note that another option could be to choose the component m in {1, . . . , M }
+
+yielding pseudo-residuals with the greatest norm, i.e., 
+
+˜βt ∈ argmax  
+
+> em∈{ e1,..., eM}
+> n
+
+X
+
+> i=1
+
+⟨∇ 2Li(gt−1), em⟩2.
+
+However, as noted by Iosipoi and Vakhrushev (2022), this does not account for the case where the components ℓm of the loss naturally result in gradients of different magnitudes, such as in multiple quantile regression. We therefore do not consider this strategy here. 
+
+• Greedy selection ( Greedy ). We include this approach mainly to serve as a reference for the other strategies, as it requires training M base learners per iteration and therefore defeats the main purpose of PGB. As its name indicates, it is a greedy strategy in which the direction at iteration t is selected from the canonical basis of RM to maximize the decrease in empirical risk, that is, 
+
+˜βt ∈ argmin  
+
+> em∈{ e1,..., eM}
+
+ˆRn(gt)
+
+where the dependence of gt on the candidate directions e1, . . . , eM , as in Equations (10) and (11) , is implicit. The search is limited to the canonical basis of RM for computational reasons (the problem being, in general, intractable on the whole hypersphere). To compare these strategies, we perform the following experiment with each of the datasets described in Table 1. Each of the datasets is randomly split in half to form a training and test set of observations. We fit a PGB model to estimate 50 regularly spaced conditional quantiles (see Section 5.1) based on the training data, using each of the strategies mentioned above. In each case, the base learners used are trees, with the same hyperparameters as in Section 6, except for the number of trees, which is set to 100, and the learning rate, which is chosen by 5-fold cross-validation within the set {0.01 , 0.025 , 0.05 , 0.1, 0.2, 0.5}. This is also done with an XGBoost model for comparison purposes, with the same hyperparameters and tuning strategy. The experiment is run 50 times for each dataset to provide estimates of the generalization errors. The results of this experiment are given in Figure 9. We see that all strategies yield comparable test errors, irrespective of the dataset. The errors are also close to those obtained with XGBoost (which supports the results 39 Figure 9: Performance of various selection strategies for the projection directions in parallel gradient boosting, applied to real medical datasets. The error bars represent one standard deviation. Note the logarithmic scale for the bottom plot. of a similar experiment with the baseball dataset, shown in Figure 3). In terms of computation times, the Unif-basis strategy consistently appears as one of the fastest methods, though with only minimal differences compared to the other non-greedy strategies. Compared with the Greedy strategy and XGBoost, the gains are, as expected, massive. These results therefore support the choice of the Unif-basis 
+
+strategy as a default method in our implementation of PGB. 
+
+# Appendix C Convergence of the algorithm with linear base learners 
+
+Contrary to the existing literature in which PGB appears as an edge case, and is developed only as a method for growing decision trees (Iosipoi & Vakhrushev, 40 2022; Joly et al., 2019), our formulation of PGB accounts for general classes of base learners. To illustrate how PGB behaves with base learners other than trees, we run the following experiment. On each dataset described in Table 1, we fit a PGB model to minimize the following loss function: 
+
+L(yi, g (xi)) = 
+
+> M
+
+X
+
+> m=1
+
+(ymi − gm(xi)) 2
+
+where gm(xi) denotes the m-th component of g(xi). The oracle for this loss is the tuple of M conditional moments of Y given X. The class of base learners used is the class of linear models to predict Y , combined in 500 iterations with a shrinkage parameter of 0.01 . To stabilize the optimization, we standardize the regression targets (ym 
+
+> 1
+
+, . . . , y mn ) for 1 ≤ m ≤ M by their empirical mean and variance. We report the evolution of the empirical risk at each iteration in Figure 10. 
+
+Figure 10: Training curves for the 10 real datasets to predict the M -tuple of conditional moments with linear base learners. The dashed horizontal line represents the optimal risk attainable in this class of models. For all 10 datasets, the algorithm appears to converge to the minimum empirical risk attainable with this class of base learners. This illustrates the theoretical results stated in Section 4, especially their applicability to base learners other than the most traditional decision trees. 
+
+# Appendix D Effect of the number of quantiles on the performance of the estimator 
+
+To investigate how the number of quantile knots affects the performance of PGB in estimating conditional distributions, we simulate 2000 observations from the 41 following model: 
+
+R ∼ U ({1, . . . , k }), A ∼ U ([0 , 2π]) , ϵ ∼ N (0 , 0.0025) ,X = (0 .5R + ϵ) cos( A), Y = (0 .5R + ϵ) sin( A)
+
+where k is a natural integer controlling the number of modes in the conditional distribution of Y given X. Observations in this model are located near k concentric circles of increasing radius, with ϵ acting as a Gaussian radial perturbation around these circles. Conditionally on X, the distribution of Y therefore has up to 2k
+
+modes. We run the PGB algorithm to estimate these conditional distributions, with an increasing number M of target quantiles, and other hyperparameters set as in Section 6. The quality of the estimation is measured by the ISE, approximated as in Section 6 using 2000 other observations sampled from the same distribution. We conduct the experiment successively with k = 1 , 2 and 3. The results are given in Figure 11. 
+
+Figure 11: Right: Quality of the estimations of conditional distributions provided by parallel gradient boosting with different grids of target quantiles, on three datasets with an increasing maximum number of conditional modes. Left: plot of the dataset obtained with k = 3 . The error bars represent one standard deviation. In this experiment, increasing the number of target quantiles consistently im-proves the quality of the estimation (most likely through reduction of the approx-imation error, as discussed in Section 5.2). The improvement, however, becomes insignificant beyond M = 20 , regardless of the complexity of the conditional distri-bution of Y given X (as indicated by its maximum number of modes). We conclude that the hyperparameter M seems to play no role in the regularization strategy of our implementation of PGB, but instead controls the balance between computation times and the quality of the approximation of the CRPS. 42 References 
+
+Alvarez, M. A., Rosasco, L., & Lawrence, N. D. (2012). Kernels for vector-valued functions: A review. Foundations and Trends ® in Machine Learning , 4 (3), 195–266. Arashloo, S. R., & Kittler, J. (2022). Multi-target regression via non-linear output structure learning. Neurocomputing , 492 , 572–580. Argyriou, A., Evgeniou, T., & Pontil, M. (2006). Multi-task feature learning. Ad-vances in Neural Information Processing Systems , 19 .Au, Q., Schalk, D., Casalicchio, G., Schoedel, R., Stachl, C., & Bischl, B. (2019). Component-wise boosting of targets for multi-output prediction. arXiv preprint arXiv:1904.03943 .Bach, F. (2024). Learning theory from first principles . MIT press. Baldassarre, L., Rosasco, L., Barla, A., & Verri, A. (2012). Multi-output learning via spectral filtering. Machine learning , 87 (3), 259–301. Bartlett, P., & Traskin, M. (2006). Adaboost is consistent. Advances in Neural Information Processing Systems , 19 .Bauer, I., Haupt, H., & Linner, S. (2024). Pinball boosting of regression quantiles. 
+
+Computational Statistics & Data Analysis , 200 , 108027. Beltran Velez, N., Grande, A. A., Nazaret, A., Kucukelbir, A., & Blei, D. (2024). Treeffuser: Probabilistic prediction via conditional diffusions with gradient-boosted trees. Advances in Neural Information Processing Systems , 37 ,118296–118325. Benezet, C., Cheng, Z., & Jaimungal, S. (2025). Learning conditional distributions on continuous spaces. Journal of Machine Learning Research , 26 (105), 1–64. Bentéjac, C., Csörgő, A., & Martínez-Muñoz, G. (2021). A comparative analysis of gradient boosting algorithms. Artificial Intelligence Review , 54 (3), 1937– 1967. Berrar, D. (2025). Bayes’ theorem and naive bayes classifier. In S. Ranganathan, M. Cannataro, & A. M. Khan (Eds.), Encyclopedia of bioinformatics and computational biology, 2nd edition (pp. 483–494, Vol. 1). Elsevier. https: //oro.open.ac.uk/96521/ Biau, G., & Cadre, B. (2021). Optimization by gradient boosting. In Advances in contemporary statistics and econometrics: Festschrift in honor of christine thomas-agnan (pp. 23–44). Springer. Borchani, H., Varando, G., Bielza, C., & Larranaga, P. (2015). A survey on multi-output regression. Wiley Interdisciplinary Reviews: Data Mining and Knowl-edge Discovery , 5 (5), 216–233. Bracher, J., Ray, E. L., Gneiting, T., & Reich, N. G. (2021). Evaluating epidemic forecasts in an interval format. PLoS computational biology , 17 (2), e1008618. Brehmer, J. R., & Gneiting, T. (2021). Scoring interval forecasts: Equal-tailed, shortest, and modal interval. Bernoulli (Andover.) , 27 (3). Breiman, L. (1996). Bias, variance, and arcing classifiers (tech. rep. No. 460). Statistics Department, University of California at Berkeley. 43 Breiman, L., Friedman, J., Olshen, R. A., & Stone, C. J. (2017). Classification and regression trees . Chapman; Hall/CRC. Caruana, R. (1997). Multitask learning. Machine learning , 28 (1), 41–75. Cevid, D., Michel, L., Näf, J., Bühlmann, P., & Meinshausen, N. (2022). Distri-butional random forests: Heterogeneity adjustment and multivariate dis-tributional regression. Journal of Machine Learning Research , 23 (333), 1– 79. Chapelle, O., Shivaswamy, P., Vadrevu, S., Weinberger, K., Zhang, Y., & Tseng, B. (2011). Boosted multi-task learning. Machine Learning , 85 (1), 149–173. Chapelle, R. (2026). opencesp: Generation and evaluation of synthetic tabular datasets . https://CRAN.R-project.org/package=opencesp Chen, J., Tang, L., Liu, J., & Ye, J. (2013). A convex formulation for learning a shared predictive structure from multiple tasks. IEEE Transactions on Pattern Analysis and Machine Intelligence , 35 (5), 1025–1038. Chen, T., & Guestrin, C. (2016). Xgboost: A scalable tree boosting system. Pro-ceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining , 785–794. Chen, Z., Badrinarayanan, V., Lee, C. -Y., & Rabinovich, A. (2018). Gradnorm: Gra-dient normalization for adaptive loss balancing in deep multitask networks. 
+
+International conference on machine learning , 794–803. Chernozhukov, V., Fernández-Val, I., & Galichon, A. (2010). Quantile and probability curves without crossing. Econometrica , 78 (3), 1093–1125. Chin, Y. -S., Jou, Z. -Y., Morimoto, T., Wang, C. -T., Chang, M. -C., Yen, T. -J., Huang, S. -Y., & Hsing, T. (2026). Generative and nonparametric approaches for conditional distribution estimation: Methods, perspectives, and comparative evaluations. arXiv preprint arXiv:2601.22650 .Cormode, G., Maddock, S., Ullah, E., & Gade, S. (2025). Synthetic tabular data: Methods, attacks and defenses. Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 2 , 5989–5998. D’Ambrosio, A., Aria, M., Iorio, C., & Siciliano, R. (2017). Regression trees for multivalued numerical response variables. Expert Systems with Applications ,
+
+69 , 21–28. Díaz Muñoz, I., & Van Der Laan, M. J. (2011). Super learner based conditional density estimation with application to marginal structural models. The international journal of biostatistics .Duan, T., Anand, A., Ding, D. Y., Thai, K. K., Basu, S., Ng, A., & Schuler, A. (2020). Ngboost: Natural gradient boosting for probabilistic prediction. International conference on machine learning , 2690–2700. Duchemin, Q., & Obozinski, G. (2025). Efficient distributional regression trees learning algorithms for calibrated non-parametric probabilistic forecasts. 
+
+arXiv preprint arXiv:2502.05157 .Dudek, G., Kasprzyk, M., & Pełka, P. (2025). Multivariate forecasting of bitcoin volatility with gradient boosting: Deterministic, probabilistic, and feature importance perspectives. Expert Systems with Applications , 130404. 44 Elith, J., Leathwick, J. R., & Hastie, T. (2008). A working guide to boosted regression trees. Journal of animal ecology , 77 (4), 802–813. Emami, S., Hernández-Lobato, D., & Martínez-Muñoz, G. (2026). Robust multi-task boosting using clustering and local ensembling. arXiv preprint arXiv:2602.14231 .Emami, S., & Martínez-Muñoz, G. (2024). Deep learning for multi-output regression using gradient boosting. Ieee Access , 12 , 17760–17772. Emami, S., & Martínez-Muñoz, G. (2025). Condensed-gradient boosting. Interna-tional Journal of Machine Learning and Cybernetics , 16 (1), 687–701. Emami, S., Ruiz Pastor, C., & Martínez-Muñoz, G. (2023). Multi-task gradient boosting. International Conference on Hybrid Artificial Intelligence Systems ,97–107. Enders, C. K. (2025). Missing data: An update on the state of the art. Psychological methods , 30 (2), 322. Evgeniou, T., & Pontil, M. (2004). Regularized multi–task learning. Proceedings of the Tenth ACM SIGKDD International Conference on Knowledge Discovery and Data Mining , 109–117. Faddoul, J. B., Chidlovskii, B., Torre, F., & Gilleron, R. (2010). Boosting multi-task weak learners with applications to textual and social data. 2010 Ninth International Conference on Machine Learning and Applications , 367–372. Fakoor, R., Kim, T., Mueller, J., Smola, A. J., & Tibshirani, R. J. (2023). Flexible model aggregation for quantile regression. Journal of Machine Learning Research , 24 (162), 1–45. Fouillen, E., Boyer, C., & Sangnier, M. (2023). Proximal boosting: Aggregating weak learners to minimize non-differentiable losses. Neurocomputing , 520 ,301–319. Friedman, J. H. (2001). Greedy function approximation: A gradient boosting machine. 
+
+Annals of statistics , 1189–1232. Friedman, J. H. (2002). Stochastic gradient boosting. Computational statistics & data analysis , 38 (4), 367–378. Friendly, M. (2024). Genridge: Generalized ridge trace plots for ridge regression .https://CRAN.R-project.org/package=genridge Gao, Z., & Hastie, T. (2022). Lincde: Conditional density estimation via lindsey’s method. Journal of machine learning research , 23 (52), 1–55. Geenens, G. (2011). Curse of dimensionality and related issues in nonparametric functional regression. Statistics Surveys , 5 (none), 30–43. Gneiting, T., & Raftery, A. E. (2007). Strictly proper scoring rules, prediction, and estimation. Journal of the American statistical Association , 102 (477), 359–378. Hall, P., Wolff, R. C., & Yao, Q. (1999). Methods for estimating a conditional distri-bution function. Journal of the American Statistical association , 94 (445), 154–163. Hastie, T., Tibshirani, R., & Friedman, J. H. (2009). The elements of statistical learning: Data mining, inference, and prediction (Vol. 2). Springer. 45 He, X., Ng, P., & Portnoy, S. (1998). Bivariate quantile smoothing splines. Journal of the Royal Statistical Society Series B: Statistical Methodology , 60 (3), 537– 550. Higgins, P. (2022). medicaldata: Data package for medical datasets . https : / / higgi13425.github.io/medicaldata/ Hill, M., & Dixon, W. (1982). Robustness in real life: A study of clinical laboratory data. Biometrics , 377–396. Huntington-Klein, N., & Barrett, M. (2024). causaldata: Example data sets for causal inference textbooks . https://CRAN.R-project.org/package=causaldata Iosipoi, L., & Vakhrushev, A. (2022). Sketchboost: Fast gradient boosted decision tree for multioutput problems. Advances in Neural Information Processing Systems , 35 , 25422–25435. Ishwaran, H., & Kogalur, U. (2025). Fast unified random forests for survival, re-gression, and classification (RF-SRC) . manual. https://cran.r-project.org/ package=randomForestSRC Izbicki, R. (2025). Machine learning beyond point predictions: Uncertainty quantifi-cation (1st). Izbicki, R., & B. Lee, A. (2017). Converting high-dimensional regression to high-dimensional conditional density estimation. Electronic Journal of Statistics ,
+
+11 (2), 2800–2831. Jacob, L., Vert, J. -p., & Bach, F. (2008). Clustered multi-task learning: A convex formulation. Advances in Neural Information Processing Systems , 21 .Jeong, J. -Y., Kang, J. -S., & Jun, C. -H. (2020). Regularization-based model tree for multi-output regression. Information Sciences , 507 , 240–255. Jokiel-Rokita, A., Piątek, S., & Topolnicki, R. (2024). Estimation of conditional inequality curves and measures via estimating the conditional quantile function. arXiv preprint arXiv:2412.20228 .Joly, A., Geurts, P., & Wehenkel, L. (2014). Random forests with random pro-jections of the output space for high dimensional multi-label classification. 
+
+Joint European conference on machine learning and knowledge discovery in databases , 607–622. Joly, A., Wehenkel, L., & Geurts, P. (2019). Gradient tree boosting with random output projections for multi-label classification and multi-output regression. 
+
+arXiv preprint arXiv:1905.07558 .Jones, A. M., Lomas, J., & Rice, N. (2015). Healthcare cost regressions: Going beyond the mean to estimate the full distribution. Health economics , 24 (9), 1192–1212. Kaneko, H. (2022). Cross-validated permutation feature importance considering correlation between features. Analytical Science Advances , 3 (9-10), 278–287. Karakaş, D., İşeri, N., Keçeci, S., & Rençberoğlu, E. (2025). Delivery time prediction in e-commerce: A quantile regression approach. 2025 International Con-ference on INnovations in Intelligent SysTems and Applications (INISTA) ,1–4. 46 Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q., & Liu, T. -Y. (2017). Lightgbm: A highly efficient gradient boosting decision tree. Advances in neural information processing systems , 30 .Kim, S., & Xing, E. P. (2012). Tree-guided group lasso for multi-response regression with structured sparsity, with an application to eQTL mapping. The Annals of Applied Statistics , 6 (3), 1095–1117. Kocev, D., Vens, C., Struyf, J., & Džeroski, S. (2013). Tree ensembles for predicting structured outputs. Pattern Recognition , 46 (3), 817–833. Koenker, R. (2005). Quantile regression (Vol. 38). Cambridge university press. Koenker, R., & Hallock, K. F. (2001). Quantile regression. Journal of economic perspectives , 15 (4), 143–156. Koenker, R., Leorato, S., & Peracchi, F. (2013). Distributional vs. quantile regression. 
+
+SSRN Electronic Journal .Krzysztofowicz, R. (2024). Probabilistic forecasts and optimal decisions . John Wiley & Sons. Kuhn, M., & Johnson, K. (2018). AppliedPredictiveModeling: Functions and data sets for ’applied predictive modeling’ . https://CRAN.R-project.org/package= AppliedPredictiveModeling Landry, M., Erlinger, T. P., Patschke, D., & Varrichio, C. (2016). Probabilistic gradient boosting machines for GEFCom2014 wind forecasting. International Journal of Forecasting , 32 (3), 1061–1066. Leech, N. L., & Onwuegbuzie, A. J. (2002). A call for greater use of nonparametric statistics. Mid-South Educational Research Association Annual Meeting .Lei, J., G’Sell, M., Rinaldo, A., Tibshirani, R. J., & Wasserman, L. (2018). Distribution-free predictive inference for regression. Journal of the American Statistical Association , 113 (523), 1094–1111. Lei, J., & Wasserman, L. (2014). Distribution-free prediction bands for non-parametric regression. Journal of the Royal Statistical Society Series B: Statistical Methodology , 76 (1), 71–96. Li, Y., Tian, X., Liu, T., & Tao, D. (2017). On better exploring and exploiting task relationships in multitask learning: Joint model and feature learning. IEEE transactions on neural networks and learning systems , 29 (5), 1975–1985. Liu, B., Liu, X., Jin, X., Stone, P., & Liu, Q. (2021). Conflict-averse gradient descent for multi-task learning. Advances in Neural Information Processing Systems ,
+
+34 , 18878–18890. Liu, K., & Altman, R. B. (2025). Conditional generative models for synthetic tabular data: Applications for precision medicine and diverse representations. Annual review of biomedical data science , 8 (1), 21–49. Liu, P., Fu, B., & Yang, S. X. (2019). HitBoost: Survival analysis via a multi-output gradient boosting decision tree method. IEEE Access , 7, 56785–56795. Liu, X., Yu, J., Dai, Y., Shen, Y., Chen, J., Hu, J., Huang, J., Liu, Y., Yin, Y., Namboodiri, V., et al. (2025). Multi-task learning 1997–2024: Part ii regularization and optimization. Harvard Data Science Review , 7 (3). Liu, Y., & Wu, Y. (2009). Stepwise multiple quantile regression estimation using non-crossing constraints. Statistics and its Interface , 2 (3), 299–310. 47 Lugosi, G., & Vayatis, N. (2004). On the bayes-risk consistency of regularized boosting methods. The Annals of statistics , 32 (1), 30–55. Lundberg, S. M., & Lee, S. -I. (2017). A unified approach to interpreting model predictions. Advances in Neural Information Processing Systems , 30 .März, A. (2019). XGBoostLSS–an extension of XGBoost to probabilistic forecasting. 
+
+arXiv preprint arXiv:1907.03178 .März, A., & Kneib, T. (2022). Distributional gradient boosting machines. arXiv preprint arXiv:2204.00778 .Meinshausen, N., & Ridgeway, G. (2006). Quantile regression forests. Journal of machine learning research , 7 (6). Melnychuk, V., Frauen, D., & Feuerriegel, S. (2023). Normalizing flows for interven-tional density estimation. International Conference on Machine Learning ,24361–24397. Mirza, M., & Osindero, S. (2014). Conditional generative adversarial nets. arXiv preprint arXiv:1411.1784 .Moon, S., Hong, S., & Park, B. (2026). Monotone composite quantile regression via second-order gradient boosting framework. Machine Learning , 115 (6), 127. Muller, M. E. (1959). A note on a method for generating points uniformly on n-dimensional spheres. Communications of the ACM , 2 (4), 19–20. Natekin, A., & Knoll, A. (2013). Gradient boosting machines, a tutorial. Frontiers in neurorobotics , 7, 21. Nielsen, D. (2016). Tree boosting with xgboost-why does xgboost win "every" machine learning competition? [Master’s thesis, NTNU]. Nutini, J., Laradji, I., & Schmidt, M. (2022). Let’s make block coordinate descent converge faster: Faster greedy rules, message-passing, active-set complexity, and superlinear convergence. Journal of Machine Learning Research , 23 (131), 1–74. Nutini, J., Schmidt, M., Laradji, I., Friedlander, M., & Koepke, H. (2015). Coordinate descent converges faster with the gauss-southwell rule than random selection. 
+
+International Conference on Machine Learning , 1632–1641. Nzarigema, J. d., Ngarambe, J., Zo, C. -H., & Yun, G. -Y. (2022). Quantile regression modelling with LightGBM for building energy benchmarking. Journal of Korean Institute of Architectural Sustainable Environment and Building Systems , 16 (5), 359–373. Oldford, R. W., & Waddell, A. (2025). loon.data: Data used to illustrate ’loon’ functionality . https://CRAN.R-project.org/package=loon.data Papacharalampous, G., & Langousis, A. (2022). Probabilistic water demand forecast-ing using quantile regression algorithms. Water Resources Research , 58 (6), e2021WR030216. Pardalos, P. M., & Xue, G. (1999). Algorithms for a class of isotonic regression problems. Algorithmica , 23 (3), 211–222. Plassier, V., Fishkov, A., Guizani, M., Panov, M., & Moulines, E. (2025). Probabilistic conformal prediction with approximate conditional validity. International Conference on Learning Representations , 2025 , 62896–62928. 48 Prokhorenkova, L., Gusev, G., Vorobev, A., Dorogush, A. V., & Gulin, A. (2018). CatBoost: Unbiased boosting with categorical features. Advances in neural information processing systems , 31 .Qiu, Z., Peng, C., Tang, Y., & Wang, H. J. (2026). A review of recent advances in high-dimensional quantile regression. Wiley Interdisciplinary Reviews: Computational Statistics , 18 (1), e70054. Racine, J. S., Li, Q., Zhu, X., et al. (2004). Kernel estimation of multivariate conditional distributions. Annals of Economics and Finance , 5 (2), 211–235. Rahman, R., Otridge, J., & Pal, R. (2017). IntegratedMRF: Random forest-based framework for integrating prediction from different data types. Bioinformat-ics , 33 (9), 1407–1410. Ranka, S., & Singh, V. (1998). CLOUDS: A decision tree classifier for large datasets. 
+
+Proceedings of the 4th Knowledge Discovery and Data Mining Conference ,
+
+2 (8), 2–8. Reisach, A. G., Collier, O., Luedtke, A., & Chambaz, A. (2025). Transforming conditional density estimation into a single nonparametric regression task. 
+
+arXiv preprint arXiv:2511.18530 .Revelas, C., Boldea, O., & Werker, B. J. (2025). When do random forests work? 
+
+arXiv preprint arXiv:2504.12860 .Rosenblatt, M. (1969). Conditional probability density and regression estimators. In P. R. Krishnaiah (Ed.), Multivariate analysis, II (pp. 25–31). Academic Press. Rothfuss, J., Ferreira, F., Walther, S., & Ulrich, M. (2019). Conditional density estimation with neural networks: Best practices and benchmarks. arXiv preprint arXiv:1903.00954 .Sart, M. (2017). Estimating the conditional density by histogram type estimators and model selection. ESAIM: Probability and Statistics , 21 , 34–55. Schapire, R. E., & Freund, Y. (2013). Boosting: Foundations and algorithms . Emerald Group Publishing Limited. Schmid, L., Gerharz, A., Groll, A., & Pauly, M. (2023). Tree-based ensembles for multi-output regression: Comparing multivariate approaches with separate univariate ones. Computational Statistics & Data Analysis , 179 , 107628. Scornet, E., & Hooker, G. (2026). Theory of random forests. Annual Review of Statistics and Its Application , 13 (1), 99–121. Si, S., Zhang, H., Keerthi, S. S., Mahajan, D., Dhillon, I. S., & Hsieh, C. -J. (2017). Gradient boosted decision trees for high dimensional sparse output. Interna-tional conference on machine learning , 3182–3190. Silva Filho, T., Song, H., Perello-Nieto, M., Santos-Rodriguez, R., Kull, M., & Flach, P. (2023). Classifier calibration: A survey on how to assess and improve predicted class probabilities. Machine Learning , 112 (9), 3211–3260. Simm, J., De Abril, I. M., & Sugiyama, M. (2014). Tree-based ensemble multi-task learning method for classification and regression. IEICE TRANSACTIONS on Information and Systems , 97 (6), 1677–1681. 49 Sluijterman, L., Kreuwel, F., Cator, E., & Heskes, T. (2025). Composite quantile regression with XGBoost using the novel arctan pinball loss. International Journal of Machine Learning and Cybernetics , 1–15. Steinwart, I., & Christmann, A. (2011). Estimating conditional quantiles with the help of the pinball loss. Bernoulli (Andover.) , 17 (1), 211–225. Strobl, C., Boulesteix, A. -L., Zeileis, A., & Hothorn, T. (2007). Bias in random forest variable importance measures: Illustrations, sources and a solution. 
+
+BMC bioinformatics , 8 (1), 25. Strobl, E. V., & Visweswaran, S. (2021). Dirac delta regression: Conditional density estimation with clinical trials. The KDD’21 Workshop on Causal Discovery ,78–125. Sugiyama, M., Takeuchi, I., Suzuki, T., Kanamori, T., Hachiya, H., & Okanohara, D. (2010). Conditional density estimation via least-squares density ratio esti-mation. Proceedings of the Thirteenth International Conference on Artificial Intelligence and Statistics , 781–788. Taieb, S. B., Huser, R., Hyndman, R. J., & Genton, M. G. (2016). Forecasting uncertainty in electricity smart meter data by boosting additive quantile regression. IEEE Transactions on Smart Grid , 7 (5), 2448–2455. Thung, K. -H., & Wee, C. -Y. (2018). A brief review on multi-task learning. Multimedia Tools and Applications , 77 (22), 29705–29725. Tibshirani, R. (1996). Regression shrinkage and selection via the lasso. Journal of the Royal Statistical Society Series B: Statistical Methodology , 58 (1), 267–288. Tran, N. K., Kühle, L. C., & Klau, G. W. (2024). A critical review of multi-output support vector regression. Pattern Recognition Letters , 178 , 69–75. Tsanas, A., & Little, M. (2009). Parkinsons Telemonitoring. Tyralis, H., Papacharalampous, G., Langousis, A., & Papalexiou, S. M. (2021). Explanation and probabilistic prediction of hydrological signatures with statistical boosting algorithms. Remote Sensing , 13 (3), 333. Vasseur, S. P., & Aznarte, J. L. (2021). Comparing quantile regression methods for probabilistic forecasting of NO2 pollution levels. Scientific Reports , 11 (1), 11592. Vazquez, E., & Walter, E. (2003). Multi-output suppport vector regression. IFAC Proceedings Volumes , 36 (16), 1783–1788. Verbois, H., Rusydi, A., & Thiery, A. (2018). Probabilistic forecasting of day-ahead solar irradiance using quantile gradient boosting. Solar Energy , 173 , 313–327. Waghmare, K., & Ziegel, J. (2026). Proper scoring rules for estimation and forecast evaluation. Annual Review of Statistics and Its Application , 13 (Volume 13, 2026), 271–296. https://doi.org/https://doi.org/10.1146/annurev-statistics-042424-050626 Wang, C., Chen, Q., Xue, B., & Zhang, M. (2025). Semantics-guided multi-task genetic programming for multi-output regression. Pattern Recognition , 161 ,111289. Xu, D., Shi, Y., Tsang, I. W., Ong, Y.-S., Gong, C., & Shen, X. (2019). Survey on multi-output learning. IEEE Transactions on Neural Networks and Learning Systems , 31 (7), 2409–2429. 50 Xu, Q., Deng, K., Jiang, C., Sun, F., & Huang, X. (2017). Composite quantile re-gression neural network with applications. Expert Systems with Applications ,
+
+76 , 129–139. Yang, L., & van Leeuwen, M. (2024). Conditional density estimation with histogram trees. Advances in Neural Information Processing Systems , 37 , 117315– 117339. Ying, Z., Xu, Z., Li, Z., Wang, W., & Meng, C. (2022). Mt-gbm: A multi-task gradient boosting machine with shared decision trees. arXiv preprint arXiv:2201.06239 .Yu, J., Huang, J., Zhang, K., Liu, Y., Zhang, K., Shen, Y., Zhang, D., Zhou, R., Liu, X., Yin, Y., et al. (2025). Multitask learning 1997–2024: Part iii applications. 
+
+Harvard Data Science Review , 7 (3). Yu, J., Liu, X., Luo, C., Huang, J., Zhou, R., Liu, Y., Hu, J., Chen, J., Zhang, K., Zhang, D., et al. (2025). Multitask learning 1997–2024: Part i fundamentals. 
+
+Harvard Data Science Review , 7 (3). Yu, T., Kumar, S., Gupta, A., Levine, S., Hausman, K., & Finn, C. (2020). Gradient surgery for multi-task learning. Advances in Neural Information Processing Systems , 33 , 5824–5836. Zhang, Y., & Yang, Q. (2018). An overview of multi-task learning. National Science Review , 5 (1), 30–43. Zhang, Y., & Yang, Q. (2021). A survey on multi-task learning. IEEE Transactions on Knowledge and Data Engineering , 34 (12), 5586–5609. Zhang, Y., & Yeung, D. -Y. (2012). Multi-task boosting by exploiting task rela-tionships. Joint European Conference on Machine Learning and Knowledge Discovery in Databases , 697–710. Zhao, W., & Tabak, E. G. (2025). Adaptive kernel conditional density estimation. 
+
+Information and Inference: A Journal of the IMA , 14 (1), iaae037. Zhou, X., Chen, B., Gui, Y., & Cheng, L. (2025). Conformal prediction: A data perspective. ACM computing surveys , 58 (2), 1–37. Zou, R., Zhu, W., & Nan, B. (2026). Conformalized percentile interval: Finite sample validity and improved conditional performance. arXiv preprint arXiv:2605.03233 .51
