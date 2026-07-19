@@ -6,32 +6,32 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-18
-- 运行时间：2026-07-18 21:02:48 UTC
+- 最新运行日期：2026-07-19
+- 运行时间：2026-07-19 20:42:57 UTC
 - 运行状态：成功
 - 本次总论文数：3
 - 精读区：0
 - 速读区：3
 
 ### 今日简报（AI）
-今日速读3篇论文，均获6.0/10评分，涵盖气溶胶诊断、自适应卡尔曼滤波及工业智能多模态模型。  
-值得关注的是《AeroMELD》中的气溶胶群体线性嵌入方法，以及《VLT》提出的视觉-语言-时间序列多模态基础模型。  
-建议普通读者优先浏览这两篇论文的引言和实验部分，了解各自领域的创新应用场景。
-- 详情：[/202607/18/README](/202607/18/README)
+今日速读3篇论文，聚焦边缘设备轻量化异常检测、贝叶斯分位数回归与双源电车能耗预测。  
+最值得关注的是边缘端轻量级多尺度异常检测方法，适合资源受限场景。  
+建议优先阅读该文，并关注其模型效率与部署可行性，后续可延展至实时监控应用。
+- 详情：[/202607/19/README](/202607/19/README)
 
 ### 精读区论文标签
 - 本次无精读推荐。
 
 ### 速读区论文标签
-1. [AeroMELD: A Linear Embedding of Aerosol Populations for Diagnostics and Latent Dynamics](/202607/18/2607.11073v1-aeromeld-a-linear-embedding-of-aerosol-populations-for-diagnostics-and-latent-dynamics)  
+1. [Lightweight Multi-Scale Anomaly Detection for Resource-Constrained Edge Devices](/202607/19/2607.12599v1-lightweight-multi-scale-anomaly-detection-for-resource-constrained-edge-devices)  
+   标签：评分：7.0/10、query:aq-forecast
+   evidence：时间序列异常检测方法，使用多尺度自编码器
+2. [Scalable Bayesian Quantile Regression via EM and INLA: The EM-INLA Algorithm](/202607/19/2607.10432v1-scalable-bayesian-quantile-regression-via-em-and-inla-the-em-inla-algorithm)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：气溶胶群体的潜在动力学与空气质量相关
-2. [Change-Aware Self-Adaptive AI-Aided Kalman Filters With Neural Change Point Detection](/202607/18/2607.13387v1-change-aware-self-adaptive-ai-aided-kalman-filters-with-neural-change-point-detection)  
+   evidence：可扩展贝叶斯分位数回归方法，可应用于时间序列
+3. [Inter-Stop Energy Prediction and Causal Driver Quantification for Dual-Source Trolleybuses via a Time-Aware Tabular Deep Learning Architecture](/202607/19/2607.11349v1-inter-stop-energy-prediction-and-causal-driver-quantification-for-dual-source-trolleybuses-via-a-time-aware-tabular-deep-learning-architecture)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：提出自适应卡尔曼滤波用于时间序列状态估计
-3. [VLT: A Vision-Language-Time Series Multimodal Foundation Model for Industrial Intelligence](/202607/18/2607.14510v1-vlt-a-vision-language-time-series-multimodal-foundation-model-for-industrial-intelligence)  
-   标签：评分：6.0/10、query:aq-forecast
-   evidence：集成时间序列、频谱和文本的多模态基础模型用于工业时间序列
+   evidence：时间感知深度学习用于时间序列预测，方法可迁移至污染物浓度预测
 
 
 <div class="dpr-home-promo-card">
