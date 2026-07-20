@@ -6,32 +6,24 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-19
-- 运行时间：2026-07-19 20:42:57 UTC
+- 最新运行日期：2026-07-20
+- 运行时间：2026-07-20 20:56:05 UTC
 - 运行状态：成功
-- 本次总论文数：3
-- 精读区：0
-- 速读区：3
+- 本次总论文数：1
+- 精读区：1
+- 速读区：0
 
 ### 今日简报（AI）
-今日速读3篇论文，聚焦边缘设备轻量化异常检测、贝叶斯分位数回归与双源电车能耗预测。  
-最值得关注的是边缘端轻量级多尺度异常检测方法，适合资源受限场景。  
-建议优先阅读该文，并关注其模型效率与部署可行性，后续可延展至实时监控应用。
-- 详情：[/202607/19/README](/202607/19/README)
+今天精读1篇高分论文，聚焦行星边界层高度的统计建模与测量不确定性分析。核心是利用GRUAN廓线数据提升PBL高度估计的准确性并量化其误差。建议对大气边界层研究感兴趣的读者深入了解GRUAN数据在该领域的统计方法论。
+- 详情：[/202607/20/README](/202607/20/README)
 
 ### 精读区论文标签
-- 本次无精读推荐。
+1. [Statistical Modelling of Planetary Boundary Layer Height and Its Measurement Uncertainty Using GRUAN Profiles](/202607/20/2607.14960v1-statistical-modelling-of-planetary-boundary-layer-height-and-its-measurement-uncertainty-using-gruan-profiles)  
+   标签：评分：8.0/10、query:aq-forecast
+   evidence：行星边界层高度建模用于空气质量应用
 
 ### 速读区论文标签
-1. [Lightweight Multi-Scale Anomaly Detection for Resource-Constrained Edge Devices](/202607/19/2607.12599v1-lightweight-multi-scale-anomaly-detection-for-resource-constrained-edge-devices)  
-   标签：评分：7.0/10、query:aq-forecast
-   evidence：时间序列异常检测方法，使用多尺度自编码器
-2. [Scalable Bayesian Quantile Regression via EM and INLA: The EM-INLA Algorithm](/202607/19/2607.10432v1-scalable-bayesian-quantile-regression-via-em-and-inla-the-em-inla-algorithm)  
-   标签：评分：6.0/10、query:aq-forecast
-   evidence：可扩展贝叶斯分位数回归方法，可应用于时间序列
-3. [Inter-Stop Energy Prediction and Causal Driver Quantification for Dual-Source Trolleybuses via a Time-Aware Tabular Deep Learning Architecture](/202607/19/2607.11349v1-inter-stop-energy-prediction-and-causal-driver-quantification-for-dual-source-trolleybuses-via-a-time-aware-tabular-deep-learning-architecture)  
-   标签：评分：6.0/10、query:aq-forecast
-   evidence：时间感知深度学习用于时间序列预测，方法可迁移至污染物浓度预测
+- 本次无速读推荐。
 
 
 <div class="dpr-home-promo-card">
