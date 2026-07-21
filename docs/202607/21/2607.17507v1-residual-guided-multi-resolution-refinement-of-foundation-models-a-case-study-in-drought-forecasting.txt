@@ -1,0 +1,1350 @@
+Title: Residual-Guided Multi-Resolution Refinement of Foundation Models: A Case Study in Drought Forecasting
+
+URL Source: https://arxiv.org/pdf/2607.17507v1
+
+Published Time: Tue, 21 Jul 2026 01:42:26 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+# Residual-Guided Multi-Resolution Refinement of Foundation Models: A Case Study in Drought Forecasting 
+
+Wentao Gao 1 Jiuyong Li 1 Lin Liu 1 Thuc Duy Le 1 Jixue Liu 1 Yanchang Zhao 2 Yun Chen 3
+
+## Abstract 
+
+Regional climate prediction presents unique chal-lenges for time series foundation models, which typically process temporal patterns through single-pass inference. Expert climatologists, in contrast, employ multi-scale temporal analysis and itera-tive refinement based on systematic error diagno-sis. We present RGMR (Residual-Guided Multi-Resolution Refinement), an inference-time frame-work that adapts pre-trained foundation models to perform structured coarse-to-fine refinement for climate forecasting without updating back-bone parameters. Applied to drought forecasting using the Standardized Precipitation Evapotran-spiration Index (SPEI), RGMR is architecture-agnostic across the three TSFM backbones evalu-ated per site (TimesFM, TimeGPT, TabPFN) and consistently lowers test-set MSE on three South Australian sites and three additional regions out-side South Australia. Applied to TimesFM, the wrapper reduces one-month-ahead SPEI MSE by up to 18.9% across the three South Australian sites (mean reduction ≈18.7%). Overall, RGMR provides a practical route for deploying frozen TSFMs in regional climate forecasting workflows. 
+
+## 1. Introduction 
+
+Climate prediction typically involves multi-stage analysis where meteorologists examine broad atmospheric patterns before progressively focusing on regional details, continu-ously adjusting forecasts as new evidence emerges (Lynch, 2006; Bauer et al., 2015). This iterative approach, where predictions evolve through structured analysis at multi-ple temporal scales, differs substantially from current AI 
+
+> 1
+
+Adelaide University, Adelaide, SA, Australia 2CSIRO Technology, Canberra, Australia 3CSIRO Environment, Can-berra, Australia. Correspondence to: Wentao Gao <wen-tao.gao@adelaide.edu.au >.
+
+Proceedings of the 43 rd International Conference on Machine Learning , Seoul, South Korea. PMLR 306, 2026. Copyright 2026 by the author(s). 
+
+systems that generate forecasts through single forward passes (Schultz et al., 2021). Recent advances in time series foundation models (TSFMs) have demonstrated strong performance across diverse fore-casting domains (Das et al., 2024; Rasul et al., 2024; Ansari et al., 2024). However, TSFMs face challenges in regional climate prediction tasks such as drought forecasting, appli-cations requiring nuanced understanding of local climate dy-namics and multi-scale temporal patterns (Vicente-Serrano et al., 2020; Mukherjee et al., 2018; Gao et al., 2022; Chen et al., 2025). We hypothesize that this limitation stems from architectural differences in how these models process temporal informa-tion. Foundation models typically map historical sequences to future predictions in a single forward pass, processing all temporal information uniformly (Lim et al., 2021). Climato-logical analysis, by contrast, often involves iterative exami-nation of data at multiple time scales (Trenberth et al., 2014), identification of systematic patterns and biases (Jolliffe & Stephenson, 2003), and progressive refinement through fo-cused analysis of specific temporal components (Palmer, 1998). Recent work in iterative refinement for sequential prediction tasks (Wei et al., 2022; Kojima et al., 2022; Yao et al., 2023) suggests that multi-stage processing can improve performance on complex reasoning tasks. This motivates our central question: Can time series foundation models benefit from hierarchical refinement for climate forecasting? 
+
+Figure 1 illustrates the difference between multi-scale tem-poral analysis and single-pass processing using SPEI time series data. Climatological analysis typically decomposes multi-scale climate patterns into constituent temporal com-ponents (annual cycles, ENSO oscillations, and extreme events), enabling systematic examination of each scale be-fore integration. Current AI models process the entire com-plex signal simultaneously, which may lead to systematic prediction errors during drought events and regime shifts. Together, these observations motivate an error-corrective inference loop for frozen TSFMs. Iterative refinement in language tasks suggests that initial hypotheses can be eval-uated and sharpened through feedback (Shinn et al., 2023; 1arXiv:2607.17507v1 [cs.LG] 20 Jul 2026 Residual-Guided Multi-Resolution Refinement of Foundation Models 0 2 4 6 8 10 12             
+
+> Time (years)
+> 2
+> 1
+> 0
+> 1
+> 2
+> SPEI
+> Raw SPEI Time Series (Complex Multi-Scale Climate Data)
+> Seasonal Patterns
+> Drought Events
+> Multi-Scale Interactions
+> 0510
+> 2
+> 1
+> 0
+> 1
+> 2
+> SPEI
+> Expert Step 1: Broad Patterns
+> "Annual cycles & long-term trends"
+> Raw Data
+> Annual+ Patterns
+> 0510
+> 1
+> 0
+> 1
+> Expert Step 2: Scale Separation
+> "Different oscillations interact"
+> Seasonal (6mo+)
+> Interannual (2yr+)
+> 0510
+> Time (years)
+> 2
+> 1
+> 0
+> 1
+> 2
+> Expert Step 3: Error Diagnosis
+> "Focus on unexplained residuals"
+> Extreme Events
+> 0510
+> 2
+> 1
+> 0
+> 1
+> 2
+> SPEI  BLACK BOX
+> PROCESSING
+> AI Model: Single Forward Pass
+> "Process all information at once"
+> 0510
+> 2
+> 1
+> 0
+> 1
+> 2
+> AI Output: Direct Prediction
+> "Misses complex patterns"
+> True SPEI
+> AI Prediction
+> 0510
+> Time (years)
+> 1
+> 0
+> 1
+> Error
+> Prediction Errors
+> Large Errors
+> EXPERT
+> ANALYSIS
+> AI
+> PROCESSING
+
+Figure 1. Comparison of temporal processing approaches in cli-mate forecasting. Multi-scale decomposition analysis (middle row) versus single forward pass processing (bottom row) for complex climate pattern prediction. 
+
+Madaan et al., 2023), while operational climate systems re-quire efficient inference that avoids gradient updates to the foundation backbone (Bauer et al., 2015). To address this setting, we propose Residual-Guided Multi-Resolution Refinement (RGMR) , a framework that enables time se-ries foundation models to perform multi-scale corrective inference without modifying backbone parameters. Our ap-proach uses domain knowledge to define relevant temporal scales, then iteratively refines predictions from coarse to fine resolutions through residual-guided error correction. We evaluate RGMR on drought forecasting using SPEI (Vicente-Serrano et al., 2010) data across multiple South Australian locations. We find consistent improve-ments over direct foundation model application, achieving up to 18.9% error reduction in mean squared error. 
+
+Our main contributions include: 
+
+• We propose RGMR , an inference-time wrapper that adapts frozen TSFMs to regional climate forecasting through residual-guided coarse-to-fine refinement with-out updating backbone parameters. • We provide a contraction-style analysis and a finest-resolution no-harm condition, together with projection and resolution-scale sensitivity analyses that justify the coarse-to-fine design. • We show that RGMR consistently improves the evalu-ated frozen TSFM backbones, including up to 18.9% lower one-month-ahead SPEI MSE across the three South Australian sites, with modest inference over-head. 
+
+## 2. Related Work 
+
+Drought forecasting. Classical statistical models (e.g., ARIMA, SVMs) have long been used for drought indices (Nandgude et al., 2023) but depend on bespoke feature engi-neering and struggle with long-range dependencies. Deep architectures, including LSTMs (Hochreiter & Schmidhu-ber, 1997), Transformer-based forecasters (Vaswani et al., 2017; Zhou et al., 2021), and recent spatiotemporal models (Tan et al., 2025), improve expressivity but typically require task-specific training or fine-tuning to a region and target in-dex. In contrast, we study an inference-time framework that adapts a frozen base model to drought forecasting without updating weights. 
+
+Time-series foundation models (TSFMs). General-purpose TSFMs such as TimesFM (Das et al., 2024), TimeGPT-1 (Garza et al., 2023), Lag-Llama (Rasul et al., 2024), Chronos (Ansari et al., 2024), and Timer (Liu et al., 2024c) aim for broad-domain forecasting with a single pre-trained backbone. Domain-specialized weather systems like GraphCast (Lam et al., 2023) and Pangu-Weather (Bi et al., 2023) achieve strong numerical weather prediction but are not designed as drop-in forecasters for regional drought indices and usually involve re-training or domain-specific pipelines. We target the complementary setting of using ageneral TSFM as-is and improving its outputs at inference time. 
+
+Multi-scale and residual learning. Multi-scale techniques capture temporal dynamics at different resolutions, rang-ing from Scaleformer’s coarse-to-fine pathway (Shabani et al., 2023) and TimeMixer’s decomposable multiscale mix-ing (Wang et al., 2024) to N-BEATS’ hierarchical residual stacks (Oreshkin et al., 2020) and Minusformer’s progres-sive residual refinement (Liang et al., 2024). In particu-lar, TimeMixer decomposes multiscale series and mixes seasonal and trend components across fine-to-coarse and coarse-to-fine directions, showing the importance of explic-itly exploiting complementary temporal resolutions. How-ever, these methods typically realize multi-resolution behav-ior through dedicated architectures or training procedures. Our approach differs in where multi-resolution acts: rather than redesigning or retraining the forecasting model, we implement coarse-to-fine refinement at inference time on top of a frozen backbone, using residuals learned from short-window corrections to adjust long-window proposals. 
+
+Inference-time adaptation. Test-time adaptation (Sun et al., 2020) and lightweight prompting/tuning (Brown et al., 2020) enable on-the-fly specialization while retaining a pre-trained model’s generality. For time series, few-shot or episodic adaptation has been explored mostly via fine-tuning (Oreshkin et al., 2021). Our RGMR framework performs 
+
+inference-time adaptation: it composes multi-resolution proposals and residual corrections with adaptive residual 2Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+weighting, preserving the pre-trained TSFM and avoiding any weight updates. 
+
+## 3. Problem Definition 
+
+We study the task of forecasting the Standardized Precipitation–Evapotranspiration Index (SPEI), a widely used drought index that integrates precipitation and poten-tial evapotranspiration into a single standardized time series. Let {yt}Tt=1 denote the monthly SPEI values at a specific region. We let the multivariate input vector Xt ∈ RD have its first channel set to the historical SPEI value yt and the remaining D−1 channels carry climate covariates, so the model conditions on past targets and past covariates jointly. 
+
+Multi-step forecasting. We consider forecasting the next 
+
+H steps. At forecast origin t, the goal is to predict the next H SPEI values yt+1: t+H ∈ RH . A frozen foundation model fθ maps a length-W context window to an H-step 
+
+base forecast :
+
+bybase  
+
+> t+1: t+H
+
+= fθ
+
+ Xt−W +1: t
+
+, fθ : RW ×D → RH ,
+
+where Xt−W +1: t ∈ RW ×D denotes the multivariate in-put context (with past SPEI as its first channel; see above). The one-step case is recovered by setting H = 1 . RGMR (Section 4) refines this base forecast into a final predic-tion by(K) 
+
+> t+1: t+H
+
+through coarse-to-fine residual correction; throughout the paper, by(k) refers exclusively to RGMR’s level-k refined output. The full notation used throughout the paper is summarized in Appendix A.1 (Table 6). 
+
+Training-time vs. inference-time residuals. RGMR strictly separates residuals used for offline calibration from residuals available at test time. (i) The training residual 
+
+eR(k) = y − ey(k) uses observed targets before test eval-uation, where ey(k) is the level-k short-window proposal defined in Section 4.3; it is used only to fit and validate the Ridge residual predictor. (ii) The predicted residual 
+
+bR(k) = g(k) 
+
+> ϕ
+
+(z(k) 
+
+> t
+
+) is the only residual quantity available at inference, where g(k) 
+
+> ϕ
+
+and its feature vector z(k) 
+
+> t
+
+are spec-ified in Section 4.3. Test targets yt+1: t+H are never read when forming the current correction. 
+
+## 4. Residual-Guided Multi-Resolution Refinement (RGMR) 
+
+4.1. Method Overview 
+
+RGMR is an inference-time framework that adapts frozen 
+
+time-series foundation models through hierarchical residual refinement; Figure 2 summarizes the two-stage workflow. We fix a resolution scale R = {r1 = 12 , r 2 = 6 , r 3 =3, r 4 = 2 , r 5 = 1 } months from coarse to fine. The five strides correspond to roughly annual ( r1=12 ), semi-annual (r2=6 ), seasonal/sub-seasonal ( r3=3 ), bimonthly ( r4=2 ), and the native monthly resolution ( r5=1 ). These match the dominant temporal scales used by climatologists for SPEI analysis (Vicente-Serrano et al., 2010). For each rk,the frozen backbone produces a full-context proposal. Dur-ing offline calibration, we fit lightweight per-level residual predictors on short-window inputs to capture systematic, level-specific errors. At test time, no ground truth is used and no backbone weights are updated. Proposals are refined from coarse to fine by applying the learned residual predic-tors to the long-window proposals, with clipped adaptive weights and a fixed step-size rule. The following subsec-tions detail the projection operator (4.2), residual learning and features (4.3), the inference-time update rule (4.4), and the contraction analysis (4.5). 
+
+4.2. Multi-Resolution Projection Operations 
+
+For each resolution level r ∈ R , we apply temporal projec-tion operations 
+
+Pr = Ur ◦ D r , (1) where Dr downsamples by averaging within non-overlapping length-r segments and Ur upsamples by repeat-ing values. Using zero-based indexing (so ir = i × r) and letting ⌊·⌋ denote the floor operator, we have Dr (x)[ i] = 
+
+> 1
+> r
+
+P(i+1) r−1 
+
+> j=ir
+
+x[j] and Ur (Dr (x))[ j] = Dr (x)[ ⌊j/r ⌋] for complete blocks. If the context length is not divisible by 
+
+r, the final partial block is averaged over its available en-tries and repeated only up to the original sequence length. Thus Pr (Xt−W +1: t) always has length W , and no future padding is introduced. This yields multi-resolution temporal views of the input while preserving cross-channel temporal alignment and remaining O(W ) per level. 
+
+4.3. Residual Pattern Learning 
+
+For each forecast origin t in the offline calibration period and each resolution level k, we query the frozen backbone with a short context to expose level-specific systematic errors: 
+
+ey(k) 
+
+> t+1: t+H
+
+= fθ
+
+ Prk (Xt−Lshort +1: t), (2) and form the training residual eR(k) 
+
+> t+1: t+H
+
+= yt+1: t+H −
+
+ey(k) 
+
+> t+1: t+H
+
+. We set Lshort =12 months, one annual cycle, so that the short-window proposal misses the multi-year cli-mate context the long-window backbone exploits and there-fore exhibits the structured biases (phase, drift, regime) that the residual predictor is asked to recognize. This value is fixed across all sites and is not tuned on test data. For each level k we then fit a closed-form Ridge predictor (Hoerl & Kennard, 1970) g(k) 
+
+> ϕ
+
+(z(k) 
+
+> t
+
+) = Θ(k)⊤z(k) 
+
+> t
+
+that maps a feature vector z(k) 
+
+> t
+
+∈ Rdz to the H-step training residual, 3Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+Figure 2. Two-stage workflow of RGMR. Stage I: Offline calibration learns level-wise residual correction modules from short-window projected inputs. At each resolution level, the frozen foundation model produces a short-window base forecast, and the observed forecast error is used to train a lightweight residual correction module. Feature vectors and training residuals are used to fit the residual predictors and select their validation thresholds. Stage II: At inference time, projected long-context inputs are processed by the frozen foundation model and the fixed residual correction modules. RGMR starts from the coarsest forecast and performs boosting-style coarse-to-fine refinement: at each refinement step, the predicted residual guides the additive correction of the forecast carried from the previous level, producing the final output. Boxes indicate FM, operators or learned models; unboxed quantities represent variables. 
+
+where dz is the feature dimension and Θ(k) ∈ Rdz ×H is the level-k Ridge coefficient matrix, 
+
+Θ(k) = arg min  
+
+> Θ∈Rdz ×H
+
+X
+
+> t∈Train
+
+eR(k) 
+
+> t+1: t+H
+
+− Θ⊤z(k)
+
+> t
+> 22
+
++ λ(k)∥Θ∥2 
+
+> F
+
+.
+
+For each λ(k), Ridge coefficients are fitted on the train-ing split and selected by time-ordered validation (Bergmeir et al., 2018) from the log-grid {10 −4, 10 −3, . . . , 10 2}. Sep-arately, we select a level-wise residual-magnitude thresh-old δ(k) on the validation split, defined as a quantile of validation predicted-residual magnitudes and used as the soft-threshold midpoint in the adaptive residual-weighting gate in Eq. (4) . Using the selected λ(k), the final residual predictor g(k) 
+
+> ϕ
+
+is refit on the union of the training and valida-tion splits; the pair (g(k) 
+
+> ϕ
+
+, δ (k)) is then frozen for test-time inference. No test targets are used for fitting or selection. The feature vector z(k) 
+
+> t
+
+(written zt when the level is clear) concatenates: (i) the most recent plag targets yt−plag +1: t;(ii) rolling mean and standard deviation over the last 12 months; (iii) a linear trend coefficient computed as the ordi-nary least-squares slope of {yt−q+1 , . . . , y t} regressed on 
+
+{1, . . . , q } (we use q=12 ), capturing local low-frequency drift not represented by the rolling mean; (iv) the most re-cent plag inference residuals available at the rolling origin (revealed in chronological order, never future). This keeps the whole residual stage closed-form and lightweight. 
+
+4.4. Inference-Time Iterative Refinement 
+
+At test time, RGMR uses the full context window W (70% of the series length). Let the resolution scale be R = {r1 >
+
+· · · > r K } with r1 the coarsest. We initialize 
+
+¯y(1)  
+
+> t+1: t+H
+
+= fθ
+
+ Pr1 (Xt−W +1: t),
+
+by(1)  
+
+> t+1: t+H
+
+= ¯ y(1)  
+
+> t+1: t+H
+
+. (3) For each subsequent level k = 2 , . . . , K , we query the frozen backbone at resolution rk to obtain a level-k raw (un-refined) forecast , ¯y(k) 
+
+> t+1: t+H
+
+= fθ
+
+ Prk (Xt−W +1: t),where the bar marks a backbone proposal that has not yet been residual-corrected (in contrast to the refined by(k) de-fined below; throughout, y is ground truth, by is the re-fined RGMR output, ey is the offline short-window cali-4Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+bration proposal, and ¯y is the inference-time raw long-window proposal). We then form the predicted residual 
+
+bR(k−1)  
+
+> t+1: t+H
+
+= g(k−1)  
+
+> ϕ
+
+(z(k−1)  
+
+> t
+
+) (no ground-truth residual is accessible at test time). We form adaptive elementwise weights 
+
+ω(k−1) = clip [εmin , 1] 
+
+
+
+σ
+
+
+
+γ
+
+ bR(k−1) − δ(k−1)  
+
+,
+
+(4) with σ(x) = 1 /(1 + e−x). Each ingredient of Eq. (4) has a specific role: (i) the inner term | bR(k−1) | − δ(k−1) mea-sures how far the predicted residual exceeds a validation-selected magnitude threshold δ(k−1) , so corrections only apply where prediction errors are likely large; (ii) σ with small slope γ (default γ=3 .0) acts as a soft threshold that smoothly interpolates between “ignore” and “correct”, avoiding hard cutoffs; (iii) clip [εmin ,1] with εmin =10 −3 both prevents zero weights (which would freeze the forecast at the foundation prediction) and bounds weights by 1 (which prevents overcorrection). The threshold δ(k) is a quantile of 
+
+| bR(k)| selected on validation (grid {0.60 , . . . , 0.90 }; details in App. D). The mixing coefficient is set by the conservative monotone schedule 
+
+α(k) = 0 .3 + 0 .5
+
+
+
+1 − rk
+
+> max( R)
+
+
+
+∈ [0 .3, 0.8] , (5) so that finer-resolution proposals receive a larger anchoring weight than coarser ones, while the correction term still receives at least 20% weight at the finest level. The con-stants 0.3 and 0.5 define a smooth coarse-to-fine ramp. We use a fixed step size η(k) ∈ (0 , 2] (default η(k)=1 .0 in the reported experiments); the analysis below states the corre-sponding non-expansive condition explicitly. Dropping the common horizon subscript t+1: t+H, we then update 
+
+by(k) = α(k) ¯y(k)
+
++  1 − α(k)by(k−1) + η(k) ω(k−1) ⊙ bR(k−1) 
+
+.
+
+(6) This approach progressively corrects errors, integrating multi-resolution backbone proposals with level-specific residual corrections. 
+
+4.5. Theoretical Properties 
+
+We next analyze why RGMR can improve across refinement levels. Under bounded proposal error and bounded residual-prediction noise, each residual-guided update admits an assumption-conditional contraction bound: the previous ex-pected squared error is multiplied by a factor below one, up to an additive noise floor. Our analysis differs from standard contraction and fixed-point treatments (Granas & Dugundji, 2003; Bai et al., 2019) by composing level-specific con-traction operators and absorbing residual-prediction noise as well as short-vs.-long window mismatch into a single bounded-second-moment error term. In particular, e(k−1) 
+
+below absorbs both the prediction noise of the Ridge re-gressor g(k−1)  
+
+> ϕ
+
+and any distribution shift between the short-window training residuals used to fit g(k−1)  
+
+> ϕ
+
+and the refined long-window residuals encountered at inference. 
+
+Theorem 4.1 (Residual-guided contraction) . Define the contraction factor 
+
+ρ(k) = (1 − α(k)) max  
+
+> j
+
+1 − η(k)ω(k−1)  
+
+> j
+
+. (7) 
+
+Suppose bR(k−1) = R(k−1) + e(k−1) , where R(k−1) =
+
+y − by(k−1) is the analysis-only inference residual, with 
+
+E∥e(k−1) ∥22 < ∞, and suppose the level-k proposal error 
+
+u(k) = y − ¯y(k) has finite second moment. If α(k) ∈ (0 , 1) ,
+
+η(k) ∈ (0 , 2] , and ω(k−1)  
+
+> j
+
+∈ [0 , 1] , then ρ(k) < 1 and 
+
+E
+
+h
+
+∥y − by(k)∥22
+
+i
+
+≤ (1 + α(k))( ρ(k))2 E
+
+h
+
+∥y − by(k−1) ∥22
+
+i
+
++ Bk.
+
+(8) 
+
+where Bk collects bounded contributions from the level-k
+
+proposal error and residual-prediction noise. Moreover, since ρ(k) ≤ 1 − α(k), the leading factor satisfies (1 + 
+
+α(k))( ρ(k))2 ≤ (1 + α(k))(1 − α(k))2 < 1, ensuring a strict contraction at each level. (An explicit upper bound for Bk is provided in the appendix.) 
+
+Corollary 4.2 (Finest-level no-harm envelope) . Under the main setting rK = 1 , the direct finest-resolution baseline is exactly the base forecast of Section 3, bybase = ¯ y(K) =
+
+fθ (Xt−W +1: t), which performs no residual correction (no weights or step sizes). Assume ∥y − ¯y(K)∥∞ ≤ ¯BK and 
+
+∥e(K−1) ∥∞ ≤ EK−1. The direct baseline then trivially satisfies ∥y − bybase ∥∞ ≤ ¯BK . If, in addition, 
+
+max  
+
+> j∈[H]
+
+1 − η(K) ω(K−1)  
+
+> j
+
+∥y − by(K−1) ∥∞
+
++ η(K)∥ω(K−1) ∥∞ EK−1 ≤ ¯BK ,
+
+(9) 
+
+then the refined prediction is inside the same ℓ∞ envelope: 
+
+∥y − by(K)∥∞ ≤ ¯BK .
+
+4.6. Algorithm Description 
+
+To operationalize RGMR, we split the procedure into two phases: (1) training lightweight residual predictors using short-window contexts, and (2) inference-time refinement 
+
+over multiple temporal resolutions with the frozen foun-dation model. Algorithm 1 summarizes the training stage, where residual predictors are learned from systematic errors identified on SPEI sequences. Having obtained residual predictors, we apply them at infer-ence time to refine multi-resolution forecasts generated by 5Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+Algorithm 1: RGMR Training: Residual Predictor Learning 
+
+Input: Training series {(Xs, y s)}Ttrain  
+
+> s=1
+
+, validation split, frozen model fθ , short window Lshort =12 ,resolution scale R = {r1, . . . , r K }, horizon H
+
+Output: Level-wise residual predictors and thresholds 
+
+{g(k) 
+
+> ϕ
+
+, δ (k)}K−1 
+
+> k=1
+
+(applied at inference iteration k+1 ) 
+
+> 1
+
+D(k) ← ∅ for all k ∈ { 1, . . . , K −1}; 
+
+> 2
+
+for each forecast origin t in the training split with 
+
+t + H ≤ Ttrain do  
+
+> 3
+
+for k = 1 to K−1 do  
+
+> 4
+
+ey(k) 
+
+> t+1: t+H
+
+← fθ
+
+ Prk (Xt−Lshort +1: t); 
+
+> 5
+
+eR(k) 
+
+> t+1: t+H
+
+← yt+1: t+H − ey(k) 
+
+> t+1: t+H
+
+; 
+
+> 6
+
+z(k) 
+
+> t
+
+← [recent targets, rolling mean/std, OLS linear-trend slope, residual history];  
+
+> 7
+
+D(k) ← D (k) ∪ { (z(k) 
+
+> t
+
+, eR(k) 
+
+> t+1: t+H
+
+)}; 
+
+> 8
+
+for k = 1 to K−1 do  
+
+> 9
+
+Fitting candidate Ridge predictors on the training split and evaluating them on the validation split;  
+
+> 10
+
+Select δ(k) on the validation split using validation predicted-residual magnitudes;  
+
+> 11
+
+Fit the final g(k) 
+
+> ϕ
+
+on the union of the training and validation splits;  
+
+> 12
+
+return {g(k) 
+
+> ϕ
+
+, δ (k)}K−1 
+
+> k=1
+
+;the foundation model. Algorithm 2 describes this process: starting from the coarsest resolution, RGMR progressively integrates finer-resolution predictions, applies the predicted residual as a residual-guided correction, and uses the sta-bility conditions stated in Theorem 4.1 to characterize the expected-error behavior under bounded-noise assumptions. Together, Algorithms 1 and 2 instantiate the RGMR work-flow: the training stage learns systematic level-specific bi-ases on short windows, and the inference stage applies these biases as a residual-guided correction on top of long-window proposals. Under the stated stability and bounded-noise as-sumptions, this yields a contraction-style expected-error bound without retraining the base model. 
+
+4.7. Computational Complexity and Implementation 
+
+Let K = |R| denote the number of resolution levels (in our setup K = 5 ). Per refinement cycle, RGMR performs K
+
+calls to the frozen foundation model fθ (one per level), K−1
+
+residual predictions using a lightweight Ridge regressor, and projection operations whose total cost is linear in the context length. The total cost per forecast origin is therefore 
+
+O(K C θ + K W + ( K−1) Cridge ) , (10) 
+
+Algorithm 2: RGMR Inference: Residual-Guided Multi-Resolution Refinement 
+
+Input: Context Xt−W +1: t; frozen TSFM fθ ; residual predictors and thresholds {g(k) 
+
+> ϕ
+
+, δ (k)}K−1 
+
+> k=1
+
+;resolution scale R = {r1, . . . , r K }; horizon H;mixing schedule α(k) from Eq. (5) 
+
+Output: RGMR final prediction by(K) 
+
+> t+1: t+H
+> 1
+
+¯y(1) ← fθ (Pr1 (Xt−W +1: t)) ; // coarsest raw proposal  
+
+> 2
+
+by(1) ← ¯y(1) ; // initialize refined forecast  
+
+> 3
+
+for k ← 2 to K do  
+
+> 4
+
+¯y(k) ← fθ (Prk (Xt−W +1: t)) ; // level-k raw base proposal  
+
+> 5
+
+z(k−1)  
+
+> t
+
+←
+
+FeatExtract  Xt−W +1: t, by(k−1) , k −1, t ; 
+
+> 6
+
+bR(k−1) ← g(k−1)  
+
+> ϕ
+
+(z(k−1)  
+
+> t
+
+); // predicted residual; no ground truth used  
+
+> 7
+
+ω(k−1) ← clip [εmin , 1] 
+
+
+
+σ γ | bR(k−1) | − δ(k−1)  
+
+;
+
+// Eq. (4)  
+
+> 8
+
+Use fixed step size η(k)=1 .0 (any η(k) ∈ (0 , 2] 
+
+admissible by Thm. 4.1);  
+
+> 9
+
+by(k) ← α(k) ¯y(k) + (1 −α(k)) by(k−1) +
+
+η(k)ω(k−1) ⊙ bR(k−1) ; // Eq. (6)  
+
+> 10
+
+return by(K) 
+
+> t+1: t+H
+
+;where Cθ is the cost of a single fθ forward pass, W is the input window length, and Cridge = O(plag + q) is the per-step cost of residual feature evaluation (using plag lags and a q-step trend) plus a closed-form Ridge prediction. In practice Cridge ≪ Cθ , so the end-to-end runtime is dominated by the K C θ term. The adaptive weighting and fixed step-size update contribute only element-wise operations that are negligible relative to fθ calls. RGMR operates entirely at inference time: there are no pa-rameter updates to fθ , enabling immediate deployment on existing time-series foundation models without retraining. Hyperparameters are kept minimal and use conservative de-faults (e.g., fixed resolution scale R, weight-floor εmin , and step-size range η ∈ (0 , 2] ). When selection is required (e.g., residual-weight threshold quantiles δ(k) or the Ridge penalty 
+
+λ(k)), we employ a single time-ordered validation pass; no test-time peeking or re-training of fθ is involved. The adap-tive weighting mechanism is implemented via element-wise sigmoids and simple clipping, and thus contributes negligi-ble overhead compared to the K forward calls of fθ .6Residual-Guided Multi-Resolution Refinement of Foundation Models             
+
+> Figure 3. RGMR forecast quality and drought-event detection at a representative South Australia site. Left: monthly SPEI timeline with ground truth (black) and RGMR prediction (red); shaded bands indicate SPEI categories ranging from drought conditions at the bottom of the panel to wet conditions at the top. Middle: predicted vs. actual SPEI with y=x(dashed); Pearson r=0 .83 ; point color encodes SPEI. Right: confusion matrix for drought detection at threshold SPEI <−1.0(precision 0.818 , recall 0.500 , F1 0.621 ); cell values are counts and colors reflect relative frequency.
+> Figure 4. South Australia study-area context. The rainfall-decile map is used to illustrate regional rainfall heterogeneity and the 2024 drought context.
+
+## 5. Experiments 
+
+We evaluate whether RGMR improves frozen foundation models for monthly-to-seasonal SPEI forecasting without parameter updates. The study targets overall accuracy against strong baselines, the effect of multi-resolution and residual refinement, the role of adaptive residual weighting, and computational overhead. We use rolling-origin evalua-tion with non-overlapping test windows (step size s = H); all standardization uses training-set statistics. Candidate residual predictors are fitted on the training split and se-lected on validation; after λ(k) and δ(k) are fixed, the final residual predictors are refit on the union of training and validation splits and frozen before test evaluation. Test tar-gets are never accessed at inference. Specifically, at each rolling origin t the prediction uses only observations and in-ference residuals available up to month t; once yt+1: t+H be-comes observed, the corresponding residuals are appended to the residual-history feature store and may be consumed only by strictly later rolling origins, so no target inside the current horizon is used to form the current prediction. Datasets, regions, covariates, and splits are summarized in Appendix C; implementation details and hyperparameters are in Appendix D. Code is available at https://gith ub.com/Wentao-Gao/RGMR_implementation .
+
+5.1. Setup 
+
+We evaluate regional SPEI forecasting across multiple nom-inal climate zones within South Australia (arid, temperate) and decades of records to ensure geographic and climatic diversity; exact regions, time spans, and sample counts are reported in Appendix C. Targets are SPEI at horizons H
+
+months ahead; inputs are multivariate climate covariates and past SPEI within a window of length W .
+
+Study area. We focus on South Australia (as shown in Figure 4) as the study area for two main reasons. First, the region is highly vulnerable to drought and interannual rainfall variability, making seasonal prediction societally important. Second, reliable meteorological records (NCEP– NCAR Reanalysis 1 data (Kalnay et al., 1996)) are available for this region, ensuring reproducibility. Recent reports show that parts of South Australia recorded their driest year on record in 2024, with rainfall totals at multiple locations reaching historic lows between June 2024 and May 2025 (ABC News, 2025b;a). Such severe and prolonged droughts underline the acute need for accurate climate forecasting in the region. 
+
+Baselines and protocol. We compare against frozen founda-tion models, multi-resolution architectures, and generic deep baselines. Foundation-only includes TimesFM (Das et al., 2024), TimeGPT (Garza et al., 2023), and TabPFN (Prior Labs, 2025) on the raw window. Multi-resolution baselines include N-BEATS (Oreshkin et al., 2020) (5 stacks with stan-dard trend/seasonality blocks) and Scaleformer (Shabani et al., 2023) with learned scale selection. Generic deep base-lines used in Table 1 include Transformer (Vaswani et al., 2017), Autoformer (Wu et al., 2021), Crossformer (Zhang & 7Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+Table 1. One-month-ahead SPEI forecasting at three South Australian locations. Best results in bold .                                                                                                                                                                       
+
+> Method Location 1 ( −26 .125 ◦,129 .125 ◦)Location 2 ( −29 .125 ◦,134 .875 ◦)Location 3 ( −35 .625 ◦,138 .875 ◦)MSE ↓MAE ↓R2↑MSE ↓MAE ↓R2↑MSE ↓MAE ↓R2↑
+> Multi-resolution baselines
+> N–BEATS (5 stacks) 0.482 0.497 0.505 0.439 0.525 0.589 0.668 0.590 0.409 Scaleformer 0.472 0.491 0.510 0.445 0.520 0.582 0.662 0.585 0.413
+> Generic deep baselines
+> Transformer 0.537 0.554 0.451 0.510 0.581 0.522 0.745 0.655 0.365 Autoformer 0.546 0.559 0.442 0.547 0.582 0.487 0.752 0.658 0.358 Crossformer 0.542 0.557 0.446 0.474 0.588 0.556 0.740 0.654 0.370 DLinear 0.533 0.551 0.455 0.423 0.553 0.604 0.735 0.650 0.375 FiLM 0.558 0.569 0.430 0.529 0.597 0.505 0.760 0.662 0.350 iTransformer 0.524 0.546 0.464 0.454 0.539 0.575 0.738 0.652 0.372 PatchTST 0.535 0.552 0.453 0.461 0.548 0.568 0.743 0.655 0.366 TimesNet 0.550 0.562 0.438 0.489 0.572 0.542 0.754 0.659 0.356 TSMixer 0.529 0.549 0.459 0.468 0.555 0.561 0.736 0.651 0.374
+> Foundation models and RGMR
+> TabPFN-ts v1.0 0.462 0.503 0.521 0.389 0.445 0.632 0.566 0.562 0.442 TabPFN-ts v1.0 + RGMR 0.344 0.451 0.615 0.305 0.401 0.713 0.452 0.489 0.541 TimeGPT-1 0.437 0.489 0.536 0.351 0.431 0.658 0.543 0.551 0.456 TimeGPT-1 + RGMR 0.325 0.437 0.632 0.278 0.386 0.738 0.431 0.475 0.562 TimesFM v1.0 0.391 0.465 0.564 0.318 0.412 0.687 0.524 0.536 0.469 TimesFM v1.0 + RGMR 0.318 0.423 0.651 0.258 0.334 0.746 0.426 0.436 0.568
+
+Table 2. Ablation of RGMR components on one-month-ahead SPEI forecasting (averaged across three South Australian sites). 
+
+Method TabPFN-ts v1.0 TimeGPT-1 TimesFM v1.0 MSE ↓ MAE ↓ R² ↑ MSE ↓ MAE ↓ R² ↑ MSE ↓ MAE ↓ R² ↑
+
+Foundation Model (frozen) 0.472 0.503 0.532 0.444 0.490 0.550 0.411 0.471 0.573 + Coarse projection only 0.436 0.482 0.570 0.410 0.467 0.590 0.387 0.448 0.604 + Multi-resolution (no refinement) 0.414 0.469 0.592 0.390 0.455 0.615 0.372 0.433 0.627 + RGMR (no weights) 0.380 0.459 0.609 0.360 0.442 0.625 0.341 0.405 0.646 + RGMR (Full) 0.367 0.447 0.623 0.345 0.433 0.644 0.334 0.398 0.655 
+
+Yan, 2023), DLinear (Zeng et al., 2023), FiLM (Zhou et al., 2022), iTransformer (Liu et al., 2024b), PatchTST (Nie et al., 2023), TimesNet (Wu et al., 2023), and TSMixer (Chen et al., 2023). Unless stated otherwise we use the public reference implementations released with each method, gath-ered through the THUML Time-Series-Library (Tsinghua Machine Learning Group, 2024). All methods use identical inputs, splits, and preprocessing; none updates fθ during inference. We report MSE, MAE, and R2 per site. 
+
+5.2. Main Results 
+
+5.2.1. O NE -MONTH -AHEAD SPEI Figure 3 provides an overview of RGMR performance on South Australian SPEI, illustrating both forecasting quality and downstream drought-event detection. Table 1 reports one-month-ahead results at three South Australian locations, including N-BEATS and Scaleformer as multi-resolution baselines. Foundation models (TabPFN, TimeGPT, TimesFM) already outperform generic deep baselines, and applying RGMR on top of TimesFM yields the strongest performance across the reported metrics and sites. Specifically, MSE decreases from 0.391 to 0.318 at Location 1, from 0.318 to 0.258 
+
+at Location 2, and from 0.524 to 0.426 at Location 3. R2
+
+improves consistently. Compared directly with multi-resolution baselines, TimesFM+RGMR achieves lower MSE than both Scale-former and N-BEATS at all sites, with similar gaps across other metrics. These results highlight RGMR’s ability to deliver consistent gains beyond both generic deep baselines and established multi-resolution architectures. Table 2 averages results over the three locations and decom-poses RGMR into its components. Using a single coarse res-olution improves the foundation baselines, multi-resolution without residual refinement brings further gains, residual-guided updates add monotonic improvements, and adaptive residual weights attain the best overall performance. This progression is consistent with our design choices: under the 8Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+bounded-noise assumptions in Theorem 4.1, the per-level update achieves contraction with modulus ρ(k) < 1 when 
+
+η(k) ∈ (0 , 2] and ω(k−1)  
+
+> j
+
+∈ [0 , 1] , and the multi-level behav-ior exhibits geometric decay to a noise floor in line with the contraction analysis. 
+
+5.3. Generalization 
+
+We further evaluate RGMR from three complementary per-spectives: refinement behavior, computational cost, and sensitivity to resolution design, with additional experiments provided in Appendix G, in order to assess both effective-ness and practicality. 5.3.1. S AMPLE -WISE IMPROVEMENT DIAGNOSTIC 
+
+Table 3. Per-level sample-wise improvement diagnostic on the South Australian held-out test set. The “Sample-wise improve-ment ratio” counts how often the per-sample squared error strictly decreases from refinement level k−1 to k.           
+
+> Refinement level kResolution stride rk
+> Sample-wise improvement ratio 2639.7% 3379.4% 4266.2% 5148.5%
+
+To empirically examine the refinement behavior we com-pute, for each refinement level k, the fraction of test origins whose squared error strictly decreases from level k−1 to level k,
+
+1
+
+N
+
+> N
+
+X
+
+> i=1
+
+1 yi − by(k) 
+
+> i
+> 22
+
+< yi − by(k−1)  
+
+> i
+> 22
+
+.
+
+The ratios in Table 3 fall between roughly 40% and 80%, with the largest jump at k=3 . Two clarifications matter. First, at the finest stride r5=1 the level-4 prediction is al-ready close to ground truth on many easy samples, so further refinement is mostly noise-bound; the 48.53% sample-wise rate is therefore consistent with, not a violation of, the the-orem. Second, Theorem 4.1 controls the expected squared error in ℓ2, which is what our aggregated MSE in Tables 1 and 2 verifies, while Table 3 is a per-sample diagnostic. 5.3.2. L ATENCY AND COMPUTATIONAL EFFICIENCY 
+
+Table 4 reports GPU latency measured within the command 
+
+torch.cuda.Event . Despite multiple forward passes, RGMR introduces only ∼60 ms additional overhead, which is negligible for monthly drought forecasting. 5.3.3. S ENSITIVITY TO RESOLUTION SCALE CHOICE 
+
+Table 5 compares five resolution scale variants. RGMR achieves stable performance across all five variants, indicat-ing low sensitivity to the specific resolution-scale choice. 
+
+Table 4. GPU latency per rolling forecast origin on a single RTX 3090.       
+
+> Model Mean (ms) Std (ms) TimesFM v1.0 14.52 2.18 TimesFM v1.0 + RGMR 74.89 5.00
+
+Table 5. Resolution-scale sensitivity at Location 1. We use “res-olution scale” for the ordered set of strides R used during refine-ment, “resolution level” for an individual element of R (indexed 
+
+k = 1 , . . . , K from coarsest to finest), and “stride” for the numeri-cal value rk , consistent with Table 6 (Appendix A.1) and Table 3.                         
+
+> Variant Resolution scale MSE ↓MAE ↓R2↑
+> S1 [12,6,3,2,1] 0.318 0.423 0.651
+> S2 [16,8,4,2,1] 0.324 0.439 0.644 S3 [12,4,2,1] 0.322 0.438 0.645 S4 [12,6,3,1] 0.330 0.443 0.637 S5 [12,6,4,3,1] 0.330 0.443 0.636
+
+## 6. Conclusion 
+
+This paper introduced RGMR, a residual-guided multi-resolution refinement framework that adapts frozen time series foundation models to regional drought forecasting. RGMR iteratively projects predictions across multiple tem-poral scales and corrects them with predicted, test-time, ground-truth-free residuals, allowing the model to capture long-term climate structure and short-term variability with-out updating base model parameters. Under the stated sta-bility and bounded-noise assumptions, our analysis gives a contraction-style bound on the expected squared point-forecast error across refinement levels until reaching a noise-determined floor. The strong benchmark performance sug-gests that RGMR may offer a general and practical direction for adapting frozen time-series foundation models to broader regional climate forecasting tasks. 
+
+## Impact Statement 
+
+This paper aims to advance the use of frozen time-series foundation models for regional climate forecasting, specif-ically drought monitoring via SPEI. The most direct posi-tive consequences are in (i) water-allocation and reservoir-operation planning under prolonged dry spells, (ii) seasonal agricultural and irrigation scheduling in water-limited re-gions, (iii) drought early-warning systems for emergency-resource preparation, and (iv) supporting adaptation plan-ning for regional and remote communities most exposed to climate variability. Because the wrapper does not modify the foundation backbone, it can be retrofitted into existing operational pipelines at low cost. We also acknowledge that any operational forecasting tool can be misused if treated as the sole basis for high-stakes water-rights, insurance, or emergency-response decisions; we therefore advocate using RGMR as one input to a multi-evidence decision process, not as a standalone authority. 9Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+## Acknowledgments 
+
+This work was supported by the ARC Discovery Project DP230101122 and the Adelaide University Research Train-ing Program (RTP) Scholarship. We gratefully acknowl-edge the continued support from the CSIRO Environment Research Unit and the Data61 Business Unit. 
+
+## References 
+
+ABC News. South Australian drought sets low-rainfall records in farming areas. https://www.abc.net. au/news/2025-06-10/south-australia-d rought-sets-low-rainfall-records-far ming-areas/105376286 , 2025a. Accessed: 2025-06-10. ABC News. SA regions record driest years in 2024. https: //www.abc.net.au/news/2025-01-03/sa-r egions-record-driest-years-in-2024/10 4777586 , 2025b. Accessed: 2025-01-03. Ansari, A. F., Stella, L., Turkmen, A. C., et al. Chronos: Learning the language of time series. Transactions on Machine Learning Research , 2024. URL https://op enreview.net/forum?id=gerNCVqqtR .Bai, S., Kolter, J. Z., and Koltun, V. Deep equilibrium mod-els. In Proceedings of Advances in Neural Information Processing Systems (NeurIPS) , volume 32, 2019. Bauer, P., Thorpe, A., and Brunet, G. The quiet revolution of numerical weather prediction. Nature , 525(7567):47–55, 2015. doi: 10.1038/nature14956. Bergmeir, C., Hyndman, R. J., and Koo, B. A note on the validity of cross-validation for evaluating autoregressive time series prediction. Computational Statistics & Data Analysis , 120:70–83, 2018. doi: 10.1016/j.csda.2017.11 .003. Bi, K., Xie, L., Zhang, H., Chen, X., Gu, X., and Tian, Q. Accurate medium-range global weather forecasting with 3D neural networks. Nature , 619(7970):533–538, 2023. doi: 10.1038/s41586-023-06185-3. Brown, T., Mann, B., Ryder, N., et al. Language models are few-shot learners. In Proceedings of Advances in Neural Information Processing Systems (NeurIPS) , volume 33, pp. 1877–1901, 2020. Chen, L., Brun, P., Buri, P., et al. Global increase in the occurrence and impact of multiyear droughts. Science ,387(6731):278–284, 2025. doi: 10.1126/science.ado424 5. Chen, S.-A., Li, C.-L., Yoder, N., Arik, S. O., and Pfister, T. TSMixer: An all-mlp architecture for time series forecasting. Transactions on Machine Learning Research ,2023. Das, A., Kong, W., Sen, R., and Zhou, Y. A decoder-only foundation model for time-series forecasting. In Proceed-ings of the 41st International Conference on Machine Learning (ICML) , volume 235 of Proceedings of Ma-chine Learning Research , pp. 10148–10167, 2024. URL 
+
+https://proceedings.mlr.press/v235/d as24c.html .Gao, Z., Shi, X., Wang, H., et al. Earthformer: Exploring space-time transformers for earth system forecasting. In 
+
+Proceedings of Advances in Neural Information Process-ing Systems (NeurIPS) , volume 35, pp. 25390–25403, 2022. Garza, A., Challu, C., and Mergenthaler-Canseco, M. TimeGPT-1, 2023. URL https://arxiv.org/ abs/2310.03589 .Granas, A. and Dugundji, J. Fixed Point Theory . Springer Monographs in Mathematics. Springer, 2003. ISBN 978-0-387-00173-9. doi: 10.1007/978-0-387-21593-8. Hochreiter, S. and Schmidhuber, J. Long short-term memory. 
+
+Neural Computation , 9(8):1735–1780, 1997. doi: 10.116 2/neco.1997.9.8.1735. Hoerl, A. E. and Kennard, R. W. Ridge regression: Biased estimation for nonorthogonal problems. Technometrics ,12(1):55–67, 1970. doi: 10.1080/00401706.1970.104886 34. Johnson, S. J., Stockdale, T. N., Ferranti, L., Balmaseda, M. A., Molteni, F., Magnusson, L., Tietsche, S., Decre-mer, D., Weisheimer, A., Balsamo, G., Keeley, S. P. E., Mogensen, K., Zuo, H., and Monge-Sanz, B. M. SEAS5: the new ECMWF seasonal forecast system. Geoscien-tific Model Development , 12(3):1087–1117, 2019. doi: 10.5194/gmd-12-1087-2019. Jolliffe, I. T. and Stephenson, D. B. Forecast Verification: A Practitioner’s Guide in Atmospheric Science . John Wiley & Sons, 2003. ISBN 978-0-471-49759-2. Kalnay, E., Kanamitsu, M., Kistler, R., et al. The NCEP/NCAR 40-year reanalysis project. Bulletin of the American Meteorological Society , 77(3):437–471, 1996. doi: 10.1175/1520- 0477(1996)077 ⟨0437: TNYRP ⟩2.0.CO;2. Kirtman, B. P., Min, D., Infanti, J. M., Kinter III, J. L., Paolino, D. A., Zhang, Q., van den Dool, H., Saha, S., Mendez, M. P., Becker, E., et al. The North American multimodel ensemble: Phase-1 seasonal-to-interannual prediction; phase-2 toward developing intraseasonal pre-diction. Bulletin of the American Meteorological Society ,10 Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+95(4):585–601, 2014. doi: 10.1175/BAMS-D-12-00050 .1. Kojima, T., Gu, S. S., Reid, M., Matsuo, Y., and Iwasawa, Y. Large language models are zero-shot reasoners. In Pro-ceedings of Advances in Neural Information Processing Systems (NeurIPS) , volume 35, pp. 22199–22213, 2022. Lam, R., Sanchez-Gonzalez, A., Willson, M., et al. Learning skillful medium-range global weather forecasting. Sci-ence , 382(6677):1416–1421, 2023. doi: 10.1126/science. adi2336. Liang, D., Zhang, H., Yuan, D., Zhang, B., and Zhang, M. Minusformer: Improving time series forecasting by progressively learning residuals, 2024. URL https: //arxiv.org/abs/2402.02332 .Lim, B., Arık, S. ¨O., Loeff, N., and Pfister, T. Temporal fusion transformers for interpretable multi-horizon time series forecasting. International Journal of Forecasting ,37(4):1748–1764, 2021. doi: 10.1016/j.ijforecast.2021. 03.012. Liu, S., Yu, H., Liao, C., Li, J., Lin, W., Liu, A. X., and Dustdar, S. Pyraformer: Low-complexity pyramidal at-tention for long-range time series modeling and forecast-ing. In Proceedings of the International Conference on Learning Representations (ICLR) , 2022a. URL https: //openreview.net/forum?id=0EXmFzUn5I .Liu, X., Yu, S., Yang, Z., Dong, J., and Peng, J. The first global multi-timescale daily SPEI dataset from 1982 to 2021. Scientific Data , 11(1):223, 2024a. doi: 10.1038/s4 1597-024-03047-z. URL https://doi.org/10.1 038/s41597-024-03047-z .Liu, Y., Wu, H., Wang, J., and Long, M. Non-stationary transformers: Exploring the stationarity in time series forecasting. In Proceedings of Advances in Neural Infor-mation Processing Systems (NeurIPS) , 2022b. Liu, Y., Hu, T., Zhang, H., Wu, H., Wang, S., Ma, L., and Long, M. iTransformer: Inverted transformers are effective for time series forecasting. In Proceedings of the International Conference on Learning Representations (ICLR) , 2024b. URL https://openreview.net /forum?id=JePfAI8fah .Liu, Y., Zhang, H., Li, C., Huang, X., Wang, J., and Long, M. Timer: Generative pre-trained transformers are large time series models. In Proceedings of the 41st International Conference on Machine Learning (ICML) , volume 235 of 
+
+Proceedings of Machine Learning Research , pp. 32369– 32399, 2024c. URL https://proceedings.mlr. press/v235/liu24cb.html .Lynch, P. The Emergence of Numerical Weather Prediction: Richardson’s Dream . Cambridge University Press, 2006. ISBN 978-0-521-85729-1. Madaan, A., Tandon, N., Gupta, P., et al. Self-refine: It-erative refinement with self-feedback. In Proceedings of Advances in Neural Information Processing Systems (NeurIPS) , volume 36, 2023. Marshall, G. J. Trends in the Southern Annular Mode from observations and reanalyses. Journal of Climate , 16(24): 4134–4143, 2003. doi: 10.1175/1520-0442(2003)016 ⟨41 34:TITSAM ⟩2.0.CO;2. Mukherjee, S., Mishra, A., and Trenberth, K. E. Climate change and drought: a perspective on drought indices. 
+
+Current Climate Change Reports , 4(2):145–163, 2018. doi: 10.1007/s40641-018-0098-x. Nandgude, N., Singh, T. P., Nandgude, S., and Tiwari, M. Drought prediction: A comprehensive review of different drought prediction models and adopted technologies. Sus-tainability , 15(15):11684, 2023. ISSN 2071-1050. doi: 10.3390/su151511684. Nie, Y., Nguyen, N. H., Sinthong, P., and Kalagnanam, J. A time series is worth 64 words: Long-term forecasting with transformers. In Proceedings of the International Conference on Learning Representations (ICLR) , 2023. URL https://openreview.net/forum?id= Jbdc0vTOcol .Oreshkin, B. N., Carpov, D., Chapados, N., and Bengio, Y. N-BEATS: Neural basis expansion analysis for inter-pretable time series forecasting. In Proceedings of the International Conference on Learning Representations (ICLR) , 2020. URL https://openreview.net/f orum?id=r1ecqn4YwB .Oreshkin, B. N., Carpov, D., Chapados, N., and Bengio, Y. Meta-learning framework with applications to zero-shot time-series forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) , volume 35, pp. 9242–9250, 2021. doi: 10.1609/aaai.v35i10.17115. Palmer, T. N. Nonlinear dynamics and climate change: Rossby’s Legacy. Bulletin of the American Meteorologi-cal Society , 79(7):1411–1423, 1998. doi: 10.1175/1520 -0477(1998)079 ⟨1411:NDACCR ⟩2.0.CO;2. Prior Labs. tabpfn-time-series: Time-series forecasting with TabPFN. https://github.com/PriorLabs/t abpfn-time-series , 2025. Public adapter for using TabPFN in time-series forecasting. Rasul, K., Ashok, A., Williams, A. R., et al. Lag-Llama: Towards foundation models for probabilistic time series forecasting, 2024. URL https://arxiv.org/ab s/2310.08278 .11 Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+Saji, N. H., Goswami, B. N., Vinayachandran, P. N., and Yamagata, T. A dipole mode in the tropical Indian Ocean. 
+
+Nature , 401(6751):360–363, 1999. doi: 10.1038/43854. Schultz, M. G., Betancourt, C., Gong, B., Kleinert, F., Langguth, M., Leufen, L. H., Mozaffari, A., and Stadtler, S. Can deep learning beat numerical weather prediction? 
+
+Philosophical Transactions of the Royal Society A: Math-ematical, Physical and Engineering Sciences , 379(2194): 20200097, 2021. doi: 10.1098/rsta.2020.0097. Shabani, M. A., Abdi, A. H., Meng, L., and Sylvain, T. Scaleformer: Iterative multi-scale refining transformers for time series forecasting. In Proceedings of the Interna-tional Conference on Learning Representations (ICLR) ,2023. URL https://openreview.net/forum ?id=sCrnllCtjoE .Shinn, N., Cassano, F., Berman, E., et al. Reflexion: Lan-guage agents with verbal reinforcement learning. In Pro-ceedings of Advances in Neural Information Processing Systems (NeurIPS) , volume 36, 2023. Sun, Y., Wang, X., Liu, Z., Miller, J., Efros, A. A., and Hardt, M. Test-time training with self-supervision for generalization under distribution shifts. In Proceedings of the 37th International Conference on Machine Learning (ICML) , volume 119 of Proceedings of Machine Learning Research , pp. 9229–9248, 2020. URL https://proc eedings.mlr.press/v119/sun20b.html .Tan, X., Zhao, Q., Liu, Y., and Zhang, X. DroughtSet: Un-derstanding drought through spatial-temporal learning. In 
+
+Proceedings of the AAAI Conference on Artificial Intelli-gence (AAAI) , volume 39, pp. 28440–28448, 2025. doi: 10.1609/aaai.v39i27.35066. Trenberth, K. E. The definition of El Ni ˜no. Bulletin of the American Meteorological Society , 78(12):2771–2777, 1997. doi: 10.1175/1520-0477(1997)078 ⟨2771:TDOE NO ⟩2.0.CO;2. Trenberth, K. E., Dai, A., van der Schrier, G., Jones, P. D., Barichivich, J., Briffa, K. R., and Sheffield, J. Global warming and changes in drought. Nature Climate Change ,4(1):17–22, 2014. doi: 10.1038/nclimate2067. Tsinghua Machine Learning Group. Time-series-library: A library for advanced deep time series models. https:// github.com/thuml/Time-Series-Library ,2024. Accessed: 2026-05-07. Vaswani, A., Shazeer, N., Parmar, N., et al. Attention is all you need. In Proceedings of Advances in Neural Information Processing Systems (NeurIPS) , volume 30, 2017. Vicente-Serrano, S. M., Beguer ´ıa, S., and L ´opez-Moreno, J. I. A multiscalar drought index sensitive to global warm-ing: The Standardized Precipitation Evapotranspiration Index. Journal of Climate , 23(7):1696–1718, 2010. doi: 10.1175/2009JCLI2909.1. Vicente-Serrano, S. M., Dom ´ınguez-Castro, F., Murphy, C., et al. Long-term variability and trends in meteorological droughts in Western Europe (1851–2018). International Journal of Climatology , 41(S1):E690–E717, 2020. doi: 10.1002/joc.6719. Wang, H., Peng, J., Huang, F., Wang, J., Chen, J., and Xiao, Y. MICN: Multi-scale local and global context modeling for long-term series forecasting. In Proceedings of the International Conference on Learning Representations (ICLR) , 2023. URL https://openreview.net/f orum?id=zt53IDUR1U .Wang, S., Wu, H., Shi, X., Hu, T., Luo, H., Ma, L., Zhang, J. Y., and Zhou, J. TimeMixer: Decomposable multiscale mixing for time series forecasting. In Proceedings of the International Conference on Learning Representations (ICLR) , 2024. URL https://openreview.net/f orum?id=7oLshfEIC2 .Wei, J., Wang, X., Schuurmans, D., et al. Chain-of-thought prompting elicits reasoning in large language models. In 
+
+Proceedings of Advances in Neural Information Process-ing Systems (NeurIPS) , volume 35, pp. 24824–24837, 2022. Wu, H., Xu, J., Wang, J., and Long, M. Autoformer: Decom-position transformers with auto-correlation for long-term series forecasting. In Proceedings of Advances in Neural Information Processing Systems (NeurIPS) , 2021. URL 
+
+https://openreview.net/forum?id=I55U qU-M11y .Wu, H., Hu, T., Liu, Y., Zhou, H., Wang, J., and Long, M. Timesnet: Temporal 2D-variation modeling for general time series analysis. In Proceedings of the International Conference on Learning Representations (ICLR) , 2023. URL https://openreview.net/forum?id= ju_Uqw384Oq .Yao, S., Yu, D., Zhao, J., et al. Tree of thoughts: Deliberate problem solving with large language models. In Pro-ceedings of Advances in Neural Information Processing Systems (NeurIPS) , volume 36, 2023. Zeng, A., Chen, M., Zhang, L., and Xu, Q. Are transformers effective for time series forecasting? In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) ,volume 37, pp. 11121–11128, 2023. doi: 10.1609/aaai.v 37i9.26317. 12 Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+Zhang, Y. and Yan, J. Crossformer: Transformer utilizing cross-dimension dependency for multivariate time series forecasting. In Proceedings of the International Confer-ence on Learning Representations (ICLR) , 2023. URL 
+
+https://openreview.net/forum?id=vSVL M2j9eie .Zhou, H., Zhang, S., Peng, J., Zhang, S., Li, J., Xiong, H., and Zhang, W. Informer: Beyond efficient transformer for long sequence time-series forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence (AAAI) ,volume 35, pp. 11106–11115, 2021. doi: 10.1609/aaai.v 35i12.17325. URL https://ojs.aaai.org/ind ex.php/AAAI/article/view/17325 .Zhou, T., Ma, Z., Wang, X., Wen, Q., Sun, L., Yao, T., Yin, W., and Jin, R. FiLM: Frequency improved Legendre memory model for long-term time series forecasting. In 
+
+Proceedings of Advances in Neural Information Process-ing Systems (NeurIPS) , 2022. 13 Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+## A. Notation and Projection Operators 
+
+A.1. Notation 
+
+Table 6 summarizes the main notation used in the paper; auxiliary symbols introduced only locally (e.g., Ttrain , D(k), Cθ ,and Cridge ) are defined at their first use in the algorithms or complexity discussion. Conventions: dimensions are stated explicitly; level-indexed prediction and residual quantities are vectors in RH at a fixed forecast origin t.
+
+Table 6. Summary of the main notation used in the paper. 
+
+Symbol Meaning 
+
+Inputs, targets, and backbone 
+
+T length of the full SPEI series (months) 
+
+W full inference context length passed to fθ
+
+Lshort short context length used during offline calibration to fit residual predictors (default 12 months) 
+
+D feature dimension of Xt (past SPEI plus climate covariates) 
+
+H forecast horizon ( H=1 in the main results) 
+
+Xt ∈ RD input vector at time t; first channel is the historical SPEI value yt, remaining D−1 channels are climate covariates 
+
+Xt−W +1: t ∈ RW ×D multivariate input window ending at the forecast origin t (training-split standardization) 
+
+yt+1: t+H ∈ RH target SPEI vector for the next H months 
+
+fθ frozen TSFM backbone (no parameter updates at inference) 
+
+Resolution scale and projections 
+
+R = {r1 > · · · > r K } resolution scale from coarse to fine; K = |R| , rK =1 is the native finest level (main setting: R =
+
+{12 , 6, 3, 2, 1})
+
+Dr , Ur block-average down-projection / repeat up-projection at stride r
+
+Pr = Ur ◦D r projection operator at stride r (used for both training and inference proposals) 
+
+Predictions and residuals (training- vs. inference-time) 
+
+¯y(k) ∈ RH level-k raw (un-refined) base proposal at inference: ¯y(k) = fθ (Prk (Xt−W +1: t)) ; the bar marks a backbone proposal that has not yet been residual-corrected 
+
+by(k) ∈ RH refined prediction at inference after refinement level k, with by(1) =¯ y(1) ; the final RGMR output is by(K)
+
+bybase ∈ RH single-pass base forecast from fθ on the full W -context: bybase = fθ (Xt−W +1: t); introduced in Section 3, and (since rK =1 in the main setting) it coincides with ¯y(K) and serves as the no-RGMR direct baseline in Corollary 4.2 
+
+ey(k) ∈ RH short-window proposal computed during offline calibration: ey(k) = fθ (Prk (Xt−Lshort +1: t)) 
+
+eR(k) ∈ RH training residual: eR(k) = y − ey(k) (used before test evaluation; uses observed ground truth only from the training/validation periods) 
+
+bR(k) ∈ RH predicted residual at inference: bR(k) = g(k) 
+
+> ϕ
+
+(z(k) 
+
+> t
+
+). The only residual quantity available at test time; ground truth yt+1: t+H is never accessed. 
+
+R(k) ∈ RH inference residual w.r.t. ground truth: R(k) = y − by(k); an analysis-only quantity and the target of the residual predictor g(k) 
+
+> ϕ
+
+. Never accessed by the algorithm at test time. 
+
+e(k) ∈ RH residual-prediction error of g(k) 
+
+> ϕ
+
+: bR(k) = R(k) + e(k), zero-mean with bounded second moment; it includes Ridge prediction noise and short-vs.-long window mismatch 
+
+u(k) ∈ RH level-k proposal error: u(k) = y − ¯y(k)
+
+g(k) 
+
+> ϕ
+
+, Θ(k) level-k Ridge residual predictor and its coefficient matrix Θ(k) ∈ Rdz ×H ; fitted on the training split for validation selection and refit on training+validation before test inference 
+
+z(k) 
+
+> t
+
+∈ Rdz feature vector for the level-k residual predictor (written zt when k is clear): concatenation of (i) most recent targets, (ii) rolling mean/std, (iii) OLS linear-trend slope, and (iv) most recent inference-residual lags 
+
+plag number of lagged target and residual values used in z(k) 
+
+> t
+
+(default 6)
+
+Update parameters and stability quantities 
+
+ω(k) ∈ [0 , 1] H adaptive elementwise residual weight vector at level k: ω(k) = clip [εmin ,1] (σ(γ(| bR(k)| − δ(k)))) 
+
+γ sigmoid sharpness (small constant, default 3.0)
+
+δ(k) validation-selected quantile of | bR(k)| used as the soft-threshold midpoint 
+
+εmin weight floor for numerical stability (default 10 −3)
+
+α(k) ∈ (0 , 1) mixing coefficient at level k (monotone increasing in 1/r k ; main schedule α(k) = 0 .3 + 0 .5(1 −
+
+rk / max R))
+
+η(k) ∈ (0 , 2] fixed step size at level k (default 1.0 in the reported experiments) 
+
+ρ(k) contraction factor at level k, ρ(k) = (1 − α(k)) max j |1 − η(k)ω(k−1)  
+
+> j
+
+|; induced by α, η, ω rather than separately tuned 
+
+Bk bounded additive error term at level k (proposal error and residual-prediction noise; explicit upper bound in App. B) 
+
+¯BK deterministic ℓ∞ upper bound on the level-K backbone error, ∥y − ¯y(K)∥∞ ≤ ¯BK ; used in the finest-level no-harm envelope of Corollary 4.2 (distinct from the expectation-ℓ2 quantity Bk in Theorem 4.1) 
+
+σ2 
+
+> e
+
+validation upper bound on E∥e(k)∥22 (residual-prediction noise floor) 
+
+EK−1 uniform ℓ∞ bound on e(K−1) used in Corollary 4.2 
+
+Ω(k) Diag( ω(k))
+
+14 Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+Conventions. ∥ · ∥ 2 is the Euclidean norm for vectors and the spectral (operator) norm for matrices. ⊙ is the elementwise (Hadamard) product. Diag( v) forms a diagonal matrix from the entries of v. σ(x) = 1 /(1 + e−x) is the standard logistic. 
+
+Unification note. The validation-selected residual-magnitude threshold is denoted δ(k) throughout the paper; the logistic uses 
+
+σ(x) = 1 /(1 + e−x) with fixed sharpness γ = 3 .0; weights are clipped elementwise to [εmin , 1] with εmin > 0 by default. 
+
+A.2. Projection used in the main experiments (simple average & repeat) 
+
+All main results use the simple projection 
+
+Pr = Ur ◦ D r ,
+
+where Dr averages non-overlapping blocks of length r and Ur repeats each block average r times. If the context length is not divisible by r, the final partial block is averaged over its available entries and repeated only up to the original sequence length, so no future padding is used. All channels share the same timing to preserve cross-channel coherence. This projection is deterministic, lightweight ( O(W ) per level), and is used throughout the paper and all ablations unless stated otherwise. 
+
+Lemma A.1 (Boundedness of the simple projection) . Let Dr be block-averaging (row-stochastic) and Ur be repeat-upsampling. Then ∥D r ∥2 ≤ 1, ∥U r ∥2 ≤ √r, and hence ∥P r ∥2 = ∥U r Dr ∥2 ≤ ∥U r ∥2∥D r ∥2 ≤ √r. Moreover, because Pr
+
+replaces each block by its within-block mean, it is an idempotent orthogonal projection onto the block-constant subspace, and therefore ∥P r ∥2 ≤ 1.
+
+## B. Proofs and Technical Details 
+
+B.1. RGMR update and residual recursion 
+
+Throughout this appendix, K denotes the final refinement level (corresponding to the finest resolution stride rK =1 ). We restate the RGMR update from Section 4 (suppressing the origin index t for clarity): 
+
+by(k) = α(k) ¯y(k) + (1 − α(k))
+
+by(k−1) + η(k) ω(k−1) ⊙ bR(k−1) 
+
+, k ≥ 2, by(1) = ¯ y(1) . (11) For the analysis, we view the frozen residual predictor used at level k−1 as an estimator of the current inference residual; any mismatch between the short-window residuals used to train the Ridge predictor and the long-window refined residual at inference is included in the residual-prediction error term. Here the predicted residual is decomposed as bR(k−1) =
+
+R(k−1) + e(k−1) with R(k−1) = y − by(k−1) and e(k−1) denoting residual-prediction error (zero mean, bounded second moment). Let Ω(k−1) = Diag( ω(k−1) ). Subtracting (11) from y yields the residual recursion 
+
+R(k) = (1 − α(k)) I − η(k)Ω(k−1) R(k−1) − (1 − α(k))η(k)Ω(k−1) e(k−1) + α(k) (y − ¯y(k))
+
+| {z }
+
+u(k)
+
+. (12) 
+
+Lemma B.1 (Diagonal operator norm identity) . If D is diagonal with entries in [0 , 1] and η > 0, then I − ηD 2 =max j |1 − ηD jj |.Proof. I − ηD is diagonal; its spectral norm equals the largest absolute diagonal entry. 
+
+B.2. Proof of Theorem 4.1 
+
+Define 
+
+M (k) = (1 − α(k))( I − η(k)Ω(k−1) ), N (k) = −(1 − α(k))η(k)Ω(k−1) , v(k) = α(k)u(k).
+
+Then (12) can be written as R(k) = M (k)R(k−1) + N (k)e(k−1) + v(k). In the following, expectations are taken over the residual-prediction error e(k−1) , conditional on the fixed context and the resulting adaptive weights at the forecast origin; hence M (k), N (k), v (k) are treated as fixed inside E[·].By Lemma B.1, 
+
+∥M (k)∥2 = (1 − α(k)) I − η(k)Ω(k−1)  
+
+> 2
+
+= (1 − α(k)) max  
+
+> j
+
+|1 − η(k)ω(k−1)  
+
+> j
+
+| =: ρ(k).
+
+15 Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+With α(k) ∈ (0 , 1) , η(k) ∈ (0 , 2] , and ω(k−1)  
+
+> j
+
+∈ [0 , 1] , we have |1 − η(k)ω(k−1)  
+
+> j
+
+| ≤ 1, hence ρ(k) ≤ 1 − α(k) < 1.Next, use the two-parameter Young inequality twice: for any δ1, δ 2 > 0 and vectors u, v, w ,
+
+∥u + v + w∥22 ≤ (1 + δ1)∥u∥22 + (1 + 1 
+
+> δ1
+
+)(1 + δ2)∥v∥22 + (1 + 1 
+
+> δ1
+
+)(1 + 1 
+
+> δ2
+
+)∥w∥22.
+
+Apply this to u = M (k)R(k−1) , v = N (k)e(k−1) , w = v(k), take expectations, and bound norms: 
+
+E∥R(k)∥22 ≤ (1 + δ1)∥M (k)∥22 E∥R(k−1) ∥22 + (1 + 1 
+
+> δ1
+
+)(1 + δ2)∥N (k)∥22 E∥e(k−1) ∥22
+
++ (1 + 1 
+
+> δ1
+
+)(1 + 1 
+
+> δ2
+
+)∥v(k)∥22.
+
+Explicit, level-adaptive constants. Choose δ1 = α(k), δ 2 = 1 . Then 
+
+(1 + δ1)∥M (k)∥22 = (1 + α(k))( ρ(k))2 ≤ (1 + α(k))(1 − α(k))2 = 1 − α(k) − (α(k))2 + ( α(k))3 < 1,
+
+so the leading factor remains a strict contraction. Moreover, 
+
+∥N (k)∥2 ≤ (1 − α(k))η(k)∥Ω(k−1) ∥2 ≤ (1 − α(k))η(k), ∥v(k)∥2 = α(k)∥u(k)∥2.
+
+Hence we obtain 
+
+E∥R(k)∥22 ≤ (1 + α(k))( ρ(k))2| {z } 
+
+> <1
+
+E∥R(k−1) ∥22 + Bk, (13) with the explicit bound 
+
+Bk ≤ 2
+
+
+
+1 + 1
+
+> α(k)
+
+
+
+(1 − α(k))2(η(k))2 σ2 
+
+> e
+
++ 2 
+
+
+
+1 + 1
+
+> α(k)
+
+
+
+(α(k))2 E∥u(k)∥22, (14) where σ2 
+
+> e
+
+upper-bounds the conditional second moment of e(k−1) (estimated on validation), i.e., σ2 
+
+> e
+
+≥ E∥e(k−1) ∥22 under the above conditioning. This proves Theorem 4.1 with fully spelled-out constants. 
+
+Modeling note (Ridge ⇒ bounded noise). In code, e(k−1) is precisely the prediction error of the (deterministic) Ridge regressor g(k−1)  
+
+> ϕ
+
+. Treating it as zero-mean with bounded second moment is a standard simplifying assumption for contraction-style analyses; the variance proxy σ2 
+
+> e
+
+is estimated on validation. 
+
+B.3. Proof of Corollary 4.2 
+
+Proof. We proceed in three steps. 
+
+Step 1: Invoke the per-level bound at level K. By the update rule and the non-expansive step-size condition in Section 4.5, the level-K prediction satisfies the per-level ℓ∞ bound 
+
+∥y − by(K)∥∞ ≤ (1 − α(K)) max  
+
+> j∈[H]
+
+1 − η(K) ω(K−1) 
+
+> j
+
+| {z }
+
+> non-expansive factor
+
+∥y − by(K−1) ∥∞
+
++ α(K) ¯BK + (1 − α(K)) η(K) ∥ω(K−1) ∥∞ EK−1.
+
+(15) This is exactly the k=K instance of the general per-level inequality in Section 4.5, obtained by: (i) subtracting y from the level-K update, (ii) decomposing the residual prediction as bR(K−1) = R(K−1) + e(K−1) with ∥e(K−1) ∥∞ ≤ EK−1,(iii) applying the operator norm identity ∥I − η(K)Diag( ω(K−1) )∥∞→∞ = max j |1 − η(K)ω(K−1)  
+
+> j
+
+|, and (iv) using 
+
+∥a ⊙ b∥∞ ≤ ∥ a∥∞∥b∥∞ together with the backbone error bound ∥y − ¯y(K)∥∞ ≤ ¯BK .
+
+Step 2: Upper bound for the direct finest-level baseline. By the definition of ¯BK (the ℓ∞ upper bound on the level-K
+
+backbone error), the direct one-pass baseline obeys 
+
+∥y − bybase ∥∞ = ∥y − ¯y(K)∥∞ ≤ ¯BK . (16) 16 Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+Step 3: Sufficient condition for the refined envelope. Starting from (15) , it is sufficient that the remaining two terms are together no larger than ¯BK , i.e., 
+
+max  
+
+> j∈[H]
+
+1 − η(K) ω(K−1)  
+
+> j
+
+∥y − by(K−1) ∥∞ + η(K)∥ω(K−1) ∥∞ EK−1 ≤ ¯BK . (17) Under (17), inequality (15) yields 
+
+∥y − by(K)∥∞ ≤ α(K) ¯BK +   ¯BK − α(K) ¯BK
+
+ = ¯BK ,
+
+which, together with (16), gives the envelope claim of Corollary 4.2. 
+
+B.4. Complexity and bound on Pr
+
+For Pr = Ur ◦ D r (block average + repeat), each level costs O(W ) per window; Ridge inference is negligible compared to a single fθ call. The total cost per forecast origin is O(|R| · Cθ + |R| · W + ( |R|− 1) Cridge ), where Cθ is the cost of one call to fθ and Cridge is the lightweight residual-prediction cost. The operator Pr is bounded because block averaging followed by repeat is an idempotent non-expansive projection, so ∥P r ∥2 ≤ 1 over the fixed resolution scale. 
+
+## C. Datasets, Regions, Covariates, and Splits 
+
+Regions and time span. We evaluate regional SPEI forecasting at three representative sites in South Australia. Table 7 lists coordinates, nominal climate zones, coverage, and sample counts. Coordinates refer to the center of the grid cell used to extract both covariates and the target series. The series is sampled at monthly temporal resolution from 1982/01 to 2018/12, yielding 444 months per site.  
+
+> Table 7. Regions, climate zones, coverage, and sample counts at monthly resolution.
+
+Region ID Coordinates (lat, lon) Climate zone Years covered Total samples SA-1 (−26 .125 , 129 .125) Arid 1982 to 2018 444 SA-2 (−29 .125 , 134 .875) Arid and seasonal 1982 to 2018 444 SA-3 (−35 .625 , 138 .875) Temperate 1982 to 2018 444 
+
+Target and data sources. The forecasting target is SPEI-30 , the Standardized Precipitation–Evapotranspiration Index computed using a 30-day accumulation window (Vicente-Serrano et al., 2010; Liu et al., 2024a). In this study, SPEI-30 is obtained from the global daily SPEI dataset (SPEI-GD) (Liu et al., 2024a), which provides daily SPEI at 0.25 ◦ spatial resolution for multiple accumulation timescales, including 5, 30, 90, 180, and 360 days. To align the daily SPEI-GD target with the monthly forecasting setting, we retain the last available daily SPEI-30 value in each calendar month; each monthly time stamp therefore represents the SPEI value accumulated over the preceding 30 days up to the end of that month. Positive values indicate wetter than normal conditions and negative values indicate drier than normal conditions. Target values are extracted at the study cell centers in Table 7. Meteorological covariates are taken from the NCEP–NCAR Reanalysis 1 (Kalnay et al., 1996) as monthly fields on their native grids. These grids are variable-dependent: some variables are provided on regular 2.5◦ × 2.5◦ latitude–longitude grids, while others are provided on T62 Gaussian grids with an approximate spatial resolution of 1.875 ◦. For each study location, NCEP–NCAR variables are sampled from the nearest native grid cell or bilinearly interpolated to the site coordinates as needed. Large-scale climate indices are obtained from public operational releases, including the Ni ˜no 1+2, Ni ˜no 3.4, and Ni ˜no 4 indices for ENSO (Trenberth, 1997), the Dipole Mode Index (DMI) for the Indian Ocean Dipole (Saji et al., 1999), and the Southern Annular Mode (SAM) index (Marshall, 2003). All sources are publicly available. The SPEI-GD product is accessible at https: //doi.org/10.5281/zenodo.8060268 . NCEP–NCAR Reanalysis 1 documentation and downloads are available from NOAA PSL at https://www.psl.noaa.gov/data/gridded/data.ncep.reanalysis.html .Public climate indices are available from operational centers such as NOAA CPC. 
+
+Rolling origin evaluation and splits. We use a rolling-origin evaluation with non-overlapping test origins. For each site, the 444 monthly observations from 1982/01 to 2018/12 are split chronologically into training, validation, and test periods 17 Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+with a ratio of 70% /10% /20% , using split boundaries at the 70% and 80% points of each chronological series. Candidate residual predictors are fitted on the training split and selected by time-ordered validation; after λ(k) and δ(k) are fixed, the final residual predictors are refit on the union of the training and validation splits and then frozen for test-time inference. The final test period is held out for reporting. The step between consecutive test origins equals the forecast horizon. The main text focuses on H=1 , and Appendix G additionally reports H ∈ { 1, 3, 6} at Location 1. Per-channel standardization is fit on the training span only and applied unchanged to validation and test. No information from test targets is used in preprocessing, covariate construction, fitting, or selection. The resolution scale and all hyperparameters are held fixed across regions and splits with no retuning. 
+
+Preprocessing and quality control. Within channel missing values are linearly interpolated. Terminal gaps of at most two months are back filled or forward filled. After standardization, values beyond five median absolute deviations are clipped to the nearest bound. Calendar alignment ensures that the last index in each input window coincides with the forecast origin month. 
+
+Evaluation protocol. For each region and each horizon, we summarize the rolling-origin forecasts using MSE, MAE, and 
+
+R2 over the corresponding test span. The foundation baseline, the resolution scale, weighting rule, and step-size setting are identical to those used in the main text. 
+
+Data availability and licensing. All datasets used in this study are publicly available from the sources listed under “Target and data sources” above: SPEI-GD via Zenodo, NCEP–NCAR Reanalysis 1 via NOAA PSL, and the large-scale climate indices from operational centers. All series are obtained from public endpoints and do not require bespoke access. 
+
+Computing environment and runtime. Experiments are run on a single workstation equipped with an NVIDIA GeForce RTX 3090 graphics processor with 24 GB of memory, an Intel 12700K central processor, 64 GB of DDR4 3200 memory, and a 2 TB NVMe solid state drive. The operating system is Ubuntu 20.04.3 LTS. The software stack uses Python 3.10 with PyTorch 2.0.1 with CUDA 11.8, NumPy 1.24.3, Pandas 2.0.2, and Scikit learn 1.2.2. Random seeds are fixed for NumPy and PyTorch so that runs are deterministic where supported. The code repository includes configuration files and single command scripts that reproduce all scores and figures reported in the paper without retuning. 
+
+## D. Implementation Details and Hyperparameters 
+
+Conventions (global). All normalization statistics and residual predictors follow the leakage-safe protocol of App. C: statistics are computed on the training split only, hyperparameters (e.g., δ(k) and λ(k)) are selected on validation, and the predictors are then refit on training+validation and frozen before test evaluation. 
+
+D.1. Projection operator, windowing, and boundary handling (main) 
+
+Unless marked otherwise, all experiments use the simple projection Pr = Ur ◦ D r exactly as defined in App. A.2 (block averaging, repeat upsampling, partial-block handling without future padding, and shared cross-channel timing), so 
+
+Pr (Xt−W +1: t) always has length W .
+
+Context windowing. At inference, the long context length is set to W = ⌊0.7 T ⌋ (where T is the available series length at prediction time) so that the base TSFM receives a stable long-range context; the short window for learning residuals is defined in the original temporal resolution (Sec. 4), while the per-level stride rk only determines the effective number of downsampled observations, and is independent of W .
+
+Inference-time availability. Under the rolling-origin evaluation protocol, the plag residual lags in block (iv) are computed only from past revealed ground truth: once yt becomes observed at a later origin, we update the residual-history buffer with ehist  
+
+> t
+
+= yt − by(K) 
+
+> t
+
+for use by strictly later forecast origins (distinct from the analysis-only inference residual R(k) in Sec. 4.5), so no target inside the current horizon is consumed by the current prediction. The Ridge penalty λ(k) is selected by time-ordered validation on the log-grid {10 −4, 10 −3, . . . , 10 2}.18 Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+D.2. Residual-adaptive weighting and step size Residual-adaptive weighting. At level k, elementwise weights are 
+
+ω(k) = clip [εmin ,1] 
+
+
+
+σ γ | bR(k)| − δ(k) 
+
+, σ(x) = 11+ e−x ,
+
+where the logistic sharpness γ=3 .0 is fixed (as in Sec. 4), δ(k) is a validation-selected quantile of the absolute residual magnitude at level k (quantile grid {0.60 , 0.70 , 0.75 , 0.80 , 0.85 , 0.90 } unless stated), and εmin > 0 prevents zero weights. 
+
+Step size. All refinement levels k = 2 , . . . , K are executed, matching Algorithm 2. We use the fixed step size η(k) = 1 .0
+
+in the reported experiments; the analysis permits any η(k) ∈ (0 , 2] under the assumptions stated in Theorem 4.1. This setting is not treated as an independent ablation. 
+
+D.3. Default hyperparameters and ranges  
+
+> Table 8. Default hyperparameters and ranges (used unless stated otherwise).
+
+Parameter Default Range/Selection Resolution scale R {12 , 6, 3, 2, 1} fixed 
+
+Logistic sharpness (fixed) 3.0 fixed constant (matches main text) Weight threshold δ(k) val-quantile grid {0.60 , . . . , 0.90 } (per level k)
+
+Weight floor εmin 10 −3 fixed Step size η(k) 1.0 fixed in reported experiments; theory allows (0 , 2] 
+
+Mixing α(k) formula below implied in [0 .3, 0.8] 
+
+Residual lags plag 6 {3, 6}
+
+Trend window q 12 {6, 12 }
+
+Ridge penalty λ(k) CV-selected {10 −4, 10 −3, . . . , 10 2} (time-ordered CV) 
+
+D.4. Mixing coefficient (monotone coarse →fine) 
+
+The mixing coefficient increases with finer resolutions and satisfies 0 < α (k) < 1:
+
+α(k) = 0 .3 + 0 .5
+
+
+
+1 − rk
+
+max( R)
+
+
+
+,
+
+where rk is the current stride and max( R) = 12 for R = {12 , 6, 3, 2, 1}, yielding α(k) ∈ [0 .3, 0.8] . This choice aligns with the theory by placing more trust on finer-resolution proposals while retaining contraction. 
+
+D.5. Remarks on hyperparameter economy 
+
+RGMR uses a small set of hyperparameters with default values (Tab. 8). When selection is required (e.g., δ(k) quantiles, λ(k)), we employ a single time-ordered validation pass. This keeps deployment overhead low while preserving the “plug-and-play” nature of the wrapper. 
+
+## E. Why South Australia and Societal Impact 
+
+Rationale for choosing South Australia (SA). South Australia offers a stringent and policy relevant testbed for inference time adaptation because it concentrates diverse hydroclimate regimes within a compact domain. Coastal areas experience Mediterranean like seasonality and strong oceanic modulation while inland basins transition rapidly to semiarid and arid conditions, and this coastal to interior gradient, interacting with subseasonal bursts and multiyear swings driven by large scale modes such as ENSO, IOD, and SAM, produces multiscale variability that routinely exposes where single resolution forecasters underreact or overreact. For SPEI this appears as a standardized series with substantial mass near normal conditions and heavy tailed drought or wet anomalies, precisely the setting where our residual guided, multiresolution 19 Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+refinement can correct coarse, temporally smeared signals without retraining the underlying foundation model. SA is also covered consistently by public gridded reanalysis at monthly resolution, so the same frozen base model and resolution scale can be evaluated across many locations under one rolling origin protocol without bespoke data access or regional retuning. 
+
+Societal impact. Sharper regional drought outlooks translate into concrete operational decisions: earlier and more reliable dry spell signals support water allocation, reservoir operations, and demand management; month ahead guidance for moisture deficits and heat stress improves agricultural scheduling and irrigation timing; and longer effective lead times help risk agencies and power systems preposition for bushfire seasons and demand peaks. These benefits matter most for remote and regional communities in arid zones that are disproportionately exposed to climate variability, where improving foresight at the horizons where operational choices are actually made enables targeted and equitable adaptation rather than reactive crisis management. 
+
+Responsible use and limitations. RGMR operates strictly at inference time on frozen foundation models. It cannot remove upstream data biases, coverage gaps, or structural errors in the base forecaster, and it should not be used as the sole basis for high stakes decisions. Best practice is to treat RGMR as one member in a multimodel and multievidence framework that includes expert judgment, observational context, and sector specific constraints. Reported improvements reflect the fixed resolution scale, weighting rule, and step-size settings specified in the main text. Changing those design choices or the evaluation geography may alter performance and uncertainty. To support scrutiny, extension, and safe reuse, we release the code with exact configurations and single command scripts mirroring the paper’s rolling origin evaluation, so stakeholders can replicate results and reassess them in their own regional contexts before operational uptake. 
+
+## F. More Experimental Plots 
+
+Setup. We report additional one–month–ahead results at Location (−26 .125 , 129 .125) using the same leakage–safe protocol as the main paper (identical train/val/test splits, per–channel standardization fit on train, and H=1 unless stated). Figure 5 shows predicted vs. observed SPEI prediction plots for twelve baselines. 
+
+Some findings. (1) Foundation-scale models (e.g., TimesFM) tend to yield the tightest clouds, particularly near mild-to-moderate drought values. (2) Frequency/linear families (DLinear, FiLM) often reduce variance but can under-shoot extremes. (3) Patch- and pyramid-style Transformers (PatchTST, Pyraformer) better capture mesoscale variability yet may show scatter at the tails. (4) Nonstationarity-aware designs narrow bias under regime shifts but remain sensitive to rare events. 
+
+Baselines at a glance. 
+
+• TimesFM (Das et al., 2024). A decoder-only time series foundation model pretrained on large multi-domain corpora. It provides strong zero-shot and few-shot generalization for point forecasting with long context lengths, and it can be used as a frozen backbone with inference-time adaptation. Code: google-research/timesfm. • Transformer (vanilla) (Vaswani et al., 2017). A capacity reference built from standard multi-head attention, positional encoding, and feed-forward blocks. Complexity scales quadratically with sequence length and it serves as a clean yardstick across datasets. Code: thuml/Time-Series-Library (model Transformer.py and unified training scripts). • Autoformer (Wu et al., 2021). A decomposition-oriented Transformer that models trend and seasonality explic-itly and replaces dot-product attention with series-wise autocorrelation to stabilize long-horizon prediction. Code: thuml/Autoformer. • Crossformer (Zhang & Yan, 2023). A cross-dimension attention architecture for multivariate series. It introduces hierarchical embeddings and patching to capture inter-variable relations together with temporal dependencies at reduced cost. Code: Thinklab-SJTU/Crossformer. • DLinear (Zeng et al., 2023). A minimal linear baseline that first separates trend and seasonal components by moving average then applies two one-layer linear heads and sums the results. Despite its simplicity it is competitive on long-horizon settings. Code: cure-lab/LTSF-Linear. 20 Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+• PatchTST (Nie et al., 2023). A patch-based Transformer that segments a long series into temporal patches as tokens and adopts channel-independent blocks so that each univariate channel shares weights. This design improves stability and efficiency for long horizons. Code: PatchTST/PatchTST. • TimeMixer (Wang et al., 2024). An MLP-style time-mixing model with multi-scale mixers that fuse short and long temporal patterns. It targets strong accuracy with training and inference efficiency and serves as a non-attention deep baseline. Code: kwuking/TimeMixer. • iTransformer (Liu et al., 2024b). An inverted formulation that treats time steps as tokens and embeds along the variable axis. This swap emphasizes temporal relations across long histories while keeping standard Transformer blocks. Code: thuml/iTransformer. • Pyraformer (Liu et al., 2022a). A pyramidal and dilated attention design that captures long-range context with sparse patterns and reduced attention cost. It is suited to very long contexts under limited compute. Code: ant-research/Pyraformer. • FiLM (Zhou et al., 2022). The frequency-improved Legendre memory model that uses Legendre state-space projection with frequency-domain enhancement and low-rank parameterization. It can act as a standalone predictor or a plug-in representation module. Code: DAMO-DI-ML/NeurIPS2022-FiLM. • MICN (Wang et al., 2023). A multi-scale model that decomposes series and applies inception-style convolutions to capture local details together with global context. It is a strong convolutional-style baseline for long-term forecasting. Code: wanghq21/MICN. • Nonstationary Transformer (Liu et al., 2022b). A framework that introduces series stationarization and de-stationarized attention to mitigate distribution shifts through time. It can be combined with several attention backbones including the vanilla Transformer. Code: thuml/Nonstationary Transformers. • TimesNet (Wu et al., 2023). A 2D-variation modeling framework that reshapes 1D series into 2D tensors via FFT-discovered periods, capturing both intra- and inter-period patterns through Inception blocks. Code: thuml/Time-Series-Library. • TSMixer (Chen et al., 2023). An all-MLP architecture that mixes information along time and feature axes alternately, achieving strong forecasting accuracy with low parameter count and inference cost. Code: google-research/tsmixer. 
+
+Unified scripts. For reviewers who prefer a single entry point, the THUML Time-Series-Library (Tsinghua Machine Learning Group, 2024) provides consistent data loaders, training scripts, and reference configurations that cover most baselines listed above. 
+
+## G. Extended Experiments and Clarifications 
+
+This appendix provides extended experiments including: (i) generalization across an additional variable (temperature) and three out-of-distribution regions; (ii) projection-operator ablation; (iii) clarification of methodological scope. These results complement the main text. 
+
+G.1. More Generalization Across Variables and Regions Additional variable: Temperature. RGMR also improves temperature forecasting (Table 9), suggesting that its refinement is not SPEI-specific within the tested setting.           
+
+> Table 9. Temperature forecasting results.
+> Model MSE ↓MAE ↓R2↑
+> TimesFM v1.0 3.121 1.534 0.933 RGMR 2.653 1.304 0.943
+
+Cross-region evaluation. We then test the generalization of RGMR by extending to three more regions outside South Australia (Table 10). 21 Residual-Guided Multi-Resolution Refinement of Foundation Models 
+
+(a) TimesFM (b) Transformer (c) Autoformer (d) Crossformer 
+
+(e) DLinear (f) PatchTST (g) TimeMixer (h) iTransformer 
+
+(i) Pyraformer (j) FiLM (k) MICN (l) Nonstationary Transformer 
+
+Figure 5. One–month–ahead SPEI at Location (−26 .125 , 129 .125) (appendix view). Each panel overlays ground truth (blue) and model prediction (orange) under the same leakage–safe protocol as the main paper (standardization fit on train; identical splits; H=1 ). TimesFM (foundation-scale) shows the tightest phase alignment on mild–moderate variability; linear/frequency families (e.g., DLinear, FiLM) reduce variance but may under-shoot extremes; patch/pyramid Transformers (PatchTST, Pyraformer) capture mesoscale fluctuations with occasional tail scatter; nonstationarity-aware variants alleviate regime-shift bias. No re-tuning is performed for this appendix figure. 
+
+Table 10. Cross-region generalization (TimesFM backbone).                          
+
+> Region Model MSE ↓MAE ↓R2↑
+> US West Coast TimesFM v1.0 0.155 0.313 0.854 RGMR 0.081 0.222 0.924
+> North Africa TimesFM v1.0 0.101 0.261 0.892 RGMR 0.065 0.201 0.933
+> Indonesia TimesFM v1.0 0.260 0.407 0.485 RGMR 0.204 0.348 0.598
+
+Longer-horizon forecasting. Because drought applications often require multi-month lead times, Table 11 reports results for H = {1, 3, 6} months. RGMR improves the frozen TimesFM baseline across these tested horizons, indicating that the refinement mechanism extends beyond one-month-ahead forecasting in this setting. 
+
+Table 11. Forecasting performance at different horizons at Location 1 ( −26 .125 , 129 .125 ). Lower is better for MSE/MAE; higher is better for R2.                         
+
+> Horizon Model MSE ↓MAE ↓R2↑
+> 1TimesFM v1.0 0.391 0.465 0.564 TimesFM v1.0 + RGMR 0.318 0.423 0.651
+> 3TimesFM v1.0 0.412 0.466 0.554 TimesFM v1.0 + RGMR 0.345 0.433 0.627
+> 6TimesFM v1.0 0.409 0.470 0.560 TimesFM v1.0 + RGMR 0.376 0.465 0.606
+
+G.2. Projection Operator Ablation 
+
+We evaluated three projection operators used for downscaling to assess the projection choice: block averaging, wavelet decomposition, and STL decomposition. As shown in Table 12, simple block averaging provides the most stable and accurate refinement, whereas more complex decompositions tend to introduce unnecessary distortions at coarser scales. 22 Residual-Guided Multi-Resolution Refinement of Foundation Models   
+
+> Table 12. Projection operator comparison at Location 1 ( −26 .125 ,129 .125 ).
+
+Projection MSE ↓ MAE ↓ R2↑
+
+Block Averaging 0.318 0.423 0.651 
+
+Wavelet 0.366 0.467 0.597 STL 0.387 0.473 0.574 
+
+G.3. Scope Clarification 
+
+RGMR is an inference-time refinement mechanism for frozen time-series foundation models. It does not modify model parameters; instead, it operates only on predictions and is compatible with any TSFM that exposes a standard forward interface, whether univariate or multivariate. This makes the refinement architecture-agnostic across the evaluated TSFM backbones and removes the need for retraining or task-specific parameter tuning. We evaluate on SPEI rather than full climate fields: SPEI is a derived index aggregating multiple variables, and most operational systems model it directly. Full simulators such as SEAS5 (Johnson et al., 2019) and NMME (Kirtman et al., 2014) require high-dimensional atmospheric fields not used here and serve different scientific purposes, so a head-to-head comparison would not be meaningful. RGMR also differs from test-time adaptation (Sun et al., 2020): TTA updates parameters online with auxiliary losses, while RGMR refines outputs without touching parameters. The two are therefore complementary and could in principle be stacked; we leave this combination to future work. Within the tested settings, our experiments show consistent gains across the regions, horizons, variables, backbones, resolution levels, and projection operators covered in this paper, with minimal overhead and behavior consistent with the contraction analysis. 23

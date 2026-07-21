@@ -1,0 +1,1199 @@
+Title: Lightweight Wrappers for Adapting Time Series Foundation Models to Regional Drought Forecasting
+
+URL Source: https://arxiv.org/pdf/2607.17511v1
+
+Published Time: Tue, 21 Jul 2026 01:43:16 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# Lightweight Wrappers for Adapting Time Series Foundation Models to Regional Drought Forecasting 
+
+# Wentao Gao ∗
+
+Adelaide University Adelaide, Australia 
+
+# Jiuyong Li 
+
+Adelaide University Adelaide, Australia 
+
+# Lin Liu 
+
+Adelaide University Adelaide, Australia 
+
+# Thuc Duy Le 
+
+Adelaide University Adelaide, Australia 
+
+# Jixue Liu 
+
+Adelaide University Adelaide, Australia 
+
+# Yanchang Zhao 
+
+CSIRO Technology Adelaide, Australia 
+
+# Yun Chen 
+
+CSIRO Environment Adelaide, Australia 
+
+## Abstract 
+
+Large Time Series Foundation Models (TSFMs) demonstrate strong zero-shot forecasting capabilities across diverse domains. How-ever, their application to regional climate forecasting faces practi-cal challenges: model weights are often proprietary, local training records are limited, and computational budgets are constrained, making traditional fine-tuning approaches infeasible. To address these constraints, we introduce a lightweight, black-box adaptation framework (requiring no access to backbone parameters and no backbone fine-tuning) that enhances frozen TSFMs at inference time through two plug-and-play wrappers: SMR 2 (Stationarity aware multi-resolution Residual), which decomposes the input into multi-resolution temporal views, learns stride specific residual cor-rections that capture regional dynamics, then adaptively ensembles them into a single forecast, and MBB (Moving Block Bootstrap), which preserves temporal dependencies through block resampling and ensembles over temporally coherent residual perturbations to stabilize the point forecast. Both wrappers instantiate the same bagging style principle: they build diverse views of the input or its residuals, forecast each with the same frozen backbone, and aggregate, so all adaptation comes from inference time ensembling rather than any weight update. Evaluated on one month ahead Stan-dardized Precipitation Evapotranspiration Index (SPEI) prediction across multiple sites in South Australia, our framework consistently improves forecasting performance across several backbone mod-els, demonstrating up to 26% mean squared error (MSE) reduction over the corresponding frozen backbone while enabling practical deployment in resource constrained regional forecasting systems.  
+
+> ∗Corresponding author. Email: wentao.gao@adelaide.edu.au
+> This work is licensed under a Creative Commons Attribution 4.0 International License.
+> KDD ’26, Jeju Island, Republic of Korea
+> ©2026 Copyright held by the owner/author(s). ACM ISBN 979-8-4007-2259-2/2026/08 https://doi.org/10.1145/3770855.3818835
+
+## CCS Concepts 
+
+• Computing methodologies → Machine learning ; • Applied computing → Earth and atmospheric sciences ; • Mathematics of computing → Time series analysis .
+
+## Keywords 
+
+time series foundation models, inference time adaptation, drought forecasting, SPEI, multi-resolution analysis, block bootstrap, black-box model adaptation 
+
+ACM Reference Format: 
+
+Wentao Gao, Jiuyong Li, Lin Liu, Thuc Duy Le, Jixue Liu, Yanchang Zhao, and Yun Chen. 2026. Lightweight Wrappers for Adapting Time Series Foun-dation Models to Regional Drought Forecasting. In Proceedings of the 32nd ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.2 (KDD ’26), August 09–13, 2026, Jeju Island, Republic of Korea. ACM, New York, NY, USA, 12 pages. https://doi.org/10.1145/3770855.3818835 
+
+## Introduction 
+
+Drought is among the most disruptive climate hazards, especially in semi arid regions such as South Australia, where it undermines agriculture, water security, and ecosystem resilience [ 22 ]. The Stan-dardized Precipitation Evapotranspiration Index (SPEI) integrates precipitation with potential evapotranspiration and is widely used to characterise drought severity across time scales [2, 33]. Existing approaches face challenges in predicting SPEI one to three months in advance, especially in local regions where data is insufficient to train complex models. Traditional statistical mod-els including ARIMA, SARIMA, and state space formulations [ 6]assume quasi stationarity and therefore struggle to capture the coexistence of short lived pulses and long term trends. Traditional machine learning algorithms such as support vector machines or random forests can model nonlinear relationships yet depend on hand crafted features and suffer in high dimensional, multivari-ate settings [ 3]. Deep architectures LSTMs [ 11 ], TCNs [ 1], and the growing family of Transformer variants [ 32 , 34 ] can learn temporal dependencies end to end, but they require large datasets and are prone to overfitting in data sparse regions. Large Time Series Foundation Models (TSFMs) have emerged as a promising alternative. Pre trained on millions of heteroge-neous sequences, these models demonstrate strong zero-shot skill arXiv:2607.17511v1 [cs.LG] 20 Jul 2026 KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Wentao Gao et al. 
+
+Figure 1: Regional forecasting limitations across three model families. (a to c) Predicted vs. true SPEI for SARIMA, iTrans-former, and TimesFM. The three behave differently because they encode different inductive biases: SARIMA assumes quasi stationarity, iTransformer is task-trained on the avail-able regional data in our experiment, and TimesFM is applied zero-shot from large scale pre training. (d to f) Correspond-ing residuals. All three exhibit systematic (non random) re-gional bias rather than white noise; the bias is pronounced for SARIMA and iTransformer (d, e) and small but still struc-tured for TimesFM (f). These systematic regional biases mo-tivate our inference-time correction. 
+
+across finance, traffic, and meteorology [ 5 ]; recent examples include TimesFM [ 8] and Lag-Llama [ 28 ]. While physics aware encoder decoder designs such as GraphCast [ 18 ], FourCastNet [ 16 ], and Pangu-Weather [ 4 ] have advanced global numerical weather pre-diction, they require complex post processing pipelines to generate drought indices, making general purpose TSFMs more attractive for direct climate index forecasting. Yet applying TSFMs to regional drought forecasting faces signif-icant practical constraints that traditional adaptation approaches cannot address. Foundation model weights are often proprietary and inaccessible, preventing direct fine-tuning or architectural modifications. Regional climate records are typically short span-ning decades rather than the centuries needed for robust model retraining while operational forecasting centers operate under strict computational budgets that preclude resource intensive adaptation methods. These constraints necessitate lightweight, inference time solutions that can enhance foundation model performance without requiring parameter access or extensive retraining. Figure 1 illustrates these regional adaptation difficulties across three representative model families: a classical statistical model (SARIMA), a deep learning model (iTransformer), and a foundation model (TimesFM). The three differ because they rely on different in-ductive biases, yet all leave systematic rather than random residuals. The bias is most pronounced for SARIMA and iTransformer and smallest for the pre trained TimesFM, but even TimesFM retains a structured residual pattern. This indicates that regional temporal dynamics contain characteristics at different temporal resolutions that large scale pre training does not fully capture, motivating specialized inference time adaptation. To address these practical constraints while preserving foun-dation models’ general capabilities, we introduce two lightweight inference time wrappers. The Stationarity aware multi-resolution Residual wrapper (SMR 2) decomposes the regional forecasting task into multi-resolution temporal pattern learning, capturing stride specific regional dynamics that complement the global knowledge embedded in foundation models. MBB (Moving Block Bootstrap) constructs residual block perturbations of the target history and averages the corresponding frozen backbone forecasts. In summary, our main contributions are as follows: 
+
+• We propose two plug-and-play inference time wrappers, SMR 2 for multi-resolution regional pattern learning and MBB for variance reducing block bootstrap ensembling, that require no access to the backbone foundation model weights. 
+
+• We present a theoretical analysis built on a single residual decomposition assumption: a convex risk bound with an explicit bias variance trade off that motivates the adaptive multi-resolution weighting, together with the standard block bootstrap variance identity that explains the ensemble’s sta-bilizing effect. 
+
+• We conduct comprehensive experiments on SPEI-30 forecast-ing across three South Australian sites, showing up to 26% mean squared error (MSE) reduction over the corresponding frozen backbone, consistently outperforming 14 statistical and deep learning baselines across three foundation model backbones. 
+
+## Related Work 
+
+Drought Forecasting Approaches. Traditional statistical meth-ods like ARIMA assume stationarity and struggle with nonlinear climate dynamics [ 22 ], while machine learning approaches (SVMs, Random Forests) require handcrafted features and lack temporal modeling capabilities [ 3]. Deep learning architectures including LSTMs [ 11 ], TCNs [ 1], and Transformers [ 32 ] enable end to end learning but require task specific retraining and suffer from limited regional data availability. 
+
+Time Series Foundation Models. Large scale pre trained mod-els like TimesFM [ 8 ] and Lag-Llama [ 28 ] demonstrate strong zero-shot capabilities across domains. While domain specific weather models (GraphCast [ 18 ], FourCastNet [ 16 ]) excel at global numeri-cal prediction, they generate gridded physical variables requiring extensive post processing for climate indices, introducing uncer-tainty sources and computational constraints that exceed regional system capabilities. This motivates our focus on general purpose TSFMs that can forecast climate indices directly, with regional adap-tation handled outside the backbone. 
+
+Multi-resolution and Resampling Methods. multi-resolution analysis decomposes signals across temporal scales [ 25 ], with recent advances in multi scale attention [ 10 ] and residual frameworks like N-BEATS [ 24 ]. The Moving Block Bootstrap [ 15 ] preserves temporal dependencies when resampling serially correlated data [14 ]. These methods are therefore less suited to black-box backbone adaptation. Lightweight Wrappers for Adapting Time Series Foundation Models to Regional Drought Forecasting KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+Our work builds on these ideas by applying multi-resolution residual correction and temporally aware resampling at inference time around a frozen backbone. 
+
+## Preliminary Problem Formulation 
+
+Let {( c𝑡 , 𝑦 𝑡 )} denote a multivariate climate time series, where each 
+
+c𝑡 ∈ R𝑑 contains 𝑑 = 38 predictor features (34 meteorological variables and 4 climate indices) and 𝑦 𝑡 ∈ R is the scalar target SPEI value. For a time interval 𝑎 :𝑏 , 𝑦 𝑎 :𝑏 = (𝑦 𝑎 , . . . , 𝑦 𝑏 ) denotes the corresponding target history. We define: 
+
+• 𝐿 : Length of the context window used for prediction 
+
+• 𝐿 train : Reduced context length used during calibration phase (𝐿 train < 𝐿 )
+
+• T train , Tval : Index sets used for calibration and validation; held out test splits are used only for reporting At each forecast time 𝑡 , we collect the context window X𝑡 =
+
+(c𝑡 −𝐿 +1: 𝑡 , 𝑦 𝑡 −𝐿 +1: 𝑡 ) and predict the next SPEI value with a frozen Time Series Foundation Model backbone 𝑓 base  
+
+> 𝜃
+
+, i.e., a fixed mapping 
+
+ˆ𝑦 𝑡 +1 = 𝑓 base  
+
+> 𝜃
+
+(X𝑡 ) from a context window to a forecast. We write 
+
+X(𝑠 ) 
+
+> 𝑡
+
+for the same window after the stride 𝑠 multi-resolution view construction is applied to every channel of X𝑡 (the 𝑑 covariates and the target history), i.e. X(𝑠 ) 
+
+> 𝑡
+
+= (c(𝑠 )  
+
+> 𝑡 −𝐿 +1: 𝑡
+
+, 𝑦 (𝑠 )  
+
+> 𝑡 −𝐿 +1: 𝑡
+
+), pairing the stride 𝑠 covariate view c(𝑠 )  
+
+> 𝑡 −𝐿 +1: 𝑡
+
+with the stride 𝑠 target history view 
+
+𝑦 (𝑠 )  
+
+> 𝑡 −𝐿 +1: 𝑡
+
+, both constructed in the Method section below. We focus on one month ahead prediction. 
+
+## Method Framework Overview 
+
+To adapt frozen Time Series Foundation Models (TSFMs) for re-gional forecasting tasks, we propose two lightweight inference time wrappers that operate without modifying pre trained model parameters. Here, 𝑓 base  
+
+> 𝜃
+
+denotes the frozen TSFM backbone (e.g., TimesFM, TimeGPT) that provides the base predictions; we write 
+
+𝑓 base  
+
+> 𝜃
+
+throughout the Method to emphasize that it is not updated. The SMR 2 wrapper addresses regional pattern learning, while the MBB wrapper improves forecast robustness through block boot-strap ensembling. Figure 2 provides an overview of the two wrap-pers, highlighting their shared bagging style structure: diverse inference time series, a shared frozen backbone, and aggregation. 
+
+## SMR 2 Wrapper 
+
+Foundation models trained on global datasets face adaptation diffi-culties when applied to regional forecasting tasks, owing to practical deployment constraints and the need to capture local temporal dy-namics. Figure 3 demonstrates that regional time series exhibit non stationary shifts over time, different temporal strides reveal distinct distributional characteristics, and foundation model residuals show complementary error patterns across resolutions. Instead of retraining the entire model, we can enhance regional forecasting by learning complementary temporal patterns across multiple resolutions that supplement the foundation model’s global knowledge. Different temporal resolutions capture different as-pects of the underlying signal: fine grained patterns reveal short term fluctuations while coarse grained patterns expose long term trends. We decompose the regional enhancement problem into multi-resolution pattern learning, where each temporal stride con-tributes differently to the overall performance, and residual learn-ing, where we learn a residual correction for each stride. We call the wrapper stationarity aware in this specific sense: the per seg-ment mean and standard deviation used to build each stride view (Eqs. (2) –(3) ) act as a local normalization that absorbs slow drifts in level and variance [ 21 ], rather than because it performs an explicit stationarity test, change point detection, or regime classification. The SMR 2 approach addresses both aspects simultaneously. Let 
+
+S denote the set of temporal strides and let 𝑤 (𝑠 ) be the ensemble weight assigned to stride 𝑠 :
+
+˜𝑦 ens   
+
+> 𝑡 +1
+
+=∑︁  
+
+> 𝑠 ∈ S
+
+𝑤 (𝑠 ) ˜𝑦 (𝑠 ) 
+
+> 𝑡 +1
+
+,
+
+˜𝑦 (𝑠 )  
+
+> 𝑡 +1
+
+= 𝑓 base  
+
+> 𝜃
+
+(X(𝑠 ) 
+
+> 𝑡
+
+) + ˆ𝜖 (𝑠 ) 
+
+> 𝑡 +1
+
+.
+
+(1) where X(𝑠 ) 
+
+> 𝑡
+
+is the stride 𝑠 multi-resolution input view (of both the covariates and the target history), ˜𝑦 (𝑠 )  
+
+> 𝑡 +1
+
+is the corrected stride 𝑠 
+
+forecast, ˜𝑦 ens  
+
+> 𝑡 +1
+
+is the final SMR 2 ensemble forecast, and ˆ𝜖 (𝑠 ) 
+
+> 𝑡 +1
+
+is the learned residual correction defined by the two phase procedure below. 
+
+multi-resolution Input Construction. We build the stride 𝑠 input 
+
+X(𝑠 ) 
+
+> 𝑡
+
+by applying multi-resolution downsampling to the full context window X𝑡 = (c𝑡 −𝐿 +1: 𝑡 , 𝑦 𝑡 −𝐿 +1: 𝑡 ), that is, to all 𝑑 +1 channels at once. Let x𝜏 = (c𝜏 , 𝑦 𝜏 ) ∈ R𝑑 +1 denote the input at a single time step 𝜏 ,stacking the 𝑑 covariates with the scalar target. For each stride 𝑠 ,we partition the first 𝑠 ⌊𝐿 /𝑠 ⌋ positions of the window into ⌊𝐿 /𝑠 ⌋
+
+complete non overlapping segments. Any trailing remainder of length 𝐿 − 𝑠 ⌊𝐿 /𝑠 ⌋ is not used to form an additional partial segment when computing the downsampled statistics. Writing 𝐼 (𝑠 ) 
+
+> 𝑗
+
+= {( 𝑗 −
+
+1)𝑠 + 1, . . . , 𝑗𝑠 } for the index set of segment 𝑗 , we compute, for each 
+
+𝑗 ∈ { 1, 2, . . . , ⌊𝐿 /𝑠 ⌋} , the per segment mean and standard deviation of the input: 
+
+¯x(𝑠 ) 
+
+> 𝑗
+
+= 1
+
+|𝐼 (𝑠 ) 
+
+> 𝑗
+
+|∑︁ 𝑘 ∈𝐼 (𝑠 )
+
+> 𝑗
+
+x𝑡 −𝐿 +𝑘 (2) 
+
+𝝈 (𝑠 ) 
+
+> 𝑗
+
+=
+
+vuut 1
+
+|𝐼 (𝑠 ) 
+
+> 𝑗
+
+|∑︁ 𝑘 ∈𝐼 (𝑠 )
+
+> 𝑗
+
+
+
+x𝑡 −𝐿 +𝑘 − ¯x(𝑠 )
+
+> 𝑗
+
+2
+
+(3) Both operations act elementwise across the 𝑑 +1 channels, so the same stride 𝑠 summary is applied to every covariate and to the target history alike. Following downsampling, we perform temporal upsampling to obtain a length 𝐿 representation. In the implementation, each seg-ment’s statistics are repeated ⌊𝐿 /⌊ 𝐿 /𝑠 ⌋⌋ times. If the repeated se-quence is shorter than 𝐿 , the remaining positions are filled with the last complete segment statistic; if it is longer than 𝐿 , it is truncated. Thus, for the upsampled feature vector u(𝑠 )  
+
+> 𝑡 −𝐿 +𝑘
+
+,
+
+u(𝑠 )  
+
+> 𝑡 −𝐿 +𝑘
+
+= [¯x(𝑠 ) 
+
+> 𝑗
+
+, 𝝈 (𝑠 ) 
+
+> 𝑗
+
+],𝑗 = min 
+
+ 𝑘 
+
+⌊𝐿 /⌊ 𝐿 /𝑠 ⌋⌋ 
+
+
+
+,
+
+ 𝐿 𝑠 
+
+  
+
+,𝑘 = 1, . . . , 𝐿. 
+
+(4) KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Wentao Gao et al. 
+
+Figure 2: Overview of the proposed inference time wrappers for frozen TSFMs. SMR 2 forms multi-resolution residual ensemble members from mean/std stride views and adaptively aggregates their corrected forecasts, while MBB forms block bootstrap ensemble members from temporally coherent residual perturbations and averages their forecasts. Both wrappers follow a bagging style principle: diverse inference time members are passed through the same frozen backbone and then aggregated. 
+
+Concatenating mean with standard deviation provides richer geo-metric information than traditional delay embeddings, and stacking the upsampled vectors u(𝑠 )  
+
+> 𝑡 −𝐿 +𝑘
+
+over 𝑘 yields the multi-resolution input view X(𝑠 ) 
+
+> 𝑡
+
+∈ R𝐿 ×2(𝑑 +1) that is passed to the backbone. We write c(𝑠 )  
+
+> 𝑡 −𝐿 +1: 𝑡
+
+∈ R𝐿 ×2𝑑 and 𝑦 (𝑠 )  
+
+> 𝑡 −𝐿 +1: 𝑡
+
+∈ R𝐿 ×2 for its covariate and target history sub blocks, so X(𝑠 ) 
+
+> 𝑡
+
+= (c(𝑠 )  
+
+> 𝑡 −𝐿 +1: 𝑡
+
+, 𝑦 (𝑠 )  
+
+> 𝑡 −𝐿 +1: 𝑡
+
+).
+
+Two Phase Prediction Framework. The two-phase framework sep-arates residual learning from final forecasting. In the calibration phase, the frozen backbone is applied to each stride view to obtain a base forecast, and the difference between the observed target and this base forecast is stored as a stride-specific residual. In the inference phase, the same frozen backbone first produces the stride-specific base forecast ˆ𝑦 (𝑠 )
+
+> 𝑡 +1
+
+; a lightweight residual corrector then pre-dicts ˆ𝜖 (𝑠 ) 
+
+> 𝑡 +1
+
+from recent residuals and current stride-view summaries; the corrected stride forecast is finally obtained as ˜𝑦 (𝑠 ) 
+
+> 𝑡 +1
+
+= ˆ𝑦 (𝑠 ) 
+
+> 𝑡 +1
+
++ ˆ𝜖 (𝑠 )
+
+> 𝑡 +1
+
+.We use a reduced context length 𝐿 train during calibration to com-pute initial residuals, while using the full context length 𝐿 for final ensemble predictions. During the calibration phase, we use the reduced context length 
+
+𝐿 train to compute calibration residuals for all 𝑡 ∈ T train . To avoid confusing this reduced window with the full inference window, let X𝑡 −1,𝐿 train = (c𝑡 −𝐿 train :𝑡 −1, 𝑦 𝑡 −𝐿 train :𝑡 −1) denote the length-𝐿 train 
+
+context ending at 𝑡 − 1, and let X(𝑠 )  
+
+> 𝑡 −1,𝐿 train
+
+be its stride 𝑠 view: 
+
+𝜖 (𝑠 ) 
+
+> 𝑡
+
+= 𝑦 𝑡 − 𝑓 base  
+
+> 𝜃
+
+(X(𝑠 )  
+
+> 𝑡 −1,𝐿 train
+
+) (5) Here 𝜖 (𝑠 ) 
+
+> 𝑡
+
+is the realized base model residual at stride 𝑠 . Collecting these residuals gives the calibration residual set R (𝑠 ) = {𝜖 (𝑠 ) 
+
+> 𝑡
+
+}𝑡 ∈ T train .Calibration shares the forecast origin alignment of inference and uses no information from time 𝑡 or later (no look ahead). During the inference phase, for each stride 𝑠 ∈ S , we run both models in parallel using the full context window 𝐿 :
+
+ˆ𝑦 (𝑠 )  
+
+> 𝑡 +1
+
+= 𝑓 base  
+
+> 𝜃
+
+(X(𝑠 ) 
+
+> 𝑡
+
+), (6) 
+
+ˆ𝜖 (𝑠 )  
+
+> 𝑡 +1
+
+= 𝑓 res  𝝓 (𝑠 )
+
+> 𝑡
+
+, 𝝓 (𝑠 ) 
+
+> 𝑡
+
+=  𝜖 (𝑠 )  
+
+> 𝑡 −𝑞 +1: 𝑡
+
+, 𝜓 (X(𝑠 ) 
+
+> 𝑡
+
+) , (7) 
+
+˜𝑦 (𝑠 )  
+
+> 𝑡 +1
+
+= ˆ𝑦 (𝑠 )  
+
+> 𝑡 +1
+
++ ˆ𝜖 (𝑠 )
+
+> 𝑡 +1
+
+, (8) where the corrector input 𝝓 (𝑠 ) 
+
+> 𝑡
+
+concatenates the 𝑞 most recent stride 
+
+𝑠 residuals 𝜖 (𝑠 )  
+
+> 𝑡 −𝑞 +1: 𝑡
+
+with summary statistics 𝜓 (·) of the stride 𝑠 input view X(𝑠 ) 
+
+> 𝑡
+
+(the per channel means of its mean and standard devia-tion components, over both the covariates and the target history). The corrector 𝑓 res is a ridge regression with ℓ2 penalty 𝜆 ridge = 0.1,fit once on R (𝑠 ) and then applied unchanged at inference, so the wrapper performs no test time gradient updates. The frozen back-bone consumes the joint multi-resolution view X(𝑠 ) 
+
+> 𝑡
+
+; for backbones whose interface accepts only a single stream (e.g., target history only or covariate only models), the unused component is simply omitted without otherwise changing the procedure. 
+
+Adaptive Ensemble Fusion. We choose weights that emphasize strides with low error. Our adaptive fusion strategy uses validation performance as a lightweight proxy for per stride reliability. Let 
+
+𝑅 2 (𝑠 ) and MSE (𝑠 ) denote the validation coefficient of determination Lightweight Wrappers for Adapting Time Series Foundation Models to Regional Drought Forecasting KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+Figure 3: Motivation for multi-resolution regional pattern learning. (a) Rolling 12 month mean (red) and standard de-viation (blue) of SPEI over 1982–2018, showing pronounced temporal non stationarity. (b, c) Histograms (bars) with over-laid kernel density estimates (solid curves) of the SPEI values and of the foundation model residuals ( 𝑦 − ˆ𝑦 , i.e., observed SPEI minus the base model forecast), respectively. In both panels color encodes the temporal stride used for downsam-pling: stride 1 (black), 2 (red), 4 (blue), and 8 (green). Different strides yield visibly different distributions, with the residual densities changing shape across resolutions, indicating com-plementary information across resolutions and motivating multi-resolution adaptation. 
+
+and mean squared error for stride 𝑠 , and let 𝜀 > 0 be a small stabi-lizer. The choice of 𝑅 2-based weighting reflects that each stride’s contribution should be proportional to its explained variance, natu-rally emphasizing strides that better capture the underlying signal structure. When systematic biases dominate across all strides, every 
+
+𝑅 2 (𝑠 ) becomes non positive (each stride does worse than predicting the mean), so the 𝑅 2-based weights are undefined or negative. We therefore fall back to inverse MSE weighting, which is justified because it remains strictly positive and normalisable, still assigns larger weight to lower error strides, and recovers a sensible ranking precisely in the regime where 𝑅 2 is uninformative: 
+
+𝑤 (𝑠 ) =
+
+
+
+max (𝑅 2 (𝑠 ), 0)
+
+Í𝑠 ′ ∈ S max (𝑅 2 (𝑠 ′), 0) if ∃ 𝑠 : 𝑅 2 (𝑠 ) > 01/( MSE (𝑠 ) + 𝜀 )
+
+Í𝑠 ′ ∈ S 1/( MSE (𝑠 ′ ) + 𝜀 ) otherwise (9) The max (· , 0) truncation guarantees that every weight is non neg-ative and that the weights form a valid simplex, so no stride can contribute a negative coefficient. The final ensemble output then uses these adaptive weights in Eq. (1). 
+
+## MBB Wrapper 
+
+Foundation model forecasts can be sensitive to the exact target history supplied at inference. MBB reduces this sensitivity by con-structing 𝐾 temporally coherent perturbations of the target history, 
+
+Figure 4: Block bootstrap ensembling motivation. (a) Input perturbations produce a family of frozen backbone forecasts. (b) MBB averages forecasts from block resampled residual histories. 
+
+feeding each perturbed history into the same frozen backbone, and averaging the resulting forecasts. The covariate history is kept unchanged; only the target history is perturbed. Figure 4 illustrates this perturb and average workflow: block-resampled residual sequences generate multiple perturbed target histories, each perturbed history induces a frozen-backbone fore-cast, and their average forms the final MBB forecast. The perturbations are generated from validation residuals of the frozen backbone. Specifically, we first collect residuals {𝑟 𝑡 =
+
+𝑦 𝑡 − ˆ𝑦 𝑡 }𝑡 ∈ T val , where ˆ𝑦 𝑡 is the corresponding one-step forecast from the frozen backbone. Since these residuals are serially correlated, sampling individual residuals independently would break local autocorrelation. MBB therefore samples short consecutive residual blocks rather than individual residuals. Sampling and concatenating such blocks produces residual perturbation sequences that preserve local temporal dependence while generating diverse target-history variants. 
+
+Residual Block Construction. Following standard MBB prac-tice [ 15 , 17 ], we set the block length to 𝑏 = ⌊𝑛 1/3⌋ where 𝑛 = |T val |,a common asymptotic rule of thumb under standard dependence assumptions. We construct overlapping candidate blocks: 
+
+𝐵 𝑖 = {𝑟 𝑖 , 𝑟 𝑖 +1, . . . , 𝑟 𝑖 +𝑏 −1 }, 𝑖 ∈ { 1, . . . , 𝑛 − 𝑏 + 1} (10) This overlapping construction lets the finite validation residual series contribute many possible local error patterns. 
+
+Bootstrap Resampling Strategy. To generate a perturbed sequence of length 𝐿 , we sample ⌈𝐿 /𝑏 ⌉ blocks with replacement. The sam-pling process creates the ordered block sequence 
+
+B(𝑘 ) = (𝐵 (𝑘 ) 
+
+> 1
+
+, 𝐵 (𝑘 ) 
+
+> 2
+
+, . . . , 𝐵 (𝑘 )⌈𝐿 /𝑏 ⌉ ) (11) where each 𝐵 (𝑘 ) 
+
+> 𝑗
+
+is randomly selected from the available blocks. These blocks are then concatenated and truncated to form residual sequences of the required length: 
+
+𝑟 (𝑘 ) 
+
+> 1: 𝐿
+
+= [𝐵 (𝑘 ) 
+
+> 1
+
+, 𝐵 (𝑘 ) 
+
+> 2
+
+, . . . ]1: 𝐿 (12) where [ · ] denotes the same vector concatenation used earlier (e.g., in the multi-resolution input construction) and [ · ] 1: 𝐿 truncates the concatenated blocks to length 𝐿 . This process generates 𝐾 different residual sequences used to form the perturbed histories below. KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Wentao Gao et al. 
+
+(a) SMR 2 (Our Method) (b) TimesFM (c) Autoformer (d) Crossformer 
+
+(e) MBB (Our Method) (f) DLinear (g) iTransformer (h) PatchTST 
+
+Figure 5: Predicted and observed SPEI time series for one month ahead forecasting at Location 1. Panels (a) and (e) show our inference time wrappers SMR 2 and MBB, while panels (b to d, f to h) present representative baselines. The wrapper panels visually track the observed series more closely for this representative site, consistent with the aggregate gains reported in Table 1. 
+
+Ensemble Prediction. For each bootstrap sample 𝑘 , we construct perturbed target histories by adding the position indexed resam-pled residual sequence to the original predictions over the history window: 
+
+˜𝑦 (𝑘 )  
+
+> 𝑡 −𝐿 +𝑖
+
+= ˆ𝑦 𝑡 −𝐿 +𝑖 + 𝑟 (𝑘 ) 
+
+> 𝑖
+
+, 𝑖 = 1, . . . , 𝐿 (13) Stacking these over the window gives the perturbed target his-tory ˜𝑦 (𝑘 )  
+
+> 𝑡 −𝐿 +1: 𝑡
+
+= ( ˜𝑦 (𝑘 ) 
+
+> 𝑡 −𝐿 +1
+
+, . . . , ˜𝑦 (𝑘 ) 
+
+> 𝑡
+
+), that is, the foundation model’s own predicted history corrected by the 𝑘 th resampled residual sequence. Here 𝑟 (𝑘 ) 
+
+> 𝑖
+
+is the 𝑖 th element of 𝑟 (𝑘 ) 
+
+> 1: 𝐿
+
+, and ˆ𝑦 𝑡 −𝐿 +𝑖 are the frozen backbone’s rolling one step predictions over the history window, obtained under the same one step protocol as inference. Pairing it with the covariates gives the 𝑘 th perturbed input ˜X(𝑘 ) 
+
+> 𝑡
+
+=
+
+(c𝑡 −𝐿 +1: 𝑡 , ˜𝑦 (𝑘 )  
+
+> 𝑡 −𝐿 +1: 𝑡
+
+), which is fed to the frozen foundation model: 
+
+ˆ𝑦 (𝑘 ) 
+
+> 𝑡 +1
+
+= 𝑓 base  
+
+> 𝜃
+
+( ˜X(𝑘 ) 
+
+> 𝑡
+
+) (14) 
+
+ˆ𝑦 MBB  
+
+> 𝑡 +1
+
+= 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+ˆ𝑦 (𝑘 ) 
+
+> 𝑡 +1
+
+(15) The second line is the ensemble point forecast; the variance argu-ment for this average is stated in the theoretical analysis below. 
+
+## Theoretical Analysis 
+
+Because the wrappers are deliberately lightweight, the analysis be-low is to make explicit why a black-box correction of a frozen TSFM should help: why the residual of a frozen backbone is learnable, why combining multiple temporal resolutions is sound, and why a block bootstrap ensemble stabilizes the point forecast. Everything rests on a single assumption and two short, assumption light results; the derivations are in Appendix A. 
+
+Residual notation in the analysis. We use different residual sym-bols because the two wrappers use residuals for different purposes. In SMR 2, 𝜖 (𝑠 ) 
+
+> 𝑡
+
+denotes the reduced-context, stride-specific calibra-tion residual defined in Eq. (5). It is used to fit the stride-specific residual corrector and to produce the learned correction ˆ𝜖 (𝑠 ) 
+
+> 𝑡 +1
+
+in Eq. (7). In MBB, 𝑟 𝑡 denotes the full-context validation residual of the frozen backbone, used only for constructing temporally co-herent block-bootstrap perturbations. Thus, 𝜖 (𝑠 ) 
+
+> 𝑡
+
+is a supervised correction target, whereas 𝑟 𝑡 is a resampling object. 
+
+Assumption 1 (Multi-resolution residual decomposition). 
+
+Let 
+
+𝑟 𝑡 +1 = 𝑦 𝑡 +1 − 𝑓 base  
+
+> 𝜃
+
+(X𝑡 )
+
+be the full-context one-step residual of the frozen backbone. We as-sume that its predictable part can be decomposed into stride-specific, regionally predictable components plus unpredictable noise, 
+
+𝑟 𝑡 +1 =∑︁  
+
+> 𝑠 ∈ S
+
+𝑟 (𝑠 ) 
+
+> 𝑡 +1
+
++ 𝜂 𝑡 +1, (16) 
+
+where 𝑟 (𝑠 )  
+
+> 𝑡 +1
+
+is a latent theoretical component of the full-context back-bone residual that is visible at temporal stride 𝑠 , and 𝜂 𝑡 +1 is irreducible noise. The term 𝑟 (𝑠 )  
+
+> 𝑡 +1
+
+is not an observed residual sequence; SMR 2 esti-mates its predictable effect through the learned correction ˆ𝜖 (𝑠 )
+
+> 𝑡 +1
+
+.
+
+This is consistent with what Figures 1 and 3 display: every back-bone in Figure 1 (SARIMA, iTransformer, TimesFM) leaves a sys-tematic , non random residual, and Figure 3 shows the residual distribution changing shape across strides, so the multi-resolution components carry complementary information rather than copies of the same signal. 
+
+SMR 2: a convex risk bound. Recall the per stride corrected fore-cast ˜𝑦 (𝑠 ) 
+
+> 𝑡 +1
+
+= ˆ𝑦 (𝑠 ) 
+
+> 𝑡 +1
+
++ ˆ𝜖 (𝑠 ) 
+
+> 𝑡 +1
+
+and the ensemble ˜𝑦 ens   
+
+> 𝑡 +1
+
+= Í𝑠 ∈ S 𝑤 (𝑠 ) ˜𝑦 (𝑠 )
+
+> 𝑡 +1
+
+from the SMR 2 wrapper above, with non negative weights obeying 
+
+Í𝑠 ∈ S 𝑤 (𝑠 ) = 1.
+
+Proposition 1 (Ensemble risk bound). Writing 𝑒 (𝑠 ) = ˜𝑦 (𝑠 ) 
+
+> 𝑡 +1
+
+−
+
+𝑦 𝑡 +1 for the per stride error, w = (𝑤 (𝑠 ) )𝑠 ∈ S for the ensemble weight vector, 𝜷 = (E[𝑒 (𝑠 ) ]) 𝑠 ∈ S for the bias vector, 𝚺 = Cov  (𝑒 (𝑠 ) )𝑠 ∈ S 
+
+ for Lightweight Wrappers for Adapting Time Series Foundation Models to Regional Drought Forecasting KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+the error covariance, and Lens for the ensemble mean squared error, we have 
+
+E( ˜𝑦 ens  
+
+> 𝑡 +1
+
+− 𝑦 𝑡 +1)2  ≤∑︁  
+
+> 𝑠 ∈ S
+
+𝑤 (𝑠 ) E(𝑒 (𝑠 ) )2 , (17) 
+
+and decomposes exactly as 
+
+Lens = (w⊤𝜷 )2 + w⊤ 𝚺 w. (18) Inequality (17) (a direct consequence of Jensen’s inequality, since the weights lie on the simplex) guarantees the ensemble risk is con-trolled by the weighted average of the per stride risks. The decom-position (18) motivates allocating mass to low error strides while accounting for inter stride dependence: when the covariance struc-ture is favourable, mixing weakly correlated reliable strides can reduce the variance term w⊤ 𝚺 w relative to a single chosen stride. The 𝑅 2/inverse MSE weights in Eq. (9) serve as a lightweight vali-dation proxy for this allocation by favouring low risk resolutions, while remaining covariance agnostic. Intuitively, coarser strides average out high frequency fluctuations and expose slower regional trends, so different resolutions correct different parts of the residual in Eq. (16). 
+
+MBB: variance stabilization. The MBB wrapper averages 𝐾 fore-casts obtained from block bootstrapped residual perturbations of the target history. For any such ensemble, 
+
+Var 1
+
+> 𝐾 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+ˆ𝑦 (𝑘 )
+
+> 𝑡 +1
+
+!
+
+= 1
+
+𝐾 2∑︁ 𝑖,𝑗 
+
+Cov   ˆ𝑦 (𝑖 )
+
+> 𝑡 +1
+
+, ˆ𝑦 ( 𝑗 )
+
+> 𝑡 +1
+
+, (19) which equals 1 
+
+> 𝐾
+
+Var ( ˆ𝑦 𝑡 +1) when the bootstrap forecasts are inde-pendent and, for approximately exchangeable forecasts of compa-rable variance, falls below the single forecast variance whenever their pairwise correlation is below one. Under standard stationarity and mixing conditions the Moving Block Bootstrap is a consistent resampling scheme for dependent series [ 15 , 17 , 26 ]; preserving within block autocorrelation (block length 𝑏 = ⌊𝑛 1/3⌋) keeps the perturbed histories realistic, so averaging over them stabilizes the point forecast without touching the backbone. 
+
+## Experiments Study Area 
+
+We focus our evaluation on South Australia, shown in Figure 6, a region characterized by high drought vulnerability and complex cli-mate variability driven by multiple interacting modes (ENSO, IOD). South Australia occupies a unique position in Australia’s climate system, experiencing a temperate climate with dry summers in the south transitioning to a persistently dry hot desert climate in the north [ 27 ]. The region’s climate exhibits high spatial and temporal variability, with documented warming trends since the 1970s and strong dependence on multiple large scale climate drivers. It pro-vides high quality long term meteorological data and represents a critical water security area where improved drought forecasting has significant practical value, while recent intensifying drought conditions create challenging adaptation scenarios for globally pre trained foundation models. All datasets used in this study are pub-licly available and reproducible through standardized preprocessing pipelines, enabling transparent evaluation and potential deployment across other semi arid regions. 
+
+Figure 6: Study Area in South Australia 
+
+## Experimental Setup 
+
+Dataset. We evaluate on monthly SPEI-30 prediction across 3 South Australian locations over 1982–2018. The target is the SPEI-30 vari-able from the global daily SPEI-GD database [ 19 ] (0.25 ◦ spatial resolution, natively spanning 1982–2021), converted to a monthly cadence and restricted to 1982–2018. The dataset comprises 39 variables: the target SPEI plus 𝑑 = 38 predictors, namely 34 meteo-rological variables from the NCEP–NCAR Reanalysis 1 [ 13 ] and 4 climate indices (e.g., ENSO and IOD [ 29 , 30 ]). We use a chronologi-cal 70/10/20 train/validation/test split; each forecast uses a context window of length 𝐿 covering the available training history. 
+
+Baselines. We compare our wrappers against three categories of models: (i) classical statistical and recurrent baselines (ARIMA [ 6], ETS, LSTM [ 11 ], GRU, and TCN [ 1]); (ii) Transformer based architectures including standard Transformer [ 32 ], Autoformer [ 35 ], Crossformer [ 37 ], DLinear [ 36 ], FiLM [ 38 ], iTransformer [ 20 ], PatchTST [ 23 ], TimesNet [ 34 ], and TSMixer [ 7]; and (iii) foundation models including TabPFN [ 12 ], TimeGPT [ 9 ], and TimesFM [ 8]. All models are evaluated using identical data splits and preprocessing pipelines. 
+
+Implementation Details. SMR 2 uses strides S = {1, 2, 4, 6, 8}
+
+selected to capture multi-resolution temporal patterns from monthly to seasonal dynamics (see Appendix B for details). The ridge residual corrector 𝑓 res uses penalty 𝜆 ridge = 0.1, residual lag length 𝑞 = 6, and stabilizer 𝜀 = 10 −6. MBB sets block length 
+
+𝑏 = ⌊𝑛 1/3⌋ and 𝐾 = 100 bootstrap samples. Both wrappers add only inference time computation; runtime, memory, hardware, and software details are reported in Appendices E–F. 
+
+Evaluation Metrics. We report Mean Squared Error (MSE), Mean Absolute Error (MAE), and coefficient of determination (R 2); the evaluation protocol is detailed in Appendix D. 
+
+## Main Experiments 
+
+Forecasting Strategy. We use a rolling one-step-ahead forecast-ing approach where predictions are made sequentially across the test period, with the context window sliding forward after each prediction to evaluate performance throughout the entire test set. For baseline models, we train each architecture from scratch on the training set using their original best configurations. Traditional deep learning models (LSTM, GRU, TCN) are trained for 100 epochs with early stopping based on validation performance. Transformer based models use the same training protocol with architecture specific hyperparameters as reported in their original papers. Foun-dation models (TabPFN-ts V1.0, TimeGPT-1, and TimesFM v1.0) are used in their pre trained form without additional fine-tuning. This KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Wentao Gao et al. 
+
+Method Location 1 (-26.125_129.125) Location 2 (-29.125_134.875) Location 3 (-35.625_138.875) MSE ↓ MAE ↓ R2 ↑ MSE ↓ MAE ↓ R2 ↑ MSE ↓ MAE ↓ R2 ↑
+
+Classical and Recurrent Baselines 
+
+ARIMA 1.213 0.882 -0.417 1.201 0.875 -0.409 1.225 0.887 -0.426 ETS 0.950 0.765 0.050 0.942 0.760 0.055 0.957 0.769 0.048 LSTM 0.688 0.612 0.320 0.679 0.605 0.326 0.694 0.616 0.318 GRU 0.674 0.598 0.335 0.667 0.592 0.340 0.681 0.603 0.330 TCN 0.662 0.586 0.345 0.655 0.581 0.350 0.670 0.590 0.340 
+
+Deep Learning Baselines 
+
+Transformer 0.537 0.554 0.451 0.573 0.575 0.414 0.745 0.655 0.365 Autoformer 0.546 0.559 0.442 0.582 0.580 0.405 0.752 0.658 0.358 Crossformer 0.542 0.557 0.446 0.578 0.578 0.409 0.740 0.654 0.370 DLinear 0.533 0.551 0.455 0.569 0.572 0.418 0.735 0.650 0.375 FiLM 0.558 0.569 0.430 0.594 0.590 0.393 0.760 0.662 0.350 iTransformer 0.524 0.546 0.464 0.561 0.568 0.426 0.738 0.652 0.372 PatchTST 0.535 0.552 0.453 0.571 0.573 0.416 0.743 0.655 0.366 TimesNet 0.550 0.562 0.438 0.586 0.583 0.401 0.754 0.659 0.356 TSMixer 0.529 0.549 0.459 0.565 0.570 0.422 0.736 0.651 0.374 
+
+Foundation Models 
+
+TabPFN-ts v1.0 0.462 0.503 0.521 0.389 0.445 0.632 0.566 0.562 0.442 + SMR 2 (Ours) 0.344 0.451 0.615 0.305 0.401 0.713 0.452 0.489 0.541 + MBB (Ours) 0.351 0.459 0.609 0.312 0.407 0.705 0.459 0.493 0.534 TimeGPT-1 0.437 0.489 0.536 0.351 0.431 0.658 0.543 0.551 0.456 + SMR 2 (Ours) 0.325 0.437 0.632 0.278 0.386 0.738 0.431 0.475 0.562 + MBB (Ours) 0.331 0.442 0.625 0.284 0.392 0.731 0.438 0.483 0.554 TimesFM v1.0 0.391 0.465 0.564 0.318 0.412 0.687 0.524 0.536 0.469 + SMR 2 (Ours) 0.316 0.446 0.617 0.251 0.370 0.754 0.408 0.463 0.582 
+
++ MBB (Ours) 0.313 0.324 0.681 0.265 0.378 0.735 0.426 0.477 0.564 
+
+Table 1: One month ahead SPEI forecasting performance across three representative South Australian locations. Best results in bold, second best underlined. Per method metrics are computed over their scored time steps (see Appendix D). 
+
+is not meant to understate their capacity: fine-tuning is precisely what the deployment setting we target rules out, since the backbone weights are often proprietary, the regional records are too short for stable fine-tuning, and operational compute budgets are limited. Evaluating the foundation models zero-shot therefore reflects the re-alistic regime in which our wrappers would be used, and provides a controlled comparison in which both the baselines and our method leave the backbone frozen; the wrappers add only inference time computation on top of the same frozen predictions. For each foun-dation model, we evaluate three configurations: baseline without modification, with SMR 2 wrapper, and with MBB wrapper applied at inference time. We evaluate the two wrappers separately to iso-late the effect of each; they are alternative lightweight adaptations rather than a combined pipeline. We evaluate performance across three representative locations in South Australia that capture different climate zones. For each location, we compute all metrics separately and report location specific results in Table 1. Figure 5 visualizes the predicted versus observed SPEI at Location 1 and provides representative visual evidence consistent with the quantitative improvements in Table 1. Table 1 shows that frozen foundation models already outper-form most task trained baselines, while SMR 2 and MBB further improve every frozen backbone across all three sites, indicating complementary regional corrections without parameter updates. 
+
+## Ablation Study 
+
+Table 2 presents an ablation study on TimesFM v1.0 at Location 1, systematically evaluating each component’s contribution. For SMR 2, incremental addition of components shows progressive im-provements: single stride residual correction (S-1) reduces MSE by 2.0%, S-2 uses multiple strides with uniform weights and achieves 4.1% reduction, and the full configuration (S-Full), which combines adaptive 𝑅 2 weighting, two phase calibration, and the mean/std multi-resolution embedding, delivers 19.2% MSE reduction. For MBB, the ablation isolates the effect of block sampling: IID boot-strap (B-1) provides minimal improvement (1.8%), while the full MBB configuration (B-Full) with overlapping resampling and the standard block length 𝑏 = ⌊𝑛 1/3⌋ achieves 19.9% MSE reduction. Both wrappers show substantial and complementary improvements over the frozen baseline. Lightweight Wrappers for Adapting Time Series Foundation Models to Regional Drought Forecasting KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+Configuration MSE ↓ R2 ↑ ΔMSE (%) 
+
+Baseline 
+
+TimesFM (frozen) 0.391 0.564 –
+
+SMR 2 incremental switches 
+
+S-1 Single stride + Residual 0.383 0.573 2.0 S-2 Multiple strides 0.375 0.583 4.1 S-3 + Adaptive 𝑅 2 weighting 0.368 0.592 5.9 S-4 + Two phase calibration 0.355 0.603 9.2 
+
+S-Full 0.316 0.617 19.2 
+
+MBB incremental switches 
+
+B-1 IID bootstrap (block = 1) 0.384 0.571 1.8 B-2 Fixed block length 0.379 0.578 3.1 B-3 + Overlapping blocks 0.351 0.600 10.2 
+
+B-Full 0.313 0.681 19.9 Table 2: Ablation study at Location 1 ( −26 .125 ◦, 129 .125 ◦). 
+
+## Generalization to Other Regions 
+
+To evaluate cross regional robustness, we further test our inference time wrappers with the TimesFM v1.0 backbone on three climati-cally distinct regions: Indonesia (tropical monsoon), North Africa (arid desert), and the U.S. West Coast (Mediterranean). These re-gions exhibit markedly different rainfall seasonality and drought dynamics, providing a stringent generalization test. All regions follow the same experimental protocol as South Aus-tralia, including identical predictor target construction, prepro-cessing, rolling origin evaluation, and hyperparameter settings. Monthly reanalysis variables are used as predictors, with the SPEI-30 variable from the global daily SPEI-GD dataset (0.25 °, converted to a monthly cadence over 1982–2018) as the target. The backbone TimesFM model remains fully frozen. As summarized in Table 3, SMR 2 reduces MSE in every region, by roughly 16 to 41%, while MBB also improves the frozen backbone under the same cross regional protocol. The largest relative gains appear on the U.S. West Coast and in North Africa, with a smaller but still clear improvement on the tropical monsoon Indonesia case. These results demonstrate that the proposed wrappers generalize ef-fectively across heterogeneous climate regimes without fine-tuning or parameter updates. 
+
+## Social Impact 
+
+This work supports the responsible use of pre trained time series foundation models for regional drought analysis under realistic data and deployment constraints. Improved forecast reliability facilitates more informed interpre-tation of model outputs in downstream applications such as water resource management, agricultural planning, and disaster prepared-ness, helping practitioners assess risk under climate variability.The framework may also help extend scientific foundation models to regional settings where intrusive model modification is infeasible. 
+
+Region Method MSE ↓ R2 ↑
+
+Indonesia TimesFM v1.0 (frozen) 0.260 0.485 + SMR 2 0.218 0.557 + MBB 0.229 0.535 North Africa TimesFM v1.0 (frozen) 0.101 0.892 + SMR 2 0.0723 0.922 + MBB 0.0765 0.918 U.S. West Coast TimesFM v1.0 (frozen) 0.155 0.854 + SMR 2 0.0921 0.912 + MBB 0.0958 0.907 
+
+Table 3: Cross regional generalization results on monthly SPEI prediction (1982–2018). 
+
+## Limitations, Ethical Considerations, and Conclusion 
+
+This work evaluates monthly SPEI forecasting across multiple re-gions and demonstrates stable cross regional generalization within the evaluated scope. The study focuses on a limited set of temporal resolutions and climate settings, and performance under substan-tially different temporal granularities, climate regimes, or hydrolog-ical targets has not been systematically validated. In addition, the framework relies on sufficient historical observations for inference time calibration, and may be affected by data scarcity or by inherent biases of frozen foundation models under extreme regime shifts. All data used are publicly available and do not involve human subjects or personal information. As drought forecasts may inform high stakes decisions such as water resource management and agri-cultural planning, predictions should be used as decision support in conjunction with local observations and domain expertise. In summary, we proposed a lightweight inference time adapta-tion framework for applying frozen time series foundation models to regional drought forecasting. Without modifying model parame-ters or training objectives, the SMR 2 and MBB wrappers effectively improve predictive accuracy in data scarce regional climate settings. Owing to its modular, backbone agnostic design, the framework is broadly applicable to climate science tasks that rely on frozen or black-box models. 
+
+## GenAI Disclosure 
+
+We used a large language model (LLM) solely as a writing assistant to translate and improve grammar, fluency, and consistency of the manuscript text. All ideas, methods, analyses, and conclusions are by the authors; all citations and numerical values were manually verified against primary sources. No non-public data were provided to the tool. 
+
+## Acknowledgments 
+
+This work was supported by the ARC Discovery Project DP230101122 and the Adelaide University Research Training Program (RTP) Scholarship. We gratefully acknowledge the continued support from the CSIRO Environment and Technology Research Units. KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Wentao Gao et al. 
+
+## References 
+
+[1] Shaojie Bai, J Zico Kolter, and Vladlen Koltun. 2018. An empirical evaluation of generic convolutional and recurrent networks for sequence modeling. arXiv preprint arXiv:1803.01271 (2018). [2] Santiago Beguería, Sergio M Vicente-Serrano, Fergus Reig, et al . 2014. Standard-ized precipitation evapotranspiration index (SPEI) revisited: parameter fitting, evapotranspiration models, tools, datasets and drought monitoring. International Journal of Climatology 34, 10 (2014), 3001–3023. [3] Mariana Belgiu and Lucian Drăguţ. 2016. Random forest in remote sensing: A review of applications and future directions. ISPRS Journal of Photogrammetry and Remote Sensing 114 (2016), 24–31. [4] Kaifeng Bi, Lingxi Xie, Hengheng Zhang, et al . 2023. Accurate medium-range global weather forecasting with 3D neural networks. Nature 619 (2023), 533–538. [5] Rishi Bommasani, Drew A Hudson, Ehsan Adeli, et al . 2021. On the opportunities and risks of foundation models. arXiv preprint arXiv:2108.07258 (2021). [6] George E. P. Box, Gwilym M. Jenkins, Gregory C. Reinsel, et al . 2015. Time Series Analysis: Forecasting and Control (fifth ed.). John Wiley & Sons, Hoboken, NJ. [7] Si-An Chen, Chun-Liang Li, Nate Yoder, et al . 2023. TSMixer: An All-MLP Architecture for Time Series Forecasting. Transactions on Machine Learning Research (2023). [8] Abhimanyu Das, Weihao Kong, Rajat Sen, et al . 2024. A decoder-only foundation model for time-series forecasting. In Proceedings of the International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 235) . PMLR, 10148–10167. [9] Azul Garza, Cristian Challu, and Max Mergenthaler-Canseco. 2023. TimeGPT-1. 
+
+arXiv preprint arXiv:2310.03589 (2023). [10] Qiang Guo, Lexin Fang, Ren Wang, et al . 2025. Multivariate Time Series Forecast-ing Using Multiscale Recurrent Networks With Scale Attention and Cross-Scale Guidance. IEEE Transactions on Neural Networks and Learning Systems 36, 1 (2025), 540–554. [11] Sepp Hochreiter and Jürgen Schmidhuber. 1997. Long short-term memory. Neural Computation 9, 8 (1997), 1735–1780. [12] Shi Bin Hoo, Samuel Müller, David Salinas, et al . 2025. From Tables to Time: Extending TabPFN-v2 to Time Series Forecasting. arXiv preprint arXiv:2501.02945 
+
+(2025). [13] Eugenia Kalnay, Masao Kanamitsu, Robert Kistler, et al . 1996. The NCEP/NCAR 40-year reanalysis project. Bulletin of the American Meteorological Society 77, 3 (1996), 437–471. [14] Philip Kokic, Huidong Jin, and Steven Crimp. 2013. Improved point scale climate projections using a block bootstrap simulation and quantile matching method. 
+
+Climate Dynamics 41, 3 (2013), 853–866. [15] Hans R Künsch. 1989. The jackknife and the bootstrap for general stationary observations. The Annals of Statistics 17, 3 (1989), 1217–1241. [16] Thorsten Kurth, Shashank Subramanian, Peter Harrington, Jaideep Pathak, Morteza Mardani, David Hall, Andrea Miele, Karthik Kashinath, and Anima Anandkumar. 2023. FourCastNet: Accelerating Global High-Resolution Weather Forecasting Using Adaptive Fourier Neural Operators. In Proceedings of the Plat-form for Advanced Scientific Computing Conference . Association for Computing Machinery, 1–11. doi:10.1145/3592979.3593412 [17] Soumendra Nath Lahiri. 1993. On the moving block bootstrap under long range dependence. Statistics & Probability Letters 18, 5 (1993), 405–413. [18] Remi Lam, Alvaro Sanchez-Gonzalez, Matthew Willson, et al . 2023. Learning skillful medium-range global weather forecasting. Science 382, 6677 (2023), 1416– 1421. [19] Xuebang Liu, Shuying Yu, Zhiwei Yang, et al . 2024. The first global multi-timescale daily SPEI dataset from 1982 to 2021. Scientific Data 11 (2024), 223. [20] Yong Liu, Tengge Hu, Haoran Zhang, et al . 2024. iTransformer: Inverted Trans-formers Are Effective for Time Series Forecasting. In Proceedings of the Interna-tional Conference on Learning Representations .[21] Yong Liu, Haixu Wu, Jianmin Wang, and Mingsheng Long. 2022. Non-stationary Transformers: Exploring the Stationarity in Time Series Forecasting. In Advances in Neural Information Processing Systems (NeurIPS) .[22] Ashok K Mishra and Vijay P Singh. 2010. A review of drought concepts. Journal of Hydrology 391, 1–2 (2010), 202–216. [23] Yuqi Nie, Nam H. Nguyen, Phanwadee Sinthong, et al . 2023. A Time Series is Worth 64 Words: Long-term Forecasting with Transformers. In Proceedings of the International Conference on Learning Representations .[24] Boris N Oreshkin, Dmitri Carpov, Nicolas Chapados, et al . 2020. N-BEATS: Neural Basis Expansion Analysis for Interpretable Time Series Forecasting. In 
+
+Proceedings of the International Conference on Learning Representations .[25] Donald B Percival and Andrew T Walden. 2000. Wavelet Methods for Time Series Analysis . Cambridge University Press, Cambridge, UK. [26] Dimitris N Politis and Joseph P Romano. 1994. The stationary bootstrap. J. Amer. Statist. Assoc. 89, 428 (1994), 1303–1313. [27] Md Mamunur Rashid and Simon Beecham. 2019. Characterization of meteoro-logical droughts across South Australia. Meteorological Applications 26, 4 (2019), 556–568. [28] Kashif Rasul, Arjun Ashok, Andrew Robert Williams, et al . 2023. Lag-Llama: Towards Foundation Models for Probabilistic Time Series Forecasting. arXiv preprint arXiv:2310.08278 (2023). [29] N. H. Saji, B. N. Goswami, P. N. Vinayachandran, et al . 1999. A dipole mode in the tropical Indian Ocean. Nature 401, 6751 (1999), 360–363. [30] Kevin E. Trenberth. 1997. The definition of El Niño. Bulletin of the American Meteorological Society 78, 12 (1997), 2771–2777. [31] Tsinghua Machine Learning Group. 2024. Time-Series-Library: A Library for Advanced Deep Time Series Models. https://github.com/thuml/Time-Series-Library. Accessed: 2026-05-07. [32] Ashish Vaswani, Noam Shazeer, Niki Parmar, et al . 2017. Attention is all you need. In Proceedings of Advances in Neural Information Processing Systems , Vol. 30. 5998–6008. [33] Sergio M Vicente-Serrano, Santiago Beguería, and Juan I López-Moreno. 2010. A multiscalar drought index sensitive to global warming: the standardized precipi-tation evapotranspiration index. Journal of Climate 23, 7 (2010), 1696–1718. [34] Haixu Wu, Tengge Hu, Yong Liu, et al . 2023. TimesNet: Temporal 2D-Variation Modeling for General Time Series Analysis. In Proceedings of the International Conference on Learning Representations .[35] Haixu Wu, Jiehui Xu, Jianmin Wang, et al . 2021. Autoformer: Decomposition Transformers with Auto-Correlation for Long-Term Series Forecasting. In Proceed-ings of Advances in Neural Information Processing Systems , Vol. 34. 22419–22430. [36] Ailing Zeng, Muxi Chen, Lei Zhang, et al . 2023. Are Transformers Effective for Time Series Forecasting?. In Proceedings of the AAAI Conference on Artificial Intelligence , Vol. 37. 11121–11128. [37] Yunhao Zhang and Junchi Yan. 2023. Crossformer: Transformer utilizing cross-dimension dependency for multivariate time series forecasting. In Proceedings of the International Conference on Learning Representations .[38] Tian Zhou, Ziqing Ma, Xue Wang, et al . 2022. FiLM: Frequency improved Legendre Memory Model for Long-term Time Series Forecasting. In Proceedings of Advances in Neural Information Processing Systems , Vol. 35. 12677–12690. Lightweight Wrappers for Adapting Time Series Foundation Models to Regional Drought Forecasting KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+## Appendix A: Residual Decomposition and Risk Bound 
+
+This appendix states the assumption and the two short results used in the main text, and proves the only non trivial one (the SMR 2 risk bound). The Moving Block Bootstrap properties are classical and are cited rather than reproved. 
+
+Assumption 1 (multi-resolution residual decomposition). The one step backbone residual 𝑟 𝑡 +1 = 𝑦 𝑡 +1 − 𝑓 base  
+
+> 𝜃
+
+(X𝑡 ) decomposes as 
+
+𝑟 𝑡 +1 = Í𝑠 ∈ S 𝑟 (𝑠 ) 
+
+> 𝑡 +1
+
++ 𝜂 𝑡 +1, with stride specific predictable components 
+
+𝑟 (𝑠 ) 
+
+> 𝑡 +1
+
+and irreducible noise 𝜂 𝑡 +1.
+
+Proposition 1 (Ensemble risk bound). Let 𝑒 (𝑠 ) = ˜𝑦 (𝑠 ) 
+
+> 𝑡 +1
+
+− 𝑦 𝑡 +1 and let w = (𝑤 (𝑠 ) )𝑠 ∈ S satisfy 𝑤 (𝑠 ) ≥ 0, Í𝑠 𝑤 (𝑠 ) = 1. Then 
+
+E( ˜𝑦 ens  
+
+> 𝑡 +1
+
+− 𝑦 𝑡 +1)2  ≤∑︁  
+
+> 𝑠 ∈ S
+
+𝑤 (𝑠 ) E(𝑒 (𝑠 ) )2 ,
+
+Lens = (w⊤𝜷 )2 + w⊤ 𝚺 w.
+
+where 𝜷 = (E[𝑒 (𝑠 ) ]) 𝑠 and 𝚺 = Cov  (𝑒 (𝑠 ) )𝑠 
+
+.
+
+Proof. Because the weights lie on the simplex, the ensemble error 
+
+˜𝑦 ens  
+
+> 𝑡 +1
+
+− 𝑦 𝑡 +1 = Í𝑠 𝑤 (𝑠 ) 𝑒 (𝑠 ) = w⊤e is a convex combination of the per stride errors e = (𝑒 (𝑠 ) )𝑠 . Since 𝑥 ↦ → 𝑥 2 is convex, Jensen’s inequality gives   Í 𝑠 𝑤 (𝑠 ) 𝑒 (𝑠 ) 2 ≤ Í𝑠 𝑤 (𝑠 ) (𝑒 (𝑠 ) )2 pointwise; taking expectations yields the first inequality. For the identity, 
+
+Lens = E(w⊤e)2  =  E[w⊤e]2 + Var (w⊤e) = (w⊤𝜷 )2 + w⊤ 𝚺 w.
+
+When the covariance structure is favourable, for example when reliable low variance strides have sufficiently weak positive or neg-ative correlation, suitable simplex weights can satisfy w⊤ 𝚺 w <
+
+min 𝑠 ∈ A Σ𝑠𝑠 for a subset A of reliable strides. In other cases, the Jensen bound above still guarantees that the ensemble risk is con-trolled by the weighted average of the per stride risks. □
+
+MBB variance stabilization (standard result). The MBB fore-cast is the average ˆ𝑦 MBB  
+
+> 𝑡 +1
+
+= 1
+
+> 𝐾
+
+Í𝐾 𝑘 =1 ˆ𝑦 (𝑘 ) 
+
+> 𝑡 +1
+
+of forecasts from block bootstrapped residual perturbations, with variance given by the elementary identity 
+
+Var   ˆ𝑦 MBB 
+
+> 𝑡 +1
+
+ = 1
+
+𝐾 2∑︁ 𝑖,𝑗 
+
+Cov   ˆ𝑦 (𝑖 )
+
+> 𝑡 +1
+
+, ˆ𝑦 ( 𝑗 )
+
+> 𝑡 +1
+
+,
+
+which equals 1 
+
+> 𝐾
+
+Var ( ˆ𝑦 𝑡 +1) for independent replicates and, for ap-proximately exchangeable replicates of comparable variance, stays below the single forecast variance whenever the pairwise correla-tion is below one. Consistency of the Moving Block Bootstrap for stationary, mixing sequences is a classical result of Künsch [ 15 ], Lahiri [ 17 ], and Politis and Romano [ 26 ]; block length calculations often yield order 𝑏 = 𝑂 (𝑛 1/3) under specific objectives and de-pendence assumptions. We use the scheme as a black-box, input perturbation ensemble for a frozen TSFM rather than reproving its properties. 
+
+## Appendix B: Algorithms and Implementation Details 
+
+Algorithms 1 and 2 use the same stride view construction as Eqs. (2) –(4) : for the current window length 𝑚 , the construction pools only the first 𝑠 ⌊𝑚 /𝑠 ⌋ positions into complete stride 𝑠 blocks over all 
+
+𝑑 +1 channels, repeats each block statistic ⌊𝑚 /⌊ 𝑚 /𝑠 ⌋⌋ times, and forward fills or truncates to return a length 𝑚 view. 
+
+Algorithm 1 SMR 2 Residual Extraction (Concise) 
+
+Algorithm 1: SMR 2 Residual Extraction Phase 
+
+Require: Training set {( c𝑡 , 𝑦 𝑡 )} , stride set S, context length 𝐿 train 
+
+Ensure: Residual histories {R (𝑠 ) }𝑠 ∈ S and per stride ridge correc-tors 𝑓 res  
+
+> 1:
+
+for 𝑠 ∈ S do  
+
+> 2:
+
+for 𝑡 ∈ T train with 𝑡 > 𝐿 train do  
+
+> 3:
+
+Construct X(𝑠 )  
+
+> 𝑡 −1,𝐿 train
+
+from X𝑡 −1,𝐿 train using Eqs. (2) –(4) with stride 𝑠  
+
+> 4:
+
+ˆ𝑦 (𝑠 ) 
+
+> 𝑡
+
+← 𝑓 base  
+
+> 𝜃
+
+(X(𝑠 )  
+
+> 𝑡 −1,𝐿 train
+
+) 
+
+> 5:
+
+𝜖 (𝑠 ) 
+
+> 𝑡
+
+←𝑦 𝑡 − ˆ𝑦 (𝑠 ) 
+
+> 𝑡
+> 6:
+
+Append 𝜖 (𝑠 ) 
+
+> 𝑡
+
+to R (𝑠 ) 
+
+> 7:
+
+end for  
+
+> 8:
+
+Fit ridge corrector 𝑓 res on R (𝑠 ) (once, then frozen)  
+
+> 9:
+
+end for Algorithm 2 SMR 2 Inference 
+
+Algorithm 2: SMR 2 Inference Phase 
+
+Require: Context X𝑡 = (c𝑡 −𝐿 +1: 𝑡 , 𝑦 𝑡 −𝐿 +1: 𝑡 ), per-stride cor-rectors {𝑓 res }, recent residuals {R (𝑠 ) }, validation metrics 
+
+{𝑅 2 (𝑠 ), MSE (𝑠 )} 𝑠 ∈ S 
+
+Ensure: Ensemble forecast ˜𝑦 ens  
+
+> 𝑡 +1
+> 1:
+
+for 𝑠 ∈ S do  
+
+> 2:
+
+Construct X(𝑠 ) 
+
+> 𝑡
+
+from X𝑡 using Eqs. (2)–(4) with stride 𝑠  
+
+> 3:
+
+ˆ𝑦 (𝑠 )  
+
+> 𝑡 +1
+
+← 𝑓 base  
+
+> 𝜃
+
+(X(𝑠 ) 
+
+> 𝑡
+
+) 
+
+> 4:
+
+𝝓 (𝑠 ) 
+
+> 𝑡
+
+← [ 𝜖 (𝑠 )  
+
+> 𝑡 −𝑞 +1: 𝑡
+
+, 𝜓 (X(𝑠 ) 
+
+> 𝑡
+
+) ]  
+
+> 5:
+
+ˆ𝜖 (𝑠 ) 
+
+> 𝑡 +1
+
+← 𝑓 res (𝝓 (𝑠 ) 
+
+> 𝑡
+
+) 
+
+> 6:
+
+˜𝑦 (𝑠 )  
+
+> 𝑡 +1
+
+← ˆ𝑦 (𝑠 )  
+
+> 𝑡 +1
+
++ ˆ𝜖 (𝑠 ) 
+
+> 𝑡 +1
+> 7:
+
+end for  
+
+> 8:
+
+Compute nonnegative simplex weights {𝑤 (𝑠 ) }𝑠 ∈ S according to Eq. (9)  
+
+> 9:
+
+˜𝑦 ens  
+
+> 𝑡 +1
+
+← Í𝑠 ∈ S 𝑤 (𝑠 ) ˜𝑦 (𝑠 )
+
+> 𝑡 +1
+
+Algorithm 3 MBB Wrapper 
+
+Algorithm 3: MBB Moving Block Bootstrap 
+
+Require: Residuals {𝑟 𝑗 }𝑛 𝑗 =1 from Tval , block length 𝑏 , samples 𝐾 
+
+Ensure: Ensemble point forecast ˆ𝑦 MBB  
+
+> 𝑡 +1
+> 1:
+
+for 𝑖 = 1 to 𝑛 − 𝑏 + 1 do  
+
+> 2:
+
+Form block 𝐵 𝑖 = {𝑟 𝑖 , . . . , 𝑟 𝑖 +𝑏 −1 } 
+
+> 3:
+
+end for  
+
+> 4:
+
+for 𝑘 = 1 to 𝐾 do  
+
+> 5:
+
+Draw blocks with replacement to form sequence 𝑟 (𝑘 ) 
+
+> 1: 𝐿
+> 6:
+
+Perturb history and predict ˆ𝑦 (𝑘 )  
+
+> 𝑡 +1
+> 7:
+
+end for  
+
+> 8:
+
+ˆ𝑦 MBB  
+
+> 𝑡 +1
+
+← 1
+
+> 𝐾
+
+Í𝑘 ˆ𝑦 (𝑘 ) 
+
+> 𝑡 +1KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Wentao Gao et al.
+
+## Appendix C: Hyperparameter Configuration 
+
+We summarize below the key hyperparameters used for SMR 2 and MBB. SMR 2 uses strides S = {1, 2, 4, 6, 8} aligned with dominant spectral components of monthly SPEI. Residual correction applies ridge regression ( 𝜆 ridge = 0.1, residual lag length 𝑞 = 6) on a feature vector of recent residuals and stride 𝑠 input view summary statis-tics, with normalization 𝜀 = 10 −6, and ensemble weights based on validation 𝑅 2 (𝑠 ). MBB adopts block length 𝑏 = ⌊𝑛 1/3⌋ and 𝐾 = 100 
+
+bootstrap samples, averaged into the ensemble point forecast. All models are frozen during inference, and hyperparameters are tuned only on validation data. 
+
+## Appendix D: Dataset and Evaluation Protocol 
+
+Data sources. All datasets used in this study are publicly available. Meteorological predictors are obtained from the NCEP–NCAR Re-analysis 1 dataset. Drought targets use the SPEI-30 variable from the global daily SPEI-GD database (0.25 ◦, native span 1982–2021), converted to monthly cadence. The study region covers South Australia, with representative grid points at (− 26 .125 ◦, 129 .125 ◦),
+
+(− 29 .125 ◦, 134 .875 ◦), and (− 35 .625 ◦, 138 .875 ◦). The SPEI product is accessible at https://doi.org/10.5281/zenodo.8060268. Documen-tation and downloads for NCEP–NCAR Reanalysis 1 are available from NOAA at https://www.psl.noaa.gov/data/gridded/data.ncep. reanalysis.html. Public climate indices (e.g., ENSO, IOD) are pro-vided by operational centers such as NOAA CPC. 
+
+Temporal coverage. Monthly data from 1982–2018, using the SPEI-30 variable from the daily SPEI-GD product, which natively spans 1982–2021. 
+
+Preprocessing. Missing values are linearly interpolated and pre-dictors standardized. The target is the SPEI-30 series from SPEI-GD, converted to the monthly cadence used for evaluation; no additional target smoothing is applied beyond this cadence conversion. 
+
+Evaluation protocol. All models are evaluated with rolling one-step-ahead forecasting over the held out test period. For all Deep Learning methods implementation, the THUML Time-Series-Library [ 31 ] provides consistent data loaders, training scripts, and reference configurations that cover most baselines. For our method implementation, we provide it in our code repo. 
+
+## Appendix E: Computational Cost and Deployment Notes 
+
+Runtime and hardware. Experiments are run on a single work-station equipped with an NVIDIA GeForce RTX 3090 GPU with 24 GB of memory, an Intel 12700K CPU, 64 GB of DDR4 3200 mem-ory, and a 2 TB NVMe solid state drive. The operating system is Ubuntu 20.04.3 LTS. Average inference latency is below 3 s per site, with memory usage under 4 GB. 
+
+Energy and sustainability. Because SMR 2 and MBB operate exclusively at inference time, they avoid the repeated forward and backward passes over many epochs that fine-tuning requires, and instead add only a small number of additional forward passes (the 
+
+𝐾 bootstrap evaluations for MBB and the |S| stride evaluations for SMR 2) to a single frozen model inference. Estimating the cost of fine-tuning as 2× the forward cost per step (the backward pass) over the typical number of update steps used for the deep learning baselines shows that the wrappers avoid the dominant training time computation; the exact energy saving depends on the fine-tuning budget and hardware. We therefore report measured latency and memory, and treat energy reduction as a qualitative deployment benefit rather than a measured percentage. 
+
+Deployment. Both wrappers are implemented as lightweight, plug-and-play modules for the frozen foundation model backbones evaluated in this paper (TabPFN, TimeGPT, and TimesFM), and can run efficiently on CPU only systems. 
+
+## Appendix F: Reproducibility Checklist 
+
+Code and data availability. All scripts, processed data, and docu-mentation are available at: https://github.com/Wentao-Gao/Lightweight_Wrappers 
+
+Software environment. The software stack uses Python 3.10, PyTorch 2.0.1 with CUDA 11.8, NumPy 1.24.3, Pandas 2.0.2, and Scikit learn 1.2.2. Random seeds are fixed for NumPy and PyTorch so that runs are deterministic where supported. The seed affects trainable baselines and MBB resampling; frozen foundation model backbones are deterministic at inference. 
+
+Reproducibility scripts. The code repository includes configu-ration files and single command scripts that reproduce all scores and figures reported in the paper without retuning.

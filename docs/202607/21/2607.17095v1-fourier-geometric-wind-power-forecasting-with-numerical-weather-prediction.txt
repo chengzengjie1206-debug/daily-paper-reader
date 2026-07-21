@@ -1,0 +1,943 @@
+Title: Fourier Geometric Wind Power Forecasting with Numerical Weather Prediction
+
+URL Source: https://arxiv.org/pdf/2607.17095v1
+
+Published Time: Tue, 21 Jul 2026 00:58:26 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+# Fourier Geometric Wind Power Forecasting with Numerical Weather Prediction 
+
+# Shiyuan Piao ∗
+
+The Hong Kong University of Science and Technology Hong Kong, China shiyuan.piao@connect.ust.hk 
+
+# Zehui Fan ∗
+
+Faculty of Engineering The Chinese University of Hong Kong Hong Kong, China 1155184696@link.cuhk.edu.hk 
+
+# Yang Liu †
+
+The Chinese University of Hong Kong Hong Kong, China yangliu005@cuhk.edu.hk 
+
+# Hong Cheng 
+
+The Chinese University of Hong Kong Hong Kong, China hcheng@se.cuhk.edu.hk 
+
+# Juepeng Zheng 
+
+Sun Yat-Sen University Guangzhou, China zhengjp8@mail.sysu.edu.cn 
+
+# Jie Zhou 
+
+Tsinghua University Goldwind Science and Technology Co.,Ltd Beijing, China j-zhou20@mails.tsinghua.edu.cn 
+
+# Fugee Tsung 
+
+The Hong Kong University of Science and Technology Hong Kong, China season@ust.hk 
+
+## Abstract 
+
+Accurate short-term wind power forecasting is essential for grid stability and operational planning, yet remains challenging due to the complex interactions between atmospheric conditions and turbine dynamics. However, existing methods fail to effectively in-corporate weather forecasting with wind turbine data (i.e., SCADA), leading to suboptimal solutions. To address this, we introduce a mul-timodal framework that integrates historical point-based SCADA data with grid-based Numerical Weather Prediction (NWP) fore-casts, which is challenging due to heterogeneous input and the complex physical wind-turbine interactions. Our approach first explicitly decomposes inputs into scalar and vector features to better capture both site-specific and geometric dependencies and then incorporates a geometric encoder to extract rotation-invariant features from wind vectors. We further leverages a Fourier Neu-ral Operator (FNO) architecture, which performs global convo-lutions in the frequency domain to efficiently model long-range spatiotemporal relationships. Extensive experiments on three real-world wind farms, with weather forecasting data, demonstrate that our model consistently outperforms state-of-the-art baselines, highlighting the effectiveness of its physically-informed design. The core implementation of our method is publicly available at: https://github.com/shawn-sypiao/GWPF. 
+
+## CCS Concepts 
+
+• Applied computing → Earth and atmospheric sciences ; En-gineering ; • Computing methodologies → Artificial intelli-gence . 
+
+> ∗Equal contribution.
+> †Corresponding author.
+> This work is licensed under a Creative Commons Attribution 4.0 International License.
+> KDD ’26, Jeju Island, Republic of Korea
+> ©2026 Copyright held by the owner/author(s). ACM ISBN 979-8-4007-2259-2/2026/08 https://doi.org/10.1145/3770855.3818905
+
+## Keywords 
+
+Wind power forecasting, Fourier neural operator 
+
+ACM Reference Format: 
+
+Shiyuan Piao, Zehui Fan, Yang Liu, Hong Cheng, Juepeng Zheng, Jie Zhou, and Fugee Tsung. 2026. Fourier Geometric Wind Power Forecasting with Numerical Weather Prediction. In Proceedings of the 32nd ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.2 (KDD ’26), Au-gust 09–13, 2026, Jeju Island, Republic of Korea. ACM, New York, NY, USA, 12 pages. https://doi.org/10.1145/3770855.3818905 
+
+## 1 Introduction 
+
+Global electricity consumption is entering a period of strong growth, as electrification expands in buildings, transport and industry, while additional demand is increasingly driven by cooling and data cen-tres [ 26 ] . Wind power, being a clean and renewable energy source is considered a key low-emissions technology and a valid solu-tion in this transition [ 27 ]. In particular, the IEA projects global wind generation to grow at about 11% per year on average dur-ing 2025–2027, accounting for roughly one-third of the additional global electricity demand over the same period [ 26 ] . However, wind power output, i.e., SCADA data, is strongly conditioned on atmospheric variability and local flow conditions, which leads to pronounced uncertainty and temporal intermittency in electricity production [ 17 ] . Such variability complicates system operation because power grids require continuous balancing between supply and demand, motivating accurate short-term wind power forecast-ing to improve dispatch, reserve scheduling and reliability [ 23 ]. Despite its practical benefits, wind power forecasting remains chal-lenging due to the chaotic nature of atmospheric dynamics and the complex turbine–flow interactions within wind farms [17]. Existing approaches can be classified into physical and data-driven models. Physical models solve equations that incorporate Numerical Weather Prediction (NWP), turbine parameters, and farm geography to predict wind power. Nevertheless, their accuracy is limited by the oversimplified parametrization of complex physical processes and the high demands of computational resources. In contrast, data-driven models directly learn neural networks to ap-proximate the wind power outputs, which can be broadly divided into two types: (1) Spatio-temporal forecasting . They integrate arXiv:2607.17095v1 [cs.AI] 19 Jul 2026 KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Shiyuan Piao et al. 
+
+both spatial and temporal dependencies to enhance prediction ac-curacy by capturing how wind fields evolve over time and interact across geographical regions. A common architecture is Graph Neu-ral Networks [ 45 , 53 ], where they typically represent turbines as nodes, construct edges among them via distance, and perform mes-sage passing thereon. While these models are effective for exploiting cross-turbine correlations from SCADA histories, they are often deployed in a SCADA-only setting and thus may miss upcoming synoptic/mesoscale changes that are better captured by NWP [ 2]; (2) Wind power sce-nario generation . Instead of outputting a single point estimate, probabilistic methods aim to produce calibrated predictive distri-butions or multiple coherent future trajectories (scenarios), which are crucial for risk-aware decision making in markets and system operation. A classical NWP-based approach is EMOS [ 21 ], which statistically calibrates ensemble forecasts by fitting a parametric predictive distribution to correct bias and dispersion. More recently, diffusion-based generative models have been developed for prob-abilistic time-series forecasting by learning a denoising process that can sample diverse yet coherent trajectories [ 39 ]. In the wind power domain, conditional latent diffusion models have been pro-posed to generate short-term wind power scenarios with improved sharpness and calibration under complex uncertainty [ 13 ].Although these NWP-driven probabilistic approaches can quantify uncer-tainty, many of them do not explicitly model turbine operational states and the non-stationary turbine–wind relationship, which reduces forecasting accuracy. However, it is not straightforward to incorporate data-driven wind power forecasting with numerical weather prediction due to: 
+
+• Data heterogeneity . Insufficient resolution in NWP grids pre-vents direct access to wind conditions at individual turbine lo-cations, presenting a fundamental data heterogeneity challenge. The grid-point mismatch leads to information loss and increased modeling complexity. It obscures the precise local wind condi-tions that directly drive each turbine, forcing the model to infer these conditions from coarse surrounding data. 
+
+• Physical interaction . Wind power generation is fundamentally dominated by wind speed magnitude and wind direction. The misalignment between wind direction and nacelle yaw directly influences effective inflow and thus power conversion efficiency. Therefore, it is necessary to capture the physical interactions between gridded wind fields and point-level inflow, as well as the directional effects introduced by turbine layout and flow dynamics. To address the above issue, we present a novel multimodal fore-casting framework that integrates geometric priors and spectral feature fusion for short-term wind power prediction. We first em-ploy a geometric encoder to explicitly model directional induc-tive biases by transforming raw wind vectors and nacelle angles into rotation-invariant scalar features, improving its generaliza-tion across diverse wind regimes. Fourier Neural Operator (FNO) is flexible to adapt to varying resolutions. We then employ an FNO-based Fusion to effectively combine the encoded turbine states with gridded weather forecasts by performing global convolutions in the frequency domain, thereby capturing complex, long-range spa-tiotemporal dependencies within and across modalities. Extensive 
+
+Figure 1: Data visualization. Gridded NWP weather forecast-ing provides the general wind field for site-specific SCADA turbine data. 
+
+experiments on three real-world wind farms and weather reanaly-sis data demonstrate that our framework consistently outperforms a comprehensive range of both spatio-temporal and wind power scenario generation models. Ablation studies further validate the contribution of each core component, confirming the necessity of both the geometric encoding and the neural operator fusion. 
+
+## 2 Related Work 
+
+Spatio-temporal wind power forecasting . Deterministic wind power forecasting (WPF) has evolved into a sophisticated spatio-temporal point estimation task, shifting the focus from isolated time-series modeling to the integrated representation of regional meteorological systems [ 52 ]. Within this paradigm, algorithms are trained to map historical SCADA-derived observations onto dis-crete future power sequences by minimizing distance-based loss functions [ 2]. The methodology for learning spatio-temporal de-pendencies is primarily centered on the following technical frame-works: Spatial Interaction via Graph Neural Networks (GNNs) [ 32 ]: Recognizing that wind farms possess regional characteristics where turbines interact with one another through air movement, cur-rent research utilizes GNNs to model these complex dependen-cies [ 11 , 29 , 38 , 45 , 53 , 56 , 57 ]. By treating turbines or farms as nodes and their geographical or climatic relationships as edges, GNNs ef-fectively capture regional interactions that single-site models fail to perceive, thereby enhancing the accuracy of the forecasting system. Temporal Paradigms (AR vs. NAR): The temporal dimension is pro-cessed through either Autoregressive (AR) or Non-autoregressive (NAR) architectures. AR models, such as LSTM [ 25 ] and GRU [ 9], iteratively propagate hidden states to preserve the continuity of historical trends, demonstrating high robustness in short-term hori-zons. Conversely, NAR models—including temporal-convolutional models such as TCN [ 6], Transformer-based [ 31 , 50 , 58 ], and MLP-based [ 15 ] architectures—generate the entire forecast sequence in a single pass. This generative approach leverages global dependen-cies more effectively, mitigates the accumulation of errors inherent in iterative methods, and increasingly matches or exceeds AR per-formance in long-term forecasting. 
+
+Wind power scenario generation . In the current research land-scape, wind power scenario generation is predominantly conducted within a probabilistic forecasting framework aimed at capturing the inherent stochasticity and meteorological volatility of wind en-ergy to enhance grid reliability [ 7, 21 ]. Methodologically, this task Fourier Geometric Wind Power Forecasting with Numerical Weather Prediction KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+falls into three main streams: probability distribution estimation (e.g., DeepAR [ 40 ]), which predicts parametric distribution param-eters such as mean and variance via likelihood-based learning to enable trajectory sampling; quantile regression (e.g., QR-LSTM), a non-parametric approach that estimates conditional quantiles without assuming a specific distribution by minimizing the pinball loss across multiple quantile levels; and Bayesian neural networks (e.g., Bayesian-LSTM), which inject uncertainty directly into model weights through Bayesian inference—often approximated via vari-ational methods or Monte Carlo dropout—to produce ensembles of diverse, risk-aware scenarios [ 18 ]. Architecturally, autoregres-sive models like LSTM and GRU are favored for their ability to preserve temporal dependencies and trends through iterative infor-mation propagation. Scenario quality is rigorously evaluated using a suite of metrics, including the Continuous Ranked Probability Score (CRPS) for overall distributional accuracy, and the Prediction Interval Coverage Probability (PICP) and Prediction Interval Nor-malized Average Width (PINAW) to assess the balance between interval reliability and sharpness [20, 52]. Despite these advances, most existing methods still rely heavily on GNN and time series models that primarily use SCADA data and exhibit insufficient attention to spatiotemporal dependencies across wind farms. Meteorological data, such as numerical weather predictions, are typically incorporated through basic feature fusion approaches that do not adequately capture the complex spatial pat-terns, directional movements, or nonlinear evolution of weather systems [ 52 ]. As a result, the generated scenarios often miss impor-tant atmospheric dynamics, revealing a clear need for models that better exploit the rich spatiotemporal structure in weather data. 
+
+## 3 Background 3.1 Problem Definition 
+
+We formulate the short-term wind power forecasting task in a multi-modal setting that integrates historical turbine-level SCADA data and grid-based Numerical Weather Prediction (NWP) forecasts. The input features are decomposed into scalar and vector quantities to explicitly distinguish between geometric-agnostic and geometric variables. Let a wind farm consist of 𝑁 turbines. For each turbine 
+
+𝑖 at historical time step 𝑡 ∈ { 1, . . . , 𝐿 }, we observe turbine scalar features 𝒉 𝑡 𝑖 ∈ R𝐷 ℎ (e.g., wind speed magnitude, power output, op-erational status) and turbine vector features 𝒒 𝑡 𝑖 ∈ R𝐷 𝑞 (primarily the 2D wind vector). At the forecast anchor time 𝑡 = 𝐿 , the NWP system issues predictions for future lead times 𝜏 = 1, . . . ,𝑇 . For each 𝜏 , it provides a gridded forecast over the farm region, includ-ing scalar fields 𝒈 𝑠 𝐿 +𝜏 ∈ R𝐻 ×𝑊 ×𝑉 𝑠 (e.g., temperature, pressure) and vector fields 𝒈 𝑣 𝐿 +𝜏 ∈ R𝐻 ×𝑊 ×𝑉 𝑣 (e.g., zonal and meridional wind com-ponents), where 𝐻 and 𝑊 denote the spatial grid dimensions, and 
+
+𝑉 𝑠 , 𝑉 𝑣 are the numbers of scalar and vector variables, respectively. The objective is to predict the hourly wind power output for all 𝑁 
+
+turbines over the next 𝑇 hours. Formally, we learn a mapping 𝑓 𝜃 :
+
+𝒚 𝐿 +1: 𝐿 +𝑇 = 𝑓 𝜃 
+
+
+
+{𝒉 𝑡 , 𝒒 𝑡 }𝐿 𝑡 =1; {𝒈 𝑠 𝐿 +𝜏 , 𝒈 𝑣 𝐿 +𝜏 }𝑇 𝜏 =1
+
+
+
+, (1) where 𝒚 𝐿 +1: 𝐿 +𝑇 ∈ R𝑁 ×𝑇 denotes the predicted power sequence. 
+
+## 3.2 Fourier Neural Operator 
+
+Fourier Transform is known to be an effective tool to extract fea-tures from periodic signals. Consider a sequence of 𝑁 grid-based real-valued observations of a function, denoted by 𝒔 = (𝑠 1, ..., 𝑠 𝑁 ) ∈ 
+
+R𝑁 . The Discrete Fourier Transform (DFT), represented by F , con-verts this sequence into the frequency domain with a periodicity of 
+
+2𝜋 as follows: 
+
+𝑆 𝑘 =
+
+> 𝑁
+
+∑︁ 
+
+> 𝑛 =1
+
+𝑠 𝑛 cos 
+
+
+
+2𝜋 𝑘 𝑁 𝑛 
+
+
+
+− 𝑖 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑛 =1
+
+𝑠 𝑛 sin 
+
+
+
+2𝜋 𝑘 𝑁 𝑛 
+
+
+
+= 𝐴 𝑘 − 𝐵 𝑘 𝑖, (2) where 𝑺 = F ( 𝒔 ) = (𝑆 1, ..., 𝑆 𝑁 ) ∈ R𝑁 and 𝑖 is the imaginary unit. 𝐴 𝑘 
+
+and 𝐵 𝑘 are the real and imaginary parts of the complex number 
+
+𝑆 𝑘 in the frequency domain, respectively. The inverse transforma-tion, which reconstructs the original sequence from the frequency domain, is given by: 
+
+𝑠 𝑛 = 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑘 =1
+
+𝑆 𝑘 
+
+
+
+cos 
+
+
+
+2𝜋 𝑛 𝑁 𝑘 
+
+
+
++ 𝑖 sin 
+
+
+
+2𝜋 𝑛 𝑁 𝑘 
+
+ 
+
+, (3) or equivalently by substituting 𝑆 𝑘 = 𝐴 𝑘 − 𝐵 𝑘 𝑖 ,
+
+𝑠 𝑛 = 1
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑘 =1
+
+
+
+𝐴 𝑘 cos 
+
+
+
+2𝜋 𝑛 𝑁 𝑘 
+
+
+
+− 𝐵 𝑘 sin 
+
+
+
+2𝜋 𝑛 𝑁 𝑘 
+
+ 
+
+, (4) where the imaginary unit is canceled out. We express the inverse transform as 𝒔 = F −1 (𝑺 ) for symmetry. The Fourier Neural Operator (FNO) is the neural network archi-tecture designed to learn mappings between infinite-dimensional function spaces, making it particularly effective for modeling spatio-temporal physical systems. The core of FNO is to perform global convolutions in the Fourier frequency domain, allowing it to effi-ciently capture long-range spatial dependencies. The architecture stacks multiple Fourier layers, and each layer updates the hidden representation as follows: 
+
+𝒉 (𝑙 +1) = 𝜙 (𝒉 (𝑙 ) 𝑾 + F −1 (𝑹 𝜃 ⊙ F ( 𝒉 (𝑙 ) )) + 𝒃 ), (5) where 𝜙 is a nonlinear activation function. 𝑊 , 𝑹 𝜃 is learnable weight and complex-valued weight, respectively. 𝒃 is a bias term. 
+
+## 4 Method 
+
+In this section, we first elaborate on the overall design philosophy and introduce details of the proposed model as shown in fig. 2. 
+
+## 4.1 Overall Framework 
+
+Our proposed framework consists of two core components: a geo-metric modeling module that encodes directional and spatial induc-tive biases, and a modality fusion module that effectively combines point-based turbine and grid-based weather forecasting embed-dings. Specifically, the vectors are first transformed into a series of geometric-invariant features, which are defined as 
+
+{ ˆ𝒒 𝑡 }𝐿 𝑡 =1, { ˆ𝒈 𝑣 𝐿 +𝜏 }𝑇 𝜏 =1 = 𝜇 
+
+
+
+{𝒒 𝑡 }𝐿 𝑡 =1; {𝒈 𝑣 𝐿 +𝜏 }𝑇 𝜏 =1
+
+
+
+, (6) where 𝜇 is a non-parametric function. We concatenate them with the original scalar features and obtain the initial turbine and weather forecasting embeddings as follows: 
+
+𝒉 (0) 
+
+> 𝑠
+
+= 𝜎 
+
+ 𝒉 𝑡 , ˆ𝒒 𝑡 𝐿 𝑡 =1
+
+
+
+, 𝒉 (0) 
+
+> 𝑔
+
+= 𝜎 
+
+ 𝒈 𝑠 𝐿 +𝜏 , ˆ𝒈 𝑣 𝐿 +𝜏 
+
+𝑇 𝜏 =1
+
+
+
+, (7) KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Shiyuan Piao et al. MLP Decoder 
+
+A. Geometric Encoder 
+
+FFT 
+
+Linear 
+
+Conv IFFT 
+
+B. Modality Fusion with Neural Fourier Operator 
+
+Identity 
+
+Add 
+
+SCADA Input CERRA Input SCADA Encoded Feature CERRA Encoded Feature 
+
+Wind Turbine 
+
+Alignment 
+
+Global Wind 
+
+Feature 
+
+FFT 
+
+concat 
+
+IFFT 
+
+×𝑁 
+
+Freq Domain Feature 
+
+Figure 2: Overall framework of the proposed method. 
+
+where 𝜎 denotes a Multilayer Perceptron (MLP). Then the embed-dings are fed into multiple neural operator layers to learn the wind-turbine interactions. The 𝑙 -th layer 𝛾 (𝑙 ) 
+
+> 𝜃
+
+updates the embeddings as follows: 
+
+𝒉 (𝑙 +1) 
+
+> 𝑠
+
+, 𝒉 (𝑙 +1) 
+
+> 𝑔
+
+= 𝛾 (𝑙 ) 
+
+> 𝜃
+
+(𝒉 (𝑙 ) 
+
+> 𝑠
+
+, 𝒉 (𝑙 ) 
+
+> 𝑔
+
+). (8) Finally, a decoder is employed to predict the future hourly wind power output ˆ𝒚 𝐿 +1: 𝐿 +𝑇 . We minimize the discrepancy between the real and predicted values to optimize the model parameters: 
+
+L = 1
+
+𝑁 × 𝑇 ∥ ˆ𝒚 𝐿 +1: 𝐿 +𝑇 − 𝒚 𝐿 +1: 𝐿 +𝑇 ∥2 
+
+> 𝐹
+
+, (9) The geometric transformation function 𝜇 and the neural operator layers 𝛾 are introduced in the following sections. 
+
+## 4.2 Geometric Encoder 
+
+Although raw wind vectors and nacelle angles can be directly fed into neural networks, such a representation ignores fundamen-tal aerodynamic symmetries. Wind power generation is governed not by absolute directions, but by the relative orientation between the incoming wind and the turbine’s nacelle. Similarly, large-scale atmospheric flow patterns, such as convergence zones or rotat-ing eddies—strongly influence wake propagation and inter-turbine interactions, yet are invisible to models that only process raw grid-point wind components. To embed these physical priors, we replace raw directional inputs with deterministic, rotation-invariant scalar features via a non-parametric encoder 𝜇 .
+
+SCADA inputs. For each turbine 𝑖 at time 𝑡 , the SCADA system records active power 𝑃 𝑡 𝑖 , wind speed 𝑊 𝑡 𝑖 , wind direction 𝜃 𝑡  
+
+> dir ,𝑖
+
+, and nacelle yaw angle 𝜃 𝑡  
+
+> nac ,𝑖
+
+. To avoid discontinuities in angular repre-sentation, both directional quantities are encoded as sine–cosine pairs: 
+
+(sin 𝜃 𝑡  
+
+> dir ,𝑖
+
+, cos 𝜃 𝑡  
+
+> dir ,𝑖
+
+), (sin 𝜃 𝑡  
+
+> nac ,𝑖
+
+, cos 𝜃 𝑡  
+
+> nac ,𝑖
+
+).
+
+Together with 𝑃 𝑡 𝑖 and 𝑊 𝑡 𝑖 , these form the base SCADA feature vector for turbine 𝑖 :
+
+q𝑡 𝑖 =  𝑃 𝑡 𝑖 , 𝑊 𝑡 𝑖 , sin 𝜃 𝑡  
+
+> dir ,𝑖
+
+, cos 𝜃 𝑡  
+
+> dir ,𝑖
+
+, sin 𝜃 𝑡  
+
+> nac ,𝑖
+
+, cos 𝜃 𝑡 
+
+> nac ,𝑖
+
+⊤.
+
+NWP inputs. The NWP forecasting provides, for each of the 
+
+𝐾 = 𝐻 × 𝑊 grid points covering the wind farm, zonal and merid-ional wind components (𝑢 𝑘,𝜏 , 𝑣 𝑘,𝜏 ) at future lead times 𝜏 = 1, . . . ,𝑇 
+
+(corresponding to absolute time steps 𝐿 + 𝜏 ), along with their fixed spatial coordinates (𝑥 𝑘 , 𝑦 𝑘 ). The base NWP feature at grid point 𝑘 
+
+and lead time 𝜏 is thus: 
+
+g𝑣 𝐿 +𝜏,𝑘 = (𝑢 𝑘,𝜏 , 𝑣 𝑘,𝜏 )⊤,
+
+which captures only local wind vectors without explicit information about large-scale flow organization. 
+
+(a) Wind-Turbine Alignment (b) Global Wind Feature 
+
+Figure 3: Illustration of the Geometric Encoder: (a) Wind Turbine Alignment; (b) Global Wind Feature. 
+
+Wind–turbine alignment. Turbine power output is governed by the relative orientation between incoming wind and nacelle yaw, not their absolute angles. For turbine 𝑖 at time 𝑡 , let 𝜓 𝑖,𝑡 = 𝜃 𝑡  
+
+> dir ,𝑖
+
+−𝜃 𝑡 
+
+> nac ,𝑖
+
+denote the yaw misalignment angle. The effective wind normal to the rotor plane scales with cos 𝜓 𝑖,𝑡 , which we compute continuously via trigonometric identities: 
+
+cos 𝜓 𝑖,𝑡 = cos 𝜃 𝑡  
+
+> dir ,𝑖
+
+cos 𝜃 𝑡  
+
+> nac ,𝑖
+
++ sin 𝜃 𝑡  
+
+> dir ,𝑖
+
+sin 𝜃 𝑡  
+
+> nac ,𝑖
+
+, (10) 
+
+sin 𝜓 𝑖,𝑡 = sin 𝜃 𝑡  
+
+> dir ,𝑖
+
+cos 𝜃 𝑡  
+
+> nac ,𝑖
+
+− cos 𝜃 𝑡  
+
+> dir ,𝑖
+
+sin 𝜃 𝑡  
+
+> nac ,𝑖
+
+, (11) as defined in Eqs. (10) and (11) . We also include the power ramp rate Δ𝑃 𝑡 𝑖 = 𝑃 𝑡 𝑖 − 𝑃 𝑡 −1 
+
+> 𝑖
+
+to capture short-term dynamics. Combining these with the full nacelle orientation yields the derived SCADA feature for turbine 𝑖 :
+
+ˆq𝑡 𝑖 =  Δ𝑃 𝑡 𝑖 , sin 𝜃 𝑡  
+
+> nac ,𝑖
+
+, cos 𝜃 𝑡  
+
+> nac ,𝑖
+
+, cos 𝜓 𝑖,𝑡 , sin 𝜓 𝑖,𝑡 
+
+⊤, (12) defined in Eq. (12) . This representation enforces rotational invari-ance: identical misalignment configurations produce identical fea-tures regardless of global heading. Fourier Geometric Wind Power Forecasting with Numerical Weather Prediction KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+Global wind structure. While g𝑣 𝐿 +𝜏,𝑘 describes local wind at grid point 𝑘 and lead time 𝜏 , it omits coherent atmospheric struc-tures that influence wake propagation across turbines. We therefore augment it with three physically meaningful descriptors: 
+
+• Horizontal divergence and vorticity , estimated via least-squares linear regression over spatial coordinates at each lead time 𝜏 :
+
+𝑢 𝑘,𝜏 
+
+𝑣 𝑘,𝜏 
+
+
+
+≈
+
+"
+
+𝛽 (𝜏 )
+
+> 𝑢, 0
+
+𝛽 (𝜏 )
+
+> 𝑣, 0
+
+#
+
++
+
+"
+
+𝛽 (𝜏 ) 
+
+> 𝑢, 1
+
+𝛽 (𝜏 )
+
+> 𝑢, 2
+
+𝛽 (𝜏 ) 
+
+> 𝑣, 1
+
+𝛽 (𝜏 )
+
+> 𝑣, 2
+
+# 𝑥 𝑘 
+
+𝑦 𝑘 
+
+
+
+, (13) 
+
+div 𝜏 = 𝛽 (𝜏 ) 
+
+> 𝑢, 1
+
++ 𝛽 (𝜏 ) 
+
+> 𝑣, 2
+
+, vort 𝜏 = 𝛽 (𝜏 ) 
+
+> 𝑣, 1
+
+− 𝛽 (𝜏 ) 
+
+> 𝑢, 2
+
+. (14) as formulated in Eq. (14) . Divergence quantifies flow convergence (affecting wake decay), while vorticity captures rotation (e.g., eddies or shear). If the spatial configuration is degenerate (e.g., 
+
+𝐾 < 3), we set div 𝜏 = vort 𝜏 = 0.
+
+• Domain-mean advection , although not rotation-invariant, pro-vides a general direction of entire fields. It is computed as the spatial average of the horizontal wind vector over all NWP grid points at lead time 𝜏 :
+
+( ¯𝑢 𝜏 , ¯𝑣 𝜏 ) = 1
+
+𝐾 
+
+> 𝐾
+
+∑︁ 
+
+> 𝑘 =1
+
+(𝑢 𝑘,𝜏 , 𝑣 𝑘,𝜏 ), (15) which separates large-scale transport from local anomalies by removing the bulk motion component; The resulting derived NWP feature at grid point 𝑘 and lead time 𝜏 
+
+is: 
+
+ˆg𝑣 𝐿 +𝜏,𝑘 =  𝑢 𝑘,𝜏 , 𝑣 𝑘,𝜏 , ¯𝑢 𝜏 , ¯𝑣 𝜏 , div 𝜏 , vort 𝜏 
+
+⊤, (16) defined in Eq. (16) . These derived features, ˆq𝑡 𝑖 for alignment and 
+
+ˆg𝑣 𝐿 +𝜏,𝑘 for flow structure, are concatenated with their respective base inputs ( q𝑡 𝑖 and g𝑣 𝐿 +𝜏,𝑘 , plus any additional scalars) to form the complete input representations, which are subsequently projected into a shared embedding space by MLPs in the overall framework. After constructing the physics-informed feature vectors ˆq𝑡 𝑖 and 
+
+ˆg𝑣 𝐿 +𝜏,𝑘 , we form spatio-temporal input tensors for each modality: 
+
+Q ∈ R𝐿 ×𝑁 ×𝑑 𝑠 , G ∈ R𝑇 ×𝐾 ×𝑑 𝑐 ,
+
+where 𝑑 𝑠 and 𝑑 𝑐 denote the total dimensions of the enriched SCADA and NWP features, respectively. To enable cross-modal fusion, we first align the temporal and channel dimensions via two indepen-dent MLPs per modality. A temporal projection maps the sequence lengths 𝐿 and 𝑇 to a shared latent time dimension 𝑑 time , while a channel projection maps 𝑑 𝑠 and 𝑑 𝑐 to a common hidden size 𝑑 hidden .The initial embeddings are: 
+
+𝒉 (0) 
+
+> 𝑠
+
+∈ R𝑑 time ×𝑁 ×𝑑 hidden , 𝒉 (0) 
+
+> 𝑔
+
+∈ R𝑑 time ×𝐾 ×𝑑 hidden .
+
+## 4.3 Modality Fusion 
+
+Effectively integrating point-based SCADA measurements with low-resolution, grid-based NWP forecasts is challenging due to their mis-match in spatial support and temporal semantics. To bridge this gap, we process each modality through a frequency-domain transforma-tion along the time axis, allowing their distinct spectral dynamics to be preserved and enhanced. The resulting time-domain representa-tions are then concatenated across spatial nodes—turbines and grid points—to form a unified embedding that jointly captures local tur-bine behavior and regional weather patterns, thereby mitigating the granularity discrepancy while enabling long-range spatio-temporal modeling. Formally, given SCADA embeddings 𝒉 (𝑙 ) 
+
+> 𝑠
+
+∈ R𝑑 time ×𝑁 ×𝑑 hidden and NWP embeddings 𝒉 (𝑙 ) 
+
+> 𝑔
+
+∈ R𝑑 time ×𝐾 ×𝑑 hidden , we apply a shared fre-quency fusion module M to each: 
+
+˜𝒉 (𝑙 ) 
+
+> 𝑠
+
+= M ( 𝒉 (𝑙 ) 
+
+> 𝑠
+
+), ˜𝒉 (𝑙 ) 
+
+> 𝑔
+
+= M ( 𝒉 (𝑙 ) 
+
+> 𝑔
+
+).
+
+The updated representation is obtained by concatenating along the spatial dimension and applying a linear projection: 
+
+𝑯 (𝑙 +1) = 𝜙 
+
+
+
+[ ˜𝒉 (𝑙 ) 
+
+> 𝑠
+
+, ˜𝒉 (𝑙 ) 
+
+> 𝑔
+
+]𝑾 + 𝒃 
+
+
+
+∈ R𝑑 time × ( 𝑁 +𝐾 ) × 𝑑 hidden , (17) where 𝑾 ∈ R𝑑 hidden ×𝑑 hidden and 𝒃 ∈ R𝑑 hidden are learnable parameters applied independently to each time step and spatial location, and 𝜙 
+
+denotes a nonlinear activation (e.g., GELU). 
+
+Frequency fusion M. For an input 𝒉 ∈ R𝑑 time ×𝑀 ×𝑑 hidden (with 
+
+𝑀 = 𝑁 or 𝐾 ), we apply the Discrete Fourier Transform (DFT) along the time axis, yielding a complex-valued spectrum 𝑺 = F ( 𝒉 ).We decompose it into real and imaginary parts 𝑨 = Re (𝑺 ) and 
+
+𝑩 = Im (𝑺 ), both in R𝑑 time ×𝑀 ×𝑑 hidden . Concatenating them along the channel dimension gives [𝑨 , 𝑩 ] ∈ R𝑑 time ×𝑀 ×2𝑑 hidden . We then apply a linear projection: 
+
+𝒁 = [𝑨 , 𝑩 ]𝑾 freq , 𝑾 freq ∈ R2𝑑 hidden ×2𝑑 hidden ,
+
+and split the result into enhanced real and imaginary parts: 
+
+𝑨 ′ = 𝒁 :,:,:𝑑 hidden , 𝑩 ′ = 𝒁 :,:,𝑑 hidden :.
+
+An inverse DFT maps the enhanced spectrum back to the time domain: ˜𝒉 = F −1 (𝑨 ′ + 𝑖 𝑩 ′) ∈ R𝑑 time ×𝑀 ×𝑑 hidden ,
+
+which has the same shape as the input 𝒉 . This frequency fusion module follows the main ingredients of a Fourier Neural Oper-ator layer: Fourier transform, learnable spectral mixing, inverse transform, and a local pathway with nonlinearity. Here the spectral convolution is applied along the temporal axis rather than a spatial PDE grid, so the learnable spectral weights parameterize a global temporal kernel for multimodal forecasting. 
+
+## 4.4 MLP Decoder 
+
+The final fused embedding 𝑯 (𝐿 ) ∈ R𝐵 ×𝑑 time × ( 𝑁 +𝐾 ) × 𝑑 hidden is flat-tened into a single vector: 
+
+𝒛 = flatten  𝑯 (𝐿 )  ∈ R𝑑 time (𝑁 +𝐾 )𝑑 hidden . (18) This compact representation is then mapped to the forecast horizon via a two-layer MLP with ReLU activation. 
+
+ˆ𝒚 𝐿 +1: 𝐿 +𝐻 = MLP dec (𝒛 ) ∈ R𝐻 ×𝑁 , (19) as defined in Eq. (19) . No recurrent or attention mechanisms are used—the decoder relies entirely on the rich, physics-informed representation learned by the preceding modules. 
+
+## 5 Experiment 5.1 Settings 
+
+Dataset. We consider three UK wind farms, namely Kelmarsh [ 36 ], 
+
+Penmanshiel [37 ], and Hill of Towie [ 10 ], spanning calendar years 2016–2020. For each farm, we collect (i) turbine-level SCADA mea-surements and (ii) gridded meteorological products from the CERRA [ 41 ]KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Shiyuan Piao et al. 
+
+Table 1: Overall performance comparison. Best and second-best results (excluding Persistence and Historical Mean ) are high-lighted in bold with orange background and underlined with gray background, respectively. Lower values are better ( ↓). Model Kelmarsh Farm Penmanshiel Farm Hill of Towie Farm RMSE ↓ MAE ↓ RMSE ↓ MAE ↓ RMSE ↓ MAE ↓                                                                                                                                                                                                                                                                                                                       
+
+> <3hour <6hour <3hour <6hour <3hour <6hour <3hour <6hour <3hour <6hour <3hour <6hour DLinear 0.9044 0.9266 0.6729 0.6992 0.8823 0.9002 0.6474 0.6690 0.8041 0.8374 0.5857 0.6101 TimeMixer 1.3569 1.3632 1.0358 1.0447 1.2959 1.3017 1.0013 1.0103 1.2637 1.2665 0.9476 0.9554 TimeXer 1.3228 1.3381 1.0040 1.0188 1.2713 1.2814 0.9789 0.9888 1.2420 1.2501 0.9306 0.9388 TSMixer 0.8822 0.9136 0.6584 0.6792 0.8483 0.8813 0.6391 0.6652 0.7993 0.8429 0.5847 0.6131 WPMixer 1.3626 1.3718 1.0380 1.0473 1.2794 1.2900 0.9838 0.9936 1.2483 1.2543 0.9337 0.9407 iTransformer 1.3324 1.3475 1.0123 1.0265 1.2697 1.2819 0.9769 0.9884 1.2418 1.2505 0.9272 0.9355 PatchTST 1.3408 1.3507 1.0209 1.0319 1.2795 1.2859 0.9883 0.9959 1.2487 1.2525 0.9391 0.9442 TimesNet 1.2651 1.2873 0.9497 0.9702 1.2348 1.2525 0.9404 0.9575 1.2104 1.2233 0.9042 0.9170 TimeMoE 1.4459 1.4519 1.1187 1.1274 1.3759 1.3886 1.0791 1.0903 1.3601 1.3685 1.0539 1.0620 TiRex 1.4659 1.4533 1.1480 1.1349 1.4070 1.3945 1.1099 1.0991 1.3750 1.3637 1.0720 1.0630 Chronos-2 1.3902 1.3954 1.0604 1.0695 1.3546 1.3536 1.0432 1.0484 1.3443 1.3380 1.0248 1.0245 MPNN 0.5685 0.6679 0.3797 0.4513 0.5664 0.6747 0.3650 0.4419 0.5903 0.6764 0.3780 0.4412 D2STGNN 0.5496 0.6498 0.3772 0.4491 0.5642 0.6735 0.3656 0.4469 0.5841 0.6754 0.3782 0.4442 DCRNN 0.5793 0.6824 0.3943 0.4647 0.6094 0.7240 0.4008 0.4796 0.6141 0.7127 0.3999 0.4674 STID 0.5621 0.6612 0.3852 0.4563 0.5689 0.6763 0.3745 0.4524 0.5939 0.6801 0.3782 0.4424 MTGNN 0.5508 0.6496 0.3734 0.4448 0.5644 0.6742 0.3592 0.4384 0.5770 0.6683 0.3686 0.4337 AGCRN 0.5516 0.6531 0.3755 0.4488 0.5631 0.6723 0.3663 0.4449 0.6084 0.6901 0.3919 0.4530 MiTSformer 0.5553 0.6589 0.3801 0.4524 0.5674 0.6706 0.3726 0.4498 0.6073 0.6949 0.3955 0.4551 HimNet 0.5589 0.6634 0.3752 0.4490 0.5653 0.6717 0.3603 0.4397 0.5867 0.6724 0.3701 0.4335 T-Graphormer 0.5517 0.6517 0.3793 0.4513 0.5665 0.6727 0.3656 0.4435 0.5916 0.6786 0.3780 0.4420 PatchSTG 0.5604 0.6603 0.3854 0.4559 0.5663 0.6735 0.3732 0.4504 0.5928 0.6868 0.3761 0.4430 HiSTGNN 0.5525 0.6519 0.3783 0.4488 0.5610 0.6677 0.3625 0.4424 0.6275 0.7070 0.4044 0.4677 Ours 0.4412 0.4562 0.3001 0.3112 0.4438 0.4589 0.2892 0.2997 0.5073 0.5237 0.3264 0.3379
+
+dataset at 75 m height, including both reanalysis (analysis) and short-range forecasts. Additional details of these three datasets can be found in table 8. SCADA features include turbine power, observed wind speed, observed wind direction, nacelle position (yaw), and a curtailment/downtime indicator ( Lost Production ). To obtain reliable supervision, we mark an hourly target as valid only when (i) the power measurement is finite and (ii) Lost Production 
+
+equals zero; otherwise the target mask is set to 0 and ignored by loss/metrics. We construct an input history at a step of 3 hours with length 𝐿 =9 and a prediction horizon of 𝐻 =6 at an hourly resolution. 
+
+Baselines. We compare against a comprehensive set of baselines summarized in tables 1 to 3. They are grouped as follows: 
+
+• Time-series models: LSTM [ 25 ], DLinear [ 54 ], TimeMixer [ 47 ], TimeXer [ 48 ], TSMixer [ 15 ], WPMixer [ 34 ], iTransformer [ 30 ], PatchTST [35], and TimesNet [49]. 
+
+• Foundation time-series models: TimeMoE [ 44 ], TiRex [ 3 ], and Chronos-2 [1]. 
+
+• Spatio-temporal models: DCRNN [ 28 ], MTGNN [ 51 ], AGCRN [ 5 ], STID [ 42 ], D2STGNN [ 43 ], MPNN [ 19 ], MiTSformer [ 8], Him-Net [ 14 ], T-Graphormer [ 4], PatchSTG [ 16 ], and HiSTGNN [ 33 ]. 
+
+• Scenario generation models: CLDM [ 13 ], Basic Diffusion [ 24 ], WiDLinear [55], and WiTFT [55]. All baselines are evaluated under the same train/val/test split, the same input/output definition (𝐿, 𝐻 ), and the same masking rule to ensure fair comparison. For probabilistic methods, we report deterministic errors using the predictive mean/median (consistent across methods) when computing MAE/RMSE. The implementation details can be found in the Appendix. 
+
+## 5.2 Overall Comparison 
+
+SCADA-only baselines. table 1 and table 2 provide the main experimental results of the baselines with only SCADA input and the baselines with SCADA+CERRA fusion input. We report masked MAE and RMSE on two horizon ranges: <3h (steps 1–3) and <6h (steps 1–6). MAE summarizes typical errors, while RMSE is more sensitive to large deviations. We observe that our model achieved the best performance compared to all the baselines in all datasets. In the following, we discuss the results of these two tables, respec-tively. All baselines in table 2 are only input the scada data and divided into 4 groups according to our summary in the experimental set-ting. Overall, our proposed model, which combines SCADA and CERRA data, achieves the best performance compared to all other baselines on all three wind farms and both horizons, consistently reducing both MAE and RMSE. A key observation is that SCADA-only models exhibit a clear performance ceiling, especially at the longer horizon. Compared with the strongest SCADA-only baseline (e.g., MTGNN and HiSTGNN) in each setting, our method yields 
+
+about 19–21% lower errors at <3h on Kelmarsh and Penmanshiel, and about 30–32% lower errors at <6h; on the larger Hill of Towie farm, the gains remain consistent at about 11–12% (<3h) and about 22% (<6h). The larger relative improvements at <6h align with the limitation of SCADA-only forecasting: as the horizon increases, turbine measurements become less informative about upcoming mesoscale changes, while drift accumulates in purely extrapolative predictions. Fourier Geometric Wind Power Forecasting with Numerical Weather Prediction KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+Table 2: SCADA+CERRA fusion baselines: normalized MAE/RMSE on test set. All models use the same shared SCADA+NWP embedding; horizons 3 h and 6 h reported. Best and second-best results are highlighted in bold with orange background and underlined with gray background, respectively. Lower values are better ( ↓). Model Kelmarsh Farm Penmanshiel Farm Hill of Towie Farm RMSE ↓ MAE ↓ RMSE ↓ MAE ↓ RMSE ↓ MAE ↓
+
+< 3 hour < 6 hour < 3 hour < 6 hour < 3 hour < 6 hour < 3 hour < 6 hour < 3 hour < 6 hour < 3 hour < 6 hour LSTM 0.5220 0.6154 0.3626 0.4312 0.5378 0.6388 0.3499 0.4245 0.5424 0.6227 0.3585 0.4185 MLP 0.5237 0.6145 0.3670 0.4363 0.5302 0.6300 0.3577 0.4314 0.5384 0.6167 0.3585 0.4191 MPNN 0.5240 0.6180 0.3627 0.4361 0.5417 0.6451 0.3511 0.4254 0.5372 0.6199 0.3503 0.4086 AGCRN 0.5214 0.6116 0.3739 0.4397 0.5247 0.6257 0.3585 0.4354 0.5448 0.6231 0.3665 0.4266 DLinear 0.5291 0.6254 0.3766 0.4473 0.5344 0.6362 0.3680 0.4449 0.5497 0.6293 0.3728 0.4332 iTransformer 0.5250 0.6176 0.3604 0.4291 0.5357 0.6360 0.3530 0.4293 0.5436 0.6231 0.3544 0.4149 MTGNN 0.5216 0.6140 0.3698 0.4396 0.5277 0.6292 0.3632 0.4403 0.5637 0.6388 0.3836 0.4423 HimNet 0.5235 0.6173 0.3717 0.4414 0.5260 0.6272 0.3573 0.4354 0.5395 0.6195 0.3572 0.4186 Ours 0.4412 0.4562 0.3001 0.3112 0.4438 0.4589 0.2892 0.2997 0.5073 0.5237 0.3264 0.3379 Table 3: NWP-only baselines: normalized MAE at < 6 hour horizon by dataset. Method Kelmarsh Farm Penmanshiel Farm Hill of Towie Farm Average                     
+
+> CLDM 0.3278 0.3202 0.3618 0.3366 Basic Diffusion 0.3934 0.3842 0.4342 0.4039 WiDLinear 0.4173 0.4141 0.4376 0.4230 WiTFT 0.3238 0.3227 0.3559 0.3341 Ours 0.3112 0.2997 0.3379 0.3163
+
+Generic time-series forecasters and large pre-trained time-series models consistently show the weakest performance. A plausible explanation is that they mainly capture temporal regularities while treating the farm as a flat multivariate sequence, lacking explicit spatial inductive bias for cross-turbine dependence, which leads to the larger error growth as the forecast horizon extends. In contrast, spatio-temporal models are generally stronger, suggesting that ex-plicitly modeling turbine-to-turbine interactions is beneficial, and this benefit becomes more evident on larger farms where spatial structure is richer. The best-performing ST variants likely benefit from more expressive spatial aggregation and temporal modeling (e.g., adaptive dependency learning), but still fall short of our pro-posed model, indicating that SCADA-only learning cannot fully resolve longer-horizon uncertainty without future atmospheric in-formation. These results motivate the hybrid input comparison in table 2 While incorporating CERRA forecasts has the potential to break the SCADA-only ceiling, it is non-trivial due to data hetero-geneity and physical interaction, which are the problems our model trying to solve. 
+
+## 5.3 NWP Baselines Comparison 
+
+NWP-only baselines. As shown in table 3, compared to NWP-only baselines using only CERRA inputs, our method achieves the lowest average normalized MAE across all three wind farms. Specif-ically, it yields relative improvements of approximately 5.9% over CLDM, 25.2% over WiDLinear, and 5.3% over WiTFT. The advantage over NWP-only baselines indicates that future weather forecasts alone are not sufficient for accurate turbine-level power prediction. Although CERRA provides future atmospheric information, it does not directly encode the current turbine operating state, such as recent power output, local wind speed, and nacelle orientation. By combining CERRA forecasts with SCADA histories and geometry-aware wind–turbine representations, our model better captures the non-stationary mapping from forecasted wind conditions to actual power generation. 
+
+Additional SCADA+CERRA fusion baselines. table 2 eval-uates NAR baselines under a shared SCADA+NWP embedding scheme. Concretely, the decoder input is formed by concatenating the historical tokens with the NWP block, and then applying the standard Informer-style embedding [58] as the sum of value, posi-tional, and temporal embeddings. Compared with SCADA-only fore-casting (table 1), adding CERRA consistently reduces both MAE and RMSE on all three wind farms, with larger gains at longer horizons. Within these baselines, models with explicit spatial inductive bias (e.g., MPNN/AGCRN) are generally strongest, while simpler/linear backbones(MLP/ARMLP and especially DLinear) lag behind, likely due to limited capacity to model heterogeneous inputs and non-linear cross-modal interactions. Despite these improvements, our method remains best on all farms and horizons, delivering about 15–17% lower errors at <3h and 25–29% at <6h on Kelmarsh and Penmanshiel, and about 6–7% at <3h and 15–19% at <6h on Hill of Towie compared with the strongest fusion baseline. This gap in-dicates that the performance bottleneck is not only the availability of NWP itself, but how SCADA and NWP are fused: simple token-level concatenation and generic embeddings are insufficient to capture vector-valued physical relations (e.g., direction-dependent inflow, yaw misalignment, and transport-driven linkage between turbine-point states and global wind fields). By explicitly encoding geometric invariances and performing a fusion mechanism tailored to this forecasting setting, our model better exploits NWP signals and yields larger gains, especially at longer horizons. 
+
+Operational interpretation of error reductions. A 0.01 re-duction in normalized MAE corresponds to roughly 5.8–7.2 kW for each turbine-level forecasted step on the three farms, with the detailed conversion reported in table 10. Thus the gains in tables 2 and 4 accumulate over turbines, rolling forecast windows, and re-peated dispatch intervals, reducing aggregate imbalance risk at the 
+
+< 6h horizon where operators can still update reserves, correct dispatch schedules, and adjust intraday bids. This is also the hori-zon at which NWP is most useful: the SCADA history remains reliable for immediate persistence, while future flow fields provide KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Shiyuan Piao et al. 
+
+Table 4: Ablation study (main): overall performance. Each entry is formatted as “value +Δ”, where value is the metric rounded to three decimal places, and Δ denotes the increase in error relative to the full model (“Ours”). Lower RMSE and MAE are better. Method Kelmarsh Farm Penmanshiel Farm Hill of Towie Farm RMSE ↓ MAE ↓ RMSE ↓ MAE ↓ RMSE ↓ MAE ↓                                                                                               
+
+> <3h<6h<3h<6h<3h<6h<3h<6h<3h<6h<3h<6hw/o FFT 0.471 +0.030 0.475 +0.018 0.322 +0.022 0.327 +0.016 0.481 +0.037 0.482 +0.023 0.315 +0.026 0.319 +0.019 0.530 +0.023 0.540 +0.016 0.342 +0.016 0.350 +0.012
+> w/o NFL 0.555 +0.114 0.664 +0.208 0.379 +0.078 0.455 +0.144 0.560 +0.116 0.669 +0.210 0.366 +0.066 0.449 +0.149 0.594 +0.087 0.677 +0.153 0.385 +0.058 0.445 +0.107
+> w/o CERRA 0.550 +0.109 0.658 +0.202 0.377 +0.077 0.453 +0.142 0.564 +0.120 0.670 +0.211 0.366 +0.066 0.447 +0.147 0.594 +0.087 0.679 +0.155 0.388 +0.062 0.448 +0.110
+> w/o Physical Alignment 0.447 +0.006 0.466 +0.010 0.304 +0.003 0.316 +0.005 0.455 +0.011 0.468 +0.010 0.289 +0.000 0.303 +0.003 0.511 +0.004 0.533 +0.009 0.329 +0.002 0.341 +0.003
+> w/o Global Wind 0.460 +0.019 0.477 +0.021 0.312 +0.012 0.328 +0.017 0.469 +0.025 0.490 +0.031 0.303 +0.014 0.320 +0.021 0.535 +0.028 0.556 +0.032 0.345 +0.018 0.358 +0.020
+> Full Structure 0.441 0.456 0.300 0.311 0.444 0.459 0.289 0.300 0.507 0.524 0.326 0.338
+
+Table 5: Feature-selection analysis with c-STG at 6h MAE. The reference full-model 6h MAE is 0.316. 
+
+Group Feature Gate MAE w/o 
+
+Original physical alignment 0.281 0.320 (+0.004) Original global-wind vorticity 0.224 0.323 (+0.007) Original global-wind divergence 0.169 0.322 (+0.006) New wake tendency 0.141 0.317 (+0.001) New spatial NWP speed anomaly 0.132 0.315 (-0.001) New turbulence intensity 0.053 0.314 (-0.002) 
+
+the lead-time information needed to distinguish sustained ramps from transient turbine-level fluctuations. 
+
+## 5.4 Empirical Analysis 
+
+Ablation study on main blocks. We conduct an ablation study (table 4) to quantify the contribution of each key component in our model. The variants cover three functional blocks: future-weather input ( w/o CERRA ), spectral fusion ( w/o FFT , w/o NFL ), and geometric priors ( w/o Physical Alignment , w/o Global Wind ). Overall, table 4 shows that the full model performs best on all three farms, and every ablated variant introduces a measurable degradation. The largest drops occur for w/o CERRA and w/o NFL, confirming that the gain depends on both future atmospheric in-formation and an effective spectral fusion mechanism. Removing CERRA reduces the task to a SCADA-only forecast and therefore loses direct information about upcoming weather evolution, which is especially harmful at the longer horizon. Removing NFL keeps both SCADA and CERRA available but replaces the learnable spec-tral operator with a simple projection, indicating that the fusion block is essential rather than a minor architectural detail. w/o FFT gives a smaller but consistent drop, suggesting that the frequency-domain representation helps align slowly evolving NWP signals with short-term power fluctuations. For geometric priors, removing physical alignment causes a modest decline because raw wind direc-tion, nacelle angle, and wind speed already contain partially redun-dant directional cues. Removing global wind hurts more, showing that advection, divergence, and vorticity provide non-local farm-level flow context that cannot be fully recovered from independent grid-point wind vectors. 
+
+Fine-grained geometric-prior analysis. To complement the coarse block-level ablation in table 4, table 5 provides a fine-grained analysis of the geometric prior features. We augment the original geometric features with turbulence intensity, wake tendency, and spatial NWP speed anomaly, and then apply c-STG [ 46 ] with the backbone and training protocol fixed. table 5 shows that the origi-nal physical alignment and global-wind features receive larger gate mass and cause larger leave-one-feature-out degradation; parenthe-ses report the MAE change relative to the full model. This feature-selection result is consistent with table 4: the geometric-prior block is useful because it encodes physically meaningful turbine–flow re-lations, rather than merely adding extra weather-derived covariates. Together, these two analyses attribute the gains to future weather inputs, spectral fusion, and geometry-aware priors. 
+
+Operational case study. The ablation and fine-grained results in tables 4 and 5 suggest how the model behaves under a repre-sentative steady high-wind regime, where the background wind speed is strong but individual turbines can still depart from the ideal power curve. In this regime, yaw misalignment is the first explana-tory signal: even when the NWP wind speed indicates favorable inflow, a large wind–nacelle angle reduces the effective rotor-facing component and explains turbine-specific under-generation. The global-wind features then account for residual farm-level structure. Divergence indicates whether the local flow is spreading or con-verging, and vorticity captures rotating or sheared flow that can alter wake transport across neighboring turbines. These signals are activated jointly: physical alignment corrects the local turbine response, while divergence and vorticity modulate how the correc-tion propagates through the farm, which explains why removing global wind is more harmful at the longer < 6h horizon. 
+
+Sensitivity to the number of NFL layers. table 6 reports the impact of varying the number of NFL layers (with FFT) on forecast-ing accuracy. The model performs worst when no NFL layer is used (𝑛 NFL =0), indicating that neural fourier layer is necessary for effec-tive fusion. The optimal NFL depth differs across datasets. Kelmarsh (N=6) achieves the best result at 𝑛 NFL =1 (3h/6h MAE: 0.2997/0.3116). Penmanshiel (N=14) performs best at 𝑛 NFL =2 (0.2873/0.2999), while Hill of Towie (N=21) reaches its optimum at 𝑛 NFL =3 (0.3275/0.3385). This trend suggests that as the dataset scale (number of turbines) increases, using a deeper NFL improves performance by providing greater spectral modeling capacity. However, further increasing the depth beyond the optimal setting leads to marginal degrada-tion, showing that overly deep NFL stacks may overfit and hinder generalization. Fourier Geometric Wind Power Forecasting with Numerical Weather Prediction KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+Table 6: Comparison on number of NFL layers (w/ FFT). 3h / 6h MAE.                       
+
+> NFL Kelmarsh(N=6) Penmanshiel(N=14) Hill of Towie(N=21) 00.3779 / 0.4538 0.3652 / 0.4444 0.3830 / 0.4460 10.2997 / 0.3116 0.2899 / 0.3020 0.3299 / 0.3409 20.3007 / 0.3126 0.2873 / 0.2999 0.3287 / 0.3414 30.3008 / 0.3121 0.2899 / 0.3014 0.3275 / 0.3385
+> 40.3011 / 0.3116 0.2921 / 0.3032 0.3294 / 0.3408
+> w/o NFL: 𝑛 NFL =0(no NFL layers). Cell format: 3h MAE / 6h MAE.
+
+Decoder variants. We further vary only the decoder while keep-ing the encoder and fusion module fixed, and report mean nor-malized test MAE over Kelmarsh, Penmanshiel, and Hill of Towie. table 7 shows that larger sequence decoders provide only marginal gains over the MLP decoder, so the MLP is an efficient default for the proposed architecture. 
+
+Table 7: Decoder variants. Metrics are mean normalized test MAE over the three UK farms. Decoder #Params < 3h MAE < 6h MAE 
+
+MLP 0.12M 0.304 ± 0.017 0.316 ± 0.016 
+
+LSTM 0.25M 0.302 ± 0.019 0.314 ± 0.017 
+
+iTransformer 0.32M 0.301 ± 0.017 0.313 ± 0.016 10 4 10 5
+
+> Params
+> 0.32
+> 0.34
+> 0.36
+> 0.38
+> 0.40
+> 0.42
+> 0.44
+> MAE (6h, normalized)
+> Ours
+> WiTFT
+> CLDM
+> WiDLinear
+> FusionMPNN
+> Fusion LSTM
+
+Figure 4: Parameter-efficiency analysis across different mod-els. Our method achieves better performance with fewer pa-rameters. 
+
+Model size. As shown in the fig. 4, our method achieves a com-petitive performance with significantly fewer parameters than more complex models such as CLDM and WiTFT. While these larger archi-tectures benefit from richer modeling capacity—especially through attention or graph-based structures—our lightweight design demon-strates that effective feature fusion combined with geometric-aware encoding enables efficient learning of spatiotemporal patterns in NWP data. In contrast, WiDLinear, despite its minimal parameter count, suffers from limited expressiveness due to its simple linear structure. The high-performing but heavy models in the top-right (Fusion LSTM and FusionMPNN) suggest that mere temporal em-bedding aggregation without structural reasoning does not yield substantial gains. Our approach strikes a favorable balance between model complexity and performance, highlighting the importance of geometrically informed representations in achieving strong results with reduced computational cost. 
+
+## 6 Conclusion 
+
+In this work, we propose a novel geometric neural operator frame-work for short-term wind power forecasting, which effectively integrates SCADA data with CERRA numerical weather predic-tions. By introducing a geometric encoder that captures rotation-invariant features (such as wind-turbine alignment and large-scale flow descriptors) and employing Fourier neural operators to model long-range spatiotemporal dependencies, the proposed model over-comes the limitations of existing methods that inadequately exploit directional and atmospheric dynamics. Experimental results across three wind farms demonstrate that our approach consistently out-performs state-of-the-art baselines. Ablations further confirm the role of each component. 
+
+## 7 Limitations and Ethical Considerations 
+
+All data used in this study, including the wind farm data and CERRA reanalysis data, are open and public datasets from authoritative meteorological institutions, with data acquisition and usage fully complying with the relevant copyright and open access norms. No private, sensitive, or personal information is involved in the research. For limitation, current framework primarily leverages wind-related variables, and is only evaluated for forecast horizons up to 6 hours. In the future, we plan to incorporate more weather variables, such as temperature and geopotential, and extend it to forecasting with longer lead times. 
+
+## Acknowledgments 
+
+This work is funded by National Natural Science Foundation of China Grant No. 72371217, the Guangzhou Industrial Informatics and Intelligence Key Laboratory No. 2024A03J0628, the Shenzhen Science and Technology Program (KCXFZ20240903093759004), the Nansha Key Area Science and Technology Project No. 2023ZD003, and Project No. 2021JC02X191. Yang Liu is supported in part by the Postdoctoral Fellowship Scheme of The Chinese University of Hong Kong. 
+
+## 8 GenAI Disclosure 
+
+In this work, we used LLMs as an auxiliary tool for polishing the writing and improving the clarity of the manuscript. Specifically, we use it to review the entire text for grammatical accuracy, im-prove sentence structure, and ensure consistent phrasing and tone throughout the paper. KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Shiyuan Piao et al. 
+
+## References 
+
+[1] Abdul Fatir Ansari, Oleksandr Shchur, et al . 2025. Chronos-2: From Univariate to Universal Forecasting. arXiv:2510.15821 [cs.LG] [2] Ezgi Arslan Tuncar, Şafak Sağlam, and Bülent Oral. 2024. A review of short-term wind power generation forecasting methods in recent technological trends. 
+
+Energy Reports 12 (2024), 197–209. [3] Andreas Auer, Patrick Podest, Daniel Klotz, Sebastian Böck, Günter Klambauer, and Sepp Hochreiter. 2025. TiRex: Zero-Shot Forecasting Across Long and Short Horizons with Enhanced In-Context Learning. In Advances in Neural Information Processing Systems , Vol. 38. 57529–57580. [4] Hao Yuan Bai and Xue Liu. 2025. T-Graphormer: Using Transformers for Spa-tiotemporal Forecasting. arXiv:2501.13274 [cs.LG] [5] Lei Bai, Lina Yao, Can Li, Xianzhi Wang, and Can Wang. 2020. Adaptive Graph Convolutional Recurrent Network for Traffic Forecasting. In Advances in Neural Information Processing Systems , Vol. 33. 17804–17815. [6] Shaojie Bai, J. Zico Kolter, and Vladlen Koltun. 2018. An Empirical Evalua-tion of Generic Convolutional and Recurrent Networks for Sequence Modeling. arXiv:1803.01271 [cs.LG] [7] Ioannis K. Bazionis, Panagiotis A. Karafotis, and Pavlos S. Georgilakis. 2022. A review of short-term wind power probabilistic forecasting and a taxonomy focused on input data. IET Renewable Power Generation 16, 1 (2022), 77–91. [8] Jiawei Chen and Chunhui Zhao. 2024. Addressing Spatial-Temporal Hetero-geneity: General Mixed Time Series Analysis via Latent Continuity Recovery and Alignment. In Advances in Neural Information Processing Systems , Vol. 37. 17910–17946. [9] Kyunghyun Cho, Bart van Merriënboer, Caglar Gulcehre, Dzmitry Bahdanau, Fethi Bougares, Holger Schwenk, and Yoshua Bengio. 2014. Learning Phrase Representations using RNN Encoder–Decoder for Statistical Machine Translation. In Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing . 1724–1734. [10] Alex Clerc and Elizabeth Lingkan. 2025. Hill of Towie wind farm open dataset. doi:10.5281/zenodo.14870023 Version 1.0.0. [11] Simon Daenens, Timothy Verstraeten, Pieter-Jan Daems, Ann Nowé, and Jan Helsen. 2025. Spatio-temporal graph neural networks for power prediction in offshore wind farms using SCADA data. Wind Energy Science 10 (2025), 1137– 1152. [12] Robin de Jong and Bart Doekemeijer. 2026. LES dataset of SMARTEOLE. doi:10. 5281/zenodo.18888663 Version 1.0. [13] Xiaochong Dong, Zhihang Mao, Yingyun Sun, and Xinzhi Xu. 2024. Short-Term Wind Power Scenario Generation Based on Conditional Latent Diffusion Models. 
+
+IEEE Transactions on Sustainable Energy 15, 2 (2024), 1074–1085. [14] Zheng Dong, Renhe Jiang, Haotian Gao, Hangchen Liu, Jinliang Deng, Qingsong Wen, and Xuan Song. 2024. Heterogeneity-Informed Meta-Parameter Learning for Spatiotemporal Time Series Forecasting. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 631–641. [15] Vijay Ekambaram, Arindam Jati, Nam H. Nguyen, Phanwadee Sinthong, and Jayant Kalagnanam. 2023. TSMixer: Lightweight MLP-Mixer Model for Multivari-ate Time Series Forecasting. In Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 459–469. [16] Yuchen Fang, Yuxuan Liang, Bo Hui, Zezhi Shao, Liwei Deng, Xu Liu, Xinke Jiang, and Kai Zheng. 2025. Efficient Large-Scale Traffic Forecasting with Transformers: A Spatial Data Management Perspective. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 307–317. [17] Aoife M. Foley, Paul G. Leahy, Antonino Marvuglia, and Eamon J. McKeogh. 2012. Current methods and advances in forecasting of wind power generation. 
+
+Renewable Energy 37, 1 (2012), 1–8. [18] Yarin Gal and Zoubin Ghahramani. 2016. Dropout as a Bayesian Approximation: Representing Model Uncertainty in Deep Learning. In Proceedings of the 33rd International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 48) . 1050–1059. [19] Justin Gilmer, Samuel S. Schoenholz, Patrick F. Riley, Oriol Vinyals, and George E. Dahl. 2017. Neural Message Passing for Quantum Chemistry. In Proceedings of the 34th International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 70) . 1263–1272. [20] Tilmann Gneiting and Adrian E. Raftery. 2007. Strictly Proper Scoring Rules, Prediction, and Estimation. J. Amer. Statist. Assoc. 102, 477 (2007), 359–378. [21] Tilmann Gneiting, Adrian E. Raftery, Anton H. Westveld, and Tom Goldman. 2005. Calibrated Probabilistic Forecasting Using Ensemble Model Output Statistics and Minimum CRPS Estimation. Monthly Weather Review 133, 5 (2005), 1098–1118. [22] Kurt Schaldemose Hansen, Nikola Vasiljevic, and Steen Arne Sørensen. 2022. SCADA data from Norre_m2 wind farm. doi:10.11583/DTU.19076756.v1 Accessed: 2026-06-05. [23] Inam Ul Haq, Abhishek Kumar, and Pramod Singh Rathore. 2025. Machine learn-ing approaches for wind power forecasting: a comprehensive review. Discover Applied Sciences 7 (2025), 1139. [24] Jonathan Ho, Ajay Jain, and Pieter Abbeel. 2020. Denoising Diffusion Probabilistic Models. In Advances in Neural Information Processing Systems , Vol. 33. 6840–6851. [25] Sepp Hochreiter and Jürgen Schmidhuber. 1997. Long Short-Term Memory. 
+
+Neural Computation 9, 8 (1997), 1735–1780. [26] International Energy Agency (IEA). 2025. Electricity 2025: Analysis and forecast to 2027 . Technical Report. International Energy Agency, Paris, France. https: //www.iea.org/reports/electricity-2025 Accessed 2026-02-02. [27] IPCC. 2022. Climate Change 2022: Mitigation of Climate Change. Contribution of Working Group III to the Sixth Assessment Report of the Intergovernmental Panel on Climate Change . Technical Report. Cambridge University Press. https: //www.ipcc.ch/report/ar6/wg3/ Accessed 2026-02-02. [28] Yaguang Li, Rose Yu, Cyrus Shahabi, and Yan Liu. 2018. Diffusion Convolutional Recurrent Neural Network: Data-Driven Traffic Forecasting. In International Conference on Learning Representations .[29] Yang Liu, Jiashun Cheng, Haihong Zhao, Tingyang Xu, Peilin Zhao, Fugee Tsung, Jia Li, and Yu Rong. 2024. SEGNO: Generalizing Equivariant Graph Neural Networks with Physical Inductive Biases. In The Twelfth International Conference on Learning Representations .[30] Yong Liu, Tengge Hu, Haoran Zhang, Haixu Wu, Shiyu Wang, Lintao Ma, and Mingsheng Long. 2024. iTransformer: Inverted Transformers Are Effective for Time Series Forecasting. In The Twelfth International Conference on Learning Representations .[31] Yang Liu, Zinan Zheng, Jiashun Cheng, Fugee Tsung, Deli Zhao, Yu Rong, and Jia Li. 2025. CirT: Global Subseasonal-to-Seasonal Forecasting with Geometry-inspired Transformer. In The Thirteenth International Conference on Learning Representations .[32] Yang Liu, Zinan Zheng, Yu Rong, Deli Zhao, Hong Cheng, and Jia Li. 2025. Equivariant and Invariant Message Passing for Global Subseasonal-to-seasonal Forecasting. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining . 1879–1890. [33] Minbo Ma, Peng Xie, Fei Teng, Bin Wang, Shenggong Ji, Junbo Zhang, and Tianrui Li. 2023. HiSTGNN: Hierarchical spatio-temporal graph neural network for weather forecasting. Information Sciences 648 (2023), 119580. [34] Md Mahmuddun Nabi Murad, Mehmet Aktukmak, and Yasin Yilmaz. 2025. WP-Mixer: Efficient Multi-Resolution Mixing for Long-Term Time Series Forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence , Vol. 39. 19581– 19588. [35] Yuqi Nie, Nam H. Nguyen, Phanwadee Sinthong, and Jayant Kalagnanam. 2023. A Time Series is Worth 64 Words: Long-term Forecasting with Transformers. In 
+
+The Eleventh International Conference on Learning Representations .[36] Charlie Plumley. 2022. Kelmarsh wind farm data. doi:10.5281/zenodo.5841834 Version 0.0.3. [37] Charlie Plumley. 2022. Penmanshiel Wind Farm Data. doi:10.5281/zenodo.5946808 Version 0.0.2. [38] Hong Qiu, Kaikai Shi, Renfang Wang, Liang Zhang, Xiufeng Liu, and Xu Cheng. 2024. A novel temporal–spatial graph neural network for wind power forecasting considering blockage effects. Renewable Energy 227 (2024), 120499. [39] Kashif Rasul, Calvin Seward, Ingmar Schuster, and Roland Vollgraf. 2021. Au-toregressive Denoising Diffusion Models for Multivariate Probabilistic Time Series Forecasting. In Proceedings of the 38th International Conference on Machine Learning (Proceedings of Machine Learning Research, Vol. 139) . 8857–8868. [40] David Salinas, Valentin Flunkert, Jan Gasthaus, and Tim Januschowski. 2020. DeepAR: Probabilistic forecasting with autoregressive recurrent networks. Inter-national Journal of Forecasting 36, 3 (2020), 1181–1191. [41] S. Schimanke, M. Ridal, P. Le Moigne, L. Berggren, P. Undén, R. Randria-mampianina, U. Andrea, E. Bazile, A. Bertelsen, P. Brousseau, P. Dahlgren, L. Edvinsson, A. El Said, M. Glinton, S. Hopsch, L. Isaksson, R. Mladek, E. Olsson, A. Verrelle, and Z. Q. Wang. 2021. CERRA sub-daily regional reanalysis data for Europe on height levels from 1984 to present. doi:10.24381/cds.38b394e6 Accessed: 2026-01-11. [42] Zezhi Shao, Zhao Zhang, Fei Wang, Wei Wei, and Yongjun Xu. 2022. Spatial-Temporal Identity: A Simple yet Effective Baseline for Multivariate Time Series Forecasting. In Proceedings of the 31st ACM International Conference on Informa-tion & Knowledge Management . 4454–4458. [43] Zezhi Shao, Zhao Zhang, Wei Wei, Fei Wang, Yongjun Xu, Xin Cao, and Chris-tian S. Jensen. 2022. Decoupled Dynamic Spatial-Temporal Graph Neural Net-work for Traffic Forecasting. Proceedings of the VLDB Endowment 15, 11 (2022), 2733–2746. [44] Xiaoming Shi, Shiyu Wang, Yuqi Nie, Dianqi Li, Zhou Ye, Qingsong Wen, and Ming Jin. 2025. Time-MoE: Billion-Scale Time Series Foundation Models with Mixture of Experts. In The Thirteenth International Conference on Learning Repre-sentations .[45] Yue Song, Diyin Tang, Jinsong Yu, Zetian Yu, and Xin Li. 2023. Short-Term Fore-casting Based on Graph Convolution Networks and Multiresolution Convolution Neural Networks for Wind Power. IEEE Transactions on Industrial Informatics 19, 2 (2023), 1691–1702. [46] Ram Dyuthi Sristi, Ofir Lindenbaum, Shira Lifshitz, Maria Lavzin, Jackie Schiller, Gal Mishne, and Hadas Benisty. 2024. Contextual Feature Selection with Con-ditional Stochastic Gates. In Proceedings of the 41st International Conference on Fourier Geometric Wind Power Forecasting with Numerical Weather Prediction KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea 
+
+Machine Learning (Proceedings of Machine Learning Research, Vol. 235) . 46375– 46392. [47] Shiyu Wang, Haixu Wu, Xiaoming Shi, Tengge Hu, Huakun Luo, Lintao Ma, James Y. Zhang, and Jun Zhou. 2024. TimeMixer: Decomposable Multiscale Mixing for Time Series Forecasting. In The Twelfth International Conference on Learning Representations .[48] Yuxuan Wang, Haixu Wu, Jiaxiang Dong, Guo Qin, Haoran Zhang, Yong Liu, Yunzhong Qiu, Jianmin Wang, and Mingsheng Long. 2024. TimeXer: Empowering Transformers for Time Series Forecasting with Exogenous Variables. In Advances in Neural Information Processing Systems , Vol. 37. 469–498. [49] Haixu Wu, Tengge Hu, Yong Liu, Hang Zhou, Jianmin Wang, and Mingsheng Long. 2023. TimesNet: Temporal 2D-Variation Modeling for General Time Series Analysis. In The Eleventh International Conference on Learning Representations .[50] Haixu Wu, Jiehui Xu, Jianmin Wang, and Mingsheng Long. 2021. Autoformer: Decomposition Transformers with Auto-Correlation for Long-Term Series Fore-casting. In Advances in Neural Information Processing Systems , Vol. 34. 22419– 22430. [51] Zonghan Wu, Shirui Pan, Guodong Long, Jing Jiang, Xiaojun Chang, and Chengqi Zhang. 2020. Connecting the Dots: Multivariate Time Series Forecasting with Graph Neural Networks. In Proceedings of the 26th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining . 753–763. [52] Xin Xu, Qinglong Cao, Ruizhe Deng, Zhiling Guo, Yuntian Chen, and Jinyue Yan. 2025. A cross-dataset benchmark for neural network-based wind power forecasting. Renewable Energy 254 (2025), 123463. [53] Mei Yu, Zhuo Zhang, Xuewei Li, Jian Yu, Jie Gao, Zhiqiang Liu, Bo You, Xiaoshan Zheng, and Ruiguo Yu. 2020. Superposition Graph Neural Network for offshore wind power prediction. Future Generation Computer Systems 113 (2020), 145–157. [54] Ailing Zeng, Muxi Chen, Lei Zhang, and Qiang Xu. 2023. Are Transformers Effective for Time Series Forecasting?. In Proceedings of the AAAI Conference on Artificial Intelligence , Vol. 37. 11121–11128. [55] Hanyu Zhang, Reza Zandehshahvar, Mathieu Tanneau, and Pascal Van Henten-ryck. 2025. Weather-Informed Probabilistic Forecasting and Scenario Generation in Power Systems. Applied Energy 384 (2025), 125369. [56] Zinan Zheng, Yang Liu, and Jia Li. 2025. Mesh Interpolation Graph Network for Dynamic and Spatially Irregular Global Weather Forecasting. In Advances in Neural Information Processing Systems , Vol. 38. 25287–25311. [57] Zinan Zheng, Yang Liu, Jia Li, Jianhua Yao, and Yu Rong. 2024. Relaxing Con-tinuous Constraints of Equivariant Graph Neural Networks for Broad Physical Dynamics Learning. In Proceedings of the 30th ACM SIGKDD Conference on Knowl-edge Discovery and Data Mining . 4548–4558. [58] Haoyi Zhou, Shanghang Zhang, Jieqi Peng, Shuai Zhang, Jianxin Li, Hui Xiong, and Wancai Zhang. 2021. Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence , Vol. 35. 11106–11115. 
+
+## 9 Appendices 9.1 Dataset Construction 
+
+Table 8: Dataset summary and forecasting setup. 
+
+Farm Period Turb. Grid Input Pred. 
+
+Kelmarsh Jan. 2016–Dec. 2020 6 16 9 6Penmanshiel Jun. 2016–Dec. 2020 14 20 9 6Hill of Towie Jan. 2016–Dec. 2020 21 21 9 6
+
+Note: Turb. = turbines; Grid = matched CERRA points; Input/Pred. = 3h history/1h horizon. Sources: Kelmarsh [36], Penmanshiel [37], and Hill of Towie [10]. 
+
+We align SCADA to hourly timestamps and sample every 3 hours to form history features: power 𝑃 3, increment Δ𝑃 3, wind speed 
+
+𝑊 3, and direction/yaw sine–cosine terms. CERRA inputs use the 
+
+𝐾 =16 /20 /21 nearest grid points per farm: analysis fields aligned to the 3-hour history and forecasts issued at 𝑡 0 for lead times 1– 6 hours, both with speed, direction, 𝑢 , and 𝑣 . For each turbine– grid pair we also store normalized (Δ𝑥, Δ𝑦, 𝑑 ) geometry. We split chronologically by target time (train 2016–2018, validation 2019, test 2020), assigning a sample by its last forecasting hour to avoid temporal leakage. All variables are z-score normalized with training-only statistics; invalid entries are set to zero after normalization, and CERRA forecasts use separate per-(lead, grid, variable) statistics. 
+
+## 9.2 Implementation Details 
+
+Our official implementation. Our final model follows Fig. 2: a non-parametric geometric encoder builds alignment/global-wind features, modality-specific MLPs project SCADA and CERRA into a shared latent space, and two frequency-fusion layers mix spec-tra along time. We use 𝑑 time =16 and 𝑑 hidden =8, producing 𝒉 (0) 
+
+> 𝑠
+
+∈
+
+R16 ×𝑁 ×8 and 𝒉 (0) 
+
+> 𝑔
+
+∈ R16 ×𝐾 ×8; 𝑯 (2) is flattened and decoded by a two-layer MLP. 
+
+Optimization and training protocol. We train with masked MSE and AdamW using learning rate 1 × 10 −4, weight decay 1 ×
+
+10 −4, batch size 128 , dropout 0.15 , and early stopping patience 20 
+
+within 100 epochs (table 9); no gradient clipping or learning-rate scheduling is used. 
+
+Hardware and software. All experiments are conducted using PyTorch [1.12] on GTX A6000, with CUDA [12.4]. 
+
+## 9.3 Baseline Implementation Details 
+
+We summarize each baseline family; all learned models use the same split, seed where applicable, and comparable capacity for fair comparison. 
+
+Table 9: Common training settings. 
+
+Setting ST Model / NWPFusion TS Model 
+
+Batch size 128 128 Learning rate 1 × 10 −4 1 × 10 −4
+
+Weight decay 1 × 10 −4 default Max epochs 100 100 Early stopping 20 20 Dropout 0.15 0.15 
+
+STModel (SCADA-only spatial–temporal). Models in this fam-ily use only SCADA histories (𝐵, 𝐿, 𝑁 , 𝐹 ) to predict (𝐵, 𝐻, 𝑁 ); graph variants also receive the turbine adjacency matrix, and patch vari-ants use patch length 3. We keep 𝑑 model =128 and dropout 0.15. 
+
+FNP baseline. Our FNP baseline uses the same SCADA and CERRA task interface as the proposed model: raw/derived features are projected to 𝐷 =128 , temporally aligned, fused by one 8-mode neural Fourier layer, flattened, and decoded by an MLP to (𝐵, 𝐻, 𝑁 ).No recurrent or graph decoder is used in this FNP implementation. 
+
+Other SCADA+CERRA fusion baselines. These baselines share an embedding stage: a shared GRU encodes SCADA histories, an MLP embeds matched CERRA forecasts flattened per turbine, and the two embeddings feed AR/NAR heads including LSTM, MLP, MPNN, AGCRN, DLinear, iTransformer, D2STGNN, MTGNN, HiST-GNN, and HimNet. We use hidden dimension 128 and the same split, masks, and training protocol. 
+
+Time-series and NWP-only baselines. For TSLib models [ 49 ], SCADA is reshaped from (𝑇 , 𝑁 , 𝐹 ) to (𝑇 , 𝑁 𝐹 ) and predicted as 
+
+(𝐵, 𝐻, 𝑁 ); DLinear, TimesNet, TimeXer, iTransformer, TimeMixer, PatchTST, TSMixer, and WPMixer use 𝑑 model =𝑑 ff =128 . WiTFT, WiD-Linear, Basic Diffusion, and CLDM are NWP-only baselines using CERRA inputs (𝐵, 7, 64 ).KDD ’26, August 09–13, 2026, Jeju Island, Republic of Korea Shiyuan Piao et al. 
+
+## 9.4 Evaluation Metrics 
+
+We report masked, node-aggregated MAE and RMSE over lead steps H3={1, 2, 3} and H6={1, . . . , 6}. For a horizon set H , target 𝑦 ,prediction ˆ𝑦 , and validity mask 𝑚 , the metrics are: MAE (H ) =
+
+Í𝑖,𝑡,ℎ ∈ H 𝑚 (𝑖 ) 
+
+> 𝑡,ℎ
+
+|𝑦 (𝑖 ) 
+
+> 𝑡,ℎ
+
+− ˆ𝑦 (𝑖 ) 
+
+> 𝑡,ℎ
+
+|
+
+Í𝑖,𝑡,ℎ ∈ H 𝑚 (𝑖 )
+
+> 𝑡,ℎ
+
+,
+
+RMSE (H ) =
+
+vuut Í 𝑖,𝑡,ℎ ∈ H 𝑚 (𝑖 ) 
+
+> 𝑡,ℎ
+
+(𝑦 (𝑖 ) 
+
+> 𝑡,ℎ
+
+− ˆ𝑦 (𝑖 ) 
+
+> 𝑡,ℎ
+
+)2
+
+Í𝑖,𝑡,ℎ ∈ H 𝑚 (𝑖 )
+
+> 𝑡,ℎ
+
+.
+
+Only valid entries are included, and errors are aggregated jointly across turbines and time steps. 
+
+## 9.5 Additional Analyses 
+
+Operational error conversion. table 10 reports the approximate conversion from normalized MAE to kW using the farm-specific scaling factors in the processed data. A 0.01 change in normalized MAE corresponds to about 5.8–7.2 kW for each turbine-step, so the 0.005–0.016 gaps in the controlled experiments below remain operationally meaningful after aggregation over turbines, horizons, and repeated dispatch windows. 
+
+Table 10: Approximate conversion from normalized MAE to kW. Farm < 3h nMAE / kW < 6h nMAE / kW +0.01 nMAE          
+
+> Kelmarsh 0.300 / 175.6 0.311 / 182.0 ∼5.8 kW Penmanshiel 0.289 / 193.5 0.300 / 201.4 ∼6.7 kW Hill of Towie 0.326 / 235.2 0.338 / 244.4 ∼7.2 kW
+
+Supplementary experiment settings. UK-farm supplementary experiments reuse the main preprocessing, split, masks, and train-ing protocol; controlled comparisons change only the tested compo-nent. Tables 11 and 12 report normalized test MAE (mean ± std) over Kelmarsh, Penmanshiel, and Hill of Towie, while table 13 reports two external sites separately. The fusion variants keep the SCADA and CERRA inputs and decoder fixed, the matched-input backbones keep the shared SCADA+CERRA embedding protocol fixed, and the cross-site experiment changes the farm family, turbine layout, and data period. 
+
+Table 11: Fusion variants: mean ± std MAE over the three UK farms. Fusion < 3h MAE < 6h MAE 
+
+Concat 0.330 ± 0.016 0.332 ± 0.015 
+
+Conv 0.330 ± 0.016 0.332 ± 0.015 
+
+Pool-inject 0.320 ± 0.018 0.324 ± 0.016 
+
+Gate 0.318 ± 0.021 0.326 ± 0.018 
+
+FiLM 0.312 ± 0.019 0.322 ± 0.019 
+
+Bilinear 0.312 ± 0.019 0.321 ± 0.017 
+
+Cross-attn 0.311 ± 0.020 0.323 ± 0.018 
+
+Ours 0.304 ± 0.017 0.316 ± 0.016 
+
+Table 11 isolates the fusion operator under fixed inputs and decoder. Concat and Conv both give 0.332 at 6h, indicating that naive token merging or local temporal mixing is weak once point-level SCADA and gridded CERRA features are aligned. Adaptive variants narrow the gap: FiLM, Bilinear, and Cross-attn reach 0.321– 0.323 at 6h, but Ours remains best at 0.316. The 0.005–0.007 6h margin over Bilinear/Cross-attn corresponds to several kW per turbine-step by table 10, supporting the rebuttal point that the gain comes from spectral cross-modal alignment rather than only richer inputs. 
+
+Table 12: Matched-input backbones: mean ± std MAE over the three UK farms. Model < 3h MAE < 6h MAE 
+
+iTransformer 0.312 ± 0.011 0.338 ± 0.015 
+
+DLinear 0.381 ± 0.003 0.421 ± 0.004 
+
+MTGNN 0.343 ± 0.015 0.388 ± 0.013 
+
+HimNet 0.330 ± 0.009 0.376 ± 0.010 
+
+Ours 0.304 ± 0.017 0.316 ± 0.016 
+
+Table 12 compares representative time-series and spatio-temporal backbones under the same SCADA and CERRA inputs, following the shared-input protocol in Xu et al. [ 52 ]. DLinear is weakest, iTransformer is competitive at 3h but degrades more at 6h, and MT-GNN/HimNet add spatial bias yet remain 0.060/0.048 above Ours at 6h. Because all methods receive matched weather signals, this gap reflects architectural design: our geometric encoder builds turbine– flow features before spectral fusion instead of leaving generic back-bones to infer them from concatenated tokens. 
+
+Table 13: Cross-site MAE on external datasets. Model S < 3h S < 6h N < 3h N < 6h
+
+iTransformer 0.226 0.257 0.271 0.343 DLinear 0.330 0.329 0.419 0.426 MTGNN 0.207 0.237 0.275 0.353 HimNet 0.276 0.286 0.269 0.340 Ours 0.204 0.229 0.257 0.317 
+
+Cross-site generalization. We further evaluate on SMARTE-OLE (France, 2020) [ 12 ] and Norre M2 (Denmark, 1991–1993) [ 22 ]. For fairness, baselines follow Xu et al. [ 52 ] with the shared SCADA and CERRA encoder, whereas Ours keeps the submitted geoencoder and fusion pipeline under matched splits, masks, per-site normaliza-tion, horizons, and training budget. Table 13 broadens the evidence beyond the UK farms. Ours improves over MTGNN on SMAR-TEOLE by 0.003/0.008 at 3h/6h and over the strongest Norre M2 baseline by 0.012/0.023. The larger long-horizon margin on Norre M2 is consistent with the main experiments, where weather-aware geometric fusion becomes more useful as pure SCADA extrapo-lation weakens. Because these sites differ in geography, turbine layout, and measurement coverage, this result is best viewed as a lightweight out-of-distribution check rather than another in-family validation.
