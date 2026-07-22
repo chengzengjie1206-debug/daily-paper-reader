@@ -1,0 +1,982 @@
+Title: Black-Mamba: Biologically-Inspired Leaky Accumulation for Conceptual Knowledge under Distribution Drift
+
+URL Source: https://arxiv.org/pdf/2607.18899v1
+
+Published Time: Wed, 22 Jul 2026 00:57:05 GMT
+
+Number of Pages: 25
+
+Markdown Content:
+# Black-Mamba: Biologically-Inspired Leaky Accumulation for Conceptual Knowledge under Distribution Drift 
+
+Giuseppe Soriano 
+
+University of Pisa National Research Council (CNR) Pisa, Italy 
+
+giuseppe.soriano@phd.unipi.it 
+
+Nicola Tonellotto 
+
+University of Pisa Pisa, Italy 
+
+nicola.tonellotto@unipi.it 
+
+Alberto Gotta 
+
+National Research Council (CNR) Pisa, Italy 
+
+alberto.gotta@cnr.it 
+
+## Abstract 
+
+Forecasting under real-world conditions is inherently non-stationary, as the con-ditional distribution of future observations evolves over time. Recent test-time adaptive sequence models address this challenge by updating internal states during inference, but tie adaptation to instantaneous prediction errors or surprise. This coupling can conflate persistent distribution shift with stochastic innovations, lead-ing to unnecessary updates and inefficient adaptation. We introduce Black-Mamba ,a test-time adaptive forecasting architecture that formulates online adaptation as evidence-gated state tracking under distribution drift. The model augments a base predictor with a dynamic memory updated when temporally accumulated surprisal provides sufficient evidence of a regime change. This turns adaptation into a selec-tive, event-driven process rather than a continuous one. Across multiple forecasting benchmarks with non-stationary dynamics, Black-Mamba achieves competitive or improved predictive performance compared to existing test-time adaptation meth-ods while significantly reducing the number of memory updates during inference. Together with mathematical analysis and biological evidence, these results suggest that accumulated surprisal provides a principled signal for distinguishing persistent drift from transient noise, yielding more efficient and robust adaptation. 
+
+## 1 Introduction 
+
+Time-series forecasting is often presented as a supervised learning problem over a fixed dataset, but in many practical settings, the target law is itself time-varying. Electricity demand changes as weather regimes and human behavior evolve, vehicular traffic flows drift with infrastructure and social rhythms, Internet traffic distribution changes over time driven by the dynamic interplay of emerging applications (e.g., video, AI-driven services), evolving user behavior patterns, protocol and platform shifts, physiological signals change across latent clinical states, and financial or industrial processes are shaped by structural changes that are only partially observed. In such settings, the main difficulty is not only modeling long-range dependencies but also tracking an evolving environment. This observation has produced two major lines of work. The former improves the inductive bias of sequence models. Patch-based Transformers show that much of the perceived failure of attention in 
+
+> Preprint. arXiv:2607.18899v1 [cs.AI] 21 Jul 2026
+
+forecasting originates from suboptimal tokenization and channel mixing rather than from attention itself [Nie et al., 2023]. State-space and selective recurrent models emphasize temporal bias, linear complexity, and stability for long contexts [Patro and Agneeswaran, 2024]. More recent multivariate architectures explicitly model time and variate dimensions as distinct but coupled axes, arguing that two-dimensional inductive bias is essential for multivariate forecasting [Cao et al., 2025, Behrouz et al., 2025a, Meskin et al., 2025]. This line of work is indispensable, but it still largely assumes that a sufficiently well-designed static model can explain the sequence. The latter moves from static inference to online adaptation . Continual test-time adaptation methods update model parameters from unlabeled target streams in order to follow non-stationary domains [Wang et al., 2022]. Test-time training layers reinterpret the hidden state as a trainable model whose parameters are updated during inference [Sun et al., 2025]. Titans and follow-up neural-memory architectures argue that long-term memory should be explicitly written at test time, allowing the predictor to react to context in a way that standard finite-window attention cannot [Behrouz et al., 2024, 2025b]. This line is attractive because it acknowledges the moving-target nature of the problem. However, most existing formulations are driven by instantaneous loss or surprise, and therefore implicitly assume that every sufficiently large prediction error is evidence of persistent drift. That assumption is too strong for non-stationary forecasting. Prediction error is a mixture of structured drift and unpredictable innovation. If the model updates its long-term memory at every time step, it reacts not only to persistent changes in the conditional law, but also to outliers, transient fluctuations, and irreducible noise. As a consequence, online plasticity can become variance amplification, error accumulation, or catastrophic forgetting rather than true adaptation [Wang et al., 2022, Luo et al., 2025]. The key unresolved question is therefore not whether adaptation should happen, but when .Our starting point is that forecasting under drift should be cast as online state estimation . We model the environment through a latent regime state that evolves over time and changes the conditional distribution of the next observation. A memory-augmented predictor is then useful not because it blindly reacts to surprise, but because its memory can serve as an implicit estimator of that latent regime. This perspective suggests that the update mechanism should be selective: it should respond to persistent evidence of distributional change, while suppressing zero-mean innovations. This paper proposes Black-Mamba , an event-triggered memory architecture for inference-time adaptation. The biological intuition comes from two classical ideas in the neuroscience of memory. First, long-term potentiation shows that durable memory traces arise from sufficiently strong or repeated activation rather than from every local perturbation [Bliss and Lømo, 1973, Lynch, 2004, Nicoll, 2017]. Second, synaptic tagging and capture separates transient eligibility from durable consolidation: local events create the possibility of memory, but persistence requires temporally coordinated reinforcement [Redondo and Morris, 2011, Viola et al., 2014, Luboeinski and Tetzlaff, 2021]. We combine this memory-consolidation viewpoint with the leaky integrate-and-fire principle, where evidence accumulates with decay and only threshold crossings trigger discrete events [Burkitt, 2006, Brette and Gerstner, 2005, Gerstner and Kistler, 2002]. The statistical intuition is parallel. If drift admits a decomposition into a predictable component and an innovation component, then temporally integrated evidence can enhance the signal-to-noise ratio: persistent deviation accumulates coherently, while martingale-like noise remains centered and bounded. This yields a natural architectural principle. Instead of updating memory directly from the instantaneous loss, we first filter a scalar surprisal signal through a leaky integrator and update memory only when the integrated evidence exceeds a threshold. In this way, adaptation is no longer coupled to every local mismatch, but only to deviations that persist long enough to be statistically meaningful. The paper makes three contributions. First, it formalizes non-stationary forecasting as prediction over a time-indexed family of conditional laws, with a precise distinction between explained variation and genuine unresolved drift. Second, it introduces Black-Mamba , a memory-augmented architecture whose update mechanism is event-triggered by surprisal accumulation rather than by instantaneous loss. Third, it provides a mathematical proof that, under explicit martingale-noise assumptions, evidence-gated updating suppresses innovation noise, accumulates sustained drift, and controls false-trigger probabilities, thereby supporting its use as a general principle for learning at inference time. 22 Problem Formulation 
+
+Let T ⊆ N denote time. At time t ∈ T we observe information I(t) and then a target variable 
+
+Y (t + 1) ∈ Y is generated according to a conditional law 
+
+Y (t + 1) ∼ Pt, Pt := P (· | I (t)) .
+
+The available information may be the recent history of the same process, as in univariate autoregressive forecasting, or a vector of multivariate covariates including lags, exogenous variables, calendar features, and metadata. The learning objective is to predict Y (t + 1) from I(t).The key departure from standard formulations is that we do not assume Pt to be constant. Instead, we consider a time-indexed family of conditional distributions 
+
+P : T → P (Y),
+
+and focus on the non-stationary regime in which t 7 → Pt evolves over time. A useful interpretation is that the conditional law is modulated by a latent environment state z(t) ∈ Z such that 
+
+Pt = P (· | I (t), z (t)) , z(t + 1) = F (z(t)) + η(t),
+
+where F captures structured regime dynamics and η(t) is an innovation term. In this view, the optimal predictor 
+
+f ⋆t (I(t)) := E[Y (t + 1) | I (t)] 
+
+is itself time-varying. 
+
+Explained variation versus true drift. Not every temporal change should be interpreted as unresolved drift. If the relevant regime information can already be reconstructed from the observed inputs, then temporal variation is explained by conditioning and should not trigger adaptation. This distinction is important for time series because many recurring effects, such as diurnal or weekly cycles, disappear once the proper covariates are included. We reserve the term distribution drift for residual time variation in the conditional law after conditioning on the available information. To quantify drift, define the formal increment 
+
+∆( t) := Pt+1 − Pt,
+
+whose magnitude can be measured through a discrepancy d(Pt+1 , P t) such as total variation, Kullback–Leibler divergence, or Wasserstein distance. The central statistical issue is whether the observed temporal variation contains a predictable component or is dominated by innovation noise. Let Ht denote the observable history up to time t. We decompose drift as 
+
+∆( t) = ∆ pred (t) + ∆ noise (t),
+
+where 
+
+∆pred (t) := E[∆( t) | H t], E[∆ noise (t) | H t] = 0 .
+
+This decomposition is the conceptual core of the paper. The forecasting problem is meaningful only when the cumulative predictable component is large enough, over task-relevant horizons, to rise above the concentration scale of the innovation process. Otherwise no adaptation mechanism can reliably distinguish drift from noise. This viewpoint also clarifies the limitation of standard loss-driven updates. If the prediction loss at time t is 
+
+ℓt := ℓ(ft(I(t)) , Y (t + 1)) ,
+
+then ℓt is influenced by both ∆pred (t) and ∆noise (t). An update rule that reacts directly to ℓt or to its gradient therefore lacks an explicit mechanism to separate persistent drift from transient innovations. 
+
+## 3 Black-Mamba Architecture 
+
+3.1 Base predictor and adaptive memory 
+
+We consider a predictor of the form 
+
+ˆY (t + 1) = fθ,ϕ t (I(t)) ,
+
+3where θ are static backbone parameters and ϕt is a dynamic memory state adapted during inference. This follows the general memory-augmented view of modern adaptive sequence models [Behrouz et al., 2024, Sun et al., 2025, Behrouz et al., 2025b]: the backbone provides a stable representation and the memory tracks the evolving local regime. The architectural interpretation is that ϕt acts as an implicit estimator of the latent state z(t). In the idealized case, 
+
+ϕt ≈ h(z(t)) 
+
+for some task-dependent representation h, so adapting ϕt online is equivalent to tracking the latent environment. Unlike standard Titans-style memory, however, Black-Mamba does not write to memory at every time step. 
+
+3.2 From surprisal to evidence 
+
+Let st denote a scalar surprisal signal derived from the current prediction error. We keep the construction abstract and write 
+
+st = ψ(ℓt),
+
+where ψ may be the identity, a normalized loss, or another scalar statistic computed from the prediction residual. We assume that this signal itself admits a decomposition 
+
+st = at + ξt,
+
+where at is the component induced by predictable drift and ξt is an innovation term satisfying 
+
+E[ξt | H t−1] = 0 .
+
+The key architectural move is to decouple local surprisal from memory commitment . We introduce a leaky evidence accumulator 
+
+ut = λu t−1 + st, 0 < λ < 1,
+
+which integrates recent evidence while discounting stale information. The memory is updated only when the accumulated evidence exceeds a threshold: if ut ≥ τ, ϕt+1 = U(ϕt, ∇ϕℓt) ,
+
+and otherwise 
+
+ϕt+1 = ϕt.
+
+After an update, the accumulator is reset or partially decayed: 
+
+ut ← ρu t, 0 ≤ ρ < 1.
+
+For concreteness, we instantiate the memory update as a local gradient step, 
+
+U(ϕt, ∇ϕℓt) = ϕt − η∇ϕℓt,
+
+but any local test-time adaptation operator can be used in place of this step. 
+
+Architecture summary. Black-Mamba is therefore a three-stage system: 1. a backbone predictor fθ,ϕ t that outputs the next-step forecast; 2. a surprisal encoder ψ(ℓt) that converts instantaneous error into a scalar evidence signal; 3. a leaky event trigger that decides whether the current evidence justifies a persistent memory update. This architecture is intentionally minimal. It preserves the strengths of memory-augmented forecasting models while changing only the policy of when memory is written .44 Foundations of Temporal Integration 
+
+The event-triggered update rule is justified by a simple statistical principle: persistent drift should accumulate, whereas zero-mean innovations should not. Unrolling the accumulator yields 
+
+ut =
+
+> t
+
+X
+
+> k=1
+
+λt−ksk =
+
+> t
+
+X
+
+> k=1
+
+λt−kak +
+
+> t
+
+X
+
+> k=1
+
+λt−kξk.
+
+The first term aggregates structured deviation; the second aggregates innovation noise through a stable linear filter. Under the standard assumption that ξt is a martingale-difference sequence with bounded conditional variance, the filtered innovation remains centered and uniformly controlled. 
+
+Proposition 1 (Filtered innovations remain bounded) . Assume (ξt) satisfies 
+
+E[ξt | H t−1] = 0 , E[ξ2 
+
+> t
+
+| H t−1] ≤ σ2
+
+almost surely. Define 
+
+wt := 
+
+> t
+
+X
+
+> k=1
+
+λt−kξk, 0 < λ < 1.
+
+Then E[wt | H t−1] = 0 and 
+
+Var( wt) ≤ σ2
+
+1 − λ2 .
+
+The proposition implies that temporal integration does not cause innovation noise to drift arbitrar-ily. By contrast, if the structured component has a persistent positive mean, then the signal term accumulates to a non-zero steady-state scale. 
+
+Proposition 2 (Persistent drift accumulates) . If at ≈ μ > 0 over a window sufficiently longer than the memory horizon (1 − λ)−1, then 
+
+> t
+
+X
+
+> k=1
+
+λt−kak ≈ μ
+
+1 − λ .
+
+Hence the signal grows relative to the centered innovation component as persistence increases. 
+
+False-trigger control. Beyond bounding the variance of the filtered innovation, the same martingale view controls spurious update events. In the no-drift case, if the calibrated surprisal satisfies st = ξt
+
+with |ξt| ≤ b, Azuma–Hoeffding gives 
+
+P(ut ≥ τ ) ≤ exp 
+
+
+
+− τ 2(1 − λ2)2b2
+
+
+
+.
+
+Thus the threshold has a direct statistical interpretation: it controls the probability that pure innovation noise triggers a memory write. A full derivation and the connection to sequential change detection are given in Appendix D. Propositions 1–2 explain why updating on thresholded accumulated surprisal is preferable to updating on instantaneous error. The leaky accumulator acts as a low-pass filter: outliers and transient innovations may perturb ut, but they do not usually push it across threshold unless they are followed by corroborating deviations. Gradual drift, by contrast, may produce only weak instantaneous gradients, yet still accumulates until it becomes statistically distinguishable. This logic also provides a principled interpretation of the biological analogy. The instantaneous loss corresponds to a local plasticity signal, not to durable memory by itself. The accumulator ut plays the role of a latent evidence reservoir, and the threshold crossing marks the transition from transient eligibility to persistent consolidation. In other words, Black-Mamba combines the statistical idea of separating predictable drift from innovation noise with the neurophysiological idea that lasting memory should be committed only after temporally integrated evidence. Finally, note that standard loss-driven test-time memory models are recovered as a limiting case. In the boundary case λ = 0 and τ ≤ inf t st, the accumulator reduces to the instantaneous surprisal ut = st
+
+and the trigger fires at every step; Black-Mamba therefore reduces to a purely reactive memory update. The proposed architecture generalizes existing approaches by introducing a continuous spectrum between always-update and selectively-update regimes. 55 Experiments 
+
+We evaluate Black-Mamba on public long-term forecasting benchmarks and controlled synthetic drift streams. The real suite follows the benchmark organization used by the PatchTST framework [Nie et al., 2023], which is also the protocol adopted in the SiMBA evaluation; this allows us to compare the frozen SiMBA backbone and its adaptive variants under the same data organization and forecasting setting. The real datasets include the ETT family, Electricity, Exchange Rate, Traffic, and Weather, while the synthetic suite contains gradual, recurrent, regime-based, noisy, and selective-update drift streams. All datasets use chronological 0.45/0.10/0.45 train/validation/test splits, with an intentionally long test stream to evaluate whether the held-out distribution exhibits drift relative to the training regime. Real forecasting experiments use context length 96 and prediction horizons 96, 192, 336, and 720; synthetic experiments use horizon 1. Unless explicitly stated otherwise, MSE and MAE refer to standardized target-space errors following the PatchTST evaluation convention, so that losses remain comparable across datasets and channels with different physical scales. The central adaptive comparison is designed to isolate the update policy. We use a shared frozen SiMBA forecasting backbone [Patro and Agneeswaran, 2024] and attach the same Low-Rank Adap-tation (LoRA) forecasting-head adapter [Hu et al., 2021] to both adaptive variants. The continuous-update baseline implements the inference-time memory-writing mechanism described in Titans-inspired neural-memory work [Behrouz et al., 2024]; the official architecture was not public at the time of implementation, so we reproduce the relevant continuous update rule. Black-Mamba uses the same backbone and the same LoRA adapter, but replaces continuous writing with the proposed event-triggered update policy. This implementation is intentionally lightweight. LoRA keeps the online state small, confines inference-time learning to a low-rank adapter rather than the full backbone, and makes the update rule portable to other forecasting architectures. Our goal is therefore not to establish this particular LoRA head as the only or optimal instantiation of Black-Mamba, but to test the update policy itself: whether selective surprisal accumulation can retain the practical benefit of inference-time adaptation, reduce the number of online updates, and potentially make adaptation more robust to noisy or transient drift signals, as predicted by the theoretical analysis. 
+
+5.1 Benchmark Accuracy 
+
+Tables 1 and 2 report the forecasting losses. On real long-term forecasting benchmarks, the frozen SiMBA backbone is already highly competitive, and both adaptive variants change the averaged losses only marginally at benchmark-table precision. This should not be read as a failure of adaptation: the real benchmark suite is not uniformly drifting, and our drift diagnostics identify material concept drift only in Exchange Rate and Traffic. Horizon-averaged benchmark losses therefore mostly test whether the adaptive mechanism preserves the base forecaster under ordinary benchmark conditions. Black-Mamba passes this test: it remains practically indistinguishable from the frozen and continuously updated SiMBA variants on most real datasets. The synthetic suite provides the complementary regime, where concept drift is controlled by con-struction. Here, both adaptive methods improve strongly over frozen SiMBA across all scenarios, confirming that inference-time adaptation is useful when the target rule changes. Continuous updating is usually slightly more accurate than Black-Mamba, but the average advantage is small: 0.299% 
+
+MSE and 0.398% MAE. This is the first empirical sign of the trade-off predicted by the theory. If every observation carries useful drift evidence, continuous updates can extract a small additional gain; when many observations are redundant or noisy, a selective policy should retain most of the benefit while avoiding unnecessary writes. 
+
+5.2 Selective Updates and the Theoretical Trade-off 
+
+The theory suggests that inference-time adaptation should not be treated as a binary choice between a frozen model and continuous learning. Continuous updates are optimal only under the implicit assumption that each new error provides reliable evidence about the current regime. Black-Mamba relaxes this assumption by accumulating surprisal with leak and committing an update only after persistent evidence crosses a threshold. The empirical prediction is therefore not that Black-Mamba 6Table 1: Real benchmark results averaged over horizons 96, 192, 336, and 720. Lower is better. Bold and underline mark the best and second-best results across all models; light yellow and light blue mark the best and second-best results among SiMBA, Cont. update, and Black-Mamba, isolating update-policy effects for the chosen frozen baseline. Ties are highlighted within the corresponding rank.                                                                                                                                                        
+
+> Dataset Autoformer Informer DLinear Linear NLinear SiMBA Cont. update Black-Mamba MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE ETTh1 0.777 0.613 1.186 0.797 0.627 0.531 0.624 0.528 0.671 0.541 0.668 0.547 0.668 0.547 0.668 0.547 ETTh2 0.439 0.452 3.746 1.546 0.565 0.514 0.562 0.506 0.402 0.417 0.392 0.410 0.392 0.410 0.392 0.410
+> ETTm1 0.758 0.592 0.847 0.650 0.520 0.464 0.520 0.465 0.545 0.475 0.538 0.477 0.538 0.477 0.538 0.477 ETTm2 0.278 0.351 1.089 0.802 0.303 0.374 0.303 0.368 0.250 0.322 0.257 0.333 0.257 0.333 0.257 0.333 Electricity 0.267 0.364 0.590 0.540 0.224 0.303 0.224 0.303 0.228 0.295 0.206 0.281 0.206 0.281 0.206 0.281
+> Exchange Rate 0.945 0.696 4.367 1.683 1.250 0.728 1.228 0.717 0.659 0.536 0.761 0.571 0.766 0.571 0.761 0.571 Traffic 0.646 0.410 0.851 0.461 0.769 0.488 0.716 0.462 0.701 0.445 0.456 0.285 0.456 0.285 0.456 0.285
+> Weather 0.653 0.539 0.626 0.526 0.602 0.503 0.602 0.503 0.637 0.511 0.613 0.495 0.613 0.495 0.613 0.495
+
+Table 2: Synthetic drift benchmark results at horizon 1. Lower is better.                                                               
+
+> Model L-Grad. L-Grad. noisy Rec. seas. Rec. seas. noisy Regime Regime noisy Selective stress MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE SiMBA 1.945 1.141 1.668 1.070 0.476 0.434 0.616 0.583 1.912 1.100 1.715 1.071 1.283 0.669 Black-Mamba 0.519 0.553 0.768 0.639 0.365 0.401 0.536 0.531 0.564 0.579 0.690 0.610 1.033 0.656 Cont. update 0.517 0.551 0.765 0.637 0.362 0.399 0.534 0.525 0.562 0.577 0.688 0.609 1.034 0.655
+
+must always beat continuous updating in raw loss, but that it should approximate its adaptation benefit with fewer writes and greater resistance to transient or noisy drift signals. The results match this prediction. Across the seven synthetic streams, Black-Mamba uses only 
+
+52 .19% of the continuous-update budget, saving 1,506 ,107 updates out of 3,149 ,986 , while losing only a fraction of a percent in average error relative to continuous updating. It captures 98 .9% of the MSE improvement obtained by continuous updating over frozen SiMBA. This is the main empirical support for the proposed update policy: the benefit of online adaptation is largely preserved, but the number of inference-time parameter writes is almost halved. The segment-level diagnostics further support the mechanism. Black-Mamba does not simply update at a uniformly lower rate; its update rate rises where the stream becomes harder. Across synthetic segments, the correlation between segment MSE and Black-Mamba update rate is +0 .819 ,and the hardest segment quintile receives 1.87 × more updates than the easiest quintile. This is the behavior expected from leaky surprisal accumulation: isolated errors decay, while persistent mismatch accumulates into an update event. 
+
+5.3 Real Drift Case Study 
+
+Exchange Rate is the most informative real benchmark because it is the strongest real-drift dataset in our diagnostics. Table 3 therefore reports the adaptive-policy comparison by horizon rather than only as an aggregate. Black-Mamba updates only 7.5–10 .4% of online steps on Exchange Rate, whereas the continuous-update adapter writes at every step. At horizons 96, 192, and 336, the differences are small and not statistically significant. At horizon 720, however, continuous updating is worse than Black-Mamba by +1 .797% MSE and +0 .556% MAE. This result is important because it is exactly the failure mode targeted by Black-Mamba. Long-horizon Exchange Rate forecasting exposes the model to persistent distribution shift, but also to noisy local innovations that should not all be written into memory. Continuous updating reacts to every step, making it more vulnerable to over-adaptation on the test stream. Black-Mamba instead requires accumulated evidence before committing an update, and in this real-drift long-horizon case it avoids the degradation observed under continuous writing while using roughly one tenth of the update rate. Traffic provides a useful contrast and is reported fully in the appendix. Although some paired tests detect a consistent advantage for continuous updating on Traffic, the effect size is microscopic, on the order of 10 −3% or less. We therefore interpret Traffic as practical equivalence rather than meaningful superiority of continuous adaptation. Together, Exchange Rate and Traffic support a conservative real-data conclusion: Black-Mamba is at least practically equivalent to continuous updating on real drift benchmarks, and in the strongest long-horizon drift case it is measurably better. 7Figure 1: Synthetic trace dynamics. Left: Black-Mamba achieves large update savings with only marginal MSE changes relative to the continuous update adapter. Right: Black-Mamba update rate increases with segment difficulty, indicating selective adaptation rather than uniformly weaker adaptation. Table 3: Per-horizon adaptive-policy comparison on Exchange Rate, the strongest real-drift bench-mark. ∆ = 100 · (Cont . − BM) /BM ; positive values favor Black-Mamba. pdir is the HAC one-sided p-value in the direction of the observed mean difference.                             
+
+> Dataset Horizon BM update rate ∆MSE pdir ∆MAE pdir
+> Exchange Rate 96 7.5% -0.685% 0.370 -0.599% 0.270 192 10.4% +0.087% 0.420 -0.160% 0.208 336 9.9% -0.926% 0.283 -0.286% 0.371 720 9.1% +1.797% 0.056 +0.556% 0.039
+
+5.4 Statistical Evidence 
+
+All adaptive comparisons are paired on matched online forecasting windows. For real multi-step horizons, we use one-sided HAC/Newey–West tests on paired loss differences, setting the lag to 
+
+H − 1 to account for overlapping H-step target windows. Moving-block bootstrap intervals are reported in the appendix as robustness checks. The main text reports only the p-values needed for the central real-drift claim. On Exchange Rate at horizon 720, the degradation of continuous updating relative to Black-Mamba is statistically significant for MAE ( p = 0 .039 ) and borderline for MSE ( p = 0 .056 ). Other Exchange Rate horizons are not significant. These results are consistent with the theory: selective updating is not expected to dominate continuous updating everywhere, but it should reduce unnecessary writes and avoid degradation when instantaneous errors are a noisy proxy for persistent drift. Full per-horizon results for Exchange Rate, Traffic, and synthetic streams are provided in Appendix G. 
+
+## 6 Conclusion 
+
+Black-Mamba reframes inference-time adaptation as selective evidence-gated memory commitment. Rather than updating continuously from instantaneous prediction error, it accumulates surprisal with leak and writes to a lightweight LoRA head adapter only when persistent evidence supports an update. The empirical results support the intended trade-off: Black-Mamba preserves practical accuracy while reducing update frequency, and in the strongest real-drift long-horizon case it avoids the degradation observed under continuous updating. On streams without measurable drift, Black-Mamba leaves the backbone performance essentially unchanged, as desired, which is important since adaptation should not pay an accuracy cost when it is unnecessary. When drift is present, the comparison with the continuous-update competitor shows the intended difference: continuous updating can extract small marginal gains in dense synthetic drift, but Black-Mamba preserves nearly the same practical accuracy with far fewer memory writes and avoids degradation in the strongest real-drift long-horizon 8case. The method is intentionally modular: because adaptation is implemented as a LoRA adapter on a frozen forecasting head, the update policy can be transferred to other backbones with minimal architectural changes. 
+
+Limitations and broader impact. The main limitation of this study is the limited availability of real forecasting benchmarks that exhibit measurable concept drift and in which the effect of online adaptation is large enough to be clearly observed. This is visible in our experiments: the benefits of adaptation are most evident on the synthetic drift streams, whereas the real datasets provide fewer cases with strong, measurable drift. At the same time, synthetic data can favor continuous updating, because the drift process is controlled, dense, and deliberately constructed to be learnable from the stream. This makes the practical difference between selective and continuous adaptation harder to isolate on real-world benchmarks. Nevertheless, the combination of theoretical analysis, synthetic drift experiments, and the real-drift evidence on Exchange Rate and Traffic supports the central claim: accumulated surprisal can act as a principled criterion for deciding when inference-time learning should occur. Future work should therefore expand the evaluation to domains where concept drift is both frequent and measurable, such as network traffic, information retrieval, recommender systems, industrial monitoring, clinical or wearable sensing, etc. A complementary direction is to collect or construct new streaming benchmarks specifically designed to evaluate learning under concept drift. The positive impact of Black-Mamba is a more efficient and general inference-time adaptation mechanism: in the limiting case where the trigger always fires, the proposed framework recovers the continuous-update behavior of Titans-inspired neural-memory models, while in the selective regime it reduces unnecessary updates. The principle is not tied to forecasting or to the LoRA implementation used here; LoRA provides a lightweight and immediately usable instantiation, but the same evidence-gated update rule can be applied to other learning-at-inference-time architectures whenever online plasticity must be controlled. 9References 
+
+Ali Behrouz, Peilin Zhong, and Vahab Mirrokni. Titans: Learning to Memorize at Test Time, December 2024. Ali Behrouz, Daniel Yiming Cao, Ali Parviz, Michele Santacatterina, and Ramin Zabih. LETO: Modeling Multivariate Time Series with Memorizing at Test Time. July 2025a. Ali Behrouz, Zeman Li, Praneeth Kacham, Majid Daliri, Yuan Deng, Peilin Zhong, Meisam Raza-viyayn, and Vahab Mirrokni. ATLAS: Learning to Optimally Memorize the Context at Test Time, May 2025b. Ali Behrouz, Zeman Li, Yuan Deng, Peilin Zhong, Meisam Razaviyayn, and Vahab Mirrokni. Memory Caching: RNNs with Growing Memory, February 2026. T. V. P. Bliss and T. Lømo. Long-lasting potentiation of synaptic transmission in the dentate area of the anaesthetized rabbit following stimulation of the perforant path. The Journal of Physiology ,232(2):331–356, July 1973. ISSN 0022-3751, 1469-7793. doi: 10.1113/jphysiol.1973.sp010273. Romain Brette and Wulfram Gerstner. Adaptive Exponential Integrate-and-Fire Model as an Effective Description of Neuronal Activity. Journal of Neurophysiology , 94(5):3637–3642, November 2005. ISSN 0022-3077, 1522-1598. doi: 10.1152/jn.00686.2005. A. N. Burkitt. A review of the integrate-and-fire neuron model: II. Inhomogeneous synaptic input and network properties. Biological Cybernetics , 95(2):97–112, August 2006. ISSN 1432-0770. doi: 10.1007/s00422-006-0082-8. Daniel Yiming Cao, Ali Behrouz, Ali Parviz, Mahdi Karami, Michele Santacatterina, and Ramin Zabih. Effectively Designing 2-Dimensional Sequence Models for Multivariate Time Series. 2025. Cody V. Dong, Qihong Lu, Kenneth A. Norman, and Sebastian Michelmann. Towards large language models with human-like episodic memory. Trends in Cognitive Sciences , 29(10):928–941, October 2025. ISSN 13646613. doi: 10.1016/j.tics.2025.06.016. Wulfram Gerstner and Werner M. Kistler. Spiking Neuron Models: Single Neurons, Populations, Plasticity . Cambridge University Press, 2002. Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. LoRA: Low-Rank Adaptation of Large Language Models, October 2021. Hyunji Lee, Wenhao Yu, Hongming Zhang, Kaixin Ma, Jiyeon Kim, Dong Yu, and Minjoon Seo. Un-derstanding and Enhancing Mamba-Transformer Hybrids for Memory Recall and Language Model-ing. Proceedings of the First BabyLM Workshop , 2025. doi: 10.18653/V1/2025.BABYLM-MAIN. 27. Yangyan Li. MoVE: Mixture of Value Embeddings – A New Axis for Scaling Parametric Memory in Autoregressive Models. arXiv.org , 2026. doi: 10.48550/ARXIV.2601.22887. Yixing Li, Ruobing Xie, Zhen Yang, Xingwu Sun, Shuaipeng Li, Weidong Han, Zhanhui Kang, Yu Cheng, Chengzhong Xu, Di Wang, and Jie Jiang. TransMamba: A Sequence-Level Hybrid Transformer-Mamba Language Model, January 2026. Junchen Liu, Sven Elflein, Or Litany, Zan Gojcic, and Ruilong Li. Test-Time Training with KV Binding Is Secretly Linear Attention. arXiv (Cornell University) , 2026. doi: 10.48550/ARXIV. 2602.21204. Jannik Luboeinski and Christian Tetzlaff. Memory consolidation and improvement by synaptic tagging and capture in recurrent neural networks. Communications Biology , 4(1):275, March 2021. ISSN 2399-3642. doi: 10.1038/s42003-021-01778-y. Yun Luo, Zhen Yang, Fandong Meng, Yafu Li, Jie Zhou, and Yue Zhang. An Empirical Study of Catastrophic Forgetting in Large Language Models During Continual Fine-tuning, January 2025. M A Lynch. Long-Term Potentiation and Memory. Physiol Rev , 84, 2004. 10 Asal Meskin, Alireza Mirrokni, Ali Najar, and Ali Behrouz. Hydra: Dual Exponentiated Memory for Multivariate Time Series Analysis, November 2025. Gabriel Mongaras and Eric C. Larson. On the Expressiveness of Softmax Attention: A Recurrent Neural Network Perspective. arXiv.org , 2025. doi: 10.48550/ARXIV.2507.23632. Roger A. Nicoll. A Brief History of Long-Term Potentiation. Neuron , 93(2):281–290, January 2017. ISSN 08966273. doi: 10.1016/j.neuron.2016.12.015. Yuqi Nie, Nam H. Nguyen, Phanwadee Sinthong, and Jayant Kalagnanam. A Time Series is Worth 64 Words: Long-term Forecasting with Transformers, March 2023. Badri N. Patro and Vijay S. Agneeswaran. SiMBA: Simplified Mamba-Based Architecture for Vision and Multivariate Time series, April 2024. Roger L. Redondo and Richard G. M. Morris. Making memories last: The synaptic tagging and capture hypothesis. Nature Reviews Neuroscience , 12(1):17–30, January 2011. ISSN 1471-003X, 1471-0048. doi: 10.1038/nrn2963. Ruifeng Ren, Ouyang Sheng, Hua Tang, and Yong Liu. Transformers as Intrinsic Optimizers: Forward Inference through the Energy Principle. arXiv (Cornell University) , 2025. doi: 10.48550/ARXIV. 2511.00907. Yu Sun, Xinhao Li, Karan Dalal, Jiarui Xu, Arjun Vikram, Genghan Zhang, Yann Dubois, Xinlei Chen, Xiaolong Wang, Sanmi Koyejo, Tatsunori Hashimoto, and Carlos Guestrin. Learning to (Learn at Test Time): RNNs with Expressive Hidden States, August 2025. Haydée Viola, Fabricio Ballarini, María Cecilia Martínez, and Diego Moncada. The Tagging and Capture Hypothesis from Synapse to Memory. In Progress in Molecular Biology and Translational Science , volume 122, pages 391–423. Elsevier, 2014. ISBN 978-0-12-420170-5. doi: 10.1016/ B978-0-12-420170-5.00013-1. Qin Wang, Olga Fink, Luc Van Gool, and Dengxin Dai. Continual Test-Time Domain Adaptation, March 2022. Mark Wind. Prometheus Mind: Retrofitting Memory to Frozen Language Models, January 2026. Haixu Wu, Jiehui Xu, Jianmin Wang, and Mingsheng Long. Autoformer: Decomposition Transform-ers with Auto-Correlation for Long-Term Series Forecasting. 2021. Oliver Zahn, Matthew Beton, and Simran Chana. Attention Is Not Retention: The Orthogonality Constraint in Infinite-Context Architectures. January 2026. doi: 10.5281/zenodo.18273985. Ailing Zeng, Muxi Chen, Lei Zhang, and Qiang Xu. Are Transformers Effective for Time Series Forecasting? Proceedings of the AAAI Conference on Artificial Intelligence , 37(9):11121–11128, June 2023. ISSN 2374-3468, 2159-5399. doi: 10.1609/aaai.v37i9.26317. Haoyi Zhou, Shanghang Zhang, Jieqi Peng, Shuai Zhang, Jianxin Li, Hui Xiong, and Wancai Zhang. Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting. 
+
+Proceedings of the AAAI Conference on Artificial Intelligence , 35(12):11106–11115, May 2021. ISSN 2374-3468, 2159-5399. doi: 10.1609/aaai.v35i12.17325. 11 A Broader Context for Memory-Augmented Forecasting 
+
+The argument developed in the main paper is deliberately narrow: it focuses on the problem of when 
+
+a test-time memory should be updated under non-stationary conditions. This appendix places that argument in a broader modeling landscape, because the usefulness of an event-triggered update policy depends on how one positions the proposal relative to the current architecture literature on time series, sequence modeling, and adaptive inference. A first observation is that adaptive memory is not the only way in which recent work has attempted to address the difficulty of non-stationary or long-range forecasting. A substantial portion of the literature argues that the central issue is architectural misalignment between standard sequence models and the inductive structure of time series. PatchTST, for example, shows that when time series are segmented into subseries-level patches and channels are modeled independently, Transformer-style models recover strong performance in long-term forecasting [Nie et al., 2023]. The significance of this result is conceptual as much as empirical: it suggests that part of the challenge attributed to attention may actually be a challenge of tokenization and representation. In a similar spirit, SiMBA proposes that state-space sequence modeling combined with explicit channel mixing can narrow the gap between subquadratic models and strong attention-based baselines [Patro and Agneeswaran, 2024]. These works imply that any theory of online adaptation must remain compatible with the possibility that part of apparent drift is simply poorly modeled structure. The literature becomes even more instructive in the multivariate case. Typhon, LETO, and Hydra all emphasize that multivariate time series are not just longer univariate sequences, but objects with two coupled axes: temporal dynamics and cross-variate interactions [Cao et al., 2025, Behrouz et al., 2025a, Meskin et al., 2025]. Their common claim is that forecasting models underperform when they either erase temporal inductive bias or assume too naively that cross-variate structure should always be mixed in the same way. What matters for the present paper is that these models also report long-horizon error propagation in purely reactive recurrent systems. This observation supports our central concern: when the environment changes over time, unrestricted online updates can turn adaptation into instability. From this point of view, the recent memory-augmented literature can be interpreted as a second, complementary response. Titans introduces a neural long-term memory that is explicitly written at test time using surprise-driven updates [Behrouz et al., 2024]. Test-time training layers generalize this idea by making the hidden state itself a trainable object whose parameters are updated during inference [Sun et al., 2025]. ATLAS, Memory Caching, and related developments then argue that once one accepts the premise of inference-time adaptation, the next challenge is to make the memory larger, better optimized, or less myopic [Behrouz et al., 2025b, 2026]. In this family of models, the central difficulty is not only how to represent long context, but how to manage it online. At the same time, the theoretical interpretation of these architectures remains unsettled. Some authors describe them literally as systems that memorize context at test time, whereas others argue that at least part of their behavior can be reduced to learned forms of linear attention or recurrent optimization [Liu et al., 2026, Mongaras and Larson, 2025, Ren et al., 2025]. Hybrid architectures such as Mamba–Transformer combinations or sequence-level switching systems make this ambiguity even more visible by showing that the practical boundary between attention, recurrence, and memory is increasingly fluid [Lee et al., 2025, Li et al., 2026]. For our purposes, this ambiguity is not a problem. The event-triggering principle proposed in the main paper does not depend on whether a model is ultimately interpreted as memorization or as implicit attention. It depends only on the claim that some internal state is adapted online, and that such adaptation should be selective rather than indiscriminate. Finally, there is a broader systems-level discussion about whether continuously updated neural memory is sufficient for stable long-term retention. Cognitive work on memory-augmented language models emphasizes episodic segmentation, selective encoding, and competitive retrieval [Dong et al., 2025]. Engineering systems such as retrofitted external memory or parametric memory banks provide different operational responses [Wind, 2026, Li, 2026]. A stronger critique goes further and argues that shared continuous parameter memory may face a fundamental interference barrier under dense episodic storage, which would make discrete addressing unavoidable in some regimes [Zahn et al., 2026]. Although our setting is forecasting rather than factual episodic memory, this discussion is still relevant. It reinforces the idea that memory should not be written eagerly; once memory is treated 12 as a limited and interference-prone resource, the question of when to update becomes a first-order modeling issue rather than a secondary implementation detail. 
+
+## B Detailed Problem Setting 
+
+This section expands the formal framing used in the main paper. The objective is not simply to restate notation, but to make precise why the forecasting problem considered here is better interpreted as one of tracking an evolving conditional law than of estimating a single static function. Let T ⊆ N denote time. Time is not treated as a random variable, but as the deterministic index along which the environment evolves. At each instant t ∈ T , the learner has access to information I(t) and wishes to predict the next target value Y (t + 1) . In a univariate autoregressive formulation, I(t) may coincide with the recent history of the same process, 
+
+I(t) = Ht := ( Y (1) , . . . , Y (t − 1)) .
+
+In a multivariate formulation, I(t) can include lagged observations, exogenous variables, calendar features, metadata, or any other side information. These two formulations look different at the level of representation, but conceptually they are variants of the same conditional prediction problem. The key modeling decision is to define the next-step law as 
+
+Y (t + 1) ∼ Pt, Pt := P (· | I (t)) .
+
+This immediately induces a trajectory of conditional distributions t 7 → Pt. Stationarity corresponds to the special case where this map is constant. In the present work we focus instead on the more realistic non-stationary regime in which Pt changes over time. One may then introduce a latent regime state 
+
+z(t) and write 
+
+Pt = P (· | I (t), z (t)) , z(t + 1) = F (z(t)) + η(t),
+
+where F captures structured regime evolution and η(t) denotes unpredictable perturbations. This formulation is useful because it turns non-stationarity into a structured problem: the environment drifts because an underlying regime evolves, not because the data are assumed to be arbitrarily non-stationary. An important refinement concerns the distinction between explained variation and unresolved drift .In forecasting practice, many temporal effects are perfectly genuine but should not be treated as drift if they are already encoded in the observed inputs. For example, daily or weekly seasonality may disappear once hour-of-day or day-of-week are included among the covariates. In that case the conditional law is stable after conditioning, even though the raw sequence is strongly time-dependent. By contrast, if the environment changes in ways that remain unobserved after conditioning on I(t),then the learner faces genuine residual drift. The present paper is explicitly about this latter case. To describe the temporal change of the predictive law, the main text introduced the formal increment 
+
+∆( t) = Pt+1 − Pt.
+
+Of course, this notation is symbolic: in practice one measures the magnitude of drift through a discrepancy on probability measures. Common choices include total variation, 
+
+dTV (μ, ν ) = sup 
+
+> A∈B (Y)
+
+|μ(A) − ν(A)|,
+
+Kullback–Leibler divergence, 
+
+DKL (μ∥ν) = 
+
+Z
+
+log 
+
+ dμ dν 
+
+
+
+dμ, 
+
+and the p-Wasserstein distance, 
+
+Wp(μ, ν ) = 
+
+
+
+inf 
+
+> π∈Π( μ,ν )
+
+Z
+
+ρ(y, y ′)p dπ (y, y ′)
+
+1/p 
+
+.
+
+The choice among these is application-dependent. Total variation captures worst-case disagreement on measurable events, KL divergence emphasizes directional likelihood mismatch, and Wasserstein distance is often more natural when the output space has an intrinsic geometry. 13 The most important conceptual step, however, is not the metric choice but the decomposition of drift into a predictable and an innovation component. Let Ht denote the observable filtration. Then one may write 
+
+∆( t) = ∆ pred (t) + ∆ noise (t), ∆pred (t) := E[∆( t) | H t],
+
+with 
+
+E[∆ noise (t) | H t] = 0 .
+
+This decomposition should be understood as the forecasting analogue of the predictable–martingale split from stochastic-process theory. Its significance is direct: adaptation is justified only to the extent that the learner can extract and track the predictable component. The residual innovation should not be memorized, because by definition it has no stable conditional mean structure available from the observable past. 
+
+## C Formal Theoretical Foundations of the Problem Formulation 
+
+The main paper only uses the minimum amount of formal machinery needed to motivate the archi-tecture. This section gives the more complete theoretical backbone that originally motivated the formulation. The goal is twofold. First, it shows that the distinction between predictable drift and innovation noise is not heuristic, but follows from standard results in probability theory. Second, it clarifies the precise sense in which temporal integration can improve the identifiability of structured drift. 
+
+C.1 Conditional expectation as the predictable component 
+
+The first relevant fact is that conditional expectation is the optimal predictor, in mean-square sense, of any square-integrable random variable given the available information. 
+
+Theorem 1 (Conditional expectation as an L2 projection) . Let (Ω , F, P) be a probability space, let G ⊆ F be a sub-σ-algebra, and let U ∈ L2(Ω , F, P). Then E[U | G ] is the unique element of 
+
+L2(Ω , G, P) such that 
+
+E[( U − E[U | G ]) V ] = 0 for all V ∈ L2(Ω , G, P),
+
+and equivalently 
+
+E[U | G ] = arg min   
+
+> V∈L2(Ω ,G,P)
+
+E[( U − V )2].
+
+In our setting, this theorem justifies the definition of the predictable component of drift. If ∆( t)
+
+denotes the drift variable and Ht the observable history, then E[∆( t) | H t] is the best mean-square summary of the drift available from past information. In other words, if there is any component of drift that is in principle learnable from the history, it is represented by that conditional expectation. This is why we define 
+
+∆pred (t) := E[∆( t) | H t], ∆noise (t) := ∆( t) − E[∆( t) | H t].
+
+The residual is not merely an error term; it is orthogonal to every square-integrable function of the available history. 
+
+C.2 Predictable dynamics and innovation structure 
+
+The decomposition above is also consistent with the classical structure theorem for adapted processes. 
+
+Theorem 2 (Doob decomposition) . Let (Xt)t≥0 be an integrable adapted process with respect to a filtration (Ft)t≥0. Then there exist a predictable process (At)t≥0 with A0 = 0 and a martingale 
+
+(Mt)t≥0 with M0 = X0 such that 
+
+Xt = Mt + At for all t ≥ 0.
+
+This decomposition is unique up to indistinguishability. 
+
+The role of Theorem 2 in the present paper is interpretive. We do not require the drift process itself to be modeled explicitly as a martingale plus predictable process in every application, but the theorem explains why this is the natural language for online adaptation. The predictable component is the part that can, in principle, be tracked. The martingale component is the part that can generate volatility in realized errors without carrying stable directional information. A memory-update mechanism that reacts identically to both is therefore misaligned with the statistical structure of the problem. 14 C.3 When drift is statistically distinguishable 
+
+To make the problem non-vacuous, one needs more than a decomposition. One also needs the innovation term to be sufficiently controlled so that sustained predictable drift is not drowned by fluctuations. 
+
+Assumption 1 (Bounded conditional variance of innovations) . There exists a predictable sequence 
+
+(σ2 
+
+> t
+
+)t≥0 such that 
+
+E
+
+h
+
+∥∆noise (t)∥2 | H t
+
+i
+
+≤ σ2 
+
+> t
+
+almost surely. 
+
+Under this assumption, concentration inequalities for martingale sums become relevant. The classical result that best matches our use case is Freedman’s inequality. 
+
+Theorem 3 (Freedman’s inequality) . Let (Mt, Ft)t≥0 be a real-valued martingale with M0 = 0 ,and let the martingale differences be 
+
+ξt := Mt − Mt−1.
+
+Assume that |ξt| ≤ b almost surely for all t, and define the predictable quadratic variation 
+
+Vt := 
+
+> t
+
+X
+
+> s=1
+
+E[ξ2 
+
+> s
+
+| F s−1].
+
+Then for all x, v > 0,
+
+P(Mt ≥ x and Vt ≤ v) ≤ exp 
+
+
+
+− x2
+
+2( v + bx )
+
+
+
+.
+
+Theorem 3 is not used in the main paper as a technical tool, but as a conceptual bridge. It says that cumulative innovation has a concentration scale. Therefore, the forecasting problem becomes meaningful exactly when the cumulative predictable component of drift exceeds that scale over time windows relevant to the task. This leads to the following informal non-degeneracy condition: over a window of length W , the magnitude of  
+
+> t+W−1
+
+X
+
+> s=t
+
+∆pred (s)
+
+should be comparable to or larger than the typical fluctuation size of  
+
+> t+W−1
+
+X
+
+> s=t
+
+∆noise (s).
+
+If this condition fails, then no event-triggering mechanism, however sophisticated, can reliably distinguish signal from noise. 
+
+C.4 Temporal integration as asymptotic noise suppression 
+
+The event-triggered architecture in the main paper is based on a scalar surprisal signal st. We write 
+
+st = at + ξt,
+
+where at denotes the structured component induced by predictable drift and ξt is again a martingale-difference innovation. The basic idea that motivates integration is that averaging suppresses martingale differences. 
+
+Theorem 4 (Strong law for martingale differences) . Let (ξt) be a martingale-difference sequence with respect to (Ht) such that 
+
+E[ξt | H t−1] = 0 , sup 
+
+> t
+
+E[ξ2 
+
+> t
+
+] < ∞.
+
+Then 
+
+1
+
+t
+
+> t
+
+X
+
+> k=1
+
+ξk → 0 almost surely. 
+
+The practical limitation of Theorem 4 is that uniform averaging is too inertial for drifting environments. If one gives equal weight to all past evidence, adaptation becomes too slow to follow evolving regimes. This is the reason for introducing a leaky integrator instead. 15 D Statistical Rationale for Event-Triggered Updates 
+
+The architecture in the main paper is motivated by a simple but consequential principle: if the update signal combines structured drift and innovation noise, then one should not allow every local fluctuation to write into memory. This appendix expands that argument and clarifies why a leaky integrator is the natural filtering device. 
+
+Algorithm 1: Evidence-gated test-time adaptation. Input: model fθ,ϕ , loss ℓ, surprisal encoder ψ, accumulator u = 0 , leak λ, threshold τ , reset factor ρ, update operator U.1. At time t, predict ˆY (t + 1) = fθ,ϕ t (I(t)) .2. Observe Y (t + 1) and compute ℓt = ℓ( ˆY (t + 1) , Y (t + 1)) .3. Encode surprisal st = ψ(ℓt) and update evidence u ← λu + st.4. If u ≥ τ , commit memory ϕt+1 = U(ϕt, ∇ϕℓt) and set u ← ρu .5. Otherwise, keep ϕt+1 = ϕt.Algorithm 1 shows the architecture-independent form of the mechanism. The update operator may be a gradient step, a neural-memory write, a recurrent-state refresh, or another local test-time adaptation rule. The invariant part is the separation between evidence accumulation and memory commitment. Suppose the model produces a scalar surprisal statistic st from the current loss, and suppose this statistic can be decomposed as 
+
+st = at + ξt,
+
+where at represents the structured component induced by persistent misalignment with the current regime, and ξt is an innovation term satisfying 
+
+E[ξt | H t−1] = 0 .
+
+If one updates memory directly from st, then every realization of ξt contributes to plasticity. In a setting with outliers, heteroskedastic noise, or abrupt but non-persistent local fluctuations, this is precisely what one would like to avoid. The classical remedy is temporal averaging. If (ξt) is a martingale-difference sequence with uniformly bounded second moments, then one has 
+
+1
+
+t
+
+> t
+
+X
+
+> k=1
+
+ξk → 0 a.s. as t → ∞ . This fact already indicates that repeated averaging suppresses innovation noise. Yet uniform averaging is a poor operational choice for drifting environments because it gives equal weight to stale evidence and recent evidence. Inference-time adaptation must remain local enough to follow evolving regimes. This is why the main paper adopts exponential integration rather than simple running averages. The leaky accumulator 
+
+ut = λu t−1 + st, 0 < λ < 1,
+
+implements precisely this compromise. By unrolling the recursion one obtains 
+
+ut =
+
+> t
+
+X
+
+> k=1
+
+λt−kak +
+
+> t
+
+X
+
+> k=1
+
+λt−kξk.
+
+The first term is the temporally weighted structured signal, while the second is the filtered innovation process. Under the bounded-variance assumption used in the main text, the innovation part remains centered and uniformly controlled. Hence the leaky filter enhances the signal-to-noise ratio whenever the structured component persists over a time horizon comparable to (1 − λ)−1.The next proposition formalizes the boundedness of the filtered innovation component and is one of the few technical statements in this appendix for which we provide a full derivation, since it directly justifies the architecture. 16 Proposition 3 (Variance bound for filtered martingale differences) . Let (ξt) be a martingale-difference sequence such that 
+
+E[ξ2 
+
+> t
+
+| H t−1] ≤ σ2.
+
+Define 
+
+wt := 
+
+> t
+
+X
+
+> k=1
+
+λt−kξk, 0 < λ < 1.
+
+Then 
+
+E[wt] = 0 ,
+
+and 
+
+Var( wt) ≤ σ2
+
+1 − λ2 .
+
+Proof. The mean claim follows directly from linearity and the martingale-difference property: 
+
+E[wt] = 
+
+> t
+
+X
+
+> k=1
+
+λt−kE[ξk] = 0 .
+
+For the second moment one has 
+
+E[w2 
+
+> t
+
+] = E
+
+
+
+> t
+
+X
+
+> k=1
+
+λt−kξk
+
+!2 .
+
+Cross terms vanish because martingale differences are orthogonal in L2, hence 
+
+E[w2 
+
+> t
+
+] = 
+
+> t
+
+X
+
+> k=1
+
+λ2( t−k)E[ξ2
+
+> k
+
+] ≤ σ2
+
+> t
+
+X
+
+> k=1
+
+λ2( t−k).
+
+The last term is a geometric sum bounded by 
+
+σ2
+
+> ∞
+
+X
+
+> j=0
+
+λ2j = σ2
+
+1 − λ2 .
+
+Since wt is centered, this proves the variance bound. The proposition is the finite-memory analogue of the averaging argument in Theorem 4. It shows that leaky integration suppresses innovation without letting its variance grow unbounded over time. In other words, the accumulator stores persistent evidence, not a random walk of noise. The complementary signal statement is simpler but equally important. If the structured component has a persistent local mean μ > 0 over a time scale longer than the effective memory horizon, then 
+
+> t
+
+X
+
+> k=1
+
+λt−kak ≈ μ
+
+1 − λ .
+
+Thus the structured term accumulates to a non-zero scale while the innovation remains centered and variance-controlled. This asymmetry is the exact reason for introducing a threshold over accumulated surprisal rather than acting on instantaneous loss. This observation has three practical implications. First, gradual drift becomes visible even when instantaneous losses are individually weak. A sequence of small but coherent deviations may fail to trigger a standard reactive update, yet accumulate under the leaky filter until it crosses threshold. Second, isolated outliers become less influential because their effect decays unless corroborated by subsequent evidence. Third, the threshold parameter τ acquires a transparent interpretation: it controls how much integrated evidence is required before one is willing to treat the observed deviation as a candidate regime change rather than as noise. 17 Relation to sequential change detection. The trigger can also be interpreted as a lightweight form of sequential evidence accumulation. Classical change-detection procedures accumulate evidence for a distributional change and raise an alarm when the statistic crosses a threshold. Black-Mamba follows the same statistical principle, but the accumulated quantity is a model-internal surprisal signal rather than an explicit likelihood ratio, and the alarm controls an internal memory update rather than declaring an external change point. This is useful when the post-change distribution is unknown or evolves continuously, because the update rule can operate directly on the predictive mismatch already produced by the model. 
+
+Proposition 4 (False-trigger control under calibrated innovation noise) . Assume that there is no predictable drift after validation calibration, so the trigger input is st = ξt, where (ξt) is a martingale-difference sequence with |ξt| ≤ b almost surely. Let 
+
+ut = λu t−1 + ξt, 0 < λ < 1, u0 = 0 .
+
+Then for any threshold τ > 0,
+
+P(ut ≥ τ ) ≤ exp 
+
+
+
+− τ 2(1 − λ2)2b2
+
+
+
+.
+
+Proof. Unrolling the recursion gives 
+
+ut =
+
+> t
+
+X
+
+> k=1
+
+λt−kξk.
+
+This is a weighted martingale sum. Since |ξk| ≤ b, the weighted increments are bounded by bλ t−k.Applying Azuma–Hoeffding gives 
+
+P(ut ≥ τ ) ≤ exp − τ 2
+
+2b2 Ptk=1 λ2( t−k)
+
+!
+
+.
+
+Because tX
+
+> k=1
+
+λ2( t−k) ≤ 11 − λ2 ,
+
+the stated bound follows. Proposition 4 gives a direct false-update interpretation to the trigger: increasing τ or shortening the effective memory length reduces the probability that pure innovation noise commits a memory update. This complements the variance bound above by controlling threshold crossings, not only the second moment of the filtered noise. It is also worth clarifying that the event-triggering principle is logically independent of the internal update operator. The main paper instantiates memory updates with a gradient step on ϕt, but the same trigger could gate a recurrent-state refresh, a write into an external memory, a cache update, or a more elaborate optimizer over a neural memory module. What remains invariant is the separation between evidence accumulation and memory commitment . That separation is, in our view, the central theoretical contribution of the paper. 
+
+## E Neurophysiological Motivation and Computational Analogy 
+
+The biological motivation for Black-Mamba should not be read as a claim of mechanistic realism. Rather, it serves to justify the architectural principle that persistent memory should be more selective than transient error correction. This appendix expands the argument that the proposed event-triggering mechanism is aligned with well-established ideas from the neuroscience of memory. The starting point is the classical literature on long-term potentiation (LTP). From the earliest experiments of Bliss and Lømo [1973] through later reviews [Lynch, 2004, Nicoll, 2017], a stable lesson emerges: durable memory traces are not formed by every perturbation. They require sufficiently strong, repeated, or appropriately coordinated activity to produce persistent changes in synaptic efficacy. This already suggests an important analogy for forecasting under drift. If every local 18 mismatch between prediction and observation led to a durable update of long-term memory, the resulting system would be overly reactive and unstable. Biological memory does not operate in that way. The synaptic tagging and capture literature sharpens the analogy. According to this view, a local event may set a transient tag that makes a synapse eligible for later consolidation, but persistence requires the arrival of additional plasticity-related resources within a critical time window [Redondo and Morris, 2011, Viola et al., 2014]. The conceptual importance of this framework lies in the explicit separation between eligibility and consolidation . In computational terms, instantaneous surprisal should be interpreted not as an immediate command to rewrite memory, but as an indication that the current state of the system may deserve revision if subsequent evidence supports that interpretation. This view is reinforced by computational neuroscience. Luboeinski and Tetzlaff [2021] show that synaptic tagging and capture mechanisms in recurrent spiking networks do not merely preserve memories; they can improve later recall by stabilizing the right traces over time. This is particularly relevant for our setting because it suggests that selectivity in memory writing is not merely a strategy for reducing variance. It can also improve the functional usefulness of memory by preserving only those traces that survive temporal scrutiny. The integrate-and-fire family of models provides the final piece of the analogy. In these models, noisy inputs are integrated over time with leak, and discrete events occur only when the resulting latent variable crosses a threshold [Burkitt, 2006, Brette and Gerstner, 2005, Gerstner and Kistler, 2002]. This does not imply that the accumulator in Black-Mamba is a literal membrane potential. The analogy is instead structural. The scalar variable ut is a latent evidence reservoir: local surprises contribute to it, old evidence decays, repeated deviations add constructively, and only sufficiently persistent evidence causes a discrete event. The thresholded update is thus the computational counterpart of selective commitment. Seen from this perspective, the proposed architecture combines two biologically inspired principles. The first is tagging : instantaneous discrepancy creates eligibility for change. The second is integration :durable commitment requires accumulation over time. The result is not a biologically detailed memory model, but a computationally disciplined one. That level of abstraction is exactly what is appropriate for the present paper: we do not need to emulate the biophysics of memory in order to import the more general lesson that persistence should be earned, not assumed. 
+
+## F Experimental and Reproducibility Details 
+
+This section reports the experimental and reproducibility details needed to interpret and replicate the evaluation. 
+
+F.1 Datasets, splits, and preprocessing 
+
+We follow the public long-term forecasting benchmark protocol popularized by the PatchTST frame-work [Nie et al., 2023]. This choice is deliberate: SiMBA is evaluated on the same benchmark family, and our implementation preserves the same data organization and forecasting protocol in order to make the comparison with the frozen SiMBA backbone and the adaptive variants as direct as possible. For all datasets, we use chronological splits with proportions 0.45/0.10/0.45 for training, validation, and test, respectively. We use this relatively large test split to make the test distribution sufficiently long for measuring whether the test stream exhibits drift relative to the training regime. The real benchmark suite includes the following datasets. The ETT family contains four electricity-transformer temperature datasets: ETTh1 and ETTh2 are hourly series, while ETTm1 and ETTm2 are 15-minute series, all taken from the public ETDataset repository. 1 Electricity is the UCI Electricity Load Diagrams dataset, containing client-level electricity consumption time series. 2 Exchange Rate is the multivariate exchange-rate benchmark distributed in the multivariate time-series data repository. 3
+
+Traffic is based on PeMS traffic sensor measurements from California freeway systems. 4 Weather is 
+
+> 1https://github.com/zhouhaoyi/ETDataset
+> 2https://archive.ics.uci.edu/ml/datasets/ElectricityLoadDiagrams20112014
+> 3https://github.com/laiguokun/multivariate-time-series-data
+> 4https://pems.dot.ca.gov/
+
+19 built from the Jena weather archive. 5 In our drift-oriented version of Weather, we use observations from 2003-01-01 up to the last date available in our collected copy, 2026-04-07, in order to provide a long temporal span for concept-drift diagnostics. Real benchmark experiments use context length 96 and prediction horizons 96, 192, 336, and 720 when available. All real datasets are processed chronologically, without shuffling across time, and the validation split is used for model selection and adapter calibration before streaming evaluation on the held-out test stream. The synthetic suite contains seven non-stationary streams designed to isolate different forms of concept drift. Each stream is generated as a controlled multivariate process with an un-derlying regime variable that changes the conditional relationship between recent observations and the next target. The lgradual stream introduces a smooth transition between regimes, while lgradual_noisy adds observation noise to the same gradual drift structure. The 
+
+recurrent_seasonal_boundary stream alternates between recurring seasonal decision bound-aries, and recurrent_seasonal_boundary_noisy adds noise to make boundary recovery less stable. The regime_plateau_drift stream contains extended plateaus separated by regime changes, with regime_plateau_drift_noisy adding noise to the plateau-drift process. Finally, 
+
+selective_update_stress is designed to stress the update policy: long easy regions require few updates, while later difficult regions require rapid adaptation. Synthetic forecasting uses horizon 1 and paired online traces of 449,999 windows per adaptive run. Following the PatchTST evaluation framework [Nie et al., 2023], which is also the benchmark protocol used to evaluate SiMBA, we report losses in the standardized target space in order to make results comparable across datasets and target channels with different physical units and scales. This is the metric convention used throughout our comparison. Let μtrain  
+
+> c
+
+and σtrain  
+
+> c
+
+denote the mean and standard deviation of target channel c, computed on the training split only. For a target value yt,h,c 
+
+and prediction ˆyt,h,c at window t, horizon step h, and channel c, the standardized quantities are 
+
+˜yt,h,c = yt,h,c − μtrain 
+
+> c
+
+σtrain 
+
+> c
+
+, ˜ˆyt,h,c = ˆyt,h,c − μtrain 
+
+> c
+
+σtrain 
+
+> c
+
+.
+
+The reported standardized MSE and MAE are therefore 
+
+MSE std = 1
+
+N
+
+X
+
+> t,h,c
+
+˜ˆyt,h,c − ˜yt,h,c 
+
+2
+
+= 1
+
+N
+
+X
+
+> t,h,c
+
+ ˆyt,h,c − yt,h,c 
+
+σtrain 
+
+> c
+
+2
+
+,
+
+MAE std = 1
+
+N
+
+X
+
+> t,h,c
+
+˜ˆyt,h,c − ˜yt,h,c = 1
+
+N
+
+X
+
+> t,h,c
+
+ˆyt,h,c − yt,h,c 
+
+σtrain 
+
+> c
+
+.
+
+These quantities are scale-normalized errors, not min–max normalized scores, and are not con-strained to lie in [0 , 1] . A value above one simply means that the forecasting error is larger than the corresponding training-set scale. 
+
+F.2 Baselines, hyperparameters, and implementation 
+
+The non-adaptive baselines are Autoformer, Informer, DLinear, Linear, NLinear, and frozen SiMBA [Wu et al., 2021, Zhou et al., 2021, Zeng et al., 2023, Patro and Agneeswaran, 2024]. The adaptive comparison uses a shared frozen SiMBA backbone and a shared LoRA forecasting-head adapter. The continuous update adapter implements the inference-time update mechanism described in the Titans-inspired neural-memory literature [Behrouz et al., 2024], but not the unavailable official architecture. Black-Mamba uses the same adapter and differs only in the event-triggered update policy. The adapter is a low-rank LoRA module on the forecasting head with rank 4, alpha 4, dropout 0, and validation calibration for one epoch. The online update uses the matmul_b_only implementation: the LoRA A matrix is initialized from calibration and kept fixed online, while the B component is updated from streaming gradients. The default leaky accumulator uses integration coefficient 
+
+λ = 0 .97 , with trigger threshold calibration from the validation surprisal quantile. Online learning rates are bounded by the validation-normalized update budget, with minimum 10 −6 and maximum 
+
+> 5https://www.bgc-jena.mpg.de/wetter/
+
+20 10 −4 in the recorded runs. Backbone training uses Adam with learning rate 10 −4, train/eval batch size 512 in the representative synthetic runs, and effective test batch size 1 for streaming evaluation. Exact per-run configurations are stored in the run summary JSON files. 
+
+F.3 Statistical testing protocol 
+
+The comparison between Black-Mamba and the continuous-update adapter is performed on the same online forecasting stream. This means that, for a fixed dataset and prediction horizon, both methods produce a prediction for exactly the same test windows. We therefore treat the evaluation as a paired comparison: for each test window t, we compute the loss of the continuous-update adapter and the loss of Black-Mamba on the same target window, and then compare their difference. Formally, let 
+
+ℓcont 
+
+> t
+
+be the loss of the continuous-update adapter on test window t, and let 
+
+ℓBM 
+
+> t
+
+be the corresponding loss of Black-Mamba on the same window. We define the paired loss difference as 
+
+dt = ℓcont  
+
+> t
+
+− ℓBM  
+
+> t
+
+.
+
+With this convention, dt > 0 means that the continuous-update adapter has larger loss than Black-Mamba on that window, while dt < 0 means that the continuous-update adapter is better on that window. The quantity of interest is the average paired difference, 
+
+¯d = 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+dt.
+
+A positive value of ¯d indicates that, on average, continuous updating performs worse than Black-Mamba. A standard paired t-test would assume that the sequence of differences (dt) is independent across test windows. This assumption is not appropriate for our forecasting traces, because consecutive windows strongly overlap in time and their errors are autocorrelated. To account for this temporal dependence, we use a HAC/Newey–West standard error for ¯d. The resulting test statistic is 
+
+z = ¯d
+
+bse HAC ( ¯d) ,
+
+where bse HAC ( ¯d) estimates the uncertainty of the mean difference while allowing nearby windows to be correlated. For the real forecasting experiments, we set the HAC lag to the prediction horizon minus one, so that the standard error accounts for the overlap induced by multi-step forecasting windows. We test the paired one-sided hypothesis H0 : E[dt] ≤ 0 versus H1 : E[dt] > 0, with moving-block bootstrap confidence intervals used only as a robustness check on the sign and scale of the estimated difference. For synthetic streams, H = 1 , so adjacent predictions have no target-horizon overlap; the protocol therefore reduces to a lag-zero HAC estimate and an iid bootstrap over paired differences. We use p < 0.05 as a conventional threshold for local statistical significance. However, we do not interpret p-values in isolation: each result is discussed together with the percentage effect size and the confidence interval. This is important because, on long traces, extremely small differences can become statistically detectable while remaining practically irrelevant. The main text reports only the real-drift p-values used in the central discussion, while full per-horizon results are reported in Appendix G. 
+
+F.4 Compute resources 
+
+Compute-intensive runs were executed on a DGX system with 8 NVIDIA A100 40GB GPUs. Most development, trace processing, plotting, and routine analysis were performed on a workstation with an NVIDIA RTX 4070 Ti GPU. The final statistical analyses and figures in this draft were generated from saved CSV/JSON trace artifacts and do not require re-training. 21 Table 4: Full real benchmark results by dataset and horizon. Each cell reports standardized MSE and MAE; lower is better. Bold and underline mark the best and second-best results across all models; light yellow and light blue mark the best and second-best results among SiMBA, Cont. update, and Black-Mamba, isolating update-policy effects for the chosen frozen baseline. Ties are highlighted within the corresponding rank. 
+
+Dataset Horizon Autoformer Informer DLinear Linear NLinear SiMBA Cont. update Black-Mamba MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE ETTh1 96 0.600 0.530 1.034 0.733 0.512 0.468 0.509 0.467 0.525 0.469 0.516 0.472 0.516 0.472 0.516 0.472 192 0.741 0.592 1.166 0.796 0.605 0.508 0.603 0.507 0.631 0.516 0.623 0.519 0.623 0.519 0.623 0.519 336 0.842 0.637 1.210 0.798 0.663 0.545 0.661 0.542 0.721 0.562 0.706 0.561 0.706 0.561 0.706 0.561 720 0.926 0.692 1.333 0.861 0.729 0.602 0.724 0.596 0.808 0.617 0.829 0.635 0.829 0.635 0.829 0.635 ETTh2 96 0.322 0.386 2.086 1.103 0.342 0.403 0.335 0.395 0.273 0.345 0.265 0.339 0.265 0.339 0.265 0.339 
+
+192 0.388 0.420 3.755 1.550 0.448 0.465 0.410 0.440 0.344 0.388 0.338 0.381 0.338 0.381 0.338 0.381 
+
+336 0.444 0.457 4.581 1.785 0.630 0.550 0.532 0.502 0.425 0.430 0.410 0.425 0.410 0.425 0.410 0.425 
+
+720 0.601 0.545 4.564 1.747 0.842 0.639 0.971 0.688 0.564 0.504 0.557 0.496 0.557 0.496 0.557 0.496 
+
+ETTm1 96 0.661 0.552 0.693 0.590 0.412 0.413 0.411 0.413 0.422 0.419 0.422 0.425 0.422 0.425 0.422 0.425 192 0.748 0.588 0.740 0.607 0.477 0.443 0.477 0.443 0.494 0.451 0.487 0.453 0.486 0.453 0.487 0.453 336 0.756 0.593 0.884 0.662 0.545 0.476 0.546 0.478 0.572 0.488 0.560 0.490 0.560 0.490 0.560 0.490 720 0.867 0.636 1.071 0.741 0.644 0.524 0.646 0.526 0.693 0.542 0.683 0.540 0.683 0.540 0.683 0.540 ETTm2 96 0.197 0.302 0.509 0.579 0.169 0.277 0.165 0.270 0.163 0.266 0.164 0.270 0.164 0.270 0.164 0.270 192 0.237 0.326 0.792 0.725 0.237 0.333 0.223 0.319 0.214 0.301 0.222 0.312 0.222 0.312 0.222 0.312 336 0.301 0.367 1.096 0.812 0.348 0.413 0.305 0.381 0.268 0.336 0.278 0.350 0.278 0.350 0.278 0.350 720 0.376 0.409 1.960 1.091 0.459 0.474 0.519 0.504 0.355 0.385 0.364 0.400 0.364 0.400 0.364 0.400 Electricity 96 0.239 0.349 0.639 0.561 0.205 0.283 0.204 0.281 0.206 0.277 0.177 0.257 0.177 0.257 0.177 0.257 
+
+192 0.253 0.353 0.624 0.565 0.204 0.287 0.203 0.284 0.205 0.278 0.184 0.265 0.184 0.265 0.184 0.265 
+
+336 0.268 0.363 0.551 0.516 0.221 0.302 0.222 0.304 0.225 0.295 0.205 0.282 0.205 0.282 0.205 0.282 
+
+720 0.309 0.391 0.546 0.516 0.266 0.339 0.267 0.341 0.274 0.330 0.257 0.321 0.257 0.321 0.257 0.321 
+
+Exchange Rate 96 0.365 0.423 3.449 1.499 0.232 0.331 0.213 0.310 0.205 0.296 0.223 0.313 0.220 0.310 0.222 0.312 192 0.700 0.599 3.839 1.575 0.509 0.497 0.541 0.519 0.425 0.433 0.456 0.448 0.457 0.447 0.456 0.448 336 1.011 0.746 4.391 1.672 1.066 0.755 0.918 0.696 0.702 0.576 0.755 0.597 0.747 0.595 0.754 0.597 720 1.703 1.016 5.788 1.984 3.192 1.328 3.242 1.343 1.303 0.838 1.610 0.925 1.640 0.931 1.611 0.926 Traffic 96 0.617 0.393 0.768 0.415 0.758 0.482 0.740 0.471 0.742 0.460 0.440 0.279 0.440 0.279 0.440 0.279 
+
+192 0.635 0.405 0.831 0.452 0.720 0.471 0.657 0.435 0.649 0.420 0.439 0.278 0.439 0.278 0.439 0.278 
+
+336 0.717 0.460 0.940 0.507 0.714 0.462 0.679 0.440 0.654 0.417 0.444 0.276 0.444 0.276 0.444 0.276 
+
+720 0.617 0.381 0.864 0.469 0.882 0.537 0.788 0.501 0.761 0.481 0.502 0.307 0.502 0.307 0.502 0.307 
+
+Weather 96 0.581 0.501 0.488 0.443 0.534 0.461 0.534 0.461 0.552 0.463 0.524 0.446 0.524 0.446 0.524 0.446 192 0.633 0.529 0.546 0.483 0.586 0.494 0.586 0.493 0.616 0.499 0.594 0.483 0.594 0.483 0.594 0.483 
+
+336 0.683 0.558 0.725 0.584 0.619 0.514 0.619 0.514 0.657 0.522 0.633 0.507 0.633 0.507 0.633 0.507 
+
+720 0.713 0.568 0.747 0.594 0.669 0.544 0.669 0.544 0.723 0.558 0.701 0.545 0.701 0.545 0.701 0.545 
+
+## G Additional Results 
+
+This section reports the additional results supporting the experimental discussion in the main paper. We include full per-horizon benchmark tables, complete paired adaptive-policy comparisons, synthetic trace diagnostics, noise and stress ablations, update-gate sensitivity observations, and the concept-drift diagnostics used to identify the real-drift cases. 
+
+G.1 Full Real Benchmark Tables 
+
+Table 4 expands the averaged real benchmark table from the main paper into per-horizon results. The table confirms that most differences among frozen SiMBA, the continuous-update adapter, and Black-Mamba are below standard benchmark-table precision on real datasets. This supports the interpretation used in the main text: on most real benchmarks, online adaptation does not materially change aggregate forecasting accuracy because the test streams are not uniformly drifting. The relevant evidence is therefore not broad real-data dominance, but whether Black-Mamba preserves the backbone while reducing updates and whether it avoids degradation in the strongest real-drift cases. 
+
+G.2 Full Adaptive-Policy Comparisons 
+
+Table 5 reports the paired adaptive-policy comparison for the real material-drift datasets and the synthetic drift streams. Positive deltas favor Black-Mamba, while negative deltas favor the continuous-update adapter. The real results show practical equivalence except for Exchange Rate at horizon 720, where continuous updating is worse than Black-Mamba. The synthetic results show that continuous updating often obtains slightly lower losses, especially when the drift signal is dense and consistently informative. This is expected: in synthetic streams where almost every new point contributes useful information about the current regime, an always-update policy can extract small additional gains. The key observation is that these gains remain numerically small, while Black-Mamba substantially reduces inference-time writes. This supports the 22 Table 5: Full adaptive-policy comparison between Black-Mamba and the Titans-inspired continuous-update adapter. ∆ = 100 · (Cont . − BM) /BM ; positive values favor Black-Mamba. pdir is the HAC one-sided p-value in the direction of the observed mean difference.                                                                                                               
+
+> Dataset / scenario Horizon BM update rate ∆MSE pdir ∆MAE pdir
+> Exchange Rate 96 7.5% -0.685% 0.370 -0.599% 0.270 192 10.4% +0.087% 0.420 -0.160% 0.208 336 9.9% -0.926% 0.283 -0.286% 0.371 720 9.1% +1.797% 0.056 +0.556% 0.039 Traffic 96 46.5% -0.001% <10 −3-0.003% <10 −3
+> 192 43.8% -0.000% 0.002 -0.001% <10 −3
+> 336 42.5% -0.000% 0.007 -0.001% <10 −3
+> 720 46.3% -0.000% <10 −3-0.000% <10 −3
+> L-Gradual 153.4% -0.329% <10 −3-0.353% <10 −3
+> L-Gradual noisy 149.2% -0.408% <10 −3-0.287% <10 −3
+> Recurrent seasonal 140.9% -0.847% <10 −3-0.502% <10 −3
+> Recurrent seasonal noisy 138.6% -0.454% <10 −3-1.064% <10 −3
+> Regime plateau 156.6% -0.360% <10 −3-0.391% <10 −3
+> Regime plateau noisy 148.1% -0.315% <10 −3-0.231% <10 −3
+> Selective stress 178.4% +0.114% <10 −3-0.105% <10 −3
+
+intended trade-off rather than contradicting it: Black-Mamba is not designed to dominate continuous adaptation in every loss cell, but to preserve most of its benefit with fewer and more selective updates. 
+
+G.3 Synthetic Update-Efficiency Diagnostics 
+
+Table 6 reports diagnostics that are not captured by the aggregate adaptive-policy table. It measures whether Black-Mamba allocates updates selectively across the stream. For each synthetic scenario, we compare the Black-Mamba update rate in the easiest and hardest segment quartiles, where segment difficulty is measured by segment MSE. The positive correlations and hard/easy update-rate ratios show that the gate is not merely reducing updates uniformly: it increases update intensity when the stream becomes harder. The heatmaps in Figure 2 visualize the same behavior over time. The update-rate heatmap shows that Black-Mamba remains sparse in easier regions but increases update frequency in difficult segments. The relative-MSE heatmap shows that these difficult regions are not uniformly distributed across the stream, which is precisely the setting in which a selective policy is meaningful: the model should not pay the cost of continuous adaptation when the stream is locally stable, but should become more active when mismatch accumulates. The last two columns of Table 6 report how often Black-Mamba has lower MSE than the continuous-update adapter at segment and rolling-window level. These counts are especially informative for the selective-update stress stream, where Black-Mamba wins 18/20 segments and 384/449 rolling windows. This supports the intended mechanism: transient or corrupted errors need not be written immediately, while persistent mismatch still accumulates enough evidence to trigger adaptation. Finally, Figure 3 relates update rate to the fraction of the continuous-update gain over frozen SiMBA captured by Black-Mamba. Across the six synthetic scenarios with the frozen SiMBA trace, Black-Mamba captures 98 .9% of the MSE improvement obtained by continuous updating while using substantially fewer updates. This is the most direct efficiency interpretation of the synthetic results: Black-Mamba does not remove the benefit of test-time adaptation; it obtains almost all of it with a much smaller write budget. 
+
+G.4 Update-Policy Hyperparameters 
+
+Black-Mamba is adaptive at inference time, but its update policy still depends on hyperparameters that define how evidence is accumulated and when an update is triggered. In our experiments, these parameters are not fixed from arbitrary constants alone: the trigger calibration is selected on the validation stream, while the leak controls the time scale over which surprisal evidence persists. This 23 Table 6: Synthetic selectivity diagnostics. “Easy” and “hard” refer to the lowest- and highest-MSE segment quartiles. BM wins count segments or rolling windows where Black-Mamba has lower MSE than the continuous-update adapter.                                                 
+
+> Scenario Easy update rate Hard update rate Hard/easy ratio Corr. MSE/update BM segment wins BM rolling wins L-Gradual 39.0% 71.7% 1.84 ×+0.960 2/20 86/449 L-Gradual noisy 36.7% 64.1% 1.74 ×+0.989 1/20 47/449 Recurrent seasonal 35.4% 47.7% 1.35 ×+0.887 2/20 99/449 Recurrent seasonal noisy 36.8% 40.6% 1.10 ×+0.689 6/20 150/449 Regime plateau 41.3% 74.4% 1.80 ×+0.986 0/20 42/449 Regime plateau noisy 39.6% 59.2% 1.50 ×+0.995 7/20 125/449 Selective update stress 43.0% 98.3% 2.29 ×+0.823 18/20 384/449
+
+Figure 2: Black-Mamba temporal diagnostics. Left: update rate by scenario and segment. Right: relative segment MSE. The two panels show that update intensity tends to rise where the stream becomes harder. is important because the update gate is itself part of the deployed system. It determines which errors are treated as transient noise and which errors are interpreted as evidence of persistent drift. This also introduces a slower form of aging. A frozen forecasting model can become obsolete when the data-generating process changes, but an adaptive model can still inherit assumptions from the validation period through its update policy. If the validation stream underestimates or overestimates the drift intensity, noise level, or regime persistence of the deployment stream, the gate may become too conservative or too reactive. In this sense, Black-Mamba reduces the need to continuously retrain the forecasting model, but it does not remove the need to monitor whether the update policy remains calibrated to the operational domain. This limitation is also an opportunity for domain-specific deployment. In domains where practition-ers have prior knowledge about drift time scales, such as network traffic, recommender systems, information retrieval logs, energy demand, financial streams, or sensor networks, the leak and trigger calibration can be tied to meaningful operational frequencies. For example, one may ask whether the update-policy calibration should be refreshed daily, weekly, after detected regime changes, or only when validation-style monitoring shows that the gate is under- or over-triggering. This refresh schedule is likely to be much cheaper than full model retraining, but it should still be studied explicitly. We therefore view update-policy calibration as a separate layer of adaptation. The experiments in this paper show that a validation-calibrated gate can reduce inference-time writes while preserving most of the benefit of continuous updating, but they do not exhaust the design space of time-varying gates. Future work should study how leak, trigger thresholds, and surprisal calibration evolve under long deployments, and how often they must be refreshed relative to full backbone retraining. 
+
+G.5 Noise and Stress Ablations 
+
+The noisy synthetic variants ablate the reliability of the drift signal by adding noise to the gradual, recurrent seasonal, and regime-plateau streams. In these settings, the continuous-update adapter remains slightly better than Black-Mamba in most MSE and MAE comparisons, consistent with the data construction: noise perturbs the stream, but the underlying drift signal remains dense and continuously informative. Since the continuous adapter writes at nearly every step, it can exploit frequent small signals more aggressively than a thresholded policy. This does not invalidate the proposed update rule. The claim is not that selective updating must always minimize raw loss when every observation is useful, but that continuous updating pays for 24 Figure 3: Baseline-capture diagnostic. In the six synthetic scenarios with a frozen SiMBA trace in the analysis index, Black-Mamba captures on average 98.9% of the MSE improvement obtained by continuous updating over frozen SiMBA, while using substantially fewer updates. marginal gains with a much larger update budget and can become vulnerable when instantaneous errors are unreliable evidence of persistent drift. The noisy ablations sharpen this trade-off: even when continuous updating benefits from dense synthetic supervision, Black-Mamba remains close in accuracy while using substantially fewer updates. The selective-update stress stream tests the opposite regime: long easy regions, transient corrupted bursts, and later persistent difficulty. This setting matches the failure mode targeted by Black-Mamba, where not every large error should be written into the adapter. The result supports leaky surprisal accumulation: transient corruptions can decay without permanent updates, while persistent mismatch still accumulates enough evidence to trigger adaptation. 
+
+G.6 Concept-Drift Diagnostics 
+
+The drift diagnostics explain why the main text does not claim broad real-data superiority from online adaptation. We use a model-based concept-transfer probe: a reference predictor f0 is trained on the initial regime, while a window-local predictor fw is trained on the first half of a later window and evaluated against f0 on the second half. For forecasting windows, we define 
+
+Dw = max 
+
+
+
+0, RMSE( f0, w )RMSE( f0, val) − 1
+
+
+
+, Gw = max 
+
+
+
+0, RMSE( f0, w ) − RMSE( fw, w )RMSE( f0, w )
+
+
+
+,
+
+and report concept _score w = max( DwGw, G w). Thus, drift evidence increases when the train-regime predictor degrades and a local predictor recovers loss on the same window. Among the real forecasting datasets, only Exchange Rate and Traffic are classified as material concept drift. Exchange Rate is the most severe case, with 6 strong windows and maximum concept score 18.410; Traffic has 7 strong windows but a smaller maximum concept score of 1.811. ETTh1 is weak or inconclusive, while the remaining real datasets are classified as no material concept drift. Table 7: Real-dataset drift diagnostics. Dataset Verdict Strong Weak Max score Exchange Rate material 6 0 18.410 Traffic material 7 0 1.811 ETTh1 weak/inconclusive 1 0 0.561 ETTh2 no material 0 0 0.005 ETTm1 no material 0 0 0.346 ETTm2 no material 0 0 0.594 Electricity no material 0 1 0.159 Weather no material 0 0 0.000 All seven synthetic datasets contain drift by construction; five are material, while the two recurrent variants are weak/inconclusive because recurring regimes reduce persistent degradation. 25
