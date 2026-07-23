@@ -6,41 +6,41 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-22
-- 运行时间：2026-07-22 20:51:31 UTC
+- 最新运行日期：2026-07-23
+- 运行时间：2026-07-23 21:30:47 UTC
 - 运行状态：成功
 - 本次总论文数：7
 - 精读区：1
 - 速读区：6
 
 ### 今日简报（AI）
-今日共读7篇论文，精读1篇，速读3篇（风电、血糖、电动卡车预测）。最值得关注的是精读文章《Black-Mamba》提出的类脑漏累积方法应对概念漂移，以及速读中物理感知机器学习预测卡车能耗的实用方向。建议普通读者优先精读《Black-Mamba》以理解分布漂移下的知识维护，再结合自身领域参考风电或卡车预测中的物理嵌入技巧。
-- 详情：[/202607/22/README](/202607/22/README)
+今日共整理7篇论文，精读1篇高影响力研究《PIER: Physics-Informed Environmental Retrieval for Time-Series Modeling》（9.0/10），速读3篇相关进展。最值得关注的方向是物理信息与时序建模的融合（PIER）以及生物地球化学季节预报的可预测性（BG4Sea）。建议普通读者优先精读PIER中物理约束增强时序预测的设计思路，并留意专家引导编辑方法对基础模型的改进。
+- 详情：[/202607/23/README](/202607/23/README)
 
 ### 精读区论文标签
-1. [Black-Mamba: Biologically-Inspired Leaky Accumulation for Conceptual Knowledge under Distribution Drift](/202607/22/2607.18899v1-black-mamba-biologically-inspired-leaky-accumulation-for-conceptual-knowledge-under-distribution-drift)  
-   标签：评分：8.0/10、query:aq-forecast
-   evidence：分布漂移下的测试时自适应预测
+1. [PIER: Physics-Informed Environmental Retrieval for Time-Series Modeling](/202607/23/2607.20230v1-pier-physics-informed-environmental-retrieval-for-time-series-modeling)  
+   标签：评分：9.0/10、query:aq-forecast
+   evidence：物理信息检索用于环境时间序列建模
 
 ### 速读区论文标签
-1. [Fourier Geometric Wind Power Forecasting with Numerical Weather Prediction](/202607/22/2607.17095v1-fourier-geometric-wind-power-forecasting-with-numerical-weather-prediction)  
+1. [BG4Sea: Biogeochemical Seasonal Forecastability via Progressive Information Scaling](/202607/23/2607.16731v1-bg4sea-biogeochemical-seasonal-forecastability-via-progressive-information-scaling)  
    标签：评分：7.0/10、query:aq-forecast
-   evidence：提出多模态时间序列预测框架用于风电功率
-2. [Subject-Conditioned Glucose Forecasting in Type-1 Diabetes](/202607/22/2607.19006v1-subject-conditioned-glucose-forecasting-in-type-1-diabetes)  
+   evidence：海洋生物地球化学时间序列预测
+2. [Expert-Guided Forecast Editing for Time-Series Foundation Models](/202607/23/2607.19659v1-expert-guided-forecast-editing-for-time-series-foundation-models)  
    标签：评分：7.0/10、query:aq-forecast
-   evidence：开发了个性化血糖时间序列预测方法
-3. [Probabilistic Physics-Aware Machine Learning Predictions of Electric Truck Energy Consumption with Field Data](/202607/22/2607.19054v1-probabilistic-physics-aware-machine-learning-predictions-of-electric-truck-energy-consumption-with-field-data)  
+   evidence：时间序列基础模型的专家引导预测编辑
+3. [Nonlinear Bias-Compensated Adaptive Filter and Its Application for Time-Series Prediction](/202607/23/2607.19902v1-nonlinear-bias-compensated-adaptive-filter-and-its-application-for-time-series-prediction)  
    标签：评分：7.0/10、query:aq-forecast
-   evidence：时序能耗预测与物理感知机器学习
-4. [Behaviour-Conditioned Neural Processes for Adaptive Residential Short-Term Load Forecasting](/202607/22/2607.16168v1-behaviour-conditioned-neural-processes-for-adaptive-residential-short-term-load-forecasting)  
+   evidence：用于时序预测的非线性偏差补偿自适应滤波器
+4. [Post-Training in Time Series Foundation Models: A Unifying Framework](/202607/23/2607.20002v1-post-training-in-time-series-foundation-models-a-unifying-framework)  
+   标签：评分：7.0/10、query:aq-forecast
+   evidence：时间序列基础模型后训练框架
+5. [A Predict-then-Correct Loop Based on Few-Shot Continuous Contextual Bandit for Demand Forecasting](/202607/23/2607.16354v1-a-predict-then-correct-loop-based-on-few-shot-continuous-contextual-bandit-for-demand-forecasting)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：使用神经过程的时间序列预测方法
-5. [MambaLSTM: A Spatio-Temporal Framework for Enhanced Traffic Accident Risk Prediction](/202607/22/2607.18353v1-mambalstm-a-spatio-temporal-framework-for-enhanced-traffic-accident-risk-prediction)  
+   evidence：自适应零售需求预测与时序修正
+6. [Time Series Network Utilization KPI Forecasting Using Advanced AI/ML Models](/202607/23/2607.19974v1-time-series-network-utilization-kpi-forecasting-using-advanced-aiml-models)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：基于时间序列的交通意外风险时空预测框架
-6. [On the sensitivity of machine-learned probabilistic weather forecast models to scale-aware scoring rules](/202607/22/2607.19161v1-on-the-sensitivity-of-machine-learned-probabilistic-weather-forecast-models-to-scale-aware-scoring-rules)  
-   标签：评分：6.0/10、query:aq-forecast
-   evidence：概率天气预测与评分规则
+   evidence：网络利用率KPI的时间序列预测
 
 
 <div class="dpr-home-promo-card">

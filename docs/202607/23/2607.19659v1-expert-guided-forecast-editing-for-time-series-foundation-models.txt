@@ -1,0 +1,4519 @@
+Title: Expert-Guided Forecast Editing for Time-Series Foundation Models
+
+URL Source: https://arxiv.org/pdf/2607.19659v1
+
+Published Time: Thu, 23 Jul 2026 00:22:34 GMT
+
+Number of Pages: 33
+
+Markdown Content:
+# Expert-Guided Forecast Editing for Time-Series Foundation Models 
+
+Hung Le, Minh Hoang Nguyen, Manh Nguyen, Huu Hiep Nguyen, Dai Do 
+
+Deakin Applied Artifical Intelligence Initiative Deakin University, Australia 
+
+thai.le@deakin.edu.au 
+
+Abstract 
+
+Time-series foundation models can forecast across heterogeneous domains with-out task-specific training, but their forecasts are fixed once produced and cannot directly incorporate task-specific expert feedback. We study expert-guided forecast editing: a frozen foundation model generates candidate future trajectories, and an expensive expert evaluator scores them to guide forecast revision. Under a tight query budget, two natural strategies sit at opposite ends: best-of-N purely exploits the foundation model’s predictive distribution, while optimization approaches mostly explore the forecast horizon as an unstructured high-dimensional vector. Each extreme is individually sub-optimal. We introduce DEFT , an expert-guided forecast editing framework that balances the two by first exploiting the foundation model’s predictive samples in a decomposed trend–seasonal space, then exploring around them via component-wise refinement. DEFT queries the expert only on complete trajectories, then reuses scores for the trend and seasonal components that appeared in the queried recombinations. This lets each expert query provide structured component-level feedback while keeping the foundation model frozen. We compare DEFT against direct search approaches, including best-of-N , cross-entropy methods, and Bayesian optimization, under matched expert-query budgets. Across two forecasting benchmarks consisting of 78 datasets, three time-series foundation models, four feedback types, and seven query budgets, DEFT consis-tently improves the effectiveness of expert guidance. A molecular-dynamics case study further suggests that the same principle extends to more physically grounded feedback, supporting the hypothesis that sparse test-time guidance should be spent balancing prior exploitation with structured exploration. 
+
+1 Introduction 
+
+Time-series foundation models (TFMs) have changed the practical form of forecasting. Large forecasting models such as Chronos, TimesFM, Moirai, or Lag-Llama can be trained once and then used on many domains without per-dataset fitting [Rasul et al., 2023, Woo et al., 2024, Das et al., 2024, Ansari et al., 2025]. Yet, the initial forecast is rarely the final one. Decision makers often bring knowledge that historical data cannot encode, which includes contextual, operational, and domain-specific information that only becomes relevant at prediction time. For example, a retail planner who sees a model predicting a demand surge may know that warehouse capacity is capped at a fixed threshold, making the spike physically impossible to fulfill. In this case, the foundation model produces a reasonable forecast given what it has seen, but the expert holds additional knowledge that demands a targeted revision to the output trajectory. We study this setting as expert-guided forecast editing . A frozen forecasting foundation model first produces an initial forecast for an input series. An editor then proposes candidate future trajectories, and an expert scores a small number of them. The expert may be a human analyst, a simulator, a rule 
+
+> Preprint. arXiv:2607.19659v1 [cs.LG] 22 Jul 2026
+
+checker, or, in controlled offline experiments, a diagnostic score computed from the held-out future. Because expert calls are costly, the central question is how to spend a small query budget effectively. Two natural strategies sit at opposite ends of an exploit–explore spectrum. Best-of-N [Snell et al., 2024] spends its budget exploiting the foundation model’s predictive distribution, asking whether a good trajectory already lies within the model’s prior. Optimization-based methods such as the Cross-Entropy Method (CEM, [Rubinstein and Kroese, 2004]) and Bayesian Optimization (BO, [Shahriari et al., 2015]) sit at the other end: they use expert feedback to iteratively refine new candidate trajectories, spending the budget exploring regions that the foundation model may not have proposed. Exploitation-heavy methods are ineffective when the prior is biased, while exploration-heavy methods can be wasteful when they ignore a strong prior and search a high-dimensional forecast space with only a small query budget. We argue that an effective editor should balance the two: invest part of the budget in identifying a promising region from the model’s predictive distribution, then use the remaining budget to search around it efficiently. Time-series errors typically manifest as level shifts, trend mismatches, or seasonal amplitude changes, so search becomes far more sample-efficient when conducted over these structured components rather than over raw horizon coordinates. We introduce Decomposed Expert-guided ForecasT (DEFT) , a test-time forecast editor that realizes this exploit-explore balance. DEFT first uses a portion of the query budget to select strong anchor trajectories from the foundation model’s predictive distribution, then decomposes candidates into trend and seasonal residual components and searches over their recombinations around the anchor. The expert is queried only on fully reconstructed trajectories, and each score is reused as component-level feedback for the trend and residual proposals that produced it. Hence, a single expert call informs both components while the foundation model remains frozen. Experimental results across three time-series foundation models, four feedback settings, and 78 time-series datasets show that 
+
+DEFT improves forecast quality under matched expert-query budgets. A molecular-dynamics case study further suggests that this advantage extends to more physically grounded feedback. The results indicate that sparse test-time guidance is most effective when used to balance TFM-prior exploitation with exploration in component-level space. Our contributions are: • We formulate expert-guided forecast editing for frozen TFMs as an exploit–explore budget allocation problem, where, for instance, best-of-N purely exploits the TFM prior and CEM purely explores the horizon space. • We propose DEFT , which balances the two by leveraging strong TFM samples and searching around them over decomposed trend and seasonal components, reusing each expert score as component-level feedback. • We provide a comprehensive evaluation of DEFT against best-of-N variants, random-search, CEM, surrogate-CEM, and BO baselines under the same expert-query budgets, together with ablations and a real-world case study that tests more physically grounded feedback. 
+
+2 Related Work 
+
+Time-series foundation models. Large pretrained forecasting models now provide strong zero-shot forecasts across domains. Chronos tokenizes scaled time-series values and trains language-model architectures for probabilistic forecasting [Ansari et al., 2024, 2025]. TimesFM pretrains a decoder-only model on large real and synthetic time-series corpora [Das et al., 2024]. Lag-Llama and Moirai similarly target general-purpose probabilistic forecasting across datasets, frequencies, and domains [Rasul et al., 2023, Woo et al., 2024]. Newer models continue this line, e.g., Sundial with flow-matching probabilistic forecasting [Liu et al., 2025b] and the more compact Moirai 2.0 [Liu et al., 2025a]. These models reduce the need for per-dataset fitting, but their forecasts remain fixed once generated and still show consistent gaps across datasets [Qiao et al., 2026]. Our work is complementary: we keep the foundation model frozen and edit its output forecast using a small number of expert queries to reduce the gaps. 
+
+Expert feedback and test-time editing for time series. Forecasting practice has long studied judgmental adjustment, where human experts override model forecasts using contextual information unavailable in the historical series [Lawrence et al., 2006, Fildes et al., 2009]. Our setting differs: the expert does not directly edit forecast values, but provides budgeted scores on complete candidate trajectories, which DEFT uses for structured output-space search. A separate line of time-series test-time adaptation corrects forecasters under temporal drift using delayed observations or online 2parameter updates [Guo et al., 2025, Kim et al., 2025, Im and Kwon, 2026]. These methods are not directly applicable to our setting where the future is hidden at decision time, the foundation model remains frozen, and the only feedback is a small number of expert queries before the forecast horizon is observed. To our knowledge, this is the first work to formulate expert-guided forecast editing for time-series models , where the forecasting model remains unchanged and scarce expert feedback is used only to revise its output trajectory. 
+
+Query-limited trajectory search. The simplest approach, best-of-N , draws N candidates and returns the highest-scoring one; it is widely used for reward-guided selection in language models [Snell et al., 2024] but performs no optimization. The Cross-Entropy Method (CEM) [Rubinstein and Kroese, 2004] iteratively refines a sampling distribution over a forecast horizon, but treats the trajectory as an unstructured vector. Surrogate CEM amortizes feedback using a learned surrogate [Moss, 2020]; Bayesian Optimization [Shahriari et al., 2015] balances exploration and exploitation via an acquisition function but requires trust regions [Eriksson et al., 2019] to scale to high-dimensional horizons. These methods search over the raw, undecomposed horizon. DEFT instead searches over decomposed trend and residual components, querying complete recombined trajectories and reusing each score as component-level feedback. 
+
+Temporal structure in forecasting. Forecasting methods have long used trend, seasonality, and residual structure, from classical decomposition models to neural architectures such as Autoformer, DLinear, and UEC-STD [Wu et al., 2021, Zeng et al., 2023, Nguyen et al., 2026]. DEFT uses the same basic temporal bias, but differently: decomposition is not part of a trained forecaster, but rather a test-time editing representation for a frozen foundation model forecast. 
+
+3 Preliminaries 
+
+3.1 Problem Formulation Foundation-model forecasting. Let x1: T denote the observed context and y1: H the unknown future, where each time step may be univariate or multivariate. A time-series foundation model Fθ produces an initial horizon forecast: 
+
+ˆy0 = Fθ (x1: T ). (1) This forecast may be a single trajectory or a predictive distribution represented by samples, quantiles, or other candidate paths. When such distributional outputs are available, we use them as model-derived candidates; otherwise, candidates can be generated by perturbing the point forecast directly in output space. 
+
+Expert-guided forecast editing. An expert feedback scoring function score( ·) provides information about the quality of a complete candidate future trajectory y. The feedback may take different forms, including a continuous utility score, a bounded rating, or a preference comparison between trajectories. The editor E receives the initial forecast ˆy0, optional model-derived candidates, and a budget B for expert queries. It must return a single edited forecast ˆy after querying score( ·) at most 
+
+B times. Throughout editing, the foundation model remains fixed, i.e., we do not update θ. The foundation model supplies the initial forecast and optionally a prior over plausible futures. In deployment, the expert may be a human analyst, a downstream simulator, a constraint checker, or a rule-based evaluator. Usually, expert feedback is available only at test time and is expensive. Therefore, the editor cannot ask the expert to evaluate an unrestricted number of candidates; it must use a small number of trajectory-level feedback queries to improve the initial forecast. 
+
+3.2 Query-limited search 
+
+Several search approaches follow naturally from the expert-query setting. We assume throughout that the foundation model Fθ exposes a predictive distribution over the horizon, either as a set of stochastic samples or as a quantile grid; both forms are supported by all foundation models we consider (Chronos, TimesFM, Moirai). Best-of-N . The editor constructs a candidate set: 
+
+Y = {y(1) , . . . , y (N )} (2) from the TFM’s predictive distribution and returns the highest-scoring trajectory, 
+
+ˆy∗ = arg max  
+
+> y∈Y
+
+score( y). (3) 3History  Forecast    
+
+> Forcast
+> and
+> Decompose
+> Recombined
+> Trajectory
+> Trend Space Seasonal Space Edited Forecast
+> Simulator
+> Expert
+> Rule
+> Scoring
+> 2
+> 3
+> 56
+> 1
+> Stage 1:
+> Exploit
+> 2
+> 3
+> 4
+> 5
+> Stage 2:
+> Explore
+> 2
+> 3
+> 4
+> 5
+> 6
+> Total budget
+> Trend Space
+> Pick top
+> and fit
+> Component
+> scores
+> Seasonal Space Trend
+> Seasonal
+> Recombine
+> 4
+> Top
+> combine
+> Sample Sample
+> 1
+
+Figure 1: Overview of DEFT. A TFM produces initial forecasts, which are decomposed into trend and seasonal components 1 . Stage 1 (Exploit) scans the model’s predictive samples in the decomposed trend–seasonal search space, build recombined trajectories Ti + Sj 2 to query expert for scoring 3 . It then reuses each score via max-pooling 4 to select elite components and seed component-wise Gaussians 5 . Stage 2 (Explore) runs nr rounds of optimization 2 – 5 : it samples new trend and seasonal candidates around the seeded means, recombines and queries them, and refits each proposal from the elites. The expert may be a human analyst, a downstream simulator, or a rule checker. The best trajectory seen across both stages is returned as the edited forecast 6 . 
+
+Black-box optimization in horizon space. A second family of baselines actively searches over a posterior proposal distribution refined by expert feedback, rather than relying solely on the TFM prior. For example, CEM maintains a diagonal Gaussian proposal, 
+
+y(i) ∼ N (μ, diag( σ2)) , (4) where μ can be initialized as ˆy0. CEM queries the expert on a budgeted subset sampled from the Gaussian distribution, selects elite set E, and iteratively refits 
+
+μ ← 1
+
+|E| 
+
+X
+
+> y∈E
+
+y, σ2 ← Var y∈E (y). (5) 
+
+4 Method 
+
+We propose DEFT (Decomposed Expert-guided ForecasT), a test-time editor that improves a frozen foundation-model forecast using a small number of expert queries. Sec. 4.1 frames the design choice as a trade-off between exploiting the foundation model’s predictive distribution and exploring beyond it. Sec. 4.2 describes DEFT as a principled balance of the two, operating in a decomposed temporal space. Fig. 1 provides an overview of our approach. 
+
+4.1 An exploit–explore view of the query budget 
+
+Given a fixed budget B, an editor must decide for each query whether to evaluate a candidate already supported by the TFM prior or to probe a region the prior assigns low mass. Two natural strategies sit at opposite ends of this trade-off. Best-of-N draws B candidates from the TFM’s predictive distribution and returns the highest-scoring one, spending the entire budget exploiting the prior; it cannot recover when no good trajectory lies in the model’s support. Search methods such as 
+
+CEM [Rubinstein and Kroese, 2004] iteratively refine a Gaussian proposal over the full horizon RH ,spending the budget exploring; with H large and B small, most perturbations move the forecast in directions that do not correspond to real forecast errors. We argue an effective editor should (i) spend part of the budget exploiting the TFM to identify a strong starting region, (ii) explore through a trend–seasonal decomposition that exposes structured error modes such as level, trend, and seasonal-amplitude shifts, and (iii) reuse each expert score across the decomposed components it influences. 44.2 DEFT 
+
+DEFT realizes the three principles of Sec. 4.1 by editing trajectories in their trend–seasonal decompo-sition rather than in raw horizon coordinates. For any candidate y ∈ RH we write 
+
+y = T (y) + S(y), T (y) = MA w(y), S(y) = y − T (y), (6) where MA w is a centered moving average of window w. T captures the smooth trend and S the higher-frequency seasonal residual. This basis is far lower-dimensional than RH for editing purposes and admits independent proposals for the two error modes. DEFT runs in two stages within a total budget B = B0 + nr × b, where B0 queries are spent exploiting the TFM prior and the remaining 
+
+nr × b queries refine the search through nr rounds of b queries each. 
+
+Stage 1: exploit the TFM prior in decomposed space. From the TFM’s prior pool of B0 trajectories 
+
+P = {y(k)}B0
+
+> k=1
+
+, we form paired component pools 
+
+PT = {T (y(k))}B0
+
+> k=1
+
+, PS = {S(y(k))}B0
+
+> k=1
+
+, (7) holding their trend and seasonal parts. We select K = ⌈√B0 ⌉ representative trend components and K seasonal components (evenly spaced across the pool). The editor forms B0 recombinations of trend and seasonal components: first the K diagonal pairings (trend i with seasonal i), which cover every component once, then randomly chosen off-diagonal pairings up to the budget, so each component appears in roughly the same number of recombinations. Balance is important because each component’s utility is max-pooled over the recombinations it participates in (Eq. 9); unbalanced participation would bias the elite selection toward over-sampled components. The expert is queried on each complete recombined trajectory, 
+
+vij = score( Ti + Sj ), (i, j ) ∈ I 0, (8) and each score is reused as feedback on both of its components via max-pooling: 
+
+uTi = max 
+
+> j: ( i,j )∈I 0
+
+vij , uSj = max 
+
+> i: ( i,j )∈I 0
+
+vij . (9) Component-wise elite sets are formed by taking the top-ρK trend and seasonal components, 
+
+ET 
+
+> 0
+
+= TopK ρK {Ti : uTi }, ES 
+
+> 0
+
+= TopK ρK {Sj : uSj }, (10) which initialize component-wise Gaussians N (μT , diag( σ2 
+
+> T
+
+)) and N (μS , diag( σ2 
+
+> S
+
+)) with 
+
+μT = Mean( ET 
+
+> 0
+
+), μS = Mean( ES 
+
+> 0
+
+), σT = Std( PT ), σS = Std( PS ). (11) Importantly, σT and σS are initialized from the TFM’s own component-wise sample dispersion rather than a hand-tuned hyperparameter, so the search begins at a scale calibrated to model uncertainty. The asymmetry is deliberate: μ is drawn from the elites to steer the proposal toward the best-scoring region, while σ is drawn from the full pool so the search radius reflects model-level uncertainty rather than the tight spread of a few elites. DEFT records the best trajectory seen so far, ˆy ← arg max (i,j )∈I 0 vij .
+
+Stage 2: explore via decomposed CEM. For r = 1 , . . . , n r , the editor samples nT trend candidates and nS seasonal candidates independently from the current component-wise Gaussians, 
+
+Ti ∼ N (μT , diag( σ2 
+
+> T
+
+)) , i = 1 , . . . , n T , Sj ∼ N (μS , diag( σ2 
+
+> S
+
+)) , j = 1 , . . . , n S , (12) then forms b balanced recombinations Qr = {Ti + Sj : ( i, j ) ∈ I r }, where Ir is chosen so that every sampled Ti and every sampled Sj appears in at least one recombination similarly as in Stage 1. The expert is queried on each complete recombined trajectory, 
+
+vij = score( Ti + Sj ), (i, j ) ∈ I r , (13) and scores are max-pooled to obtain component-level utilities uTi and uSj as in Eq. (9) . The component proposals are then refit from the elites, 
+
+μT , σ T ← Mean , Std( ETr ), μS , σ S ← Mean , Std( ESr ), (14) where ETr and ESr are the top-ρn T trend and top-ρn S seasonal elites under uT , u S . The running best 
+
+ˆy is updated against every recombination in Qr , and the loop terminates when the cumulative query 5Table 1: Forecast-editing methods as a factorial over two orthogonal axes: the search strategy (exploit the TFM prior, explore with CEM, or both) and the editing representation (raw horizon space vs. a trend–seasonal decomposition). ⋆ are prior work (Best-of-N and Direct CEM); † are ablated variants of our method. DEFT is our method combining prior exploitation, exploration, and decomposition. 
+
+Editing representation Search strategy Raw horizon space Trend–seasonal decomp. Exploit prior ( nr = 0 ) Best-of-N ⋆ Pool only †
+
+Explore (CEM) Direct CEM ⋆ No seed pool †
+
+Both CEM + prior † DEFT 
+
+count q = B0 + rb reaches B. DEFT returns ˆy, the highest-scoring trajectory observed across both stages. Full pseudocode is given in Algorithm 7. 
+
+Why DEFT is sample-efficient. 
+
+DEFT improves query efficiency by combining exploitation of the TFM prior with structured search in a decomposed forecast space. In Stage 1, expert queries are spent on recombinations of trend and seasonal components extracted from TFM samples, allowing DEFT to identify useful components already supported by the model while also exploring novel combinations that may not appear in any single forecast sample. In Stage 2, search is performed over separate trend and seasonal proposals rather than directly over the full horizon, focusing exploration on separate components. Furthermore, each expert evaluation of a reconstructed trajectory Ti + Sj contributes feedback to both the trend component Ti and the seasonal component Sj through Eq. (9) , allowing a single query to refine two proposal distributions simultaneously. Together, these design choices extract more information from each expert query than search methods operating directly in the original forecast space. Table 1 summarizes this design space. Existing methods occupy different corners of the exploit–explore and representation axes, whereas DEFT uniquely combines prior exploitation, structured CEM search, and trend–seasonal decomposition. 
+
+5 Experimental Results 
+
+5.1 Experimental setup Baselines. We compare DEFT against representative expert-guided editing baselines under matched query budgets. Zero-shot uses the median (initial) TFM forecast directly without editing. Random Search samples Gaussian perturbations around the median forecast and returns the highest-scoring candidate. Best-of-N (quantile) selects the best trajectory from a fixed set of TFM quantile forecasts, while Best-of-N (sample) selects from stochastic forecast samples. Direct CEM performs cross-entropy search by iteratively sampling candidates, querying the expert, and refitting a Gaussian proposal from elite trajectories [Rubinstein and Kroese, 2004]. Surrogate CEM augments CEM with a learned reward surrogate to guide candidate selection under limited expert feedback [Moss, 2020]. TuRBO-1 is a local Bayesian optimization method that fits a Gaussian-process surrogate and searches within an adaptive trust region [Eriksson et al., 2019]. Details of the baselines are provided in Appendix A.1. All methods use the same initial forecast, expert scorer, and expert-query budget. 
+
+Foundation models. We use three state-of-the-art time-series foundation models from independent providers: TimesFM 2 [Das et al., 2024], Chronos-2 [Ansari et al., 2025], and Moirai 2 [Liu et al., 2025a]. All three expose a predictive distribution as both stochastic samples or a quantile grid, so every baseline draws candidate trajectories from the same model output without altering θ.
+
+Expert-feedback modes. The expert score( ·) is implemented as an oracle on the held-out future, but exposes one of four feedback interfaces that mimic realistic forms of expert supervision. Rating-3 
+
+and Rating-5 return bounded discrete ratings by quantizing the continuous score (negative MSE between the forecast and the ground truth) into 3 or 5 equally spaced levels. Pairwise returns a binary preference ( ±1) indicating whether a candidate is preferred to the foundation model’s median forecast under a Bradley–Terry model. Pairwise-best instead compares each candidate against the 6Table 2: Final scores on the TimesFM backbone for the ChronosBench and GIFT-Eval benchmarks, averaged across budgets, expert-feedback modes and 3 runs with different seeds. Error metrics are relative to the zero-shot geometric mean ( 1.0 ties zero-shot). W-ZS / W-Rand are the fraction (%) of settings beating the zero-shot median/random search. Arrows indicate whether lower ( ↓) or higher ( ↑)is better. Best per column in bold .                                                                                                                           
+
+> ChronosBench GIFT-Eval
+> Method MASE ↓WQL ↓MAE ↓MSE ↓W-ZS ↑W-Rand ↑MASE ↓WQL ↓MAE ↓MSE ↓W-ZS ↑W-Rand ↑
+> Zero-shot 1.000 1.000 1.000 1.000 –1.8 1.000 1.000 1.000 1.000 –2.8 Random search 0.987 0.985 0.985 0.973 58.5 –0.987 0.987 0.987 0.979 48.0 –Best-of-N(quantile) 0.887 0.902 0.902 0.865 63.0 61.0 0.884 0.873 0.873 0.804 64.3 63.1 Best-of-N(sample) 1.127 1.116 1.116 1.297 15.2 9.3 1.141 1.117 1.117 1.266 10.2 7.7 Direct CEM 0.986 0.981 0.981 0.960 56.3 25.9 0.985 0.985 0.985 0.976 49.4 20.9 TuRBO-1 0.993 0.990 0.990 0.980 49.3 25.2 0.992 0.992 0.992 0.986 46.4 27.6 Surrogate CEM 0.979 0.974 0.974 0.948 60.3 39.4 0.978 0.978 0.978 0.965 52.0 31.0 DEFT (ours) 0.838 0.865 0.865 0.794 96.1 93.3 0.834 0.826 0.826 0.719 94.0 91.1
+
+best trajectory found so far by the current search method, providing an adaptive comparison baseline. Implementation details can be found in Appendix A.3. 
+
+Query budgets. We sweep B ∈ { 2, 4, 8, 16 , 32 , 64 , 128 } to characterize each method’s behavior from the very-low-budget regime—where best-of-N is competitive—up to budgets large enough for iterative search methods to converge. TuRBO is evaluated only at B ∈ { 2, 4, 8, 16 }: its exact GP surrogate requires O(n3) time per series as the archive grows to n = B points, making full-benchmark runs at B ≥ 32 impractical. 
+
+Metrics. Following Ansari et al. [2024], our primary metrics are relative MASE (mean absolute scaled error) and WQL (weighted quantile loss over levels 0.1, 0.2, . . . , 0.9), with MAE and MSE 
+
+as secondary metrics (all relative to the zero-shot geometric mean); lower is better for all four. We additionally report two win rates : the fraction of settings in which a method improves over the zero-shot median (W-ZS) and over random search (W-Rand); higher is better. All metrics use the GluonTS evaluation [Alexandrov et al., 2020]. Full definitions are given in Appendix A.4. 
+
+Benchmarks. We evaluate on two large-scale time-series benchmark suites. The Chronos benchmark (ChronosBench) [Ansari et al., 2024] comprises 42 datasets (27 zero-shot, 15 in-domain) spanning horizons from 6 to 56 steps across monthly, quarterly, daily, hourly, and sub-hourly frequencies. 
+
+GIFT-Eval [Aksu et al., 2024] adds 36 further datasets covering electricity, solar, traffic, weather, ETT, and M4 splits. Together, the two benchmarks yield 78 distinct datasets. Per benchmark, we evaluate a fixed slice of up to 1,000 series, held constant across all methods, budgets, foundation models, and feedback modes so that every comparison is on identical inputs. Datasets contributing fewer series than their allocation are included in full; larger datasets are randomly subsampled to their cap. This stratification preserves the original Chronos and GIFT-Eval benchmark compositions, keeps the experiment tractable (over half a million expert queries in total), and remains large enough to detect sub-1% MASE differences between methods. As a complementary case study, we also evaluate on a molecular-dynamics benchmark ( MD ) from Le et al. [2025], where the task is to forecast future atom-position trajectories. This setting allows us to test DEFT with more physically grounded feedback, based on Morse potential violations of predicted molecular configurations, rather than relying solely on synthetic scores. 
+
+Implementation. All experiments are run with three seeds; we report the mean across these seeds, using identical evaluation slices for all methods at every budget. DEFT’s budget allocation between the seed-pool scan ( B0) and the decomposed CEM rounds ( nr × b) is auto-computed from the total budget B following Algorithm 8. No method-specific hyperparameters are tuned per dataset (see details in Appendix A.2). We run experiments on a single NVIDIA V100 or H100 GPU and report wall-clock time in Appendix Table 9. Overall, DEFT is nearly as cheap as the Best-of-N family and markedly faster than the remaining search baselines. 
+
+5.2 Main results: budget curves 
+
+Tables 2, 3, and 4 report final scores for TimesFM, Chronos, and Moirai backbones on the Chronos-Bench and GIFT-Eval benchmarks, averaged over 7 budgets, 4 expert-feedback modes, and 3 seeds. We report the details for each budget and expert mode in Appendix B. 7Table 3: Final average scores on the Chronos backbone for the ChronosBench and GIFT-Eval benchmarks, averaged across budgets, expert-feedback modes and 3 runs with different seeds. Error metrics are relative to the zero-shot geometric mean ( 1.0 ties zero-shot). W-ZS / W-Rand are the fraction (%) of settings beating the zero-shot median/random search. Arrows indicate whether lower (↓) or higher ( ↑) is better. Best per column in bold .                                                                                                                           
+
+> ChronosBench GIFT-Eval
+> Method MASE ↓WQL ↓MAE ↓MSE ↓W-ZS ↑W-Rand ↑MASE ↓WQL ↓MAE ↓MSE ↓W-ZS ↑W-Rand ↑
+> Zero-shot 1.000 1.000 1.000 1.000 –11.2 1.000 1.000 1.000 1.000 –14.7 Random search 0.983 0.981 0.981 0.953 60.1 –0.991 0.991 0.991 0.969 41.1 –Best-of-N(quantile) 0.877 0.863 0.863 0.748 75.9 70.8 0.927 0.922 0.922 0.870 70.4 64.5 Best-of-N(sample) 1.121 1.138 1.138 1.355 17.9 12.3 1.166 1.239 1.239 1.767 11.6 9.1 Direct CEM 0.977 0.975 0.975 0.952 57.8 31.6 0.986 0.985 0.985 0.966 42.8 29.4 TuRBO-1 0.991 0.989 0.989 0.968 54.6 29.1 0.994 0.994 0.994 0.978 41.2 31.3 Surrogate CEM 0.962 0.959 0.959 0.924 63.5 47.5 0.979 0.978 0.978 0.951 46.8 38.8 DEFT (ours) 0.889 0.882 0.882 0.779 85.0 75.3 0.929 0.913 0.913 0.848 79.9 71.7
+
+Table 4: Final average scores on the Moirai backbone for the ChronosBench and GIFT-Eval bench-marks, averaged across budgets, expert-feedback modes and 3 runs with different seeds. Error metrics are relative to the zero-shot geometric mean ( 1.0 ties zero-shot). W-ZS / W-Rand are the fraction (%) of settings beating the zero-shot median / random search. Arrows indicate whether lower ( ↓) or higher ( ↑) is better. Best per column in bold .                                                                                                                           
+
+> ChronosBench GIFT-Eval
+> Method MASE ↓WQL ↓MAE ↓MSE ↓W-ZS ↑W-Rand ↑MASE ↓WQL ↓MAE ↓MSE ↓W-ZS ↑W-Rand ↑
+> Zero-shot 1.000 1.000 1.000 1.000 –9.1 1.000 1.000 1.000 1.000 –13.4 Random search 0.983 0.981 0.981 0.952 62.0 –0.993 0.992 0.992 0.970 44.6 –Best-of-N(quantile) 0.886 0.885 0.885 0.806 67.4 64.2 0.935 0.930 0.930 0.860 61.8 57.8 Best-of-N(sample) 1.031 1.041 1.041 1.094 32.0 22.9 1.058 1.063 1.063 1.090 18.0 13.5 Direct CEM 0.976 0.975 0.975 0.949 61.2 41.8 0.987 0.986 0.986 0.965 45.6 37.9 TuRBO-1 0.991 0.990 0.990 0.970 57.8 42.7 0.995 0.994 0.994 0.977 44.0 39.9 Surrogate CEM 0.962 0.959 0.959 0.922 65.6 52.0 0.980 0.979 0.979 0.949 49.9 44.0 DEFT (ours) 0.849 0.845 0.845 0.741 91.0 85.7 0.906 0.901 0.901 0.815 88.9 84.1
+
+On TimesFM , DEFT attains the best value on every error metric and both win rates across both benchmark suites. It lowers MASE to 0.838 (ChronosBench) and 0.834 (GIFT-Eval), compared to 
+
+0.887 and 0.884 for the strongest baseline, best-of-N (quantile). It beats the zero-shot median in 
+
+94 –96% of settings and random search in over 91% , roughly 30 points above any competitor. On Chronos , DEFT delivers the best win rates on both suites ( 85 .0/75 .3 on ChronosBench, 79 .9/71 .7
+
+on GIFT-Eval) and the lowest WQL, MAE, and MSE on GIFT-Eval. However, best-of-N (quantile) edges it on the raw error metrics for ChronosBench (e.g., 0.877 vs. 0.889 MASE). We attribute this to Chronos’s quantile forecasts being well calibrated, so that simply selecting the best-scoring quantile candidate is already a strong strategy on this backbone and leaves less room for editing to improve the average error. Even so, DEFT’s advantage in win rates shows that its benefit here lies chiefly in consistency across settings rather than in the lowest average error. On Moirai , DEFT again leads on all error metrics and win rates. It reduces MASE to 0.849 and 
+
+0.906 , well below the strongest baseline ( 0.886 and 0.935 ), and is the only method to cut MSE substantially, reaching 0.741 and 0.815 . It surpasses the zero-shot median in 89 –91% of settings and random search in 84 –86% , whereas every other editing method stays below 68% against zero-shot. 
+
+5.3 Physically grounded feedback in molecular dynamics 
+
+The experts in Section 5.2 are simulated from the held-out target. However, in real-world applications such as molecular dynamics, matching the ground truth is not always the right objective. The ground-truth trajectory is only one sample from a stochastic process, so copying it is not the goal; producing a physically plausible trajectory is. We test whether DEFT can effectively edit the forecast of a Li–P–S–Ge solid electrolyte to improve physical plausibility [Le et al., 2025]. 
+
+Setup. A TFM predicts long future trajectories of atomic positions ( 150 coordinates). The forecast is refined against a physics expert returning the fraction of near-neighbour bonds distorted beyond a fixed tolerance (Morse bond-violation rate ); datasets, preprocessing, and the violation score follow 832 64 128 
+
+expert-query budget 
+
+> 2.0
+> 2.2
+> 2.4
+> 2.6
+> 2.8
+> 3.0
+> bond violation (%)
+
+Physical validity   
+
+> zero-shot
+> best-of-N
+> DEFT
+> 32 64 128
+
+expert-query budget 
+
+> 0.30
+> 0.32
+> 0.34
+> 0.36
+> 0.38
+> trajectory MSE
+
+Forecast accuracy   
+
+> 0500 1000
+
+Steps (0 = start prediction) 
+
+> 18
+> 19
+> 20
+> z position
+
+Li atom 18 
+
+> ground truth
+> zero-shot
+> best-of-N
+> DEFT
+
+Figure 2: MD: Li–P–S–Ge solid electrolyte. Average bond-violation rate ( left ) and MSE to ground-truth trajectory ( center ) over 3 runs. Right: forecast trajectories for a representative atom (context, ground truth, and edited forecast at B = 128 ). Zero-shot median              
+
+> Random search
+> Pool only
+> No seed pool
+> CEM + prior
+> Mean marginal
+> Trend only
+> Seasonal only
+> DEFT (full)
+> 2.300
+> 2.400
+> 2.500
+> 2.600
+> 2.700
+> 2.800
+> 2.900
+> MASE
+> 2.83
+> 2.76
+> 2.50
+> 2.72
+> 2.60
+> 2.44
+> 2.60
+> 2.79
+> 2.44
+> (a)
+> 0123456
+> nr
+> (b)
+> B=32
+> B=64
+> B=128
+> Zero-shot median
+> Random search
+> Pool only
+> No seed pool
+> CEM + prior
+> Mean marginal
+> Trend only
+> Seasonal only
+> DEFT (full)
+> 1.050
+> 1.100
+> 1.150
+> 1.200
+> 1.250
+> 1.300
+> 1.350
+> MASE
+> 1.34
+> 1.30
+> 1.11
+> 1.27
+> 1.21
+> 1.09
+> 1.21
+> 1.33
+> 1.09
+> (c)
+> 0123456
+> nr
+> (d)
+> B=32
+> B=64
+> B=128
+> TimesFM Chronos
+
+Figure 3: Ablation study of DEFT on the TimesFM and Chronos backbones under inference budgets 
+
+B ∈ { 32 , 64 , 128 }. (a) Mean MASE of each ablation variant on TimesFM. (b) Effect of the number of decomposed CEM refinement rounds ( nr) on TimesFM under a fixed evaluation budget, with the prior pool size reduced accordingly; dashed lines denote the random-search baseline and ⋆ indicates the best-performing configuration for each budget. (c)–(d) Corresponding results for Chronos. Panels (a)–(b) share the same TimesFM MASE axis, and panels (c)–(d) share the same Chronos MASE axis. Results for Moirai are provided in Appendix C.2. Le et al. [2025]. We sample 1000 history windows of size 192, predict 1000 future steps, and calculate the average violation and MSE. We use Chronos-2 TFM to efficiently handle multivariate inputs and compare DEFT against zero-shot and the strongest competitor, best-of-N (quantile). 
+
+Results. Figure 2 (left) shows that DEFT attains the lowest bond-violation rate and that its advantage 
+
+grows with the query budget : it reduces violation by 13% , 30% , and 34% relative to the zero-shot forecast at B = 32 , 64 , 128 , overtaking best-of-N by B=64 , whereas best-of-N saturates near 21% .Since DEFT and Best-of-N are optimized on bond-violation rate, their MSE to ground truth is increased compared to the zero-shot forecast (centre). Yet, DEFT stays below best-of-N at every budget, making it the Pareto-best refiner. The right panels show the failure mode it corrects, where the zero-shot forecast, despite having the lowest MSE, collapses to a piecewise-constant staircase, which is physically implausible. By contrast, expert-guided search restores plausible atom motion. 
+
+5.4 Ablation study 
+
+We isolate the contribution of each DEFT design choice at fixed budgets B ∈ { 32 , 64 , 128 } across three foundation forecasting backbones (Chronos, TimesFM, and Moirai). The definitions of all ablation variants are provided in Appendix C.1. Figure 3 presents the results for Chronos and TimesFM, while the corresponding Moirai results are deferred to Appendix C.2 (Figure 29). We observe consistent qualitative trends across all three backbones. 
+
+Decomposition vs. prior pool. Figure 3(a,c) shows that the quantile-prior seed pool alone explains only part of DEFT’s improvement, while trend–residual decomposition provides the majority of the 90 1 2 3 
+
+> Seasonal candidate
+> 0
+> 1
+> 2
+> 3
+> Trend candidate
+> 32.5
+> 30.0
+> 27.5
+> Seasonal
+> score
+> 32 28
+> Trend
+> score
+> 35
+> 34
+> 33
+> 32
+> 31
+> 30
+> 29
+> 28
+> Score  (neg. MSE)
+
+(a) 0 5 10 15 20 25 30  
+
+> Cumulative expert queries
+> 31
+> 30
+> 29
+> 28
+> 27
+> 26
+> 25
+> Best expert score  (neg. MSE,  better)  Score convergence vs. expert query budget
+> DEFT (ours)
+> Random search
+> Best-of-N (sample)
+> Best-of-N (quantile)
+> Direct CEM
+> Surrogate CEM
+> Zero-shot baseline
+
+(b) 10 0 10 20 30 40 50      
+
+> Time step (0 = forecast origin)
+> 5
+> 10
+> 15
+> 20
+> 25
+> 30
+> Value
+> Final predictions: DEFT vs. baselines
+> Context
+> True target
+> TimesFM zero-shot (1.00×ZS)
+> Best-of-N (quantile) (0.90×ZS)
+> DEFT (ours) (0.80×ZS)
+
+(c) 
+
+Figure 4: DEFT edit on one NN5 series (ChronosBench) with TimesFM, B = 32 . (a) Stage 1 seed-pool scan: cells are measured scores vij = score( Ti + Sj ) (negative MSE, greener is better); side bars are the max-pooled uTi = max j vij and uSj = max i vij (Eq. 9); star marks the best pair. 
+
+(b) Best score vs. cumulative queries. (c) Edited forecast; legend gives MSE relative to zero-shot. gains. Averaged across budgets, CEM + prior reduces MASE from 1.274 (No seed pool ) to 1.205 
+
+on Chronos, recovering approximately 38% of the improvement achieved by full DEFT ( 1.093 ). On TimesFM, it reduces MASE from 2.721 to 2.598 , accounting for about 43% of the improvement to full DEFT ( 2.438 ). Likewise, Pool only consistently underperforms full DEFT ( 1.107 vs. 1.093 
+
+on Chronos; 2.501 vs. 2.438 on TimesFM), demonstrating that iterative refinement contributes substantially beyond selecting from a high-quality seed pool. 
+
+Trend vs. residual editing. Optimizing both decomposed components consistently outperforms optimizing either component alone (Figure 3(a,c)). Across budgets, Trend only remains substantially closer to full DEFT than Seasonal only (Chronos: 1.209 vs. 1.329 ; TimesFM: 2.598 vs. 2.793 ), indicating that trend optimization provides the larger contribution, while jointly optimizing trend and residual components yields the best overall performance. 
+
+Pool size vs. refinement rounds. Figure 3(b,d) examines the trade-off between evaluating the initial seed pool (Stage 1) and iterative CEM refinement (Stage 2). Both TFMs favor additional refinement as the budget increases, with the optimum shifting from nr = 2 at B = 32 to nr = 5 at B = 64 .At B = 128 , Chronos continues to benefit from additional refinement, whereas TimesFM peaks at 
+
+nr = 5 and degrades slightly at nr = 6 , suggesting that TimesFM retains greater value from a larger initial seed pool under large budgets. Nevertheless, performance remains relatively stable around the optimum, indicating that DEFT is not overly sensitive to the exact allocation. 
+
+Score-reuse via max-pooling. Replacing the max-pooled component utility (Eq. 9) with mean pooling yields virtually identical performance on both backbones ( < 0.001 MASE difference: 1.093 
+
+vs. 1.093 on Chronos and 2.438 vs. 2.438 on TimesFM). This suggests that DEFT’s gains stem primarily from reusing candidate evaluations across decomposed components rather than from the specific pooling operator, which motivates our use of max pooling as the default for simplicity. 
+
+5.5 Model Analysis 
+
+In this section, we further examine how DEFT edits a single forecast. We analyze one representative edit end-to-end: how the query budget is spent and what the returned forecast looks like. 
+
+The trend component drives forecast quality. In panel (a), each cell is a measured score of a pair 
+
+Ti + Sj , and the side bars are the max-pooled component scores of Equation 9. Since these are maxima over measured scores, each bar is simply the best cell in its row or column. The trend scores span 6.2 against only 1.8 for the seasonal ones, so the trend drives quality, matching the Trend only versus Seasonal only ablation in Section 5.4. 
+
+Query budget. Panel (b) shows DEFT uses the budget better than baselines. Its Stage 1 scan alone, at 16 queries, already beats what Best-of-N (quantile) reaches with all 32 ( −27 .43 against −27 .75 ). After 16 queries, DEFT’s Stage 2 rounds push it further to −24 .81 , achieving the best results. 
+
+Comparison over the whole prediction window. DEFT reaches the lowest error in panel (c): 0.80 ×
+
+the zero-shot MSE against 0.90 × for Best-of-N (quantile), so 20% below zero-shot and 11% below the best baseline. The gain is not spread evenly, by design: the expert scores a whole trajectory, so 10 DEFT is rewarded for fixing a few large errors, not for staying close everywhere. The zero-shot forecast is flat (standard deviation 4.51 against 7.17 , for the target) and DEFT restores much of the swing ( 5.71 ). That helps most at the peaks zero-shot misses, at the cost of small overshoots elsewhere, and DEFT beats zero-shot at 62% of time steps. 
+
+6 Conclusion 
+
+We introduced DEFT, a test-time editor that revises the forecast of a frozen time-series foundation model using a small budget of expert queries. We framed expert-guided forecast editing as an exploit– explore budget-allocation problem, and DEFT balances the two ends by leveraging strong samples from the model’s predictive distribution and searching around them in a decomposed trend–seasonal space. Across three foundation-model backbones, four expert-feedback modes, and 78 datasets under matched query budgets, DEFT consistently improves forecast quality over best-of-N , random search, CEM, surrogate CEM, and Bayesian optimization. These results support our central hypothesis: under a tight query budget, sparse test-time guidance is better spent balancing prior exploitation with structured exploration than on arbitrary horizon-space perturbations. 
+
+Limitations 
+
+Our main experiments use an expert derived from the held-out future. This gives a controlled and reproducible signal, but does not capture the noise, miscalibration, or contextual knowledge of a real human analyst; evaluating DEFT with human experts and hard-constraint checkers remains future work. The trend–seasonal decomposition also assumes forecast errors are well described by level, trend, and seasonal-amplitude modes, which may not hold for series dominated by regime shifts or irregular structure. Finally, we keep the foundation model frozen throughout; combining test-time editing with lightweight adaptation of the model itself may yield further gains. 
+
+References 
+
+Taha Aksu, Gerald Woo, Juncheng Liu, Xu Liu, Chenghao Liu, Silvio Savarese, Caiming Xiong, and Doyen Sahoo. Gift-eval: A benchmark for general time series forecasting model evaluation. In 
+
+NeurIPS Workshop on Time Series in the Age of Large Models , 2024. Alexander Alexandrov, Konstantinos Benidis, Michael Bohlke-Schneider, Valentin Flunkert, Jan Gasthaus, Tim Januschowski, Danielle C. Maddix, Syama Rangapuram, David Salinas, Jasper Schulz, Lorenzo Stella, Ali Caner TÃ¼rkmen, and Yuyang Wang. Gluonts: Probabilistic and neural time series modeling in python. Journal of Machine Learning Research , 21(116):1–6, 2020. URL http://jmlr.org/papers/v21/19-820.html .Abdul Fatir Ansari, Lorenzo Stella, Caner Turkmen, Xiyuan Zhang, Pedro Mercado, Huibin Shen, Oleksandr Shchur, Syama Sundar Rangapuram, Sebastian Pineda Arango, Shubham Kapoor, et al. Chronos: Learning the language of time series. Transactions on Machine Learning Research , 2024, 2024. Abdul Fatir Ansari, Oleksandr Shchur, Jaris Küken, Andreas Auer, Boran Han, Pedro Mercado, Syama Sundar Rangapuram, Huibin Shen, Lorenzo Stella, Xiyuan Zhang, et al. Chronos-2: From univariate to universal forecasting. arXiv preprint arXiv:2510.15821 , 2025. Abhimanyu Das, Weihao Kong, Rajat Sen, and Yichen Zhou. A decoder-only foundation model for time-series forecasting. In Proceedings of the 41st International Conference on Machine Learning ,pages 10148–10167, 2024. David Eriksson, Michael Pearce, Jacob Gardner, Ryan D Turner, and Matthias Poloczek. Scalable global optimization via local bayesian optimization. Advances in neural information processing systems , 32, 2019. Robert Fildes, Paul Goodwin, Michael Lawrence, and Konstantinos Nikolopoulos. Effective fore-casting and judgmental adjustments: an empirical evaluation and strategies for improvement in supply-chain planning. International journal of forecasting , 25(1):3–23, 2009. 11 Pengxin Guo, Pengrong Jin, Ziyue Li, Lei Bai, and Yu Zhang. Online test-time adaptation of spatial–temporal traffic flow forecasting. IEEE Transactions on Intelligent Transportation Systems ,2025. Jeonghwan Im and Hyuk-Yoon Kwon. Cosa: Context-aware output-space adapter for test-time adaptation in time series forecasting. In The Fourteenth International Conference on Learning Representations , 2026. HyunGi Kim, Siwon Kim, Jisoo Mok, and Sungroh Yoon. Battling the non-stationarity in time series forecasting via test-time adaptation. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, pages 17868–17876, 2025. Michael Lawrence, Paul Goodwin, Marcus O’Connor, and Dilek Önkal. Judgmental forecasting: A review of progress over the last 25 years. International Journal of forecasting , 22(3):493–518, 2006. Hung Le, Sherif Abbas, Minh Hoang Nguyen, Van Dai Do, Huu Hiep Nguyen, and Dung Nguyen. Accelerating long-term molecular dynamics with physics-informed time-series forecasting. In 
+
+2025 IEEE International Conference on Data Mining (ICDM) , pages 1340–1349. IEEE, 2025. Chenghao Liu, Taha Aksu, Juncheng Liu, Xu Liu, Hanshu Yan, Quang Pham, Silvio Savarese, Doyen Sahoo, Caiming Xiong, and Junnan Li. Moirai 2.0: When less is more for time series forecasting. 
+
+arXiv preprint arXiv:2511.11698 , 2025a. Yong Liu, Guo Qin, Zhiyuan Shi, Zhi Chen, Caiyin Yang, Xiangdong Huang, Jianmin Wang, and Mingsheng Long. Sundial: A family of highly capable time series foundation models. In 
+
+Proceedings of the 42nd International Conference on Machine Learning (ICML) , 2025b. Oral. Robert J Moss. Cross-entropy method variants for optimization. arXiv preprint arXiv:2009.09043 ,2020. Minh Hoang Nguyen, Dai Do, Huu Hiep Nguyen, Dung Nguyen, Kien Do, and Hung Le. Reviving error correction in modern deep time-series forecasting. In International Conference on Machine Learning , 2026. Zhongzheng Qiao, Sheng Pan, Anni Wang, Viktoriya Zhukova, Yong Liu, Xudong Jiang, Qingsong Wen, Mingsheng Long, Ming Jin, and Chenghao Liu. It’s time: Towards the next generation of time series forecasting benchmarks. arXiv preprint arXiv:2602.12147 , 2026. Kashif Rasul, Arjun Ashok, Andrew Robert Williams, Hena Ghonia, Rishika Bhagwatkar, Arian Khorasani, Mohammad Javad Darvishi Bayazi, George Adamopoulos, Roland Riachi, Nadhir Hassen, et al. Lag-llama: Towards foundation models for probabilistic time series forecasting. 
+
+arXiv preprint arXiv:2310.08278 , 2023. Reuven Y Rubinstein and Dirk P Kroese. The cross-entropy method: a unified approach to com-binatorial optimization, Monte-Carlo simulation, and machine learning , volume 133. Springer, 2004. Bobak Shahriari, Kevin Swersky, Ziyu Wang, Ryan P Adams, and Nando De Freitas. Taking the human out of the loop: A review of bayesian optimization. Proceedings of the IEEE , 104(1): 148–175, 2015. Charlie Snell, Jaehoon Lee, Kelvin Xu, and Aviral Kumar. Scaling llm test-time compute optimally can be more effective than scaling model parameters. arXiv preprint arXiv:2408.03314 , 2024. Gerald Woo, Chenghao Liu, Akshat Kumar, Caiming Xiong, Silvio Savarese, and Doyen Sahoo. Unified training of universal time series forecasting transformers. In Forty-first International Conference on Machine Learning , 2024. Haixu Wu, Jiehui Xu, Jianmin Wang, and Mingsheng Long. Autoformer: Decomposition transformers with auto-correlation for long-term series forecasting. Advances in neural information processing systems , 34:22419–22430, 2021. Ailing Zeng, Muxi Chen, Lei Zhang, and Qiang Xu. Are transformers effective for time series forecasting? In Proceedings of the AAAI conference on artificial intelligence , volume 37, pages 11121–11128, 2023. 12 Appendix Contents 
+
+A Implementation Details 14 
+
+A.1 Baselines . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14 A.2 Hyperparameters . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 14 A.3 Expert-feedback modes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15 A.4 Metrics . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15 
+
+B Full Experimental Results 17 C Full Ablation Results for DEFT Design Choices 21 
+
+C.1 Variant Descriptions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21 C.2 Results for Moirai . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 25 13 A Implementation Details 
+
+A.1 Baselines 
+
+We provide details for all the methods studied in our paper as follows: • Random Search perturbs the foundation-model median with i.i.d. Gaussian noise to draw B
+
+candidate trajectories and returns the one the expert scores best. It has no iterative refinement and serves as the simplest search baseline (details in Algorithm 1). • Best-of-N Quantile selects the highest-scoring trajectory from a fixed set of N quantile forecasts produced by the foundation model. Specifically, we query the model’s quantile head at a symmetric grid of N quantile levels centered at the median (always including 
+
+q = 0 .5), producing N deterministic full-horizon trajectories that are scored by the expert (details in Algorithm 2). • Best-of-N Sample selects the highest-scoring trajectory from N stochastic forecast samples. For models with native sampling, trajectories are drawn directly; for quantile-only models (e.g., Chronos-2), samples are approximated using per-timestep inverse-CDF sampling over a dense quantile grid, while always including the median forecast (details in Algorithm 3). • TuRBO-1 runs local Bayesian optimisation in horizon space: it fits a Gaussian-process surrogate to all past expert queries and each round samples a batch of candidates inside a trust region around the current best, enlarging the region after improving rounds and shrinking it after stalled ones. Because the Gaussian process scales cubically with the number of queries, it is only run at small budgets ( B < 32 ) (details in Algorithm 6). • Direct CEM runs the cross-entropy method directly in horizon space: at each round it samples candidates from a Gaussian proposal, queries the expert on a budgeted subset, and re-fits the proposal to the queried elites. Every proposal update is driven purely by expert scores (details in Algorithm 4). • Surrogate CEM augments the same CEM loop with a ridge-regression surrogate fit on all past expert queries. The surrogate ranks unqueried candidates so each round spends its budget on a mix of high-predicted and archive-far candidates, amortising expert calls (details in Algorithm 5). • Decomposed Expert-Guided Forecast Editing (DEFT - Ours). DEFT decomposes the median into a trend and a seasonal component and searches them separately. A free pool of foundation-model quantile trajectories seeds per-component proposals, and each round scores full recombinations Ti + Sj while attributing quality back to individual components, so a single expert query informs both proposals (details in Algorithm 7). 
+
+A.2 Hyperparameters 
+
+All methods share a matched-budget protocol: for budget B each editor issues at most B expert queries per series, starts from the same initial forecast ˆy0, and is scored by the same expert. We use one global configuration for all 78 datasets, three backbones, and four feedback modes. 
+
+Foundation Models. The exact checkpoints, loader packages, and inference settings are listed in Table 5. Chronos-2 is run in its native multivariate mode and exposes a full quantile output, whereas TimesFM and Moirai are applied univariately to each coordinate and expose only the [0 .1, 0.9] 
+
+quantile grid. In all cases, the model weights are held constant throughout. 
+
+Baselines. The best-of-N methods use N = B candidates scored in a single pass, and R ANDOM 
+
+SEARCH draws B Gaussian perturbations of ˆy0. The key knobs for the CEM-family baselines (D IRECT /S URROGATE CEM) are the queries per iteration b = max( ⌊B/ 4⌋, 2) and the elite fraction 
+
+ρ = 0 .2 used to refit a diagonal Gaussian each iteration. T URBO-1, being O(n3) in the query count, is run only at B < 32 .
+
+DEFT. The two key design choices are the trend–seasonal decomposition and the exploit/explore budget split. DEFT edits with T (y) = MA w(y), where the window w is inferred per series from the 14 Table 5: Time-series foundation models used as frozen forecasters. “Multiv.” indicates whether the checkpoint is run in native multivariate mode. 
+
+Foundation model Checkpoint (HF id) Multiv. Quantile grid 
+
+Chronos-2 amazon/chronos-2 ✓ full TimesFM-2.0 (500M) google/timesfm-2.0-500m-pytorch ✗ [0 .1, 0.9] 
+
+Moirai-2.0 (R, small) Salesforce/moirai-2.0-R-small ✗ [0 .1, 0.9] 
+
+Table 6: DEFT budget allocation from total budget B = B0 + nr b; nT /n S are the trend/seasonal candidates per round. 
+
+B B0 b nr nT nS
+
+2 2 4 0 – –
+
+4 4 4 0 – –
+
+8 4 4 1 2 216 12 4 1 2 232 16 4 4 2 264 32 8 4 4 4128 64 16 4 8 8
+
+dominant autocorrelation period (fallback max(3 , ⌊H/ 4⌋), clamped to [2 , H ]) and is the only per-series quantity. The budget splits as B = B0 + nr b: B0 seed-pool queries and nr refinement rounds of b, computed based on Algo. 8 given query budget B. Intuitively, DEFT aims to split its budget evenly—half to a one-shot scan of a diverse seed pool (breadth), half to iterative CEM refinement (depth). At small budgets, though, a single round cannot reliably fit its additive trend+seasonal model, so the allocation defers refinement and spends the budget almost entirely on the seed-pool scan. We report the resulting values in Table 6. DEFT reuses ρ = 0 .2 for the component elites but, crucially, initialises the proposal scales from the model’s own sample spread ( σT = Std( PT ), σS = Std( PS ))rather than a hand-set value, and splits each round evenly between trend and seasonal candidates (nT = nS = b/ 2). 
+
+A.3 Expert-feedback modes 
+
+In this section, we present the formulation for each expert-feedback mode. Let J(y) = 1 
+
+> H
+
+∥y − y⋆∥22
+
+be the hidden objective (MSE to the unseen future y⋆, lower is better) and Jref a reference scale, by default the foundation-model median MSE J(ˆ y0). The four feedback modes map J to progressively coarser signals, summarised in Table 7: rating quantises a bounded quality score to N equally spaced levels; pairwise returns a ±1 preference against the fixed median ˆy0; and pairwise-best compares instead against an anchor that advances to the best objective found so far, making later batches harder to satisfy. 
+
+A.4 Metrics 
+
+Following prior work [Ansari et al., 2024], we evaluate forecasting performance using Mean Absolute Scaled Error (MASE), Weighted Quantile Loss (WQL), Mean Absolute Error (MAE), Mean Squared Error (MSE), and pairwise win rate. Let yh, h = 1 , . . . , H denote the ground-truth target values over the forecast horizon of length H, and ˆyh, h = 1 , . . . , H the corresponding predicted values. Let xt, t = 1 , . . . , T denote the observed context of length T , where m is the seasonal period used for scaling MASE. For WQL, ˆy(q) denotes the prediction at quantile level q ∈ Q , where 
+
+Q = {0.1, 0.2, . . . , 0.9}. Win rates are computed over the set of evaluated time series S.
+
+Mean Absolute Scaled Error (MASE) 
+
+MASE = 
+
+> 1
+> H
+
+PHh=1 |yh − ˆyh| 
+
+> 1
+> T−m
+
+PTt=m+1 |xt − xt−m| . (15) 15 Table 7: Expert-feedback modes. Each score already includes the noise level η ≥ 0: additive Gaussian for the cardinal modes and a Bradley–Terry temperature for the pairwise modes. Mode Signal Score Rating ( N ) N discrete levels score( y) = 1 + round 
+
+ ˜s(y) − 19 (N − 1) 
+
+
+
++ ε
+
+Pairwise ±1 vs. fixed median score( y) = 
+
++1 w.p. σ m(y)/τ 
+
+−1 otherwise Pairwise-best ±1 vs. advancing anchor score( y) = 
+
++1 w.p. σ (Janchor − J(y)) /τ 
+
+−1 otherwise where ε ∼ N (0 , η 2), ˜s(y) = 1 + 91 + J(y)/J ref 
+
+∈ (1 , 10] , m(y) = J(ˆ y0) − J(y), τ = ηJ ref , σ(·)
+
+is the logistic function, and Janchor ← min( Janchor , min i J(yi)) advances after each batch. At η = 0 
+
+the pairwise scores reduce to sign( ·).
+
+Weighted Quantile Loss (WQL) 
+
+WQL = 
+
+P
+
+> q∈Q
+
+PHh=1 Λq (yh, ˆy(q) 
+
+> h
+
+)
+
+PHh=1 |yh| , (16) where 
+
+Λq (y, ˆy) = 
+
+q(y − ˆy), y ≥ ˆy, 
+
+(1 − q)(ˆ y − y), y < ˆy. (17) 
+
+Mean Absolute Error (MAE) and Mean Squared Error (MSE) 
+
+MAE = 1
+
+H
+
+> H
+
+X
+
+> h=1
+
+|yh − ˆyh|, MSE = 1
+
+H
+
+> H
+
+X
+
+> h=1
+
+(yh − ˆyh)2. (18) 
+
+Win Rate 
+
+W-ZS = 1
+
+|S| 
+
+X
+
+> i∈S
+
+1MASE method  
+
+> i
+
+< MASE zs_median 
+
+> i
+
+ , (19) W-Rand = 1
+
+|S| 
+
+X
+
+> i∈S
+
+1MASE method  
+
+> i
+
+< MASE random_search 
+
+> i
+
+ . (20) 16 B Full Experimental Results 
+
+In this section, we report detailed budget curves for each metric, tracing how every method scales with budget B. Overall, we can see that methods fall into three regimes: selection-based baselines that improve quickly but plateau, optimization-based baselines (the CEM family and TuRBO-1) that need large budgets before making meaningful progress, and DEFT, which is both strong at small budgets and continues to scale. Among the baselines, Best-of-N (sample) barely moves off the zero-shot line throughout, as sampled trajectories are noisy candidates for selection. The CEM family (Direct CEM, Surrogate CEM) and TuRBO-1 improve only slowly at small budgets: Surrogate CEM, the strongest of these, does not approach competitive error until B ≥ 32 and still trails at B = 128 . Best-of-N (quantile), by contrast, is remarkably strong at intermediate budgets. It often drops sharply and by B = 8 –16 .This is expected because when the backbone’s quantile forecasts are well behaved, a handful of quantile candidates span most of the useful predictive range. Hence, a modest N suffices to pick a near-optimal one. Beyond this point, however, it saturates and additional budget yields almost no further gain (its MASE/MSE curves flatten from B = 16 onward), because selection can only choose among the fixed pool of quantile candidates and cannot construct better forecasts outside it. DEFT exhibits the opposite, more desirable scaling. It starts strong even at B = 2 , 4 and continues to improve steadily as the budget grows, overtaking Best-of-N (quantile) on MSE at large B and reaching the lowest error at B = 128 , since editing can refine forecasts rather than merely select among them. Crucially, DEFT is far more budget-efficient than the CEM family, matching or beating their best large-budget error with an order of magnitude less budget. This efficiency is clearest in the win-rate panels, where DEFT always exceeds against random search from the smallest budgets and stays near the top throughout, whereas the CEM methods only catch up once B becomes large. Below are the report details. For the TimesFM foundation model, we report the performance curves across expert-query budgets for different expert-feedback settings as follows: • Figure 5: Benchmark: Chronos Benchmark; Foundation model: TimesFM; Expert feedback: 3-Level Rating. • Figure 6: Benchmark: Chronos Benchmark; Foundation model: TimesFM; Expert feedback: 5-Level Rating. • Figure 7: Benchmark: Chronos Benchmark; Foundation model: TimesFM; Expert feedback: Pairwise. • Figure 8: Benchmark: Chronos Benchmark; Foundation model: TimesFM; Expert feedback: Pairwise-Best. • Figure 9: Benchmark: GIFT-Eval Benchmark; Foundation model: TimesFM; Expert feedback: 3-Level Rating. • Figure 10: Benchmark: GIFT-Eval Benchmark; Foundation model: TimesFM; Expert feedback: 5-Level Rating. • Figure 11: Benchmark: GIFT-Eval Benchmark; Foundation model: TimesFM; Expert feedback: Pairwise. • Figure 12: Benchmark: GIFT-Eval Benchmark; Foundation model: TimesFM; Expert feedback: Pairwise-Best. For the Chronos foundation model, we report the performance curves across expert-query budgets for different expert-feedback settings as follows: • Figure 13: Benchmark: Chronos Benchmark; Foundation model: Chronos; Expert feedback: 3-Level Rating. • Figure 14: Benchmark: Chronos Benchmark; Foundation model: Chronos; Expert feedback: 5-Level Rating. • Figure 15: Benchmark: Chronos Benchmark; Foundation model: Chronos; Expert feedback: Pairwise. 17 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.6 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) Figure 5: Performance across expert-query budgets on the Chronos Benchmark using the TimesFM foundation model with 3-Level Rating expert feedback. 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.5 
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) 
+
+Figure 6: Performance across expert-query budgets on the Chronos Benchmark using the TimesFM foundation model with 5-Level Rating expert feedback. • Figure 16: Benchmark: Chronos Benchmark; Foundation model: Chronos; Expert feedback: Pairwise-Best. • Figure 17: Benchmark: GIFT-Eval Benchmark; Foundation model: Chronos; Expert feedback: 3-Level Rating. • Figure 18: Benchmark: GIFT-Eval Benchmark; Foundation model: Chronos; Expert feedback: 5-Level Rating. • Figure 19: Benchmark: GIFT-Eval Benchmark; Foundation model: Chronos; Expert feedback: Pairwise. • Figure 20: Benchmark: GIFT-Eval Benchmark; Foundation model: Chronos; Expert feedback: Pairwise-Best. 18 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.6 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) Figure 7: Performance across expert-query budgets on the Chronos Benchmark using the TimesFM foundation model with Pairwise expert feedback. 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.6 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) 
+
+Figure 8: Performance across expert-query budgets on the Chronos Benchmark using the TimesFM foundation model with Pairwise-Best expert feedback. For the Moirai foundation model, we report the performance curves across expert-query budgets for different expert-feedback settings as follows: • Figure 21: Benchmark: Chronos Benchmark; Foundation model: Moirai; Expert feed-back: 3-Level Rating. • Figure 22: Benchmark: Chronos Benchmark; Foundation model: Moirai; Expert feed-back: 5-Level Rating. • Figure 23: Benchmark: Chronos Benchmark; Foundation model: Moirai; Expert feed-back: Pairwise. • Figure 24: Benchmark: Chronos Benchmark; Foundation model: Moirai; Expert feed-back: Pairwise-Best. 19 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.6 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) Figure 9: Performance across expert-query budgets on the GIFT-Eval Benchmark using the TimesFM foundation model with 3-Level Rating expert feedback. 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) 
+
+Figure 10: Performance across expert-query budgets on the GIFT-Eval Benchmark using the TimesFM foundation model with 5-Level Rating expert feedback. • Figure 25: Benchmark: GIFT-Eval Benchmark; Foundation model: Moirai; Expert feedback: 3-Level Rating. • Figure 26: Benchmark: GIFT-Eval Benchmark; Foundation model: Moirai; Expert feedback: 5-Level Rating. • Figure 27: Benchmark: GIFT-Eval Benchmark; Foundation model: Moirai; Expert feedback: Pairwise. • Figure 28: Benchmark: GIFT-Eval Benchmark; Foundation model: Moirai; Expert feedback: Pairwise-Best. 20 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) Figure 11: Performance across expert-query budgets on the GIFT-Eval Benchmark using the TimesFM foundation model with Pairwise expert feedback. 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.6 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) 
+
+Figure 12: Performance across expert-query budgets on the GIFT-Eval Benchmark using the TimesFM foundation model with Pairwise-Best expert feedback. 
+
+C Full Ablation Results for DEFT Design Choices 
+
+C.1 Variant Descriptions 
+
+All ablation variants share the same evaluation protocol as the main experiments. Each variant modifies exactly one design choice of DEFT while keeping everything else fixed. Table 8 summarises the variants; we describe each in detail below. 
+
+Zero shot median. The foundation model’s median forecast with no expert queries and no optimi-sation. This is the lower-bound baseline that DEFT improves upon. 21 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.6 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+> Zero-shot
+> Random search
+> Best-of-N (quantile)
+> Best-of-N (sample)
+> Direct CEM
+> TuRBO-1
+> Surrogate CEM
+> DEFT (ours)
+
+Figure 13: Performance across expert-query budgets on the Chronos Benchmark using the Chronos foundation model with 3-Level Rating expert feedback. 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.70 
+
+0.75 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.5 
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+> Zero-shot
+> Random search
+> Best-of-N (quantile)
+> Best-of-N (sample)
+> Direct CEM
+> TuRBO-1
+> Surrogate CEM
+> DEFT (ours)
+
+Figure 14: Performance across expert-query budgets on the Chronos Benchmark using the Chronos foundation model with 5-Level Rating expert feedback. 
+
+Random search. At each query, a Gaussian perturbation is applied to the current median forecast across the full trajectory, and the expert selects the best candidate. This is the primary reference baseline: it matches DEFT’s query budget but uses unstructured random exploration with no pool and no decomposition. 
+
+Pool only. The full quantile-prior seed pool is scanned and the best candidate is selected, but no Gaussian CEM rounds follow ( nrounds = 0 ). The pool size equals the full budget B. This variant isolates the gain from the seed pool alone, without any iterative refinement. 
+
+No seed pool. The pre-CEM seed pool scan is skipped entirely; the full budget is allocated to Gaussian CEM rounds starting from the zero-shot median. Trend–seasonal decomposition is retained. 22 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+1.4 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+1.4 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.5 
+
+1.0 
+
+1.5 
+
+2.0 
+
+2.5 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) Figure 15: Performance across expert-query budgets on the Chronos Benchmark using the Chronos foundation model with Pairwise expert feedback. 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.5 
+
+1.0 
+
+1.5 
+
+2.0 
+
+2.5 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) 
+
+Figure 16: Performance across expert-query budgets on the Chronos Benchmark using the Chronos foundation model with Pairwise-Best expert feedback. This variant isolates the contribution of the seed pool by comparing against a CEM-only baseline that has the same number of refinement rounds but no informed initialisation. 
+
+CEM + prior. The seed pool is used for initialisation, and CEM is run on the full trajectory without trend–seasonal decomposition. This variant isolates the contribution of decomposition: comparing CEM-WITH -P RIOR to full DEFT shows how much is gained by structuring the search space into trend and seasonal components rather than optimising the raw trajectory directly. 23 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) Figure 17: Performance across expert-query budgets on the GIFT-Eval Benchmark using the Chronos foundation model with 3-Level Rating expert feedback. 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) 
+
+Figure 18: Performance across expert-query budgets on the GIFT-Eval Benchmark using the Chronos foundation model with 5-Level Rating expert feedback. 
+
+Mean marginal. Identical to full DEFT except that the component utility scores are computed as the mean over paired expert scores rather than the maximum: 
+
+uTi = 1
+
+|{ j : ( i, j ) ∈ I 0}| 
+
+X
+
+j: ( i,j )∈I 0
+
+vij , uSj = 1
+
+|{ i : ( i, j ) ∈ I 0}| 
+
+X
+
+i: ( i,j )∈I 0
+
+vij , (21) in place of the max-pool utility in Eq. 9. This tests whether the specific form of score propagation across components affects sample efficiency. 
+
+Trend only. The seasonal component is frozen at the moving-average seasonal extracted from the zero-shot median; only the trend component is searched via CEM. This isolates the contribution of trend editing. 24 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+1.4 
+
+1.5 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+1.4 
+
+1.5 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+1.0 
+
+1.5 
+
+2.0 
+
+2.5 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) Figure 19: Performance across expert-query budgets on the GIFT-Eval Benchmark using the Chronos foundation model with Pairwise expert feedback. 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+1.0 
+
+1.2 
+
+1.4 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.5 
+
+1.0 
+
+1.5 
+
+2.0 
+
+2.5 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) 
+
+Figure 20: Performance across expert-query budgets on the GIFT-Eval Benchmark using the Chronos foundation model with Pairwise-Best expert feedback. 
+
+Seasonal only. The trend component is frozen at the moving-average trend extracted from the zero-shot median; only the seasonal component is searched via CEM. This isolates the contribution of seasonal editing. 
+
+C.2 Results for Moirai 
+
+Figures 29 reproduces the ablation plots of Figure 3 for the Moirai backbone. The qualitative ordering of variants is consistent across all three backbones. DEFT (full) achieves the lowest MASE, the pool-only scan is highly competitive at small budgets, and S EASONAL -O NLY is consistently the weakest decomposition variant. 25 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+1.15 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+1.15 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) Figure 21: Performance across expert-query budgets on the Chronos Benchmark using the Moirai foundation model with 3-Level Rating expert feedback. 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.75 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.75 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.75 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.6 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) 
+
+Figure 22: Performance across expert-query budgets on the Chronos Benchmark using the Moirai foundation model with 5-Level Rating expert feedback. 
+
+Algorithm 1 Random Search 
+
+Input: Initial forecast ˆy0, scorer score( ·), query budget B, scale σ
+
+Output: Edited forecast ˆy
+
+1: Q = {yi}Bi=1 , yi = ˆ y0 + ϵi, ϵi ∼ N (0 , σ 2I) ▷ B perturbed forecasts 
+
+2: Include unchanged forecast ˆy0 ∈ Q 
+
+3: vy ← score( y), ∀y ∈ Q ▷ Query expert 
+
+4: ˆy ← arg max y∈Q vy
+
+5: return ˆy
+
+26 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+1.3 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) Figure 23: Performance across expert-query budgets on the Chronos Benchmark using the Moirai foundation model with Pairwise expert feedback. 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.75 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.6 
+
+0.8 
+
+1.0 
+
+1.2 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) 
+
+Figure 24: Performance across expert-query budgets on the Chronos Benchmark using the Moirai foundation model with Pairwise-Best expert feedback. 
+
+Algorithm 2 Best-of-N Quantile 
+
+Input: Foundation-model quantile head Fθ (· | q), scorer score( ·), query budget N
+
+Output: Edited forecast ˆy
+
+1: Build symmetric quantile levels L = {q1, . . . , q N } ⊂ (0 , 1) centered at 0.5 ▷ N evenly spaced levels, q(N +1) /2 = 0 .5
+
+2: Q = {yq }q∈L , yq ← Fθ (· | q) ▷ N deterministic full-horizon trajectories 
+
+3: vy ← score( y), ∀y ∈ Q ▷ Query expert 
+
+4: ˆy ← arg max y∈Q vy
+
+5: return ˆy
+
+27 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+1.15 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+1.15 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+1.15 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) Figure 25: Performance across expert-query budgets on the GIFT-Eval Benchmark using the Moirai foundation model with 3-Level Rating expert feedback. 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) 
+
+Figure 26: Performance across expert-query budgets on the GIFT-Eval Benchmark using the Moirai foundation model with 5-Level Rating expert feedback. 28 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) Figure 27: Performance across expert-query budgets on the GIFT-Eval Benchmark using the Moirai foundation model with Pairwise expert feedback. 2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+> Relative MASE (vs zero-shot, gmean)
+
+MASE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+> Relative WQL (vs zero-shot, gmean)
+
+WQL 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.80 
+
+0.85 
+
+0.90 
+
+0.95 
+
+1.00 
+
+1.05 
+
+1.10 
+
+> Relative MAE (vs zero-shot, gmean)
+
+MAE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0.7 
+
+0.8 
+
+0.9 
+
+1.0 
+
+1.1 
+
+1.2 
+
+> Relative MSE (vs zero-shot, gmean)
+
+MSE 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs zero-shot (avg. MASE/WQL/MAE/MSE) 
+
+2 4 8 16 32 64 128 
+
+Budget per series (B) 
+
+0
+
+20 
+
+40 
+
+60 
+
+80 
+
+100 
+
+> Win rate vs zero-shot (%)
+
+Win rate vs random search (avg. MASE/WQL/MAE/MSE) 
+
+Zero-shot 
+
+Random search 
+
+Best-of-N (quantile) 
+
+Best-of-N (sample) 
+
+Direct CEM 
+
+TuRBO-1 
+
+Surrogate CEM 
+
+DEFT (ours) 
+
+Figure 28: Performance across expert-query budgets on the GIFT-Eval Benchmark using the Moirai foundation model with Pairwise-Best expert feedback. 29 Algorithm 3 Best-of-N Sample 
+
+Input: Foundation model with sampler Sample θ (·) or quantile head Fθ (· | q), scorer score( ·), query budget N
+
+Output: Edited forecast ˆy 
+
+> 1:
+
+if model supports native sampling then  
+
+> 2:
+
+Q = {yi}N −1 
+
+> i=1
+
+, yi ∼ Sample θ (·) ▷ N −1 stochastic trajectories  
+
+> 3:
+
+else  
+
+> 4:
+
+Fix dense quantile grid G ⊂ (0 , 1)  
+
+> 5:
+
+for i = 1 , . . . , N − 1 do  
+
+> 6:
+
+ui,t ∼ U (0 , 1) , ∀t = 1 , . . . , H ▷ i.i.d. per-timestep uniform draw  
+
+> 7:
+
+yi[t] ← F −1 
+
+> θ
+
+(ui,t | t, G), ∀t ▷ per-timestep inverse-CDF sampling  
+
+> 8:
+
+end for  
+
+> 9:
+
+Q = {yi}N −1 
+
+> i=1
+> 10:
+
+end if  
+
+> 11:
+
+Include median forecast y0.5 ← Fθ (· | 0.5) ∈ Q ▷ always included  
+
+> 12:
+
+vy ← score( y), ∀y ∈ Q ▷ Query expert  
+
+> 13:
+
+ˆy ← arg max y∈Q vy 
+
+> 14:
+
+return ˆy
+
+Algorithm 4 Direct CEM 
+
+Input: Initial forecast ˆy0, scorer score( ·), query budget B, per-round size b, elite frac ρ
+
+Output: Edited forecast ˆy 
+
+> 1:
+
+μ ← ˆy0, initialize σ, A ← ∅ , q ← 0, r ← 0 
+
+> 2:
+
+ne ← max  1, round( ρb ) ▷ elite count, fixed  
+
+> 3:
+
+while q < B do  
+
+> 4:
+
+r ← r + 1 ; br ← min( b, B − q) ▷ partial last round keeps spend exact  
+
+> 5:
+
+Qr = {μ} ∪ { yi}br −1 
+
+> i=1
+
+, yi ∼ N (μ, diag( σ2)) ▷ mean re-queried + br −1 samples  
+
+> 6:
+
+vy ← score( y), ∀y ∈ Q r ▷ Query expert  
+
+> 7:
+
+A ← A ∪ { (y, v y ) : y ∈ Q r } 
+
+> 8:
+
+Er ← TopK min( ne, b r ){y ∈ Q r : vy } ▷ elites from queried set  
+
+> 9:
+
+μ ← Mean( Er ); σ ← max   Std( Er ), σ min 
+
+ ▷ refit, floored at σmin  
+
+> 10:
+
+q ← q + br 
+
+> 11:
+
+end while  
+
+> 12:
+
+ˆy ← arg max y∈A vy 
+
+> 13:
+
+return ˆy
+
+Table 8: Summary of ablation variants. Ticks indicate which components are active. 
+
+Variant Seed pool T/S decomp. CEM rounds Pool mode 
+
+Zero shot median – – – –Random search – – ✓(Gaussian) –Pool only ✓ ✓ – max No seed pool – ✓ ✓ –CEM + prior ✓ – ✓ max Mean marginal ✓ ✓ ✓ mean Trend only ✓ ✓(trend) ✓ max Seasonal only ✓ ✓(seasonal) ✓ max 
+
+DEFT (full) ✓ ✓ ✓ max 
+
+30 Algorithm 5 Surrogate CEM 
+
+Input: Initial forecast ˆy0, scorer score( ·), query budget B, per-round size b, pool size N ≫ b, elite frac ρ
+
+Output: Edited forecast ˆy 
+
+> 1:
+
+μ ← ˆy0, initialize σ, A ← ∅ , q ← 0, r ← 0, Sϕ ← ∅ 
+
+> 2:
+
+ne ← max  1, round( ρN ) ▷ elite count over the pool  
+
+> 3:
+
+while q < B do  
+
+> 4:
+
+r ← r + 1 ; br ← min( b, B − q) ▷ partial last round keeps spend exact  
+
+> 5:
+
+Yr = {yi}Ni=1 , yi ∼ N (μ, diag( σ2)) ▷ pool, surrogate-scored only (no expert queries)  
+
+> 6:
+
+if Sϕ̸ = ∅ then  
+
+> 7:
+
+˜sy ← Sϕ(y) ∀y ∈ Y r ▷ cheap surrogate scoring  
+
+> 8:
+
+Qr ← { μ} ∪ Select br −1(Yr , ˜s, A) ▷ exploit top-˜s, explore far from A 
+
+> 9:
+
+else  
+
+> 10:
+
+Qr ← { μ} ∪ { br −1 uniform-random from Yr } ▷ round 1, no surrogate yet  
+
+> 11:
+
+end if  
+
+> 12:
+
+vy ← score( y) ∀y ∈ Q r ▷ query expert; |Q r |=br 
+
+> 13:
+
+A ← A ∪ { (y, v y ) : y ∈ Q r } 
+
+> 14:
+
+Sϕ ← Fit( A) ▷ refit after querying  
+
+> 15:
+
+˜sy ← Sϕ(y) ∀y ∈ Y r ▷ surrogate-score the whole pool  
+
+> 16:
+
+˜sy ← vy ∀y ∈ Q r ▷ overwrite queried subset ( Qr ⊆ Y r ) with exact scores  
+
+> 17:
+
+Er ← TopK ne {y ∈ Y r : ˜ sy } ▷ elites over full pool  
+
+> 18:
+
+μ ← Mean( Er ); σ ← max   Std( Er ), σ min 
+
+ ▷ refit, floored at σmin  
+
+> 19:
+
+q ← q + br 
+
+> 20:
+
+end while  
+
+> 21:
+
+ˆy ← arg max y∈A vy 
+
+> 22:
+
+return ˆy
+
+Algorithm 6 TuRBO-1 
+
+Input: Initial forecast ˆy0, scorer score( ·), query budget B, scale σ
+
+Output: Edited forecast ˆy 
+
+> 1:
+
+Define y(x) = ˆ y0 + (2 x − 1) σ, x ∈ [0 , 1] H 
+
+> 2:
+
+Initialize X with Sobol samples including x0 = 12 1 
+
+> 3:
+
+sx ← score( y(x)) , ∀x ∈ X ▷ Initial expert queries  
+
+> 4:
+
+A ← { (x, s x) : x ∈ X } , q ← |X |  
+
+> 5:
+
+x⋆ ← arg max (x,s )∈A s, initialize trust-region length ℓ 
+
+> 6:
+
+while q < B do  
+
+> 7:
+
+Fit GP surrogate g on A 
+
+> 8:
+
+Construct trust region T = TR( x⋆, ℓ ) ∩ [0 , 1] H 
+
+> 9:
+
+Draw candidate set C from T using Sobol samples  
+
+> 10:
+
+Sample ˜g(x) from GP posterior for all x ∈ C  
+
+> 11:
+
+xnext ← arg max x∈C ˜g(x) 
+
+> 12:
+
+snext ← score( y(xnext )) ▷ Query expert  
+
+> 13:
+
+A ← A ∪ { (xnext , s next )} 
+
+> 14:
+
+if snext > s x⋆ then  
+
+> 15:
+
+x⋆ ← xnext  
+
+> 16:
+
+Increase ℓ 
+
+> 17:
+
+else  
+
+> 18:
+
+Decrease ℓ after repeated failures  
+
+> 19:
+
+end if  
+
+> 20:
+
+if ℓ < ℓ min then  
+
+> 21:
+
+Restart trust region and reset ℓ 
+
+> 22:
+
+end if  
+
+> 23:
+
+q ← q + 1  
+
+> 24:
+
+end while  
+
+> 25:
+
+ˆy ← y(x⋆) 
+
+> 26:
+
+return ˆy
+
+31 Algorithm 7 DEFT: Decomposed Expert-Guided ForecasT 
+
+Input: Initial forecast ˆy0, foundation-model samples P, scorer score( ·), query budget B, seed budget B0, per-round budget b, nr search rounds ( B = B0 + b × nr ), elite fraction ρ, component counts nT , n S
+
+Output: Edited forecast ˆy
+
+Stage 1: decomposed Seed-Pool Scan  
+
+> 1:
+
+PT ← { MA w(y) : y ∈ P} ; PS ← { y − MA w(y) : y ∈ P} ▷ Decompose TFM samples  
+
+> 2:
+
+Select K paired components {(Ti, S i)}Ki=1 from (PT , PS ) 
+
+> 3:
+
+Form B0 recombinations Q0 = {Ti + Sj : ( i, j ) ∈ I 0} 
+
+> 4:
+
+vij ← score( Ti + Sj ), (i, j ) ∈ I 0 ▷ Query expert on prior recombinations  
+
+> 5:
+
+uTi ← max j:( i,j )∈I 0 vij ; uSj ← max i:( i,j )∈I 0 vij ▷ Reuse each score for both components  
+
+> 6:
+
+ET 
+
+> 0
+
+← TopK ρK {Ti : uTi }; ES 
+
+> 0
+
+← TopK ρK {Sj : uSj } 
+
+> 7:
+
+μT ← Mean( ET 
+
+> 0
+
+); μS ← Mean( ES 
+
+> 0
+
+) 
+
+> 8:
+
+σT ← Std( PT ); σS ← Std( PS ) ▷ Initialize search scale from model uncertainty  
+
+> 9:
+
+ˆy ← arg max (i,j )∈I 0 vij ; q ← B0
+
+Stage 2: decomposed CEM search  
+
+> 10:
+
+for r = 1 , . . . , n r do  
+
+> 11:
+
+Tr = {Ti}nT
+
+> i=1
+
+, Ti ∼ N (μT , diag( σ2 
+
+> T
+
+))  
+
+> 12:
+
+Sr = {Sj }nS
+
+> j=1
+
+, Sj ∼ N (μS , diag( σ2 
+
+> S
+
+))  
+
+> 13:
+
+Form b recombinations Qr = {Ti + Sj : ( i, j ) ∈ I r } ▷ Ir covers sampled components  
+
+> 14:
+
+vij ← score( Ti + Sj ), (i, j ) ∈ I r ▷ Query expert  
+
+> 15:
+
+uTi ← max j:( i,j )∈I r vij ; uSj ← max i:( i,j )∈I r vij ▷ Component-level utility  
+
+> 16:
+
+ETr ← TopK ρn T {Ti : uTi }; ESr ← TopK ρn S {Sj : uSj } 
+
+> 17:
+
+μT ← Mean( ETr ); σT ← Std( ETr ) 
+
+> 18:
+
+μS ← Mean( ESr ); σS ← Std( ESr ) ▷ Refit component proposals  
+
+> 19:
+
+ˆy ← arg max {ˆy, T i + Sj : ( i, j ) ∈ I r } under score( ·) 
+
+> 20:
+
+q ← q + b 
+
+> 21:
+
+if q ≥ B then  
+
+> 22:
+
+break  
+
+> 23:
+
+end if  
+
+> 24:
+
+end for  
+
+> 25:
+
+return ˆy
+
+Algorithm 8 DEFT budget allocation 
+
+Input: Total expert-query budget B; trend fraction τ (default 0.5)
+
+Output: Seed-pool size B0, per-round queries b, rounds nr ; per-round split nT , n S , K  
+
+> 1:
+
+s ← max(2 , ⌊B/ 2⌋) ▷ split budget: pool vs. CEM refinement  
+
+> 2:
+
+b ← max  4, ⌊B/ 8⌋ ▷ queries per round, floored at 4 
+
+> 3:
+
+nr ← min  4, ⌊s/b ⌋ ▷ refinement rounds, capped at 4 
+
+> 4:
+
+if nr = 0 and B ≥ b + 2 then  
+
+> 5:
+
+nr ← 1 ▷ ensure one round once affordable  
+
+> 6:
+
+end if  
+
+> 7:
+
+if B ≤ 16 then  
+
+> 8:
+
+nr ← min( nr , 1) ▷ small budget: at most one round  
+
+> 9:
+
+end if  
+
+> 10:
+
+B0 ← max  2, B − b · nr
+
+ ▷ remaining budget scans the seed pool  
+
+> 11:
+
+nT ← max  2, round( τ b ); nS ← max  2, b − nT
+
+ 
+
+> 12:
+
+K ← max  2, ⌈√B0 ⌉ ▷ K trend & K seasonal seeds, paired 1:1  
+
+> 13:
+
+return B0, b, n r , n T , n S , K 
+
+32 Zero-shot median 
+
+> Random search
+> Pool only
+> No seed pool
+> CEM + prior
+> Mean marginal
+> Trend only
+> Seasonal only
+> DEFT (full)
+> 1.200
+> 1.250
+> 1.300
+> 1.350
+> 1.400
+> 1.450
+> MASE
+> 1.45
+> 1.41
+> 1.23
+> 1.38
+> 1.27
+> 1.22
+> 1.27
+> 1.45
+> 1.22
+
+(a)       
+
+> 0123456
+> nr
+> 1.150
+> 1.200
+> 1.250
+> 1.300
+> 1.350
+> 1.400
+> MASE
+
+(b) 
+
+> B=32
+> B=64
+> B=128
+
+Figure 29: Ablation study of DEFT on the Moirai backbone under budgets B ∈ { 32 , 64 , 128 }. (a) 
+
+Mean MASE per ablation variant at each budget. (b) Rounds sweep: mean MASE as a function of the number of decomposed CEM rounds nrounds at fixed budget (with nprior shrinking correspondingly); dashed lines indicate the random-search baseline for each budget, and ⋆ marks the optimal nrounds 
+
+for each budget. Table 9: Inference time (wall-clock seconds per series). Every method issues the same number of expert queries ( B) and a single foundation-model forward pass; they differ only in search overhead. DEFT tracks best-of-N and stays well below CEM, and remains feasible on the high-dimensional MD state where surrogate CEM runs out of memory. 
+
+MD Main 
+
+Method B=32 B=128 B=32 B=128 
+
+Zero-shot 0.011 0.013 0.000 0.000 Best-of-N 0.586 3.162 0.000 0.000 Random search 1.018 4.441 0.000 0.000 CEM 3.862 10.246 0.002 0.004 Surrogate CEM OOM OOM 0.020 0.043 DEFT 0.827 4.395 0.002 0.005 33
