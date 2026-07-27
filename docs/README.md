@@ -6,38 +6,40 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-26
-- 运行时间：2026-07-26 21:11:37 UTC
+- 最新运行日期：2026-07-27
+- 运行时间：2026-07-27 21:21:05 UTC
 - 运行状态：成功
 - 本次总论文数：6
-- 精读区：1
-- 速读区：5
+- 精读区：2
+- 速读区：4
 
 ### 今日简报（AI）
-今日阅读6篇论文，精读1篇关于时空碳排放因子量化与替代模型的论文（评分8.0）。最值得关注的方向包括时空碳排放因子建模、强化学习在动态传感中的应用。建议优先阅读精读论文，深入了解碳强度因子估计方法。
-- 详情：[/202607/26/README](/202607/26/README)
+1) 今日日报聚焦时间序列预测前沿，从6篇文献中精选出2篇高分论文，直指多变量时序建模创新。  
+2) 重点推荐《CARNet》的循环条件聚合与《Hopformer》的同质性追求Transformer，两者均以9.0分刷新预测精度。  
+3) 建议深入研读这两种架构，其核心设计能有效捕捉时序依赖，直接用于金融、气象等复杂场景的预测优化。
+- 详情：[/202607/27/README](/202607/27/README)
 
 ### 精读区论文标签
-1. [Quantification and Surrogate Model Estimation of Spatial-Temporal Carbon Intensity Factors](/202607/26/2607.19851v1-quantification-and-surrogate-model-estimation-of-spatial-temporal-carbon-intensity-factors)  
-   标签：评分：8.0/10、query:aq-forecast
-   evidence：时空碳强度因子估计与空气污染相关
+1. [CARNet Cycle-Conditioned Core Aggregation and Redistribution for Multivariate Time Series Forecasting](/202607/27/2607.21681v1-carnet-cycle-conditioned-core-aggregation-and-redistribution-for-multivariate-time-series-forecasting)  
+   标签：评分：9.0/10、query:aq-forecast
+   evidence：考虑周期模式的多元时序预测
+2. [Hopformer: Homogeneity-Pursuit Transformer for Time Series Forecasting](/202607/27/2607.22299v1-hopformer-homogeneity-pursuit-transformer-for-time-series-forecasting)  
+   标签：评分：9.0/10、query:aq-forecast
+   evidence：用于时间序列预测的新型Transformer
 
 ### 速读区论文标签
-1. [Reinforcement Learning for Delivery Drone-Based Participatory Sensing in Dynamic Environments](/202607/26/2607.18874v1-reinforcement-learning-for-delivery-drone-based-participatory-sensing-in-dynamic-environments)  
+1. [Thick as THieFs: Temporal coherent forecast combination for day-ahead electricity prices](/202607/27/2607.22310v1-thick-as-thiefs-temporal-coherent-forecast-combination-for-day-ahead-electricity-prices)  
+   标签：评分：7.0/10、query:aq-forecast
+   evidence：时间序列的时间一致性预测组合
+2. [Spatial Generalization Tests for Machine Learning-based Weather Models to Assess Physical Consistency](/202607/27/2607.20716v1-spatial-generalization-tests-for-machine-learning-based-weather-models-to-assess-physical-consistency)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：基于无人机的空气质量感知与监测
-2. [Optimal Recalibration of an Online Predictor](/202607/26/2607.19689v1-optimal-recalibration-of-an-online-predictor)  
+   evidence：天气模型的空间泛化测试，可用于评估空气污染预测模型
+3. [Forecasting and Explaining the Phillips Curve: A SHAP-Based Comparison of Machine Learning and Traditional Time-Series Models for Canadian Unemployment and Inflation](/202607/27/2607.22453v1-forecasting-and-explaining-the-phillips-curve-a-shap-based-comparison-of-machine-learning-and-traditional-time-series-models-for-canadian-unemployment-and-inflation)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：适用于在线预测器的最优重校准方法，可直接用于时间序列预测
-3. [STeMP: Spatio-Temporal Modelling Protocol](/202607/26/2607.20592v1-stemp-spatio-temporal-modelling-protocol)  
+   evidence：多步时序预测模型比较
+4. [Susceptible Reservoir Architectures for Regime-Conditional Volatility Forecasting](/202607/27/2607.22491v1-susceptible-reservoir-architectures-for-regime-conditional-volatility-forecasting)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：环境研究的时空建模协议
-4. [Transformer-based Diffusion models for Hydrological Time Series Probabilistic Imputation and Forecasting](/202607/26/2607.21200v1-transformer-based-diffusion-models-for-hydrological-time-series-probabilistic-imputation-and-forecasting)  
-   标签：评分：6.0/10、query:aq-forecast
-   evidence：基于Transformer扩散的水文时间序列插值与预测
-5. [Flexible generation of daily Earth system model projections across radiative forcing scenarios](/202607/26/2607.21382v1-flexible-generation-of-daily-earth-system-model-projections-across-radiative-forcing-scenarios)  
-   标签：评分：6.0/10、query:aq-forecast
-   evidence：生成每日地球系统模型投影，与气候和环境时间序列相关
+   evidence：储层计算用于时序预测
 
 
 <div class="dpr-home-promo-card">
