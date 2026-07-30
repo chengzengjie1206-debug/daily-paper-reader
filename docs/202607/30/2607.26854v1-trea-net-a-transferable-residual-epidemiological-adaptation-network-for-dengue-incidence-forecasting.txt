@@ -1,0 +1,333 @@
+Title: TREA-Net: A Transferable Residual Epidemiological Adaptation Network for Dengue Incidence Forecasting
+
+URL Source: https://arxiv.org/pdf/2607.26854v1
+
+Published Time: Thu, 30 Jul 2026 01:01:45 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# TREA-Net: A Transferable Residual Epidemiological Adaptation Network for Dengue Incidence Forecasting 
+
+# Inesh Shukla 1, Madhurima Panja 2, Tanujit Chakraborty 2,3 , Chittaranjan Hens 1 
+
+> 1
+
+International Institute of Information Technology Hyderabad, India  
+
+> 2
+
+SAFIR, Sorbonne University Abu Dhabi, United Arab Emirates  
+
+> 3
+
+Sorbonne Center for Artificial Intelligence, Sorbonne Universit´ e, Paris, France inesh.shukla@research.iiit.ac.in, chittaranjan.hens@iiit.ac.in, madhurima.panja@sorbonne.ae, tanujit.chakraborty@sorbonne.ae 
+
+Abstract 
+
+Accurate multi-week dengue forecasting supports timely vector-control interventions, outbreak preparedness, and healthcare resource allocation. However, newly established surveillance systems often lack the historical data needed to train reliable neural forecasting models. Although pretrained time-series models offer promising zero-shot forecasts, their cross-domain training may not capture local epidemiological dynamics. We propose TREA-Net, a Transferable Residual Epidemiological Adaptation Network for dengue forecasting under limited data. TREA-Net augments neural forecasting backbones with projections from an Environmental Time-Series Susceptible–Infected–Recovered model and learns a lightweight gated residual correction transferable from data-rich to data-scarce regions. Its node-invariant design accom-modates surveillance systems with different numbers of lo-cations, while target adaptation requires learning only two global parameters. We transfer knowledge from long-running dengue surveillance in Colombia and Nicaragua to 8-week-ahead forecasting in Mexico and Malaysia using only 78 or 104 weeks of target data. Across five neural backbones and ten transfer settings, TREA-Net improves the corresponding backbone in 9 out of 10 settings, with statistically signifi-cant gains. When integrated with TiRex (a foundation model for forecasting), it achieves the lowest mean absolute error across all target datasets. Conformal prediction further main-tains empirical coverage while reducing 8-week prediction-interval width by 29.6% in Mexico. These results demonstrate TREA-Net’s potential as a lightweight and portable early-warning framework for health agencies with limited surveil-lance data. 
+
+Code — anonymous.4open.science/r/TREA-Net-C8F8/ 
+
+# Introduction 
+
+Global dengue incidence more than doubled between 1990 and 2021, reaching approximately 60 million cases annually and accounting for nearly 2 million disability-adjusted life-years worldwide (Zhang et al. 2024; World Health Organi-zation 2023). This burden is expected to increase as climate change expands the geographic range and transmission sea-son of Aedes aegypti , exposing regions with limited surveil-lance capacity to greater outbreak risk (Lee et al. 2023). Re-liable multi-week forecasting is therefore increasingly im-portant for vector-control planning, healthcare resource al-location, and public-health decision-making. Forecasts up to 
+
+Figure 1: Data-rich surveillance systems (Colombia and Nicaragua) contain long historical dengue records, whereas data-scarce systems (Mexico and Malaysia) provide only 78 or 104 weeks of observations. Differences in surveillance history, epidemiological dynamics, and the numbers of mon-itored regions make direct transfer difficult, motivating a transferable epidemiologically informed forecasting frame-work (8-week-ahead dengue forecasting under limited target data). eight weeks ahead can provide sufficient lead time for inter-vention while remaining informative about near-term trans-mission dynamics (Chen et al. 2018; Johansson et al. 2019; Chakraborty, Chattopadhyay, and Ghosh 2019). Yet this task is particularly difficult for newly established surveillance systems, where short historical records limit the ability of data-driven models to learn stable temporal and spatial pat-terns for multivariate dengue incidence datasets. Existing approaches for epidemic forecasting can be organized into three broad paradigms. The first com-prises mechanistic compartmental models, such as sus-ceptible–infectious–recovered (SIR) models (Kermack and McKendrick 1927) and environmental time-series SIR (ET-SIR) models (Wang et al. 2025). By explicitly represent-ing transmission processes and incorporating epidemiolog-ical or environmental knowledge, these models can remain informative when observations are scarce. Their reliance on simplified structural assumptions, however, limits their abil-arXiv:2607.26854v1 [cs.LG] 29 Jul 2026 ity to represent nonlinear interactions, behavioral responses, policy interventions, and other external influences that shape real-world outbreaks (Deng et al. 2020; Rodr´ ıguez et al. 2023). The second paradigm uses data-driven learning to infer temporal and spatial dependencies directly from surveil-lance records. Recurrent, convolutional, graph-based, and transformer architectures can model complex nonlinear epi-demic patterns (Deng et al. 2020; Xie et al. 2022; Kamarthi et al. 2023; Panja et al. 2023), but typically require long training histories. Many spatiotemporal models are also tied to a fixed graph or number of spatial units, making transfer to surveillance systems with different administrative structures difficult without architectural modification and substantial retraining (Rodr´ ıguez et al. 2021). More recently, large-scale time-series foundation models have achieved strong zero-shot performance through pretraining on massive cross-domain datasets (Panja et al. 2025; Das et al. 2024; Ansari et al. 2024; Auer et al. 2025). Although they reduce the need for target-domain training, their forecasts are driven pri-marily by statistical patterns learned during pretraining and do not explicitly incorporate local epidemiological mecha-nisms. The third paradigm combines the flexibility of neu-ral forecasting with the structural knowledge encoded by compartmental models. Recent hybrid approaches, includ-ing Epidemiologically-Informed Neural Networks (EINNs) (Rodr´ ıguez et al. 2023), Epidemic-Guided Deep Learning (EGDL) (Barman et al. 2025), EARTH (Wan et al. 2025), and DINN (Cao et al. 2026), incorporate epidemiological information through mechanistic features, latent disease dy-namics, architectural constraints, or physics-informed ob-jectives (Rodr´ ıguez, Adhikari, and Prakash 2022). Although these methods can improve forecasting accuracy and epi-demiological consistency, they are typically trained end-to-end within a single surveillance system. Consequently, the learned neural representations may become tightly coupled to local transmission parameters, spatial structure, and data availability, making them difficult to transfer to systems with different numbers of monitored regions or only short observational histories. Such coupling can also complicate optimization in data-scarce settings and limits straightfor-ward integration with frozen, zero-shot time-series founda-tion models. This raises the central problem considered in this work (also see Figure 1 for an illustration): How can mechanistic epidemiological knowledge learned from data-rich source regions be transferred to a structurally different, data-scarce target surveillance system while preserving a pretrained forecasting backbone and requiring only minimal target-specific adaptation ?To address this gap, we introduce TREA-Net (Trans-ferable Residual Epidemiological Adaptation Network), a modular transfer-learning framework for dengue forecast-ing under limited target data. TREA-Net combines ETSIR-based mechanistic guidance with predictions from any pre-trained forecasting backbone through a lightweight residual adapter. The adapter is learned from data-rich surveillance systems and transferred to data-scarce targets without mod-ifying the backbone or assuming a fixed number of moni-tored regions. This provides a practical approach to portable multi-week dengue early warning for health agencies with limited data and computational resources. Our main contri-butions are: • Transferable mechanistic adaptation. We formulate epidemiological guidance as a latent residual correction using ETSIR projections and pretrained forecasts, rather than embedding mechanistic equations in the training loss. The point-wise, N-invariant adapter contains no node-specific parameters or fixed spatial topology, al-lowing transfer across surveillance systems with differ-ent numbers of administrative units while requiring only two global target-adaptation parameters. • Multi-country low-data evaluation. We transfer TREA-Net from Colombia and Nicaragua to Mexico and Malaysia using only 78 or 104 weeks of target observations. Across five forecasting backbones and ten transfer settings spanning 7–33 subnational units, TREA-Net improves the corresponding backbone in nine settings. We further combine it with conformal prediction to provide calibrated uncertainty, with im-provements assessed through statistical significance testing. • Open framework for public-health forecasting. We will release the TREA-Net implementation and evalua-tion pipeline to support reproducible assessment of user-defined forecasting models under realistic low-data trans-fer settings. By reducing data, retraining, and compu-tational requirements, the framework can support ear-lier vector-control planning, healthcare resource allo-cation, and risk-informed decision-making in resource-constrained regions. 
+
+# Related Work and Problem Formulation 
+
+Epidemic Forecasting and Mechanistic–Neural Models. 
+
+Classical compartmental models, including SIR, SEIR, TSIR, and their environmental extensions, encode disease-transmission mechanisms and relevant covariates but re-quire setting-specific calibration and rely on simplified assumptions (Kermack and McKendrick 1927; Bjørnstad, Finkenst¨ adt, and Grenfell 2002; Wang et al. 2025). Data-driven approaches instead learn complex spatial and tempo-ral dependencies from surveillance records. Cola-GNN and EpiGNN model inter-regional transmission through learned graph structures (Deng et al. 2020; Xie et al. 2022), while PROFHiT imposes probabilistic coherence across hierarchi-cal time series (Kamarthi et al. 2023). These models are gen-erally trained and evaluated on a fixed set of regions and do not explicitly address transfer between surveillance systems with different spatial dimensions. Hybrid approaches seek to combine both paradigms. EINNs and DINNs introduce compartmental dynamics through physics-informed learning (Rodr´ ıguez et al. 2023; Cao et al. 2026), whereas PISID integrates an SIR module with region-specific spatial embeddings (Fujita and Akutsu 2025). CALI-Net transfers representations from a histor-ical influenza forecaster to a COVID-affected setting but requires target-specific adaptation (Rodr´ ıguez et al. 2021). Although these methods improve epidemiological consis-tency or cross-setting adaptation, their learned components remain coupled to particular diseases, spatial identities, or target-specific optimization. They therefore do not provide a backbone-agnostic mechanism for transferring a frozen epidemiological correction across surveillance systems with different numbers of regions or for augmenting zero-shot foundation models using limited target data. 
+
+Parameter-efficient adaptation and N -invariant time se-ries. Feature-wise Linear Modulation (FiLM) conditions intermediate representations through learned scale and shift parameters (γ, β ) (Perez et al. 2018), while PETSA adapts frozen time-series forecasters using parameter-efficient test-time updates (Medeiros et al. 2025). Related work on variable-dimensional time series includes CPiRi, which pro-motes channel-permutation-invariant transfer through inter-channel attention and channel-shuffling regularization (Xu et al. 2026), and channel-independent architectures such as PatchTST, which apply shared temporal weights across channels (Nie et al. 2023). This principle also underlies pre-trained time-series models including TimesFM, Chronos, and TiRex (Das et al. 2024; Ansari et al. 2024; Auer et al. 2025), whose zero-shot performance on epidemic data has recently been examined (Panja et al. 2025). These meth-ods establish parameter-efficient adaptation and invariance to channel count, but do not explicitly combine mechanistic epidemic projections with forecasts from an independently trained backbone. TREA-Net builds on this shared-weight principle by learning a point-wise epidemiological correc-tion that transfers across different numbers of regions and requires only a two-parameter target adapter. 
+
+Problem Formulation. We consider cross-geographical dengue forecasting from data-rich source surveillance sys-tems to a data-scarce target system. Let the source and tar-get systems contain Ns and Nt subnational regions, respec-tively, where Ns and Nt need not be equal. For each re-gion, the model receives a 26 -week window of dengue inci-dence and associated covariates. The target system provides only K ∈ { 78 , 104 } weeks of historical observations, corre-sponding to approximately 1.5 or 2 years of surveillance. Given forecasts from a pretrained neural backbone and mechanistic projections from an ETSIR model, the objective is to predict dengue incidence for the next H = 8 weeks in every target region. We seek to learn an epidemiologi-cally informed correction from the source systems that can be transferred to the target without retraining or modifying the forecasting backbone. The transferable component must therefore remain applicable across surveillance systems with different numbers of regions and require only minimal esti-mation from the limited target history. 
+
+# Methodology 
+
+ETSIR Mechanistic Prior 
+
+To encode climate-sensitive dengue dynamics, we adopt the Environmental Time-Series SIR (ETSIR) model (Wang et al. 2025). ETSIR extends classical TSIR dynamics (Bjørnstad, Finkenst¨ adt, and Grenfell 2002) by combining recent inci-dence with nonlinear effects of precipitation and temper-ature. Let It denote dengue incidence at week t, and de-fine the variance-stabilized response yt = log (1 + It). Sup-pressing the regional index for clarity, the ETSIR projection is 
+
+byEt =
+
+"
+
+c0 + cILX
+
+> ℓ=1
+
+yt−ℓ + gP (Pt) + gT (Tt)
+
+#
+
+yt−1, (1) where L is the historical lag length and 
+
+gT (Tt) = cT Tt + c′ 
+
+> T
+
+(Tt − HT )+ ,gP (Pt) = cP Pt + c′ 
+
+> P
+
+(Pt − HP )+ , (x)+ = max( x, 0) .
+
+The piecewise-linear functions allow the effects of tem-perature and precipitation to change beyond thresholds 
+
+HT and HP , reflecting the non-monotone influence of weather on mosquito abundance and transmission. The lagged-incidence term summarizes recent epidemic ac-tivity, including transmission persistence and susceptible-depletion effects. All ETSIR parameters are estimated us-ing training-period observations only. We use multiple-step-ahead (MSA) estimation, which minimizes cumulative fore-cast error over a multi-week horizon rather than optimizing only one-step predictions. For parameter vector θ, the objec-tive is 
+
+ˆθ = arg min 
+
+> θ
+
+X
+
+> tHMSA
+
+X
+
+> h=1
+
+
+
+yt+h − byEt+h|t(θ)
+
+2
+
+.
+
+At test time, future temperature and precipitation are re-placed by week-specific climatological averages computed exclusively from the training period, preventing information leakage. The resulting eight-week ETSIR trajectory is not used as a standalone forecast; instead, it provides TREA-Net with a compact mechanistic prior that complements the prediction from the neural backbone. 
+
+N -Invariant Gated Residual Correction 
+
+At forecast origin t, let bYBt , bYEt ∈ RH×N denote the back-bone (any forecasting framework) and ETSIR forecasts, re-spectively, where H is the forecast horizon and N is the number of regions. Their (h, n )-th entries are written as 
+
+byBt+h|t,n and byEt+h|t,n ′ for h = 1 , . . . , H and n = 1 , . . . , N .After MinMax normalization using training-period statis-tics, let ˜yBt+h|t,n and ˜yEt+h|t,n denote the normalized fore-casts. For each horizon-region pair, we construct xt,h,n =
+
+h
+
+˜yBt+h|t,n , ˜yEt+h|t,n , ˜yBt+h|t,n − ˜yEt+h|t,n 
+
+iT
+
+∈ R3.
+
+The correction module estimates a gate gt,h,n and a resid-ual adjustment ∆t,h,n :
+
+gt,h,n = σ  w⊤ 
+
+> g
+
+ReLU ( Wg xt,h,n + bg ) + bg
+
+ ,
+
+∆t,h,n = w⊤ 
+
+> ∆
+
+ReLU ( W∆xt,h,n + b∆) + b∆,
+
+˜yt+h|t,n = ˜ yBt+h|t,n + gt,h,n ∆t,h,n .
+
+Both multilayer perceptrons use a hidden dimension of 64. The gate gt,h,n ∈ (0 , 1) controls the contribution of the Figure 2: Overview of the proposed TREA-Net framework. ETSIR provides a mechanistic prior; a shared N - invariant gated residual module learns transferable epidemiological corrections from multiple source geographies, and only two target-specific adaptation parameters ( γ, β ) are estimated for deployment in a new surveillance system. residual correction, while ∆t,h,n determines its direction and magnitude. The corrected forecasts are subsequently mapped back to the original scale using the corresponding inverse transformations. The same functions are applied in-dependently to every (h, n ) pair, with no horizon-specific, node-specific, or topology-dependent parameters. The mod-ule is therefore invariant to N and can be transferred across surveillance systems containing different numbers of re-gions. Moreover, the ETSIR projection enters as an input feature rather than through a mechanistic loss term, preserv-ing the forecasting backbone and isolating the transferable epidemiological correction. 
+
+Multi-Source Training 
+
+Let Gsrc denote the set of source geographies, and let Dg
+
+contain the correction-training samples from source g. Be-cause the source datasets differ substantially in size, par-ticularly, Colombia contributes approximately 2.4 times as many training windows as Nicaragua; naively pooling all samples would bias learning toward the larger source. We therefore define 
+
+Dmin = min 
+
+> g∈G src
+
+|D g | , wg = Dmin 
+
+|D g | ,
+
+and train the correction parameters θ using the reweighted objective 
+
+Lsrc (θ) = X
+
+> g∈G src
+
+wg
+
+X
+
+> i∈D g
+
+ℓi(θ),
+
+where ℓi denotes the forecasting loss for sample i. This weighting equalizes the aggregate contribution of each source geography without discarding observations. For ev-ery source, training samples are generated from all five fore-casting backbones and pooled before optimizing the shared correction module. No backbone identifier is supplied to the module; it observes only the normalized backbone forecast, the ETSIR projection, and their absolute discrepancy. Con-sequently, the learned correction is encouraged to capture relationships that generalize across both source geographies and backbone architectures. 
+
+Two-Scalar Target Adaptation 
+
+During deployment in a target geography g⋆, both the fore-casting backbone and the source-trained correction parame-ters bθ remain frozen. We introduce two target-specific global scalars, γg⋆ and βg⋆ , which adjust the magnitude and offset of the transferred correction. For each forecast horizon h and target region n,
+
+˜yTt+h|t,n = ˜ yBt+h|t,n + γg⋆ gt,h,n ∆t,h,n + βg⋆ ,
+
+where gt,h,n and ∆t,h,n are produced by the frozen gated residual module. The two adaptation parameters are esti-mated using forecasting windows constructed from the first 
+
+K ∈ { 78 , 104 } weeks of target observations: 
+
+bγg⋆ , bβg⋆
+
+
+
+= arg min 
+
+> γ,β
+
+X
+
+> i∈D adapt
+> g⋆
+
+ℓi(γ, β ; bθ).
+
+Because γg⋆ and βg⋆ are shared across all horizons and re-gions, target adaptation introduces only two trainable param-eters, irrespective of the number of administrative units Ng∗ .The corrected forecasts are then mapped back to the origi-nal incidence scale. As examined in Section , replacing the global adapter with node-specific scale and shift parameters introduces 2Ng⋆ parameters but provides no consistent im-provement and is more susceptible to overfitting under lim-ited target data. 
+
+# Experiments 
+
+Datasets 
+
+We use weekly subnational dengue surveillance data from four countries. The source pool comprises Colombia, with 
+
+NCol = 33 departments observed over 835 weeks, and Nicaragua, with NNic = 18 departments over 981 weeks. These records span approximately 16 and 19 years, respec-tively, and represent mature surveillance systems. The target datasets comprise Malaysia, with NMal = 15 states and 270 available weeks, and Mexico, with NMex = 22 states and 208 available weeks. To emulate newly established surveil-lance programs, target adaptation is restricted to the first 
+
+K = 104 weeks of each target series. Weekly tempera-ture and precipitation covariates, together with their 14-, 28-, and 42-day rolling summaries, are aligned with dengue inci-dence for each region. We report mean absolute error (MAE) on raw dengue case counts after applying the inverse MinMax transformation. MAE is used because its linear scale provides a direct inter-pretation in terms of weekly case-count error, making it suit-able for downstream resource-allocation analysis discussed in the Real-World Impact section. 
+
+Forecasting Backbones 
+
+We evaluate five forecasting backbones: LSTM, N-HiTS, TCN, PatchTST (Nie et al. 2023), and TiRex (Auer et al. 2025). The first four models use a 26-week input window and a hidden dimension of 64. For backbone-only baselines, these models are trained using only the available target his-tory. To generate source samples for learning the transfer-able correction, separate backbone instances are trained on the source surveillance systems. TiRex is a pretrained time-series foundation model and is applied in a zero-shot setting without source- or target-specific fine-tuning. Under fixed preprocessing and inference settings, its forecasts are deter-ministic; hence, its backbone-only MAE has zero variation across repeated runs. For all backbones, TREA-Net operates only on their forecasts and does not modify their internal ar-chitectures or parameters. 
+
+Target Adaptation and Evaluation Protocol 
+
+For each target geography, we consider limited-history regimes of K ∈ { 78 , 104 } weeks. The first K−20 weeks are used to estimate the two target-adaptation parameters, while the subsequent 20 weeks are used for validation and early stopping. With a 26-week input window and an 8-week fore-cast horizon, the two regimes yield 25 and 51 adaptation-training windows, respectively. All observations after week 
+
+K are held out for final testing and are not used for model selection, scaling, or adaptation. The target adapter is opti-mized using Adam. Learning rates, batch sizes, and early-stopping patience are reported explicitly in the Supplemen-tary Material. 
+
+Results and Comparisons 
+
+Table 1 reports MAE for Malaysia and Mexico under K ∈{78 , 104 } weeks of target history. Across the five backbones and two target geographies, TREA-Net yields statistically significant improvements in 9 of 10 backbone-geography comparisons according to the Wilcoxon signed-rank test at 
+
+α = 0 .05 (p values are < 0.05 ). The standalone ETSIR model produces substantially larger errors, particularly for Malaysia at K = 78 (MAE = 1334 .9) , illustrating the difficulty of calibrating a purely mechanistic model from short histories. ARIMA is com-paratively competitive in Malaysia but performs less con-sistently in Mexico. Incorporating the ETSIR residual con-straint into an MLP reduces MAE by 12 .0% on average and markedly lowers variability across random seeds. For ex-ample, the standard deviation decreases from 7.9 to 2.0 in Malaysia and from 14.2 to 0.4 in Mexico at K = 78 . Nev-ertheless, ETSIR-PINN does not outperform the strongest sequence-model baselines, suggesting that mechanistic reg-ularization alone does not compensate for limited temporal expressivity. Among the forecasting backbones, zero-shot TiRex achieves the lowest backbone-only MAE in all four target settings. N-HiTS is the strongest target-trained model in Malaysia, whereas LSTM and TCN exhibit greater variation across seeds. Applying the same backbone-agnostic TREA-Net correction improves 18 of the 20 backbone-target-history combinations. Improvements are larger in Mexico, reaching 16.8% for PatchTST at K = 78 and 14 .8% for TiRex at K = 104 , while gains in Malaysia range from 0.2% 
+
+to 5.1% .TREA-Net combined with TiRex achieves the lowest MAE in every target setting, reducing error by 7.1% on av-erage relative to the zero-shot TiRex baseline. The two ex-ceptions are TREA-Net-N-HiTS in Malaysia at K = 104 ,where MAE increases by 0.4% , and TREA-Net-PatchTST in Mexico at K = 104 , where the difference is negligible. 
+
+Ablation Study 
+
+Table 2 compares four configurations using the TiRex back-bone at K = 104 , with each ablated variant modifying one component of TREA-Net. Removing the ETSIR fea-ture increases MAE by 7.5% in Malaysia and 11.5% in Mexico, demonstrating that the mechanistic projection pro-vides information beyond the backbone forecast. Training the gated correction only on the target data performs 5.1% worse in Malaysia and is comparable in Mexico, indicating that multi-source training improves transfer without requir-ing a larger target-specific model. Finally, replacing the two global adaptation parameters with 2N node-specific param-eters produces no meaningful improvement in Malaysia and changes performance by less than 1% in Mexico, supporting the simpler two-scalar adapter. Table 1: MAE on raw case counts for Malaysia and Mexico under K ∈ { 78 , 104 } weeks of target history, averaged over five seeds. Bold and Underlined values denote the best and second-best results in each column, respectively. Avg. ∆% is the mean percentage reduction in MAE achieved by each TREA-Net variant relative to its paired backbone across the four target-history settings and is reported only for TREA-Net rows. All TREA-Net variants use a single backbone-agnostic correction module trained on reweighted Colombia and Nicaragua source data, with only the target-specific scalars (γ, β ) estimated locally. †TiRex is applied zero-shot and produces deterministic backbone forecasts; hence, its standard deviation is zero.                                                                    
+
+> Malaysia Mexico Tier Model K=78 K=104 K=78 K=104 Avg ∆%Reference ETSIR alone 1334.9 557.2 72.0 66.7 ARIMA 75.7 83.4 89.0 96.7 Physics-informed ETSIR-PINN 48.1 49.4 68.9 75.4 Backbone LSTM 34.7 43.8 71.3 65.3 NHiTS 28.4 29.0 68.7 61.0 TCN 36.6 40.0 73.6 66.4 PatchTST 49.3 50.5 89.5 87.7 TiRex †23.8 26.6 54.9 60.1
+> TREA-Net (Proposed)
+> TREA-Net-LSTM 34.4 43.4 68.9 62.7 2.4 TREA-Net-NHiTS 28.3 29.1 65.5 59.4 1.8 TREA-Net-TCN 36.3 39.9 65.9 64.8 3.4 TREA-Net-PatchTST 47.8 49.7 74.4 87.7 5.3 TREA-Net-TiRex 22.6 25.5 52.4 51.2 7.1
+
+Table 2: Component ablation of TREA-Net with the TiRex backbone at K = 104 , averaged over five seeds. Avg. ∆% 
+
+denotes the mean percentage increase in MAE relative to TREA-Net-TiRex across Malaysia and Mexico; positive val-ues indicate worse performance. In-domain correction trains the gated correction solely on the target data without source transfer or subsequent adaptation. Per-node adapter replaces the two global parameters (γ, β ) with node-specific scale-shift pairs (γn, β n), introducing 2N target parameters.                  
+
+> Method MAL MEX Avg ∆%TREA-Net-TiRex (reference) 25.5 51.2 —w/o ETSIR feature 27.4 57.1 +9 .5
+> In-domain adapter 26.8 51.0 +2 .4
+> Per-node ( 2N) adapter 25.5 50.8 −0.4
+
+Uncertainty Quantification via Conformal Prediction 
+
+We construct 90% prediction intervals using Ensemble Batch Prediction Intervals (EnbPI) (Xu and Xie 2023), which updates calibration residuals sequentially and is there-fore well suited to evolving epidemic conditions. Under the 
+
+K = 104 regime, we compare zero-shot TiRex with TREA-Net-TiRex at nominal miscoverage level α = 0 .10 (refer to Supplementary material). Figure 3 presents representative 8-week-ahead forecasts for four subnational units across Malaysia and Mexico. Each panel shows the observed series, the TiRex baseline, and the TREA-Net-TiRex forecast with its 90% conformal interval. In Negeri Sembilan and Morelos, TREA-Net corrects base-line trajectories that persist at overly high levels or continue increasing despite an observed decline. In Perak and Chia-pas, where TiRex is already accurate, the correction remains small, and the intervals are comparatively narrow. Across the examples, the conformal bands cover nearly all future observations, consistent with the aggregate coverage results. 
+
+Gate Interpretability 
+
+Figure 4 compares mean gate activation with relative ET-SIR skill across subnational regions. In Malaysia, gate ac-tivation decreases as the ETSIR-to-persistence MAE ratio increases ( ρ = −0.70 , p = 0 .004 ), indicating that TREA-Net attenuates the transferred correction where the mecha-nistic prior is less reliable. This spatial association emerges despite the gate being trained only through the forecasting objective, without access to the held-out ETSIR skill metric. No corresponding spatial relationship is observed in Mexico (ρ = 0 .01 , p = 0 .954 ), where ETSIR performance is more homogeneous across states. Instead, gate activation varies primarily across forecast origins, with a significant negative association with prediction error (n = 97 , ρ = −0.267 , p =0.008) ; this temporal association is negligible in Malaysia (n = 159 , ρ = −0.015 , p = 0 .855 ). These results suggest that the gate adapts along the dominant source of predictive variation-spatially in Malaysia and temporally in Mexico. 
+
+# Discussion: Real-World Impact and Limitations 
+
+Dengue imposes substantial health and economic costs, ex-ceeding 3 billion USD annually in Latin America and the Caribbean alone (Laserna et al. 2018). Eight-week fore-casts can help health agencies anticipate changes in re-gional case burden and prioritize vector-control teams, diag-nostic capacity, clinical staffing, bed availability, and med-ical supplies. Forecast improvements should not be inter-Figure 3: Representative 8-week-ahead forecasts with 90% EnbPI prediction intervals under K=104. Black lines denote observed weekly cases, with the dotted vertical line mark-ing the forecast origin. Blue lines show TREA-Net–TiRex forecasts and shaded regions their conformal intervals; red dashed lines show the uncorrected TiRex baseline. TREA-Net corrects substantial baseline deviations in Negeri Sem-bilan and Morelos while preserving accurate forecasts in Perak and Chiapas, with the observed trajectories contained within the prediction intervals. preted directly as cases averted, since health outcomes de-pend on subsequent interventions and local operational con-straints. Rather, lower case-count errors provide decision-makers with earlier and more reliable information for allo-cating limited resources. TREA-Net is designed for surveillance systems that can-not train large forecasting models from scratch. Its trans-ferable correction module contains approximately 5K pa-rameters, while target adaptation estimates only two global scalars and completes on a CPU in under one minute in our implementation. This lightweight design may broaden access to mechanistically informed forecasting capabilities that would otherwise remain concentrated in data-rich and computationally well-resourced settings. Our analysis uses aggregate weekly case counts at the first subnational administrative level, obtained from public health sources and OpenDengue (Clarke et al. 2024), to-gether with publicly available climate covariates. No patient-level identifiers, addresses, or individual records are pro-cessed. Nevertheless, surveillance data may contain under-reporting, changes in case definitions, and spatially uneven ascertainment. TREA-Net should therefore support, rather than replace, public-health judgment. Prospective deploy-ment would require local validation, engagement with health authorities, appropriate institutional and data-governance re-view, and monitoring for unequal performance across re-gions. Several limitations remain. TREA-Net requires K ∈{78 , 104 } weeks of target surveillance and sufficient climate information to fit a local ETSIR model; it does not address monthly reporting, deployment with no target history, or prolonged reporting disruptions. Future weather inputs are 
+
+Figure 4: Mean gate activation versus relative ETSIR skill across subnational regions at K = 104 . The horizontal axis reports the ratio of ETSIR MAE to persistence MAE, with values above 1 indicating that ETSIR performs worse than persistence. Gate activation is significantly lower where ET-SIR is less reliable in Malaysia ( ρ = −0.70 , p = 0 .004) ,whereas no spatial association is observed in Mexico ( ρ =0.01 , p = 0 .954 ). currently approximated using training-period weekly clima-tology, which cannot anticipate anomalous conditions; oper-ational meteorological forecasts could improve responsive-ness to emerging climate-driven risk. Finally, evaluation is retrospective and limited to two target countries. Prospec-tive studies are needed to determine whether improved fore-casts lead to better resource allocation, outbreak prepared-ness, and health outcomes. 
+
+# Conclusion 
+
+We introduced TREA-Net, a lightweight transfer-learning framework for dengue forecasting under limited target data. By combining ETSIR projections with backbone forecasts through an N-invariant gated residual correction, TREA-Net transfers epidemiologically informed forecasting knowledge across surveillance systems without node-specific embed-dings or backbone fine-tuning. Target adaptation requires es-timating only two global parameters, enabling deployment across geographies with different numbers of administrative units. Across Mexico and Malaysia under K ∈ { 78 , 104 }
+
+weeks of target history, TREA-Net consistently improves di-verse neural and foundation-model backbones, with statisti-cally significant gains in 9 of 10 backbone–geography com-parisons. The framework also provides calibrated prediction intervals and requires only a small correction module, mak-ing it suitable for health agencies with limited surveillance data and computational capacity. Future work will extend TREA-Net to additional diseases and surveillance systems, incorporate operational weather forecasts instead of historical climatology, and investi-gate adaptation with shorter or disrupted target histories. Prospective evaluation with public-health partners is also needed to determine how forecast improvements translate into better intervention timing, resource allocation, and out-break preparedness. 
+
+# References 
+
+Ansari, A. F.; Stella, L.; Turkmen, C.; Zhang, X.; Mercado, P.; Shen, H.; Shchur, O.; Rangapuram, S. S.; Pineda Arango, S.; Kapoor, S.; Zschiegner, J.; Maddix, D. C.; Mahoney, M. W.; Torkkola, K.; Wilson, A. G.; Bohlke-Schneider, M.; and Wang, Y. 2024. Chronos: Learning the Language of Time Series. arXiv:2403.07815. Auer, A.; Podest, P.; Klotz, D.; B¨ ock, S.; Klambauer, G.; and Hochreiter, S. 2025. TiRex: Zero-Shot Forecasting Across Long and Short Horizons with Enhanced In-Context Learn-ing. In Advances in Neural Information Processing Systems (NeurIPS) . ArXiv:2505.23719. Barman, M.; Panja, M.; Mishra, N.; and Chakraborty, T. 2025. Epidemic-guided deep learning for spatiotemporal forecasting of tuberculosis outbreak. Machine Learning ,114(10): 213. Bjørnstad, O. N.; Finkenst¨ adt, B. F.; and Grenfell, B. T. 2002. Dynamics of Measles Epidemics: Estimating Scal-ing of Transmission Rates Using a Time Series SIR Model. 
+
+Ecological Monographs , 72(2): 169–184. Cao, J.; Cheng, Z.; Su, M.; and Hui, C. 2026. Infer-ring unobserved vector dynamics for dengue forecasting using physics-informed neural networks and mechanistic transmission models. BioRxiv preprint, concurrent work. doi:10.64898/2026.02.13.705693. Chakraborty, T.; Chattopadhyay, S.; and Ghosh, I. 2019. Forecasting dengue epidemics using a hybrid methodology. 
+
+Physica A: Statistical Mechanics and its Applications , 527: 121266. Chen, Y.; Ong, J. H. Y.; Rajarethinam, J.; Yap, G.; Ng, L. C.; and Cook, A. R. 2018. Neighbourhood level real-time fore-casting of dengue cases in tropical urban Singapore. BMC Medicine , 16(1): 129. Clarke, J.; et al. 2024. OpenDengue: a scalable global database of dengue case data. https://opendengue.org. Das, A.; Kong, W.; Sen, R.; and Zhou, Y. 2024. A Decoder-Only Foundation Model for Time-Series Forecasting. In 
+
+Proceedings of the 41st International Conference on Ma-chine Learning (ICML) .Deng, S.; Wang, S.; Rangwala, H.; Wang, L.; and Ning, Y. 2020. Cola-GNN: Cross-Location Attention Based Graph Neural Networks for Long-Term ILI Prediction. In Proceed-ings of the 29th ACM International Conference on Informa-tion & Knowledge Management (CIKM) .Fujita, S.; and Akutsu, T. 2025. Enhancing epidemic fore-casting with a physics-informed spatial identity neural net-work. PLOS ONE .Funk, C.; Peterson, P.; Landsfeld, M.; Pedreros, D.; Verdin, J.; Shukla, S.; Husak, G.; Rowland, J.; Harrison, L.; Hoell, A.; and Michaelsen, J. 2015. The climate hazards infrared precipitation with stations—a new environmental record for monitoring extremes. Scientific Data , 2(1): 150066. Gorelick, N.; Hancher, M.; Dixon, M.; Ilyushchenko, S.; Thau, D.; and Moore, R. 2017. Google Earth Engine: Planetary-scale geospatial analysis for everyone. Remote Sensing of Environment , 202: 18–27. Johansson, M. A.; Apfeldorf, K. M.; Dobson, S.; Devita, J.; Buczak, A. L.; Baugher, B.; et al. 2019. An open challenge to advance probabilistic forecasting for dengue epidemics. 
+
+Proceedings of the National Academy of Sciences , 116(48): 24268–24274. Kamarthi, H.; Kong, L.; Rodr´ ıguez, A.; Zhang, C.; and Prakash, B. A. 2023. When Rigidity Hurts: Soft Consis-tency Regularization for Probabilistic Hierarchical Time Se-ries Forecasting. In Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining (Ap-plied Data Science Track) .Kermack, W. O.; and McKendrick, A. G. 1927. A Contribu-tion to the Mathematical Theory of Epidemics. Proceedings of the Royal Society A , 115(772): 700–721. Laserna, A.; Barahona-Correa, J. E.; Baquero, L.; Casta˜ neda-Cardona, C.; and Rosselli, D. 2018. Eco-nomic impact of dengue fever in Latin America and the Caribbean: a systematic review. Revista Panamericana de Salud P´ ublica , 42: e111. Lee, H.; Calvin, K.; Dasgupta, D.; Krinner, G.; Mukherji, A.; Thorne, P.; Trisos, C.; Romero, J.; Aldunce, P.; Bar-rett, K.; et al. 2023. Climate change 2023: synthesis report. Contribution of working groups I, II and III to the sixth as-sessment report of the intergovernmental panel on climate change .Medeiros, H. R.; Sharifi-Noghabi, H.; Oliveira, G. L.; and Irandoust, S. 2025. Accurate Parameter-Efficient Test-Time Adaptation for Time Series Forecasting. In Proceedings of the 42nd International Conference on Machine Learning (ICML) . ArXiv:2506.23424. Mordecai, E. A.; Cohen, J. M.; Evans, M. V.; Gudapati, P.; Johnson, L. R.; Lippi, C. A.; Miazgowicz, K.; Murdock, C. C.; Rohr, J. R.; Ryan, S. J.; Savage, V.; Shocket, M. S.; Stewart Ibarra, A.; Thomas, M. B.; and Weikel, D. P. 2017. Detecting the impact of temperature on transmission of Zika, dengue, and chikungunya using mechanistic models. PLoS Neglected Tropical Diseases , 11(4): e0005568. Mu˜ noz-Sabater, J.; Dutra, E.; Agust´ ı-Panareda, A.; Al-bergel, C.; Arduini, G.; Balsamo, G.; Boussetta, S.; Choulga, M.; Harrigan, S.; Hersbach, H.; et al. 2021. ERA5-Land: a state-of-the-art global reanalysis dataset for land applica-tions. Earth System Science Data , 13(9): 4349–4383. Nie, Y.; Nguyen, N. H.; Sinthong, P.; and Kalagnanam, J. 2023. A Time Series is Worth 64 Words: Long-Term Fore-casting with Transformers. In Proceedings of the Interna-tional Conference on Learning Representations (ICLR) .Panja, M.; Chakraborty, T.; Nadim, S. S.; Ghosh, I.; Kumar, U.; and Liu, N. 2023. An ensemble neural network approach to forecast Dengue outbreak based on climatic condition. 
+
+Chaos, Solitons & Fractals , 167: 113124. Panja, M.; Modak, O.; Younes, G.; and Chakraborty, T. 2025. Zero-Shot Forecasting of Epidemics. In NeurIPS 2025 Workshop on Backdoor Reasoning, Robustness, Trust and Safety in Time Series (BERT2S) . OpenReview: h5ElB4guAd. Perez, E.; Strub, F.; de Vries, H.; Dumoulin, V.; and Courville, A. 2018. FiLM: Visual Reasoning with a Gen-eral Conditioning Layer. In Proceedings of the 32nd AAAI Conference on Artificial Intelligence .Rodr´ ıguez, A.; Adhikari, B.; and Prakash, B. A. 2022. When, why and how to build a hybrid mechanistic and deep learning model for epidemiology. arXiv preprint arXiv:2211.08271 .Rodr´ ıguez, A.; Cui, J.; Ramakrishnan, N.; Adhikari, B.; and Prakash, B. A. 2023. EINNs: Epidemiologically-Informed Neural Networks. In Proceedings of the 37th AAAI Confer-ence on Artificial Intelligence (AI for Social Impact track) .Rodr´ ıguez, A.; Muralidhar, N.; Adhikari, B.; Tabassum, A.; Ramakrishnan, N.; and Prakash, B. A. 2021. Steering a His-torical Disease Forecasting Model Under a Pandemic: Case of Flu and COVID-19. In Proceedings of the 35th AAAI Conference on Artificial Intelligence . ArXiv:2009.11407. Wan, G.; Liu, Z.; Shan, X.; Lau, M. S.; Prakash, B. A.; and Jin, W. 2025. EARTH: Epidemiology-Aware Neural ODE with Continuous Disease Transmission Graph. In Forty-second International Conference on Machine Learning .Wang; et al. 2025. An environmental time-series SIR model with multiple-step-ahead estimation for dengue forecasting. 
+
+(as cited in the main paper) .World Health Organization. 2023. Dengue and Severe Dengue: Global Situation. WHO Disease Outbreak News. Accessed November 2025. Xie, F.; Zhang, Z.; Li, L.; Zhou, B.; and Tan, Y. 2022. EpiGNN: Exploring Spatial Transmission with Graph Neu-ral Network for Regional Epidemic Forecasting. arXiv preprint arXiv:2208.11517 .Xu, C.; and Xie, Y. 2023. Conformal prediction for time series. IEEE transactions on pattern analysis and machine intelligence , 45(10): 11575–11587. Xu, J.; Zhang, W.; Jing, X.; Nie, J.; Chen, S.; and Zhang, S. 2026. CPiRi: Channel Permutation-Invariant Relational In-teraction for Multivariate Time Series Forecasting. In Pro-ceedings of the International Conference on Learning Rep-resentations (ICLR) . ArXiv:2601.20318. Zhang, S.-X.; Yang, G.-B.; Zhang, R.-J.; Zheng, J.-X.; Yang, J.; Lv, S.; Duan, L.; Tian, L.-G.; Chen, M.-X.; Liu, Q.; et al. 2024. Global, regional, and national burden of dengue, 1990–2021: findings from the global burden of disease study 2021. Decoding Infection and Transmission , 2: 100021. 
+
+# Environmental Prior: Motivation and Extraction 
+
+Nonlinear Climate Dependence of Dengue Transmission 
+
+Dengue transmission is mediated by Aedes aegypti , whose abundance and vectorial capacity respond to temperature and precipitation in nonlinear and often non-monotonic ways. This motivates using an environmentally informed mechanistic prior, rather than representing climate effects only through unconstrained linear covariates. 
+
+Temperature. Transmission potential is typically uni-modal in temperature because biting rate, viral extrinsic in-cubation, and mosquito survival are each optimized over an intermediate thermal range. Risk increases toward an 
+
+Figure 5: Empirical climate–dengue associations in the Mexico surveillance data (2017–2020). Daily climate se-ries from Google Earth Engine are aggregated weekly and aligned with dengue incidence at a four-week lead. Case counts are normalized within each state so that the curves re-flect response shape rather than differences in baseline bur-den. (a) Incidence increases with temperature to a broad op-timum around 23 –29 ◦C and declines at higher temperatures. (b) Incidence rises with moderate rainfall and then saturates. Error bars denote ±1 SEM. optimum near 29 ◦C, but declines at cooler and hotter ex-tremes, becoming negligible below approximately ∼18 ◦C
+
+and above ∼34 ◦C (Mordecai et al. 2017). A single linear temperature effect cannot represent this reversal: the same increase in temperature may raise transmission below the optimum but reduce it above the optimum. 
+
+Precipitation. Rainfall exerts competing effects on mosquito abundance (Panja et al. 2023). Moderate pre-cipitation creates and replenishes standing-water habitats, whereas intense rainfall can flush larvae and eggs from breeding containers. Dengue risk may therefore increase with rainfall up to a threshold and then saturate or decline. The piecewise environmental response in ETSIR provides a parsimonious way to represent such threshold-dependent effects. Figure 5 illustrates these relationships in the target data. Dengue incidence exhibits a hump-shaped association with temperature and a saturating, non-monotonic association with rainfall. These patterns suggest that a single linear co-variate effect is inadequate, whereas the breakpoint structure in ETSIR can represent changes in both the magnitude and direction of environmental influence. 
+
+Why ETSIR? These biological relationships motivate the ETSIR prior used in the main paper. Instead of treating tem-perature and precipitation as globally linear predictors, ET-SIR represents their effects through piecewise-linear forcing functions gT (·) and gP (·) with learned breakpoints HT and 
+
+HP . The rectified terms ( Tt− HT )+and (Pt − HP )+allow the marginal effects of temperature and rainfall to change be-yond these thresholds, thereby accommodating thermal op-tima, saturation, and potential wash-out effects. The result-ing ETSIR projection provides TREA-Net with a compact climate-aware summary of dengue transmission dynamics. Consistent with the ablation results in the main paper, this mechanistic signal contributes information beyond that con-tained in the backbone forecast alone. Climate Data Extraction 
+
+The climate covariates used by ETSIR are obtained from publicly available satellite-derived and reanalysis products accessed through Google Earth Engine (Gorelick et al. 2017). A common extraction and aggregation pipeline is ap-plied across all source and target geographies to ensure con-sistent and comparable environmental features. • Precipitation. Daily precipitation is obtained from the CHIRPS dataset ( UCSB-CHG/CHIRPS/DAILY ) (Funk et al. 2015), which provides quasi-global rainfall esti-mates at approximately ∼ 5.5 km spatial resolution. • Temperature. Daily 2 m air temper-ature is obtained from ERA5-Land (ECMWF/ERA5 LAND/DAILY AGGR ) (Mu˜ noz-Sabater et al. 2021) and converted from Kelvin to degrees Celsius. Missing pixels along coastal bound-aries are filled using a 3 × 3-pixel focal mean before aggregation to the administrative-region level. • Vector-viability mask. Both climate products are re-stricted to elevations below 2000 m using the SRTM dig-ital elevation model ( USGS/SRTMGL1 003 ). Because 
+
+Aedes aegypti occurrence and dengue transmission are substantially reduced at high elevations, this mask pre-vents cold, high-altitude pixels that are unlikely to sup-port transmission from diluting the administrative-region climate summaries. • Spatial aggregation. The masked daily rasters are spa-tially averaged within each first-level administrative polygon obtained from FAO/GAUL/2015/level1 .The resulting regional climate series are then matched to the department or state names used in the corresponding dengue surveillance data. • Temporal aggregation and lagged features. Daily cli-mate series are aggregated to epidemiological weeks, and rolling 14-, 28-, and 42-day means are constructed to capture delayed environmental effects on mosquito de-velopment and dengue transmission. At operational in-ference time, climate covariates over the forecast horizon are replaced by week-specific climatological averages es-timated exclusively from the training period, as described in the ETSIR Prior section of the main paper. The extraction pipeline is used solely for data preparation. It operates on publicly available aggregate climate rasters and first-level administrative boundaries and produces one regional table per geography with columns (date, department, precip mm, temp c) . These tables are subsequently used as inputs to the ETSIR estimation pro-cedure. 
+
+# Additional Experimental Details 
+
+Dataset Details 
+
+Table 3 summarizes the four subnational dengue surveil-lance datasets. The source–target assignment reflects surveillance maturity: Colombia and Nicaragua each pro-vide more than 15 years of weekly case records and consti-tute the transfer-source pool, whereas Mexico and Malaysia Table 3: Subnational dengue surveillance datasets. “Units” denotes the number of first-level administrative units (de-partments or states) with usable dengue case and climate series. Target datasets are evaluated under K ∈ { 78 , 104 }
+
+weeks of available local history.                     
+
+> Country Role Units Weeks Surveillance span Colombia Source 33 835 ∼16 years Nicaragua Source 18 981 ∼19 years Mexico Target 22 208 2017–2020 Malaysia Target 15 270 2010–2015
+
+are used as targets to emulate newly established surveillance programs. For each target, only the first K ∈ { 78 , 104 }
+
+weeks are available for local model training and adapta-tion, and all subsequent observations are reserved for out-of-sample testing. Each geography is paired with the CHIRPS and ERA5-Land climate covariates described in Appendix , including temperature, precipitation, and their 14-, 28-, and 42-day rolling summaries, aligned weekly for each adminis-trative unit. 
+
+Horizon-Wise Prediction-Interval Efficiency 
+
+Although empirical coverage remains broadly stable, TREA-Net changes the width of the conformal prediction intervals, particularly at longer forecast leads. In Mexico, the uncorrected TiRex backbone produces narrower intervals at short leads ( h ∈ { 1, 2}), consistent with its strong near-term autoregressive performance. As the forecast lead increases, however, the TiRex intervals widen more rapidly. At h = 8 ,TREA-Net–TiRex produces intervals that are 29.6% nar-rower than those of TiRex while maintaining comparable empirical coverage (Figure 6). This result suggests that the ETSIR-informed residual correction improves interval effi-ciency at longer leads by stabilizing the underlying point forecasts. In Malaysia, TREA-Net and TiRex produce intervals of comparable width across the forecast horizon, consistent with the smaller corrections observed in this target geog-raphy. Overall, these results indicate that incorporating the mechanistic projection can yield tighter prediction intervals at longer forecast leads without an evident loss of empirical coverage. 
+
+Empirical Coverage under Distribution Shift 
+
+Both methods exhibit some under-coverage relative to the nominal 90% level, attaining approximately 87% empirical coverage in Mexico and 81% in Malaysia. This shortfall co-incides with a shift from predominantly low-incidence val-idation periods to test periods containing larger epidemic peaks, for which forecast residuals are substantially greater. Despite this shift, TREA-Net preserves the empirical cov-erage of the corresponding zero-shot TiRex baseline. Thus, the ETSIR-informed correction improves point forecasts and interval efficiency without an observed deterioration in em-pirical coverage. Figure 6: Average EnbPI prediction-interval width by fore-cast lead in Mexico under K = 104 and nominal miscov-erage level α = 0 .10 . The shaded region indicates forecast leads for which TREA-Net–TiRex produces narrower inter-vals than the TiRex baseline. Both methods attain approxi-mately 87% empirical coverage over the test period. 
+
+Statistical Significance Testing 
+
+For each backbone–target pair, we compare TREA-Net with its corresponding backbone across the two target-history regimes, K ∈ { 78 , 104 }, and five random seeds. This yields 
+
+10 paired MAE differences per backbone–target compari-son. We apply a two-sided Wilcoxon signed-rank test to these paired differences at significance level α = 0.05 .TREA-Net achieves statistically significant improvements in 9 of the 10 backbone–target comparisons. 
+
+# Implementation Details and Compute Footprint 
+
+Table 4 summarizes the architecture and optimization set-tings for all trainable components. The correction module and the trainable forecasting backbones are optimized with early stopping using a held-out validation window and a patience of 20 epochs. TiRex is applied zero-shot and is therefore not updated. At deployment, the backbone and the source-trained correction module remain frozen, while only the two target-specific parameters (γ, β ) are estimated from the adaptation portion of the available local target history. 
+
+Compute Footprint 
+
+The transferable component is the source-trained correction module, containing approximately 5,000 parameters, which is trained once on the source pool and subsequently frozen. For a new target geography, only the two global adapta-tion parameters (γ, β ) are estimated. In our implementation, this optimization completes in under one minute on a CPU and does not require GPU acceleration. Backbone and ET-SIR forecasts are generated once and cached before adapta-tion. Consequently, the incremental computation required to adapt TREA-Net to a new surveillance system is small rela-tive to retraining or fine-tuning the forecasting backbone. Table 4: Architecture and optimization settings for all model components. Maximum epoch counts are upper bounds; early stopping with a patience of 20 epochs typically ter-minates training earlier. TiRex is applied zero-shot and its parameters were not updated.
