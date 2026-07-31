@@ -6,47 +6,50 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-07-30
-- 运行时间：2026-07-30 21:42:32 UTC
+- 最新运行日期：2026-07-31
+- 运行时间：2026-07-31 20:37:18 UTC
 - 运行状态：成功
-- 本次总论文数：9
-- 精读区：1
+- 本次总论文数：10
+- 精读区：2
 - 速读区：8
 
 ### 今日简报（AI）
-今日共阅读9篇论文，精读1篇关于区域温度场多步仿真的可解释低秩状态空间模型。最值得关注的是低秩状态空间模型与ConvLSTM在气候预测中的可解释性与有效性。建议进一步关注此类可解释模型如何提升长期气候预测的可靠性。
-- 详情：[/202607/30/README](/202607/30/README)
+今日共读10篇论文，精读2篇、速读8篇，重点关注时间序列预测与解释性研究。最值得看的是连续时间建模框架（8.0分）和信息瓶颈解释方法（8.0分），分别提升不规则时间序列预测精度与解释可信度。下一步可优先精读这两篇，再按需浏览因果推断、时序插补与降阶模型等速读方向。
+- 详情：[/202607/31/README](/202607/31/README)
 
 ### 精读区论文标签
-1. [An Interpretable Low-Rank State-Space Model for Multi-Horizon Simulation of Large-Scale Regional Temperature Fields](/202607/30/2607.27160v1-an-interpretable-low-rank-state-space-model-for-multi-horizon-simulation-of-large-scale-regional-temperature-fields)  
+1. [Enhancing Irregular Time Series Forecasting with Continuous-Time Modeling Framework](/202607/31/2607.28035v1-enhancing-irregular-time-series-forecasting-with-continuous-time-modeling-framework)  
    标签：评分：8.0/10、query:aq-forecast
-   evidence：用于多水平模拟的状态空间模型
+   evidence：面向不规则时间序列的连续时间预测框架
+2. [Information Bottleneck Learning for Faithful Time Series Forecasting Explanations](/202607/31/2607.28124v1-information-bottleneck-learning-for-faithful-time-series-forecasting-explanations)  
+   标签：评分：8.0/10、query:aq-forecast
+   evidence：基于信息瓶颈的可解释多变量时间序列预测
 
 ### 速读区论文标签
-1. [Benchmarking ConvLSTM for One-Day-Ahead IMDAA Rainfall-Field Prediction across Four Indian Cities](/202607/30/2607.26581v1-benchmarking-convlstm-for-one-day-ahead-imdaa-rainfall-field-prediction-across-four-indian-cities)  
+1. [The balance between compactness and forecast accuracy of data-driven latent-space reduced-order models in controlled wake flows](/202607/31/2607.24569v1-the-balance-between-compactness-and-forecast-accuracy-of-data-driven-latent-space-reduced-order-models-in-controlled-wake-flows)  
    标签：评分：7.0/10、query:aq-forecast
-   evidence：降雨场预测作为与空气污染相关的气象任务
-2. [TREA-Net: A Transferable Residual Epidemiological Adaptation Network for Dengue Incidence Forecasting](/202607/30/2607.26854v1-trea-net-a-transferable-residual-epidemiological-adaptation-network-for-dengue-incidence-forecasting)  
-   标签：评分：7.0/10、query:aq-forecast
-   evidence：使用时间序列模型和迁移学习的登革热发病率预测
-3. [Climate-resilient electric vehicle charging infrastructure for sustainable cities: An interpretable causal-ensemble framework for preventive maintenance and low-carbon mobility](/202607/30/2607.21444v1-climate-resilient-electric-vehicle-charging-infrastructure-for-sustainable-cities-an-interpretable-causal-ensemble-framework-for-preventive-maintenance-and-low-carbon-mobility)  
+   evidence：隐空间时间步进预测方法，可用于时空预测建模
+2. [Distributed and recursive Bayesian inference for Big Data and complex spatio-temporal models](/202607/31/2607.23396v1-distributed-and-recursive-bayesian-inference-for-big-data-and-complex-spatio-temporal-models)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：使用时间序列集成方法的电动汽车充电基础设施故障风险预测
-4. [Covariance-Boosted Gaussian Processes for Spatiotemporal Irregularities](/202607/30/2607.23018v1-covariance-boosted-gaussian-processes-for-spatiotemporal-irregularities)  
+   evidence：面向复杂时空模型的分布式贝叶斯推断框架
+3. [Impute On-Demand: Adaptive Correlated Time Series Imputation for Changing Environments](/202607/31/2607.23503v1-impute-on-demand-adaptive-correlated-time-series-imputation-for-changing-environments)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：用于不规则时空时间序列的高斯过程方法
-5. [Capacity-Aware Deep Learning for Generalizable Traffic Volume Estimation Across Links and Cities](/202607/30/2607.24056v1-capacity-aware-deep-learning-for-generalizable-traffic-volume-estimation-across-links-and-cities)  
+   evidence：面向缺失数据的相关时间序列自适应插补方法
+4. [Neural Architecture Search for Traffic Prediction: A Survey of Methods, Challenges, and Future Directions](/202607/31/2607.26467v1-neural-architecture-search-for-traffic-prediction-a-survey-of-methods-challenges-and-future-directions)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：使用时间序列数据的交通流量估计
-6. [Physics-Informed CNN-LSTM for Street-Scale Urban Flood Prediction: Reconciling Aggregate Accuracy and Street-Level Plausibility](/202607/30/2607.25148v1-physics-informed-cnn-lstm-for-street-scale-urban-flood-prediction-reconciling-aggregate-accuracy-and-street-level-plausibility)  
+   evidence：面向交通预测的NAS综述，交通预测与空气质量同属时空预测
+5. [Hierarchical Spatio-Temporal Transformer for Coherent Emergency Department Forecasting](/202607/31/2607.27106v1-hierarchical-spatio-temporal-transformer-for-coherent-emergency-department-forecasting)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：物理信息CNN-LSTM用于时间序列预测（空间网格）
-7. [Neural Architecture Search for Traffic Prediction: A Survey of Methods, Challenges, and Future Directions](/202607/30/2607.26467v1-neural-architecture-search-for-traffic-prediction-a-survey-of-methods-challenges-and-future-directions)  
+   evidence：层次化时空Transformer实现多级协调需求预测，可迁移的时间序列预测方法
+6. [An Interval-Score ROC Curve for Assessment, Calibration and Ensembling of Probabilistic Forecasts](/202607/31/2607.28178v1-an-interval-score-roc-curve-for-assessment-calibration-and-ensembling-of-probabilistic-forecasts)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：面向时空交通预测的神经架构搜索
-8. [Skillful forecasting of offshore winds from satellite scatterometer constellations](/202607/30/2607.27152v1-skillful-forecasting-of-offshore-winds-from-satellite-scatterometer-constellations)  
+   evidence：概率预测评估与校准框架，适用于时间序列预测
+7. [Weather Emulators at the Frontier of Heat Extremes Predictability](/202607/31/2607.28220v1-weather-emulators-at-the-frontier-of-heat-extremes-predictability)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：利用卫星数据和深度学习进行海上风速预测
+   evidence：深度学习天气模拟器用于10-15天提前期的全球温度预报
+8. [Forecasting Land Art Under Climate Scenarios](/202607/31/2607.28489v1-forecasting-land-art-under-climate-scenarios)  
+   标签：评分：6.0/10、query:aq-forecast
+   evidence：面向气候情景的环境时间序列两阶段预测流程
 
 
 <div class="dpr-home-promo-card">
