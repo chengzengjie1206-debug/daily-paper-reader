@@ -1,0 +1,679 @@
+Title: Crossing-Free Probabilistic K-Line Forecasts Without Retraining
+
+URL Source: https://arxiv.org/pdf/2607.26792v1
+
+Published Time: Thu, 30 Jul 2026 00:47:59 GMT
+
+Number of Pages: 8
+
+Markdown Content:
+# Crossing-Free Probabilistic K-Line Forecasts Without Retraining 
+
+# Runyao Yu ∗
+
+London Business School London, United Kingdom ryu@london.edu 
+
+# Yuchen Tao 
+
+RWTH Aachen University Aachen, Germany yuchen.tao@rwth-aachen.de 
+
+# Yujie Chen 
+
+The Chinese University of Hong Kong Shenzhen, China chenyujie@cuhk.edu.cn 
+
+# Wentao Wang 
+
+University of Technology Sydney Sydney, Australia wentao.wang@student.uts.edu.au 
+
+# Derek W. Bunn 
+
+London Business School London, United Kingdom dbunn@london.edu 
+
+## Abstract 
+
+Probabilistic K-line forecasting describes uncertainty in four com-plementary prices, namely open–high–low–close (OHLC). How-ever, it introduces two consistency problems: quantile crossing and K-line crossing. Quantile crossing occurs when a higher-quantile forecast falls below a lower-quantile forecast, while K-line cross-ing occurs when the forecast low exceeds the open or close, or the forecast high falls below the open or close. Existing solutions generally address only one problem through output reordering, spe-cialized architectures, or penalized training objectives. We propose K-line–Quantile Sequential Projection (KQSP), a parameter-free and training-free reconciliation method applicable to forecasts pro-duced by any model. Compared with other crossing solutions, KQSP preserves predictive accuracy while producing substantially smaller corrections to the original forecasts. To mitigate model bias, we evaluate KQSP using various models, including pretrained foun-dation models. KQSP reduces both quantile and K-line crossing rates to zero for all test data undertaken. These results show that probabilistic K-line consistency can be enforced independently of forecast generation and without retraining. 
+
+## CCS Concepts 
+
+• Computing methodologies → Machine learning ; • Applied computing → Economics .
+
+## Keywords 
+
+probabilistic k-line forecasting, forecast correction, time-series foundation models 
+
+ACM Reference Format: 
+
+Runyao Yu, Yuchen Tao, Yujie Chen, Wentao Wang, and Derek W. Bunn. 2026. Crossing-Free Probabilistic K-Line Forecasts Without Retraining. In 
+
+Proceedings of (Preprint). ACM, New York, NY, USA, 8 pages. https://doi. org/10.1145/nnnnnnn.nnnnnnn 
+
+## 1 Introduction 
+
+Probabilistic forecasts are particularly valuable in uncertain finan-cial markets as they describe possible outcomes and tail risks rather than providing only one expected value [ 7]. However, most prob-abilistic financial forecasting studies focus on a single price tar-get [ 3, 4, 16 ], such as index level or close price [ 11 , 12 ]. K-line fore-casting, also known as candlestick or open–high–low–close (OHLC) 
+
+> ∗Runyao Yu is also affiliated with Delft University of Technology and the AIT Austrian Institute of Technology.
+
+forecasting, predicts four complementary price landmarks [ 9, 10 ]. The open price reflects the valuation at the beginning of a trad-ing period, the high and low prices determine the realized trading range and extreme movements, and the close price summarizes the terminal valuation. Joint OHLC forecasts can consequently support entry and exit decisions, stop-loss placement, intraperiod risk as-sessment, and trading strategies that cannot be constructed from a single price index alone. However, existing K-line forecasting research remains predomi-nantly pointwise. Structural VAR and VECM models forecast one OHLC vector for each period [ 10 ], while Transformer-based meth-ods similarly produce point forecasts for the four prices [ 9]. Con-versely, most probabilistic financial forecasting studies estimate the distribution of only one target [ 3, 18 ]. Probabilistic K-line forecast-ing combines these two settings by predicting multiple quantiles for all four prices, thereby describing the uncertainty of the opening price, closing price, and trading range simultaneously. Although financial econometric models commonly forecast returns as asset price levels are often nonstationary, we retain price levels to align with the existing K-line forecasting literature and preserve the di-rect interpretation of OHLC forecasts. Kronos represents a rare recent attempt to generate K-line paths [ 15 ]. Nevertheless, to our knowledge, the simultaneous reconciliation of probabilistic K-line forecasts has not been studied as a model-agnostic and training-free problem. Probabilistic K-line forecasts introduce two distinct consistency problems. As illustrated in Fig. 1, quantile crossing occurs when a higher quantile falls below a lower quantile; K-line crossing occurs when the predicted high is lower than the open or close, or the predicted low is higher than the open or close. These violations can occur simultaneously, as a probabilistic K-line forecast must preserve both the quantile order of every feature and the OHLC relations at every quantile level. K-line crossing has received comparatively limited attention. Ex-isting solutions incorporate OHLC relations through model-specific designs and penalty terms in the training loss [ 9]. Quantile cross-ing has been studied more extensively through post-hoc reorder-ing [ 5], penalized quantile-regression objectives [ 13 ], and hierar-chical multi-quantile heads [ 19 – 21 ]. However, these methods are designed for one constraint family and do not independently guar-antee both quantile and K-line consistency. Moreover, training-time approaches require model modification, retraining, or penalty selec-tion, whereas reordering can alter the original quantile assignments and change forecasts more than necessary. 
+
+> 1arXiv:2607.26792v1 [stat.ML] 29 Jul 2026
+
+Preprint, Under Review, - Yu et al. Crossing issues Proposed KQSP Forecast correction                                                        
+
+> Quantile crossing
+> Price
+> Horizon
+> q90
+> q50
+> q10
+> K-Line Crossing
+> Price
+> QC Monotone quantiles
+> qτ₁≤ q τ₂ ≤ ··· ≤ q τK
+> KC Valid OHLC relations
+> L ≤ min(O, C) ≤ max(O, C) ≤ H
+> ẐKQSP = P Q( P O(Z) )
+> Raw forecast matrix Z
+> (may cause both crossing issues)
+> Stage 1
+> K-Line projection P O
+> Stage 2 Quantile projection P Q
+> q10 q50 q90 O95 100 105
+> H99 99 105
+> L95 98 99
+> C99 101 99
+> q10 q50 q90
+> O95 100 105
+> H99 100 105
+> L95 98 99
+> C99 100 99
+> q10 q50 q90
+> O95 100 105
+> H99 100 105
+> L95 98 99
+> C99 99.5 99.5
+> Any forecaster
+> TimesFM TimesFM 2.5 Chronos Chronos-2 Moirai Time-MoE TabPFN Kronos
+> Each stage is an orthogonal projection ⇒minimizes correction error
+> subject to the respective constraint.
+> ⌘
+> Model-agnostic
+> Works with any forecaster
+> ↻
+> No retraining
+> Post-hoc projection only
+> ⇵
+> No parameters
+> Not add additional model weights
+> ◎
+> No tuning
+> Deterministic and reproducible
+> Raw matrix Z
+> KQSP
+> PQ(P O(·))
+> Repaired probabilistic K-Line forecasts
+> (satisfies KC and QC) Horizon
+> - - C - -H
+> - - O - - L ANN
+
+Figure 1: Overview of the work. Left: illustration of the two crossing issues. Middle: a numerical example of KQSP, which sequentially applies the K-line projection and quantile projection to repair the raw forecast. Right: model-agnostic application of KQSP to probabilistic K-line forecasts generated by various models. Close price     
+
+> BMW Volkswagen Mercedes
+> Close price
+> BP Shell PetroChina
+> Close price
+> Goldman LSEG JPMorgan
+> Close price
+> Google Microsoft Meta
+
+(a) (b) (c) (d)
+
+Figure 2: Min–max-scaled close prices over the common period from January 1 to July 23, 2026. The panels show three stocks from each category: (a) Automobile, (b) Energy, (c) Finance, and (d) Technology. 
+
+In this work, we propose K-line–Quantile Sequential Projection (KQSP), a training-free method that reconciles any existing proba-bilistic K-line forecast. KQSP first applies the minimum-distance K-line projection at each quantile level and then applies the minimum-distance quantile projection to each OHLC feature, which will be detailed in Section 4. KQSP introduces no additional parameter, hy-perparameter, loss penalty, or retraining requirement. We evaluate KQSP on various stocks using forecasts from a fully trained Artifi-cial Neural Network (ANN) and eight zero-shot foundation models, and compare it with multiple crossing solutions. KQSP eliminates both crossing types for every evaluated case without compromising predictive performance. Instead, these predictive metrics are fre-quently improved with statistical significance, while KQSP changes the original forecasts less than other crossing solutions. The main contributions are threefold: 
+
+• We propose K-line–Quantile Sequential Projection (KQSP), a model-agnostic method that removes quantile and K-line crossings, without introducing parameters, hyperparameters, loss penalties, or retraining. 
+
+• We systematically compare KQSP with multiple crossing solutions. KQSP achieves comparable predictive accuracy to the other methods while producing significantly smaller corrections. 
+
+• We evaluate KQSP across a fully trained ANN and various zero-shot foundation models. KQSP eliminates all remaining crossings and consistently improves AQL, MAE, and RMSE, demonstrating robustness across forecasting models with substantially different architectures. 
+
+## 2 Preliminary 2.1 Quantile Crossing 
+
+Let T = {𝜏 1 < · · · < 𝜏 𝑄 } be 𝑄 ordered quantile levels, let F =
+
+{𝑂, 𝐻, 𝐿, 𝐶 } denote open, high, low, and close, and let Z = [𝑧 𝑞𝑓 ] ∈ 
+
+R𝑄 ×4 be one raw probabilistic forecast, where 𝑧 𝑞𝑓 is the forecast at level 𝜏 𝑞 for feature 𝑓 ∈ F . Quantile consistency requires every feature-specific vector to belong to the monotone cone 
+
+CQ = {v ∈ R𝑄 : 𝑣 1 ≤ · · · ≤ 𝑣 𝑄 }. (1) A quantile crossing occurs when 𝑧 𝑞𝑓 > 𝑧 𝑞 +1,𝑓 for at least one adjacent pair. Independent unconstrained outputs can violate this order under finite data and imperfect optimization. For example, at levels (0.1, 0.5, 0.9), open forecasts (95 , 105 , 100 ) cross because the 
+
+0.9-quantile forecast 100 is lower than the median forecast 105 .
+
+2Crossing-Free Probabilistic K-Line Forecasts Without Retraining Preprint, Under Review, -
+
+Table I: Data set summary. Mean and standard deviation of daily OHLC prices in native units. 
+
+Open High Low Close Stock Category Exchange Currency Ticker Mean Std. Mean Std. Mean Std. Mean Std. BMW Automobile Xetra EUR BMW 81.05 12.56 81.90 12.57 80.16 12.53 81.04 12.57 Mercedes Automobile Xetra EUR MBG 54.46 11.27 55.05 11.32 53.85 11.21 54.45 11.27 Volkswagen Automobile Xetra EUR VOW 153.75 50.35 155.69 51.26 151.67 49.23 153.62 50.27 BP Energy LSE GBX BP. 441.95 85.97 446.89 85.88 437.12 85.80 441.86 85.90 PetroChina Energy HKEX HKD 00857 7.14 1.87 7.22 1.91 7.07 1.85 7.15 1.88 Shell Energy LSE GBX SHEL 2251.40 514.40 2274.34 515.77 2229.66 513.93 2251.21 515.20 Goldman Finance NYSE USD GS 367.03 206.59 371.23 209.41 362.96 203.84 367.20 206.76 JPMorgan Finance NYSE USD JPM 153.79 68.84 155.29 69.55 152.34 68.19 153.85 68.90 LSEG Finance LSE GBX LSEG 7161.82 2405.01 7238.58 2429.66 7083.68 2377.85 7161.80 2403.31 Google Technology Nasdaq USD GOOG 117.48 76.88 118.84 77.89 116.24 75.94 117.58 76.99 Meta Technology Nasdaq USD META 308.56 185.62 312.49 187.71 304.56 183.09 308.59 185.39 Microsoft Technology Nasdaq USD MSFT 249.07 137.73 251.42 138.87 246.57 136.44 249.10 137.69 
+
+## 2.2 K-Line Crossing 
+
+For quantile index 𝑞 , let z𝑞 = (𝑧 𝑞𝑓 )𝑓 ∈ F denote its OHLC forecast. K-line consistency requires this vector to belong to 
+
+CO = {( 𝑂, 𝐻, 𝐿, 𝐶 ) ∈ R4 : 𝐿 ≤ min (𝑂, 𝐶 ),
+
+max (𝑂, 𝐶 ) ≤ 𝐻 }. (2) A K-line crossing occurs when 𝑧 𝑞𝐻 < max {𝑧 𝑞𝑂 , 𝑧 𝑞𝐶 } or 𝑧 𝑞𝐿 >
+
+min {𝑧 𝑞𝑂 , 𝑧 𝑞𝐶 }. Independent feature outputs need not preserve these semantic bounds. For example, (100 , 99 , 98 , 101 ) in (𝑂, 𝐻, 𝐿, 𝐶 ) order crosses because high 99 is below close 101 .
+
+## 3 Data 
+
+We use 30,174 daily OHLCV observations, where V denotes trading volume, from 12 stocks across four categories. The data span July 23, 2016 to July 23, 2026, with 2,427–2,537 observations per stock. Each eligible sample uses a historical OHLCV window to predict the next-day OHLC vector. Samples are ordered chronologically and split without shuffling into 70% training, 15% validation, and 15% testing subsets. All input and output scalers are fitted on training data only. Table I reports descriptive statistics of the OHLC prices in their native units. For visual comparability and to reveal the overall tem-poral trends, each category panel in Fig. 2 rescales every stock’s 2026 close prices to [0, 1] over the displayed period. Together, the summary table and figure demonstrate substantial diversity in price scale, temporal shape, and business domain, providing heteroge-neous cases for evaluating forecast reconciliation. 
+
+## 4 Method 4.1 Backbone-Agnostic Forecast Interface 
+
+The probabilistic K-line forecasts Z = [𝑧 𝑞𝑓 ] ∈ R𝑄 ×4 may come from a fully trained ANN, a zero-shot foundation model (FM), or any other backbone with the same output interface. For an ANN, a shared representation h = 𝑓 𝜽 (x) is mapped by its existing output layer to Z, where x is the historical input and 𝜽 denotes the back-bone parameters. Our primary goal is not to optimize the backbone, engineer features, or construct optimal factors for predictive accu-racy. Instead, we isolate whether quantile and K-line crossings can be removed from existing density forecasts, regardless of whether their native predictive performance is strong or weak. 
+
+## 4.2 K-line–Quantile Sequential Projection (KQSP) 
+
+KQSP is a parameter-free sequential projection method that makes probabilistic K-line forecasts Z = [𝑧 𝑞𝑓 ] ∈ R𝑄 ×4 crossing-free. Each row of Z contains the OHLC forecasts at one quantile level, while each column contains all quantile forecasts for one OHLC feature. KQSP first corrects each row to satisfy the K-line constraints and then corrects each column to satisfy the quantile order, using the minimum-distance correction at each stage. The projection is 
+
+bZKQSP = PQ (P O (Z)) , (3) where PO denotes the OHLC projection, PQ denotes the quantile projection, and bZKQSP is the final forecast. The size of a correction is measured by 
+
+𝐸 corr (bZ, Z) =
+
+> 𝑄
+
+∑︁ 
+
+> 𝑞 =1
+
+∑︁ 𝑓 ∈ F 
+
+(b𝑧 𝑞𝑓 − 𝑧 𝑞𝑓 )2. (4) A smaller value means that the corrected forecast remains closer to the original forecast, which is critical when the original model is considered reliable and only the minimum correction required to remove crossings is desired. 
+
+Stage 1: K-line projection. For each quantile level 𝑞 , KQSP finds the valid OHLC vector closest to the original row: 
+
+c★ 
+
+> 𝑞
+
+= arg min 
+
+> c∈ C O
+
+∥c − z𝑞 ∥22, (5)  
+
+> 3Preprint, Under Review, -Yu et al.
+
+where CO contains all vectors satisfying 𝐻 ≥ 𝑂 , 𝐻 ≥ 𝐶 , 𝐿 ≤ 𝑂 ,and 𝐿 ≤ 𝐶 . Because there are only four relations, KQSP checks every possible combination in which one or more relations become equalities and selects the valid result with the smallest correction. For example, consider (𝑂, 𝐻, 𝐿, 𝐶 ) = (100 , 99 , 98 , 101 ). The high forecast is below both the open and close forecasts. One possible correction is to raise 𝐻 from 99 to 101 , producing (100 , 101 , 98 , 101 )
+
+with squared correction (101 − 99 )2 = 4. KQSP instead makes a smaller joint correction: it raises 𝐻 from 99 to 100 and lowers 𝐶 
+
+from 101 to 100 . It therefore returns c★ 
+
+> 𝑞
+
+= (100 , 100 , 98 , 100 ) with squared correction (100 − 99 )2 + ( 100 − 101 )2 = 2. Thus, KQSP satisfies all OHLC relations while changing the original forecast less than the one-sided correction. 
+
+Stage 2: quantile projection. After correcting all rows, let c★
+
+> :𝑓
+
+contain the forecasts of feature 𝑓 across all quantile levels. KQSP finds the closest nondecreasing sequence: 
+
+bzKQSP :𝑓 = arg min 
+
+> v∈ C Q
+
+∥v − c★ 
+
+> :𝑓
+
+∥22, (6) where CQ contains all sequences satisfying 𝑣 1 ≤ · · · ≤ 𝑣 𝑄 . KQSP checks the quantiles from low to high. Whenever consecutive values decrease, it replaces the violating group with its mean and continues until the complete sequence is nondecreasing. For example, consider quantile levels (𝜏 1, 𝜏 2, 𝜏 3) = (0.1, 0.5, 0.9)
+
+and the crossed sequence c★ 
+
+> :𝑓
+
+= (99 , 100 , 99 ). The forecasts at 𝜏 2 and 
+
+𝜏 3 are incorrectly ordered because 99 < 100 . One possible correction is to raise the 𝜏 3 forecast from 99 to 100 , producing (99 , 100 , 100 )
+
+with squared correction (99 − 100 )2 = 1. KQSP instead makes a smaller joint correction: it lowers the 𝜏 2 forecast from 100 to 
+
+99 .5 and raises the 𝜏 3 forecast from 99 to 99 .5. It therefore returns 
+
+bzKQSP :𝑓 = (99 , 99.5 , 99.5 ) with squared correction (100 − 99 .5)2 +(99 − 99 .5)2 = 0.5. Thus, KQSP restores the quantile order while changing the original forecasts less than the one-sided correction. The exemplary correction errors are used in Section 5 to explain the intuition behind KQSP and compare it with alternative crossing solutions. 
+
+Preservation of K-line consistency. Stage 2 does not reintro-duce the K-line crossings removed in Stage 1. After Stage 1, the forecasts satisfy 𝑐 ★ 
+
+> 𝑞𝐿
+
+≤ 𝑐 ★ 
+
+> 𝑞𝑂
+
+, 𝑐 ★ 
+
+> 𝑞𝐿
+
+≤ 𝑐 ★ 
+
+> 𝑞𝐶
+
+, 𝑐 ★ 
+
+> 𝑞𝑂
+
+≤ 𝑐 ★ 
+
+> 𝑞𝐻
+
+, and 𝑐 ★ 
+
+> 𝑞𝐶
+
+≤ 𝑐 ★ 
+
+> 𝑞𝐻
+
+at every quantile level 𝑞 . Stage 2 applies the same minimum-distance projection to each feature column. This projection preserves the order between columns: if one column is no greater than another at every quantile level before projection, it remains no greater af-terward. Therefore, 
+
+b𝑧 KQSP  
+
+> 𝑞𝐿
+
+≤ min 
+
+nb𝑧 KQSP  
+
+> 𝑞𝑂
+
+, b𝑧 KQSP 
+
+> 𝑞𝐶
+
+o
+
+, b𝑧 KQSP  
+
+> 𝑞𝐻
+
+≥ max 
+
+nb𝑧 KQSP  
+
+> 𝑞𝑂
+
+, b𝑧 KQSP 
+
+> 𝑞𝐶
+
+o
+
+, ∀𝑞. 
+
+(7) Hence, Stage 2 enforces quantile order while preserving the K-line consistency obtained in Stage 1. 
+
+Method Characteristics. KQSP introduces no additional pa-rameter, hyperparameter, penalty term, or loss modification and requires no retraining. It can be applied directly to probabilistic K-line forecasts produced by any forecasting model, regardless of its architecture or training procedure. Because KQSP operates only on the forecast matrix, the original model and its predictive process remain unchanged. 
+
+Table II: Corrections for the K-line example (100 , 99 , 98 , 101 )
+
+and the quantile example (99 , 100 , 99 ). Bold values indicate corrected forecasts.                                                    
+
+> Method K-line forecast Quantile forecast Correction error KQSP (100 ,100 ,98 ,100 )(99 ,99.5 ,99.5 )2+0.5=2.5
+> Cumulative Max. (100 ,101 ,98 ,101 )(99 ,100 ,100 )4+1=5
+> Reordering (99 ,101 ,98 ,100 )(99 ,99 ,100 )6+2=8
+> Joint Projection (100 ,100 ,98 ,100 )(99 ,99.5 ,99.5 )2+0.5=2.5
+
+## 5 Baselines 5.1 Crossing Solutions 
+
+No Constraint. This baseline returns the raw forecast without correction: 
+
+bZNC = Z. (8) 
+
+Cumulative Maximum. This baseline first corrects each OHLC row while keeping its open and close forecasts unchanged: 
+
+zCM  
+
+> 𝑞
+
+=  𝑧 𝑞𝑂 , max {𝑧 𝑞𝐻 , 𝑧 𝑞𝑂 , 𝑧 𝑞𝐶 }, min {𝑧 𝑞𝐿 , 𝑧 𝑞𝑂 , 𝑧 𝑞𝐶 }, 𝑧 𝑞𝐶 
+
+ . (9) It then corrects each feature column by replacing every forecast with the largest value observed at that or any lower quantile level: 
+
+b𝑧 CM  
+
+> 𝑞𝑓
+
+= max    
+
+> 1≤𝑗 ≤𝑞
+
+𝑧 CM  
+
+> 𝑗 𝑓
+
+, (10) where 𝑗 indexes the quantile levels up to 𝑞 .For the OHLC example (100 , 99 , 98 , 101 ) and the quantile exam-ple (99 , 100 , 99 ) introduced in Section 4.2, Table II summarizes the corrected forecasts and corresponding correction errors. The cu-mulative maximum method increases the correction error by 100% 
+
+compared with KQSP. 
+
+Reordering. This baseline corrects an OHLC row by sorting its four values. Let 𝑎 𝑞 (1) ≤ 𝑎 𝑞 (2) ≤ 𝑎 𝑞 (3) ≤ 𝑎 𝑞 (4) denote the sorted values of z𝑞 . The minimum is assigned to low, the maximum to high, and the two middle values to open and close while retaining their original direction: 
+
+zRE  
+
+> 𝑞
+
+=
+
+(  𝑎 𝑞 (2) , 𝑎 𝑞 (4) , 𝑎 𝑞 (1) , 𝑎 𝑞 (3)
+
+ , 𝑧 𝑞𝑂 ≤ 𝑧 𝑞𝐶 ,
+
+ 𝑎 𝑞 (3) , 𝑎 𝑞 (4) , 𝑎 𝑞 (1) , 𝑎 𝑞 (2)
+
+ , 𝑧 𝑞𝑂 > 𝑧 𝑞𝐶 . (11) It then sorts each feature column in ascending quantile order: 
+
+bzRE :𝑓 = sort ↑
+
+
+
+𝑧 RE 1𝑓 , . . . , 𝑧 RE 
+
+> 𝑄 𝑓
+
+
+
+. (12) Although Reordering removes both crossing types, it permutes the predicted values instead of minimizing their displacement. Con-sequently, a value originally produced for one OHLC feature or quantile level may be reassigned to another, breaking the associa-tion between the input and output. As shown in Table II, Reordering yields the highest total correction error for these examples. 
+
+Hierarchical. The hierarchical head was proposed in [ 21 ]. Let 
+
+U = [𝑢 𝑞𝑓 ] ∈ R𝑄 ×4 denote the native output of the hierarchical model, where 𝑞 indexes the quantile level and 𝑓 ∈ F indexes the OHLC feature. The non-negative residual is 
+
+𝑟 𝑞𝑓 = |𝑢 𝑞𝑓 |. (13)  
+
+> 4Crossing-Free Probabilistic K-Line Forecasts Without Retraining Preprint, Under Review, -
+
+Let 𝑚 denote the median-quantile index satisfying 𝜏 𝑚 = 0.5.Hierarchical 1 uses the median output as its starting point and re-cursively adds or subtracts the residuals: 
+
+b𝑧 H1  
+
+> 𝑞𝑓
+
+=
+
+
+
+𝑢 𝑚𝑓 , 𝑞 = 𝑚, 
+
+b𝑧 H1  
+
+> 𝑞 −1,𝑓
+
++ 𝑟 𝑞𝑓 , 𝑞 > 𝑚, 
+
+b𝑧 H1  
+
+> 𝑞 +1,𝑓
+
+− 𝑟 𝑞𝑓 , 𝑞 < 𝑚. 
+
+(14) This construction enforces quantile order but does not enforce the OHLC relations. Inspired by Hierarchical 1, Hierarchical 2 interprets 𝑢 𝑞𝑂 and 𝑢 𝑞𝐶 
+
+as the open and close forecasts and uses the remaining outputs as non-negative high and low residuals: 
+
+bzH2  
+
+> 𝑞
+
+=  𝑢 𝑞𝑂 , max {𝑢 𝑞𝑂 , 𝑢 𝑞𝐶 } + 𝑟 𝑞𝐻 , min {𝑢 𝑞𝑂 , 𝑢 𝑞𝐶 } − 𝑟 𝑞𝐿 , 𝑢 𝑞𝐶 
+
+ .
+
+(15) This construction enforces the OHLC relations but does not enforce quantile order. Hierarchical 3 combines the recursive quantile construction of Hierarchical 1 with the OHLC construction of Hierarchical 2 to en-force both constraint families. The hierarchical decoders introduce no additional trainable vari-ables or loss penalties, but they change the meanings of the native outputs from direct forecasts to residuals. They therefore require loading the corresponding model weights and retraining the model. Their correction errors cannot be determined from the two fore-cast examples alone because their outputs depend on the residuals learned during retraining. Errors may also accumulate along the recursive chain: an upper quantile depends on the preceding lower quantile, so an error in that lower quantile is propagated to all subsequent upper quantiles. The same propagation can occur from the median toward the lower quantiles. 
+
+Joint Projection. To evaluate the stage-wise design of KQSP, we introduce Joint Projection as a comparison variant rather than an existing baseline. Like KQSP, JP corrects both crossing types, but it enforces both constraints simultaneously: 
+
+bZJP = arg min 
+
+> V∈ C J
+> 𝑄
+
+∑︁ 
+
+> 𝑞 =1
+
+∑︁ 𝑓 ∈ F 
+
+(𝑣 𝑞𝑓 − 𝑧 𝑞𝑓 )2, (16) where 𝐶 J denotes the set satisfying both the quantile and K-line constraints. Because this is a strictly convex quadratic program with linear constraints, it has a unique global solution. Since KQSP is also feasible, 
+
+𝐸 corr 
+
+bZJP , Z
+
+
+
+≤ 𝐸 corr 
+
+bZKQSP , Z
+
+
+
+. (17) In Table II, KQSP happens to attain the same correction error as Joint Projection. Joint Projection guarantees the minimum correc-tion error but solves one coupled problem over all forecasts, even when only one crossing type is present. KQSP instead uses sequen-tial projections, and an already-satisfied stage can be skipped. We include Joint Projection to test whether its theoretical reduction in correction error yields an empirical improvement over KQSP. 
+
+## 5.2 Forecasting Models 
+
+ANN. The artificial neural network (ANN) is trained from scratch for each stock and serves as the reference model. It represents a conventional task-specific approach against which the zero-shot foundation models are compared later. For each stock, we sample 100 ANN configurations. The number of hidden layers is sampled from {1, 2, 3, 4, 5}; units per layer from the integers [2, 512 ]; learn-ing rate log-uniformly from [10 −5, 10 −2]; dropout uniformly from 
+
+[0, 0.9]. Each model uses the nine quantiles T = {0.1, 0.2, . . . , 0.9},batch size of 256, and 500 epochs. The validation-best configuration is selected separately for each stock, and its untouched test split is used for Table III. 
+
+TimesFM. Developed by Google Research, TimesFM is pretrained on large-scale real-world and synthetic time series from diverse domains [ 6]. We evaluate the original TimesFM and the newer 200-million-parameter TimesFM 2.5. 
+
+Chronos. Developed by Amazon, the Chronos family provides generic probabilistic forecasting based on public and synthetic pretraining data [ 1, 2 ]. We evaluate both Chronos and Chronos-2, which support multivariate and covariate-informed forecasting. 
+
+Moirai. Moirai is a universal time-series foundation model pre-trained on the Large-scale Open Time Series Archive (LOTSA) [ 17 ]. LOTSA contains more than 27 billion observations collected from nine application domains. 
+
+Time-MoE. Time-MoE is a sparse mixture-of-experts foundation model designed to investigate scaling and computational efficiency in time-series forecasting [ 14 ]. It is pretrained on Time-300B, which contains more than 300 billion time points from nine domains. 
+
+TabPFN. TabPFN-TS adapts a tabular foundation model to zero-shot time-series forecasting [ 8]. Because the underlying model is pretrained entirely on synthetic data, its pretraining corpus does not contain observations from real-world forecasting benchmarks. 
+
+Kronos. Kronos is a finance-specific foundation model pretrained on more than 12 billion OHLCV candlestick records from 45 global exchanges and seven temporal granularities [15]. The Kronos pre-training corpus ends in June 2024, whereas the shared test period used by Kronos and the fully trained ANN spans January 17, 2025 to July 23, 2026. Therefore, no test observations overlap the Kronos pretraining period. 
+
+Input and Output Specification. The univariate models TimesFM, Chronos, and Time-MoE receive the historical sequence of each OHLC target separately. TimesFM 2.5 and TabPFN receive each target history together with the remaining OHLCV channels as lag covariates, whereas Chronos-2, Moirai, and Kronos receive multi-variate historical sequences. TimesFM, TimesFM 2.5, Chronos-2, and TabPFN directly provide probabilistic outputs. Chronos, Moirai, and Kronos construct quantiles from sampled future paths, while Time-MoE converts its point forecast into quantiles using past one-step residuals. 
+
+## 6 Evaluation Metrics 
+
+Let 𝑖 ∈ { 1, . . . , 𝑁 } index the 𝑁 test samples, let 𝑦 𝑖 𝑓 be the realized value of feature 𝑓 , and let 𝑧 𝑖𝑞𝑓 be its raw quantile forecast. 
+
+Quantile Crossing Rate (QCR) is the percentage of samples with at least one quantile crossing, 
+
+QCR = 100 
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+1∃( 𝑞, 𝑓 ) : 𝑧 𝑖𝑞𝑓 > 𝑧 𝑖,𝑞 +1,𝑓 . (18)  
+
+> 5Preprint, Under Review, -Yu et al.
+
+Table III: Before–after test metrics for the validation-best ANN of each stock. 
+
+QCR (%) KCR (%) AQL QCE (%) MAE RMSE Stock Before After 𝑃 Before After 𝑃 Before After 𝑃 Before After 𝑃 Before After 𝑃 Before After 𝑃 
+
+BMW 82.41 0.00 *** 10.76 0.00 *** 0.39 0.39 *** 3.49 3.43 0.96 0.95 *** 1.39 1.38 ** 
+
+Mercedes 86.61 0.00 *** 35.70 0.00 *** 0.24 0.24 *** 3.98 3.32 ** 0.60 0.59 *** 0.86 0.85 *** 
+
+Volkswagen 100.00 0.00 *** 94.75 0.00 *** 0.50 0.48 *** 10.87 11.15 1.12 1.13 1.58 1.59 BP 73.95 0.00 *** 16.32 0.00 *** 2.22 2.21 *** 2.83 2.79 5.43 5.42 * 8.08 8.07 PetroChina 44.66 0.00 *** 0.55 0.00 0.04 0.04 *** 6.70 6.70 0.10 0.11 0.18 0.18 Shell 84.21 0.00 *** 27.89 0.00 *** 10.93 10.88 *** 3.65 3.72 26.33 26.28 39.53 39.42 Goldman 100.00 0.00 *** 92.86 0.00 *** 3.83 3.79 *** 5.83 5.59 9.48 9.47 13.62 13.62 JPMorgan 100.00 0.00 *** 97.35 0.00 *** 1.21 1.18 *** 5.98 5.30 3.12 2.90 *** 4.17 4.01 *** 
+
+LSEG 100.00 0.00 *** 41.84 0.00 *** 52.34 51.55 *** 6.37 6.62 130.82 125.06 *** 217.15 211.68 *** 
+
+Google 100.00 0.00 *** 78.84 0.00 *** 1.45 1.42 *** 9.05 8.92 3.71 3.47 *** 5.28 4.97 *** 
+
+Meta 100.00 0.00 *** 100.00 0.00 *** 4.88 4.64 *** 17.27 16.40 11.95 11.44 *** 16.54 16.06 *** 
+
+Microsoft 80.42 0.00 *** 20.90 0.00 *** 1.94 1.93 *** 2.68 2.75 4.73 4.71 7.09 7.08 Improved or n.s. 12/12 12/12 12/12 12/12 12/12 12/12 
+
+Table IV: Comparison of crossing baselines using the ANNs. Hierarchical 1 enforces quantile order only, Hierarchical 2 enforces OHLC validity only, and Hierarchical 3 enforces both constraints. 
+
+Method QCR (%) KCR (%) AQL 𝑃 Max AQL 𝑃 Mean corr. 𝑃 Max corr. 𝑃 
+
+No Constraint 87.69 51.48 6.66 *** 67.14 ** – – – –Cumulative Max. 0.00 0.00 6.57 66.36 1.07 *** 43.29 *** 
+
+Reordering 0.00 0.00 6.56 66.97 1.60 *** 33.59 *** 
+
+Hierarchical 1 0.00 21.95 6.96 * 57.96 9.26 *** 81.78 *** 
+
+Hierarchical 2 94.85 0.00 7.26 ** 64.80 11.55 *** 99.98 *** 
+
+Hierarchical 3 0.00 0.00 8.53 *** 64.59 14.90 *** 125.41 *** 
+
+Joint Projection 0.00 0.00 6.56 66.06 0.91 22.94 Proposed KQSP 0.00 0.00 6.56 66.06 0.91 22.94 
+
+K-Line Crossing Rate (KCR) is the percentage of samples with at least one K-line crossing, 
+
+KCR = 100 
+
+𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+1{∃ 𝑞 : 𝑧 𝑖𝑞𝐻 < max (𝑧 𝑖𝑞𝑂 , 𝑧 𝑖𝑞𝐶 ) or 
+
+𝑧 𝑖𝑞𝐿 > min (𝑧 𝑖𝑞𝑂 , 𝑧 𝑖𝑞𝐶 )} .
+
+(19) Here 1{·} is the indicator function. The pinball loss at quantile level 
+
+𝜏 for error 𝑒 is 
+
+𝜌 𝜏 (𝑒 ) = 𝑒 (𝜏 − 1{𝑒 < 0}) . (20) 
+
+Average Quantile Loss (AQL) averages quantile loss over samples, quantiles, and OHLC features, 
+
+AQL = 14𝑄𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+> 𝑄
+
+∑︁ 
+
+> 𝑞 =1
+
+∑︁ 𝑓 ∈ F 
+
+𝜌 𝜏 𝑞 (𝑦 𝑖 𝑓 − 𝑧 𝑖𝑞𝑓 ). (21) Max AQL is the largest sample-level AQL. 
+
+Quantile coverage error (QCE) averages the absolute empirical-coverage deviation, 
+
+QCE = 100 
+
+𝑄 
+
+> 𝑄
+
+∑︁ 
+
+> 𝑞 =1
+
+14𝑁 
+
+> 𝑁
+
+∑︁ 
+
+> 𝑖 =1
+
+∑︁ 𝑓 ∈ F 
+
+1{𝑦 𝑖 𝑓 ≤ 𝑧 𝑖𝑞𝑓 } − 𝜏 𝑞 . (22) We use standard RMSE and MAE for pointwise evaluation. 
+
+## 7 Case Study 7.1 Effectiveness in the Full-Training Setting 
+
+We first use the fully trained ANN to determine whether KQSP resolves both crossing issues without compromising predictive accuracy. The model chooses the optimal historical input length from {1, 3, 7, 30 } trading days based on validation data. Within each stock, Table III compares paired test-day contributions before and after KQSP using a two-sided sign-flip test. Green stars denote significant improvement, red stars denote significant deterioration, and a blank denotes no significant difference. One, two, and three stars indicate 𝑝 < 0.05 , 𝑝 < 0.01 , and 𝑝 < 0.001 , respectively. The last row counts improvement or no significant difference across stocks. First, the raw ANN forecasts exhibit severe crossings: the quan-tile crossing rate (QCR) ranges from 44.66% to 100.00%, while the K-line crossing rate (KCR) ranges from 0.55% to 100.00%. Second, KQSP reduces both crossing rates to zero for every stock. Third,  
+
+> 6Crossing-Free Probabilistic K-Line Forecasts Without Retraining Preprint, Under Review, -
+
+although KQSP is designed to enforce consistency rather than im-prove predictive accuracy, it significantly improves AQL for all 12 stocks ( 𝑝 < 0.001 ) and improves several MAE and RMSE results. A plausible explanation is that the violations partly reflect estimation noise: by projecting the forecasts onto economically valid OHLC and quantile constraints, KQSP removes infeasible variation while making the smallest possible correction. This shape-constrained correction can therefore move inconsistent forecasts closer to the realized values without changing already valid components unnec-essarily. 
+
+## 7.2 Comparison of Existing Crossing Solutions 
+
+No Constraint, Cumulative Maximum, Reordering, Joint Projec-tion, and KQSP are applied directly to the same saved forecasts without further training. The three hierarchical variants load the same base ANN weights and are retrained using the same hyper-parameters. Table IV compares each baseline with KQSP using a two-sided paired Wilcoxon test across the stocks. Mean and maxi-mum correction measure absolute changes in native price units and are particularly important when the original forecasts are trusted and only minimal corrections are desired. First, Cumulative Maximum, Reordering, Hierarchical 3, Joint Pro-jection, and KQSP eliminate both crossing types. Especially, KQSP achieves a significantly lower AQL than No Constraint ( 𝑝 < 0.001 ), showing that consistency can be imposed while even improving 
+
+the predictive accuracy with statistical significance ( 𝑝 < 0.001 ). Second, Cumulative Maximum and Reordering have no significant AQL difference from KQSP. Nevertheless, both produce significantly larger mean and maximum correction errors ( 𝑝 < 0.001 ). This dis-tinction is critical when the forecasting model is trusted, and the objective is to resolve crossings with the smallest possible modifi-cation. Third, the hierarchical AQL values follow Hierarchical 3 >
+
+Hierarchical 2 > Hierarchical 1, with Hierarchical 3 performing worst. The deterioration caused by combining both recursive construc-tions is consistent with error propagation across the quantile and OHLC hierarchies. Lastly, Joint Projection does not differ signifi-cantly from the proposed KQSP across any metric (all 𝑝 > 0.05 ), as indicated by the absence of significance stars in the table. This shows that KQSP achieves empirically equivalent correction per-formance while offering greater stage-wise flexibility. 
+
+## 7.3 Sensitivity to Different Models 
+
+To mitigate model-specific bias and investigate whether KQSP can consistently improve AQL across different forecasting models, we compare the fully trained ANN with zero-shot foundation models using identical test observations and quantile levels. Each model’s raw forecast is evaluated before and after the KQSP operator. Ta-ble V reports paired before–after results aggregated across stocks. Before is the raw forecast and After is the same forecast after KQSP. Each 𝑃 cell is a two-sided paired Wilcoxon test of all stocks Before and After metrics. Table VI compares post-KQSP AQL between models. First, KQSP removes all quantile and K-line crossings for every model. Surprisingly, the results confirm that KQSP can consistently improve predictive metrics, including AQL, MAE, and RMSE, with statistical significance. Second, Table VI shows no significant AQL difference between the fully trained ANN and Kronos, indicating strong zero-shot probabilistic performance from the finance-specific Kronos model. By contrast, the generic foundation models do not match the simple ANN on this dataset. One possible explanation is that these models are pretrained primarily on broad and generic time-series data and may not sufficiently capture stock-specific price dynamics. However, this experiment is not intended to es-tablish a universal ranking of forecasting models. Its purpose is to determine whether KQSP eliminates both crossing issues without degrading predictive accuracy, regardless of whether the forecasts are produced by a strong or weak model. 
+
+## 8 Conclusion 
+
+This study introduced KQSP, a parameter-free method for reconcil-ing probabilistic K-line forecasts without retraining the forecasting model. Each stage of KQSP minimizes the squared correction, al-lowing KQSP to remove both crossing types while preserving the original forecasts as closely as possible. Three case studies estab-lish the effectiveness of KQSP. First, for fully trained ANNs across diverse stocks, KQSP reduces both QCR and KCR to zero and sig-nificantly improves AQL for every stock. Second, KQSP achieves predictive accuracy comparable to other strong baselines while producing significantly smaller mean and maximum corrections. Third, experiments involving zero-shot foundation models confirm that KQSP eliminates crossings and can even improve partial fore-casting metrics across different models. A limitation of KQSP is that it applies the minimum correction required for consistency, regardless of whether the original forecasts are strong or weak. Future work should investigate methods that not only eliminate crossings but also improve predictive accuracy when the original forecasts are inaccurate. 
+
+## References                    
+
+> [1] Abdul Fatir Ansari, Oleksandr Shchur, Jaris Küken, Andreas Auer, Boran Han, Pedro Mercado, Syama Sundar Rangapuram, Huibin Shen, Lorenzo Stella, Xiyuan Zhang, Mononito Goswami, Shubham Kapoor, Danielle C. Maddix, Pablo Guerron, Tony Hu, Junming Yin, Nick Erickson, Prateek Mutalik Desai, Hao Wang, Huzefa Rangwala, George Karypis, Yuyang Wang, and Michael Bohlke-Schneider. 2025. Chronos-2: From Univariate to Universal Forecasting. arXiv:2510.15821 [cs.LG] https://arxiv.org/abs/2510.15821 [2] Abdul Fatir Ansari, Lorenzo Stella, Caner Turkmen, Xiyuan Zhang, Pedro Mercado, Huibin Shen, Oleksandr Shchur, Syama Sundar Rangapuram, Sebas-tian Pineda Arango, Shubham Kapoor, Jasper Zschiegner, Danielle C. Maddix, Hao Wang, Michael W. Mahoney, Kari Torkkola, Andrew Gordon Wilson, Michael Bohlke-Schneider, and Yuyang Wang. 2024. Chronos: Learning the Language of Time Series. arXiv:2403.07815 [cs.LG] https://arxiv.org/abs/2403.07815 [3] Jozef Baruník, Martin Hronec, and Ondřej Tobek. 2026. Forecasting stock return distributions around the globe with quantile neural networks. International Journal of Forecasting (2026). doi:10.1016/j.ijforecast.2026.04.004 [4] Derek Bunn, Arne Andresen, Dipeng Chen, and Sjur Westgaard. 2016. Analysis and forecasting of electricity price risks with quantile factor models. The Energy Journal 37, 1 (2016), 101–122. [5] Victor Chernozhukov, Iván Fernández-Val, and Alfred Galichon. 2010. Quantile and probability curves without crossing. Econometrica 78, 3 (2010), 1093–1125. [6] Abhimanyu Das, Weihao Kong, Rajat Sen, and Yichen Zhou. 2024. A decoder-only foundation model for time-series forecasting. In Proceedings of the 41st Interna-tional Conference on Machine Learning (Vienna, Austria) (ICML’24) . JMLR.org, Article 404, 20 pages. [7] Tilmann Gneiting and Matthias Katzfuss. 2014. Probabilistic Forecasting. Annual Review of Statistics and Its Application 1 (2014), 125–151. doi:10.1146/annurev-statistics-062713-085831 [8] Shi Bin Hoo, Samuel Müller, David Salinas, and Frank Hutter. 2026. From Tables to Time: Extending TabPFN-v2 to Time Series Forecasting. arXiv:2501.02945 [cs.LG] https://arxiv.org/abs/2501.02945 7
+
+Preprint, Under Review, - Yu et al. 
+
+Table V: Before–after results aggregated across stocks. 
+
+QCR (%) KCR (%) AQL QCE (%) MAE RMSE Model Before After 𝑃 Before After 𝑃 Before After 𝑃 Before After 𝑃 Before After 𝑃 Before After 𝑃 
+
+ANN 87.69 0.00 *** 51.48 0.00 *** 6.66 6.56 *** 6.56 6.39 16.53 15.96 ** 26.29 25.74 ** 
+
+TimesFM 1.07 0.00 ** 52.66 0.00 *** 8.37 8.33 *** 4.16 4.12 20.84 20.73 *** 31.19 31.05 *** 
+
+TimesFM 2.5 3.14 0.00 *** 62.46 0.00 *** 8.01 7.83 *** 2.33 2.27 * 19.88 19.36 *** 29.89 29.08 *** 
+
+Chronos 0.00 0.00 83.09 0.00 *** 7.79 7.68 *** 2.28 2.18 * 19.16 18.95 *** 29.51 29.24 *** 
+
+Chronos-2 0.04 0.00 46.27 0.00 *** 7.71 7.68 *** 1.90 1.93 19.17 19.09 *** 28.98 28.90 *** 
+
+Moirai 0.00 0.00 69.00 0.00 *** 8.15 8.12 *** 3.49 3.46 20.05 20.01 *** 30.10 30.05 *** 
+
+Time-MoE 0.00 0.00 76.12 0.00 *** 8.02 7.92 *** 3.86 3.70 ** 19.76 19.54 *** 29.70 29.44 *** 
+
+TabPFN 0.00 0.00 63.18 0.00 *** 6.90 6.86 *** 1.37 1.36 16.87 16.78 *** 26.56 26.41 *** 
+
+Kronos 0.00 0.00 2.52 0.00 *** 6.55 6.55 *** 7.64 7.63 15.73 15.73 * 24.92 24.91 *
+
+Table VI: Upper-triangular pairwise comparison of post-KQSP AQL across stocks. Diagonal entries are mean AQL. Each upper cell is a two-sided paired Wilcoxon test between its row and column models: green stars favor the row model, red stars favor the column model, and a blank denotes no significant difference. 
+
+Model ANN TimesFM TimesFM 2.5 Chronos Chronos-2 Moirai Time-MoE TabPFN Kronos ANN 6.56 *** *** ** *** *** *** ** 
+
+TimesFM 8.33 *** *** *** *** *** *** *** 
+
+TimesFM 2.5 7.83 ** *** * *** *** *** 
+
+Chronos 7.68 *** *** *** *** 
+
+Chronos-2 7.68 *** *** *** *** 
+
+Moirai 8.12 *** *** 
+
+Time-MoE 7.92 *** *** 
+
+TabPFN 6.86 *** 
+
+Kronos 6.55 
+
+[9] Wenyang Huang, Tianxiao Gao, Yun Hao, and Xiuqing Wang. 2023. Transformer-Based Forecasting for Intraday Trading in the Shanghai Crude Oil Market: An-alyzing Open-High-Low-Close Prices. Energy Economics 127 (2023), 107106. doi:10.1016/j.eneco.2023.107106 [10] Wenyang Huang, Huiwen Wang, and Shanshan Wang. 2024. A Structural VAR and VECM Modeling Method for Open-High-Low-Close Data Contained in Candlestick Chart. Financial Innovation 10, 1 (2024), 97. doi:10.1186/s40854-024-00622-6 [11] Junkyu Jang, Taehwan Kim, and Sung-Hyuk Park. 2024. Stock Index Forecasting Using an Explainable TAFT Model with Online Data-Driven Social Sentiment Index. In Proceedings of the 5th ACM International Conference on AI in Finance 
+
+(Brooklyn, NY, USA) (ICAIF ’24) . Association for Computing Machinery, New York, NY, USA, 787–794. doi:10.1145/3677052.3698618 [12] Jinwoong Kim and Sangjin Park. 2025. IKNet: Interpretable Stock Price Prediction via Keyword-Guided Integration of News and Technical Indicators. In Proceedings of the 6th ACM International Conference on AI in Finance (ICAIF ’25) . Association for Computing Machinery, New York, NY, USA, 709–717. doi:10.1145/3768292. 3770343 [13] Guohao Shen, Yuling Jiao, Yuanyuan Lin, Joel L. Horowitz, and Jian Huang. 2024. Nonparametric Estimation of Non-Crossing Quantile Regression Process with Deep ReQU Neural Networks. Journal of Machine Learning Research 25, 88 (2024), 1–75. https://jmlr.org/papers/v25/22-0488.html [14] Xiaoming Shi, Shiyu Wang, Yuqi Nie, Dianqi Li, Zhou Ye, Qingsong Wen, and Ming Jin. 2025. Time-MoE: Billion-Scale Time Series Foundation Models with Mixture of Experts. arXiv:2409.16040 [cs.LG] https://arxiv.org/abs/2409.16040 [15] Yu Shi, Zongliang Fu, Shuo Chen, Bohan Zhao, Wei Xu, Changshui Zhang, and Jian Li. 2026. Kronos: A foundation model for the language of financial markets. In 
+
+Proceedings of the AAAI Conference on Artificial Intelligence , Vol. 40. 25366–25373. [16] James W Taylor and Derek W Bunn. 1999. A quantile regression approach to generating prediction intervals. Management Science 45, 2 (1999), 225–237. [17] Gerald Woo, Chenghao Liu, Akshat Kumar, Caiming Xiong, Silvio Savarese, and Doyen Sahoo. 2024. Unified training of universal time series forecasting transformers. In Proceedings of the 41st International Conference on Machine Learning (Vienna, Austria) (ICML’24) . JMLR.org, Article 2178, 25 pages. [18] Xuanling Yang, Zhoufan Zhu, Dong Li, and Ke Zhu. 2024. Asset pricing via the conditional quantile variational autoencoder. Journal of Business & Economic Statistics 42, 2 (2024), 681–694. [19] Runyao Yu, Chenhui Gu, Jochen Stiasny, Qingsong Wen, Wasim Sarwar Dilov, Lianlian Qi, and Jochen L. Cremer. 2026. PriceFM: Foundation Model for Proba-bilistic Electricity Price Forecasting. arXiv:2508.04875 [cs.CE] [20] Runyao Yu, Julia Lin, Derek W. Bunn, Jochen Stiasny, Wentao Wang, Yujie Chen, Tara Esterl, Peter Palensky, and Jochen L. Cremer. 2026. A market-rule-informed neural network for efficient imbalance electricity price forecasting. Advanced Engineering Informatics 76 (2026), 105083. doi:10.1016/j.aei.2026.105083 [21] Runyao Yu, Yuchen Tao, Fabian Leimgruber, Tara Esterl, Jochen Stiasny, Derek W. Bunn, Qingsong Wen, Hongye Guo, and Jochen L. Cremer. 2026. OrderFusion: Encoding Orderbook for End-to-End Probabilistic Intraday Electricity Price Fore-casting. arXiv:2502.06830 [q-fin.CP] 8
