@@ -1,0 +1,965 @@
+Title: Conditional projection methods for large-scale Bayesian VARs
+
+URL Source: https://arxiv.org/pdf/2607.29215v1
+
+Published Time: Mon, 03 Aug 2026 00:40:52 GMT
+
+Number of Pages: 27
+
+Markdown Content:
+# Conditional projection methods for large-scale Bayesian VARs 
+
+Niko HAUZENBERGER 
+
+University of Strathclyde 
+
+Michael PFARRHOFER 
+
+WU Vienna We develop fast methods for conditional forecasting and structural scenario analysis with high-dimensional Bayesian vector autoregressions (VARs). Our general framework features a factor structure on the reduced-form errors, which enables fast and order-invariant equation-by-equation estimation; suitably identified factors admit a structural interpretation. The scenarios are defined through separate distributional restrictions on observables, structural shocks and idiosyncratic components. The computational cost of our proposed algorithm is cubic only in the number of restrictions, while the dimension of the forecasted system enters linearly. In our application with 33 macroeconomic and financial variables and ten set-identified structural shocks for the US, we compute counterfactual predictions for oil price scenarios in the context of the 2026 closure of the Strait of Hormuz. The same oil price path is consistent with outcomes ranging from a mostly benign episode to pronounced stagflation, depending on which structural and idiosyncratic shocks are allowed to deliver it. 
+
+JEL : C11, C32, C53, E37, Q43 
+
+Keywords : structural scenario analysis, conditional forecasting, factor model, shrinkage 
+
+Contact : michael.pfarrhofer@wu.ac.at, Department of Economics, WU Vienna University of Economics and Business. Codes and replication files: github.com/mpfarrho/ssa-var-fm. We used Claude Code and Codex for drafting, editing and brainstorming. We reviewed and edited the content as needed and take full responsibility for the final content and accuracy of this paper. arXiv:2607.29215v1 [econ.EM] 31 Jul 2026 1. INTRODUCTION 
+
+Conditional projection methods have been a key component of macroeconometrics since at least Doan et al. (1984) and underpin the modern practice of counterfactual policy and scenario analysis (see, e.g., Crump et al. , 2025; Adrian et al. , 2026). Fully specified structural models commit the analysis to a single model by design and often restrict the size of the usable information set. An alternative is to use structural VARs, in the spirit of the structural scenario analysis (SSA) of Antolin-Diaz et al. (2021), in which scenarios are implemented as distributional restrictions on ob-servables and structural shocks. Restricting subsets of the latter to their unconditional distribution defines the structural sources of the scenario, attributing it to identified economic forces. 1 Our paper contributes to this literature by developing a high-dimensional Bayesian VAR for (semi-)structural analysis to obtain conditional predictions with fast estimation and simulation algorithms. Rich information sets have proven successful in both forecasting and structural settings when combined with appropriate regularization (see Ba´ nbura et al. , 2010, among others). Our framework is a BVAR with a global–local shrinkage prior on the coefficients and a factor structure on the reduced-form errors. This setup serves two purposes. First, the prior and factor structure enable regularization alongside quick and order-invariant estimation of VARs with a large cross section of n endogenous variables and long lag orders (see Kastner and Huber, 2020). 2 Second, following Korobilis (2022), a small number q (≪ n) of “primitive” shocks — the factors — drive the common dynamics, while cross-sectionally independent components capture idiosyncratic shocks; when the factors are orthogonal and identified, they admit an interpretation as structural economic shocks. 3
+
+Earlier conditional projection algorithms (in the spirit of Waggoner and Zha, 1999) can be computationally intensive and thus are often limited to smaller dynamic systems; scalability to                 
+
+> 1The Lucas-robust policy counterfactuals of McKay and Wolf (2023) can be obtained as a special case of SSA (see also Breitenlechner et al. , 2024); we return to this point in Section 3.
+> 2The latter can reduce bias in dynamic multiplier estimates at longer horizons (see the local projection versus VAR discussion, e.g., in Baumeister, 2025), which matters here because our conditional projections are built from the same moving-average matrices as impulse response functions (IRFs).
+> 3Arias et al. (2026) and Chan et al. (2026) discuss related high-dimensional SVAR methods for unrestricted covariance matrices, without the reduced-rank plus idiosyncratic structure. When the number of factors is equal to the number of observables ( q=n), our framework is close to a conventional SVAR; irrespective of the underlying model, the conditional projection algorithm we develop is directly applicable. The factor assumption about the reduced-form errors is used, e.g., in Ba´ nbura et al. (2026); Chan et al. (2022); Gambetti et al. (2023); Pr¨ user (2024).
+> 2
+
+richer information sets is possible through filtering-based methods (see Ba´ nbura et al. , 2015) or the closed-form solutions of Antolin-Diaz et al. (2021) and Chan et al. (2025) for joint predictive distributions. We build on the latter two, with an extension to separate restrictions on observables, structural shocks and idiosyncratic components. Further, we derive a fast and exact algorithm whose cost is cubic only in the number of restrictions, while the size of the forecasted system enters only linearly, which offers speed improvements relative to earlier implementations. We make three contributions: (i) a framework with separate distributional restrictions on observables, structural shocks, and idiosyncratic components; (ii) an exact and computationally fast sampler; and (iii) an empirical demonstration that the structural attribution of a scenario can drive vastly different counterfactual predictions. We illustrate these aspects using a quarterly dataset of 33 US macroeconomic and financial variables, in which sign restrictions set-identify ten structural shocks. The scenarios are taken from Kilian et al. (2026) and impose a path for the nominal price of oil in the context of the 2026 Iran War and the closure of the Strait of Hormuz. Successively adding restrictions on the idiosyncratic components and non-driving structural shocks, we trace how the shocks required to deliver the same oil price path change and how this choice shapes the counterfactual predictions for the unrestricted observables. The macroeconomic implications differ markedly. The same scenario is consistent with a benign, mildly inflationary episode when its structural origins are unrestricted, and with pronounced stagflation alongside substantially wider predictive intervals when it is attributed to the structural oil price shock alone. 
+
+2. ECONOMETRIC FRAMEWORK 
+
+Consider a reduced-form VAR for n variables yt = ( y1t, . . . , y nt )′ with P lags in xt = ( y′
+
+> t−1
+
+, . . . , y′ 
+
+> t−P
+
+)′:
+
+yt = a +
+
+> P
+
+X
+
+> p=1
+
+Apyt−p + ηt = a + Ax t + ηt, ηt ∼ N (0n, Σ); (1) 
+
+a is an intercept, A = [ A1, . . . , AP ] comprises the dynamic coefficient matrices Ap, and ηt is a zero-mean reduced-form error with covariance matrix Σ.Since an infinite number of structural models is consistent with a reduced-form representation as in (1), structural economic interpretations require further restrictions, which are commonly 
+
+> 3
+
+imposed via decompositions of the covariance matrix Σ. We use a factor model for the reduced-form error, because this specification is computationally attractive and encompasses a range of possible avenues for structural identification: 
+
+ηt = Lε t + S1/2ut, (ε′
+
+> t
+
+, u′
+
+> t
+
+)′ iid 
+
+∼ N (0q+n, Iq+n), (2) where L is an n × q-matrix of loadings associated with q factors εt, and S = diag( s21, . . . , s 2
+
+> n
+
+) = 
+
+S1/2S1/2 is a diagonal matrix collecting the variances of the idiosyncratic component. This yields the decomposition Σ = LL ′ + S (as in Anderson et al. , 1956). Any co-movement in the reduced-form errors is due to the common factors εt while the idiosyncratic component is cross-sectionally uncorrelated. For n = q, S = 0n×n, and L invertible, premultiplying by A0 ≡ L−1 results in the standard SVAR A0yt = A0(a + Ax t) + εt and εt admits a structural interpretation. In canonical SVARs, there are as many shocks as observables. Factor models are a dimension-reduction technique with q ≪ n, based on the idea that only a few economic driving forces are responsible for the majority of the observed business cycle fluctuations. In this case, assuming L has full column rank, obtaining an approximate structural form of the model involves the pseudoinverse 
+
+A0 = ( L′L)−1L′, to yield A0yt = A0(a + Ax t) + εt + ( L′L)−1L′S1/2ut. Invoking a central limit argument, Korobilis (2022) argues that the last term vanishes asymptotically for each t as n → ∞ ,and the interpretation of the factors as structural shocks follows. 
+
+Identifying assumptions . It is well known that for q ≤ n, the decomposition Σ = LL ′ +S
+
+is in general not unique; multiple pairs ( L, S) can be consistent with the same reduced-form. More generally, even if LL ′ is uniquely identified, L itself is not, since for any q × q orthogonal matrix Q,the matrix ˜L = LQ yields the same product LL ′ = ˜L ˜L′. A solution to the latter issue is to impose zero restrictions directly on L. This can achieve point identification at the cost of potentially arbitrary exclusion restrictions; by contrast, imposing sign restrictions leads to set-identification. Indeed, there is a long-standing tradition to set-identify structural models via sensible sign and zero restrictions (see Baumeister and Hamilton, 2015; Arias et al. , 2018) which we adopt. 
+
+Prior choices and Bayesian estimation . Before turning to the conditional predictions we briefly summarize prior choices and the MCMC algorithm. We mostly follow earlier papers here, and details about the posteriors and the standard Gibbs sampling algorithm are provided 
+
+> 4
+
+in Appendix A. The number of parameters in the conditional mean is k + n where k = n2P ,which quickly exceeds T even for moderate n. This typically results in overfitting if estimated without any regularization, and can be computationally slow. We follow Huber and Feldkircher (2019) and shrink via a global–local (horseshoe) prior; for nP ≫ T , fast sampling algorithms are used. Moreover, full-system estimation is often computationally infeasible, which is why recent approaches commonly rely on equation-by-equation estimation (see Carriero et al. , 2022). The factor structure on the reduced-form errors in (2) enables fast and order-invariant equation-by-equation estimation, since (1) reduces to n independent equations conditional on the factors. To impose the sign restrictions on L, following Korobilis (2022), each loading receives a pre-specified restriction Rij ∈ { +, −, c ij , NA }, collected in the n × q-matrix R: sign restrictions (+, −) are imposed via truncated normal priors on the respective loadings (i.e., informative priors in the spirit of Baumeister and Hamilton, 2015), constants cij ∈ R via point masses (with cij = 0 yielding zero restrictions), and unrestricted loadings (NA) receive normal priors. This baseline approach can be combined with additional identifying restrictions and/or model features. 4 We abstract from these options, noting that most such extensions require only minor adjustments for use with our proposed SSA algorithm. 
+
+2.1. Structural Scenario Analysis 
+
+The joint vector of forecasts is yT +(1: H) = ( y′ 
+
+> T+1
+
+, . . . , y′  
+
+> T+H
+
+)′, where H refers to the maximum forecast horizon. In the same vein, we stack εT +(1: H) = ( ε′ 
+
+> T+1
+
+, . . . , ε′  
+
+> T+H
+
+)′ and idiosyncratic errors 
+
+uT +(1: H) = ( u′ 
+
+> T+1
+
+, . . . , u′  
+
+> T+H
+
+)′ in a joint vector ξT +(1: H) = ( ε′ 
+
+> T+(1: H)
+
+, u′ 
+
+> T+(1: H)
+
+)′ ∼ N (0, Id) with 
+
+d = ( q + n)H, which is standard normal based on (2). Precise definitions and additional details about the vectors and matrices below are provided in Appendix A. Using L(H) = ( IH ⊗ L), 
+
+S1/2(H) = ( IH ⊗ S1/2) and V = [ L(H), S1/2(H)] of size nH × d, this allows us to write: Hy T +(1: H) =    
+
+> 4Chan et al. (2022) use factor stochastic volatility to exploit heteroskedasticity for point identification; Pr¨ user (2024) relies on a similar framework and uses non-Gaussian features of the structural shocks for identification. Another option is to replace the normal prior on the structural shocks in (2) with, e.g., a truncated normal prior for specific shocks in specific periods (see, e.g., Berend and Pr¨ user, 2025). External and internal instruments may be introduced by considering these as observed or partially latent factors (see, e.g., Korobilis, 2025; Pfarrhofer and Stelzer, 2025).
+> 5
+
+h + L(H)εT +(1: H) + S1/2(H)uT +(1: H) = h + VξT +(1: H). Thus: 
+
+yT +(1: H) = H−1h + H−1VξT +(1: H), (3) where we sometimes also write m = H−1h and M ′ = H−1V, so yT +(1: H) ∼ N (m, M ′M ). The vector h collects initial conditions and any deterministic terms, and H encodes the dynamic VAR coefficients in a banded structure. The inverse H−1 by construction then collects the coefficient matrices of the vector moving average (VMA) representation of the underlying VAR. Specifically, these VMA coefficient matrices are Φj = JAj J′ with Φ0 = In, defined using 
+
+J = [ In, 0n×n(P −1) ] and the companion form A = [ A; In(P −1) , 0n(P −1) ×n]. H−1 features copies of Φ0 on its main diagonal, and the hth subdiagonal for h = 1 , 2, . . . , H − 1, consists of copies of 
+
+Φh. Intuitively, consider the IRF of the endogenous variables to a structural shock. The IRF to a structural shock in εT +1 is defined as ∂yT +h+1 /∂ ε′  
+
+> T+1
+
+= ΦhL for h = 0 , 1, . . . , H − 1, with the timing convention that the impact response h = 0 refers to period T +1. The subdiagonal structure of H−1 propagates forward any vector it multiplies according to the dynamics of the model, e.g., structural shock impacts at each horizon, via H−1L(H) in (3). The example showcases that IRFs and the associated VMA matrices are the fundamental building blocks of any conditional projection and scenario analysis, which can be implemented via specific restrictions, to which we turn next. Stochastic restrictions as in Andersson et al. (2010) are imposed on observed variables , where there are ry restrictions, and R(y) is ry × nH :
+
+R(y)yT +(1: H) ∼ N (r(y), Ω(y)), (4) on the structural shocks : R(ε)εT +(1: H) ∼ N (r(ε), Ω(ε)) with rε restrictions and R(ε) is rε × qH ;and, generalizing earlier papers, on the idiosyncratic component : R(u)uT +(1: H) ∼ N (r(u), Ω(u))with ru restrictions and R(u) is ru × nH . The latter are stacked using R(ξ) = bdiag( R(ε), R(u)), 
+
+r(ξ) = [ r(ε); r(u)] and Ω(ξ) = bdiag( Ω(ε), Ω(u)), and written as: 
+
+R(ξ)ξT +(1: H) ∼ N (r(ξ), Ω(ξ)). (5) 
+
+> 6
+
+Plugging (3) into (4) yields R(y)  m + M ′ξT +(1: H)
+
+ ∼ N (r(y), Ω(y)); combined with (5) we have: 
+
+R(y)M ′
+
+R(ξ)
+
+| {z }
+
+> R
+
+ξT +(1: H) ∼ N  r(y) − R(y)mr(ξ)
+
+| {z }
+
+> r
+
+,
+
+Ω(y)
+
+Ω(ξ)
+
+| {z }
+
+> Ω
+
+.
+
+There are a total of r = ry + rε + ru restrictions, R is r × (n + q)H and assumed to have full row rank (no redundancies), r is r × 1 and Ω is r × r. These restrictions specify the distribution that 
+
+Rξ T +(1: H) is required to have under the conditional forecast distribution. The restricted distribution of the innovations is the revision of their unconditional standard normal distribution that satisfies the restrictions while minimizing the Kullback–Leibler divergence to the unconditional distribution; Antolin-Diaz et al. (2021) prove that in the Gaussian case this is equivalent to entropic tilting as in Robertson et al. (2005). This revision replaces the implied marginal of Rξ T +(1: H) with N (r, Ω), while leaving the conditional ξT +(1: H) given Rξ T +(1: H) un-changed. This yields the restricted shocks ξ∗  
+
+> T+(1: H)
+
+∼ N (μξ, Vξ), with moments: 
+
+Vξ = ( Id − R+R) + R+ΩR+′, μξ = R+r, (6) where R+ = R′(RR ′)−1 denotes the Moore–Penrose inverse of R. This approach draws the full sequence of innovations ξ∗  
+
+> T+(1: H)
+
+compatible with the restrictions. Inserting the restricted ξ∗ 
+
+> T+(1: H)
+
+into (3) yields the final conditional projection, a draw from yT +(1: H) | R, r, Ω ∼ N (μy, Vy) with 
+
+μy = m + M ′μξ and Vy = M ′VξM in terms of the observables. 5
+
+Draws from the distribution of ξ∗  
+
+> T+(1: H)
+
+can be obtained quickly via Algorithm 1; we drop the time subscripts for notational convenience. The algorithm is related to Cong et al. (2017, their Algorithm 2) and draws from the desired distribution, with E(ξ∗) = μξ and Var( ξ∗) = Vξ. Based on the auxiliary draws ξ0 ∼ N (0d, Id) and v0 ∼ N (0r, Ω), the restrictions hold by construction, 
+
+Rξ ∗ = ( r + v0) ∼ N (r, Ω); hard constraints of the form Rξ T +(1: H) = r are nested trivially for 
+
+v0 = 0r. More formal statements and a proof are provided in Appendix A.           
+
+> 5These moments coincide with Antolin-Diaz et al. (2021); Appendix A provides derivations, alongside an alternative that interprets the restrictions as noisy measurements of Rξ T+(1: H)and updates via Bayes’ rule (combining rather than replacing the model-based forecast), which coincides with the above for Ω=0but differs otherwise.
+> 7
+
+Algorithm 1: Conditional forecast sampling algorithm. (1) Sample ξ0 ∼ N (0d, Id) and v0 ∼ N (0r, Ω) independently; (2) Return ξ∗ = ξ0 + R′(RR ′)−1(r + v0 − Rξ 0), using – Solve for x from ( RR ′)x = ( r + v0 − Rξ 0); – Return ξ∗ = ξ0 + R′x.Algorithm 1 factorizes only the r × r matrix RR ′, so the cost of each draw is cubic only in the number of restrictions, while the size of the forecasted system enters linearly ( O(r2nH + r3)). By contrast, precision-based samplers factorize the complementary block of dimension nH − r and gain the advantage once most of the system is restricted, while approaches that sample from the full d-dimensional Gaussian (or the nH -dimensional distribution of the observables) are never the fastest option in our comparisons and remain within a small factor of it only in small systems. In typical conditioning exercises with sparse to moderately dense restrictions, our algorithm is thus the fastest option, with an advantage that widens with the dimension of the stacked forecast vector; a detailed comparison of computation times is provided in Appendix B. 
+
+3. EMPIRICAL APPLICATION 
+
+We use a dataset patterned after Crump et al. (2025) in our empirical illustration. The quarterly dataset includes n = 33 series: 31 macroeconomic and financial variables for the US, plus two auxiliary variables to impose ranking restrictions; after transformations, the data span 1965Q1 to 2025Q4. Linked to the maximum forecast horizon H = 20 (i.e., 5 years until 2030Q4), we use P = ( H − 1) = 19 lags, which leaves the lag polynomial unrestricted at every horizon of the forecast window, so that the effective estimation sample starts in 1969Q4. 6 A similar dataset has been used in the applications of Arias et al. (2026); Chan et al. (2026), from which we also take the sign restrictions to enable a structural interpretation. Specifically, we set-identify q = 10   
+
+> 6We pre-screen each series for outliers: observations farther than five interquartile ranges from the central quartiles are treated as missing and imputed prior to estimation, inspired by similar procedures often used with dynamic factor models (see, e.g., Carriero et al. , 2024). The results without outlier-adjustment are qualitatively similar. All series are then standardized to zero mean and unit variance; conditioning targets are mapped into standardized units accordingly, and all results are reported, using an inverse transformation after estimation, in the original units.
+> 8
+
+shocks: demand, investment, financial, monetary policy, government spending, technology, labor supply, wage bargaining, oil price and consumer sentiment. The number of shocks q is thus fixed by the adopted identification scheme. Detailed variable descriptions and sign restrictions, as well as the resulting IRFs for selected key indicators, are provided in Appendix B. The estimated IRFs qualitatively match the responses reported in the cited papers. 103 66 103 132 74 103 132 167 90 70        
+
+> Moderate Adverse Severe
+> 987654321
+> Horizon
+> Severe
+> Adverse
+> Moderate
+> 2022 2024 2026 2028 2030
+> 40 60 80 100 120
+> 80 120 160
+> 50 100 150 200
+> Hard Soft
+
+Figure 1: Oil-price scenarios. Left panel: imposed restriction targets (WTI, in USD per barrel) by forecast horizon; blank cells are unrestricted. Right panel: observed data (solid black line), restriction targets (black circles), and conditional forecast distributions of the oil price under hard and soft constraints (posterior medians alongside 68% credible sets). We consider counterfactual scenarios from 2026Q1 onwards, based on assumptions about the nominal price of oil (WTI, in USD per barrel) in the context of the 2026 Iran War and the associated closure of the Strait of Hormuz. The moderate , adverse and severe scenarios are provided by Kilian et al. (2026) based on a DSGE model described in that paper; they reflect closures of increasing duration, with higher and later peaks of the oil price and a later return to a scenario-specific baseline. The left panel of Figure 1 lists the timing and numerical magnitudes of these restrictions; at all other horizons the oil price is unrestricted and thus model-determined. The right panel of Figure 1 shows the resulting predictive distributions when the targets are imposed as hard versus distributional (soft) constraints. For the soft constraints, we impose the restrictions on the mean but retain the model-implied variance, Ω(y) = R(y)M ′M R (y)′. For each parameter draw, the conditional means of the two versions coincide exactly, since μξ in (6) does not depend on Ω so the tightness of the constraints matters only for the predictive uncertainty. 
+
+> 9
+
+In the empirical results that follow, we focus only on the distributional version, so that predictive uncertainty is reflected more adequately (see also the discussions in Antolin-Diaz et al. , 2021). The results in Figures 2 and 3 refer to different types of restrictions on the shocks that we combine with the scenario restrictions on oil prices. In addition to the restrictions on observables (obs ), which are identical across all conditioning schemes, our framework allows us to also restrict the structural ( struc ) and idiosyncratic ( idio ) shocks, which is consequential for the counterfac-tual paths of the unrestricted observables. For idio , we restrict all idiosyncratic components to follow their unconditional distribution, that is, the scenario must be delivered by the (unrestricted) structural shocks alone. For struc , we restrict all structural shocks but the oil price shock to their unconditional distribution, that is, all but that shock are “non-driving” shocks and only the struc-tural oil price shock may deviate. Combining these options yields the four conditioning schemes labeled obs , obs/idio , obs/struc and obs/idio/struc in the figures. 7Severe                    
+
+> Adverse
+> Moderate
+> Consumer Oil Wage Labor Technology Government Monetary Financial Investment Demand
+> Consumer Oil Wage Labor Technology Government Monetary Financial Investment Demand
+> Consumer Oil Wage Labor Technology Government Monetary Financial Investment Demand
+> Horizon
+> Mean −1.0 −0.5 0.0 0.5 1.0
+> obs
+> Severe
+> Adverse
+> Moderate
+> Horizon
+> Mean −2 −1 012
+> obs/idio
+> Severe
+> Adverse
+> Moderate
+> Horizon
+> Mean −1.0 −0.5 0.0 0.5 1.0
+> obs/struc
+> Severe
+> Adverse
+> Moderate
+> Horizon
+> Mean −30 −20 −10 010 20 30
+> obs/idio/struc
+
+Figure 2: Posterior means of the counterfactual structural-shock distributions across forecast horizons, by conditioning scheme (column blocks) and scenario (rows within blocks).  
+
+> 7
+
+Restricting shocks to their unconditional distribution amounts to normally distributed soft constraints with zero mean and unit covariance: for idio , R(u) = InH ; for struc , R(ε) selects all but the oil price shock at every horizon, labeling the latter the driving shock and all others non-driving; in both cases r = 0 and Ω = I of conformable dimension. Other (sets of) driving shocks can be designated by adjusting the dimensions of the restricted block. 
+
+10 Figure 2 shows the means of the counterfactual shock distributions across horizons under the four conditioning schemes, that is, the realizations of the structural shocks required to deliver the stipulated path of the observed oil price. As Antolin-Diaz et al. (2021) emphasize, restricting the structural origins of a scenario is pertinent: the required shocks differ markedly across conditioning schemes, both in their composition and in their magnitudes. By construction, if the structural shocks are left unrestricted ( obs ), we obtain the most likely combination of shocks under the model’s unconditional shock distribution (the minimal Kullback–Leibler tilt) that generates the stipulated shift in nominal oil prices. Notably, the largest contribution on impact does not come from the oil price shock itself (mean deviations of 0 .5 to 0 .8 standard deviations, depending on the scenario), but from positive financial shocks (about 1); negative technology shocks (around −0.6) also contribute meaningfully. After the oil-price-increasing impact, the signs of these deviations reverse in subsequent periods, providing the offsetting forces that restore the baseline; beyond the final restricted horizon, none of the structural shocks deviate meaningfully from their unconditional distribution. The deviations also increase in size and persistence with the severity of the scenario. Under obs/idio , the composition of the required shocks is virtually unchanged, but the deviations roughly double (e.g., up to more than 2 standard deviations for the financial shock): with the idiosyncratic margin shut down, the structural shocks alone must deliver the scenario. The picture changes fundamentally once the non-driving structural shocks are restricted. Under obs/struc , only the oil price shock deviates, with a moderate mean of about 1 standard deviation on impact, while all other structural shocks are forced to their unconditional distribution (up to Monte Carlo noise). In this case, the bulk of the adjustment is absorbed by the idiosyncratic component of the oil price equation (a mean deviation of about 4 standard deviations on impact; not shown in Figure 2), whereas all other idiosyncratic components remain at their unconditional distribution. When both margins are closed ( obs/idio/struc ), the required magnitude of the structural oil price shock increases by an order of magnitude, offset by large negative realizations in subsequent quarters. Shock sequences of this size are no “modest interventions” in the wording of Leeper and Zha (2003), and thus not robust to the Lucas critique. Only the special case of imposing the target for the first forecast period alone and attributing it to the structural oil price shock would amount to a scenario constructed purely from an identified shock, which is robust to the Lucas critique in the sense of McKay and Wolf (2023), under the assumption that the transmission 
+
+> 11
+
+of the identified shock is invariant to the intervention. A single shock, however, may fail to deliver the stipulated multi-period path of the oil price; considering a richer menu of driving shocks could address this and might yield more realistic (smaller) required shock sequences. This also relates to the approach of Caravello et al. (2025), whose counterfactuals build on two complementary inputs, namely conditional forecasts and the causal effects of policy shocks, which correspond to m and blocks of M ′ in our framework. Real GDP GDP deflator                       
+
+> Moderate Adverse Severe Moderate Adverse Severe
+> obs obs/idio obs/struc obs/idio/struc
+> 2026 2028 2030 2026 2028 2030 2026 2028 2030 2026 2028 2030 2026 2028 2030 2026 2028 2030
+> 02468
+> 02468
+> 02468
+> 02468
+> 02468
+> 02468
+> 02468
+> 02468
+> 02468
+> 02468
+> 02468
+> 02468
+> −10 −5 0510
+> −10 −5 0510
+> −10 −5 0510
+> −10 −5 0510
+> −10 −5 0510
+> −10 −5 0510
+> −10 −5 0510
+> −10 −5 0510
+> −10 −5 0510
+> −10 −5 0510
+> −10 −5 0510
+> −10 −5 0510
+
+Figure 3: Conditional forecasts of real GDP growth and GDP deflator inflation (year-over-year, in percent) under the alternative conditioning schemes (rows) and scenarios (columns). The solid black line shows the observed data, the dashed black line the median unconditional forecast. The colored line and shaded area are the posterior median and 68% credible set of the conditioning scheme; the thin grey lines repeat the median conditional forecasts of the other three schemes; y-axis clipped for readability. To economize on space, we focus on the consequences for two unrestricted observables in Figure 3, real GDP growth and inflation in the GDP deflator (both year-over-year). Irrespective of the scenario and conditioning scheme, the increase in oil prices is associated with inflationary pressures as measured by the GDP deflator, but the implied magnitudes differ markedly. The pass-through is weakest under obs/struc , where peak median inflation of 3 .5 to 3 .6 percent barely exceeds the unconditional forecast of about 3 .3 percent. It is somewhat stronger under obs (peaks of 4 .0 to 4 .8 percent, depending on the scenario), and most pronounced when the idiosyncratic components are restricted: peak median inflation reaches 4 .8 to 6 .5 percent under obs/idio and 
+
+12 5.0 to 7 .8 percent under obs/idio/struc . Inflation peaks at or within two quarters of the scenario-specific oil price peak, and the median paths largely return to the unconditional forecast within about two to three years. The scenario does not result in a contraction of GDP growth unless both the idiosyncratic and the non-driving structural shocks are restricted to their unconditional distribution. Under obs 
+
+and obs/struc , the counterfactual medians stay within 1 .4 percentage points of the unconditional forecast, and under obs/idio the paths are mildly expansionary on impact followed by a modest slowdown. When the scenario is explicitly tied to a structural oil price shock ( obs/idio/struc ), by contrast, the counterfactual paths produce a pronounced pattern of stagflation. Median GDP growth troughs at −0.6, −2.6 and −5.7 percent in the moderate , adverse and severe scenarios, respectively, with the trough coinciding with the scenario-specific oil price peak. As the oil price returns to its baseline, growth overshoots before gradually converging back to the unconditional forecast. This conditioning scheme also carries substantially higher predictive uncertainty: at the trough of the severe scenario, the 68% band for GDP growth spans roughly 20 percentage points, compared with 4 to 5 percentage points under the other schemes and for the unconditional forecast. Certainty about the structural origin of the scenario thus comes at the price of much more diffuse counterfactual predictions. 
+
+4. CONCLUSIONS 
+
+This paper develops methods for SSA in high-dimensional BVARs with a factor structure on the reduced-form errors. The framework accommodates separate distributional restrictions on observ-ables, structural shocks and idiosyncratic components, and we propose a fast simulation-based algorithm. In an application to oil price scenarios in the context of the 2026 closure of the Strait of Hormuz, we show that restricting the structural origins of a scenario is pertinent. The same stipu-lated oil price path is consistent with outcomes ranging from a mostly benign, mildly inflationary episode to pronounced stagflation, depending on which types of shocks are permitted to deliver it. Future research avenues include extensions of the model to include stochastic volatility and other forms of parameter time variation, which would allow predictive uncertainty and transmission dynamics to change over time; conditional on the respective parameter paths, the model remains 
+
+> 13
+
+Gaussian and the algorithms developed in this paper apply with minor modifications. The frame-work also lends itself to explicit manipulations of impulse responses to design policy counterfactuals, e.g., by computing the conditional forecast of the system initialized at its equilibrium, subjecting it to a single structural shock on impact, and restricting its propagation through selected observables. 
+
+REFERENCES 
+
+Adrian T, Giannone D, Luciani M, and West M (2026), “Risks and Uncertainty in Monetary Policy,” arXiv 2606.16708 .
+
+Anderson TW, Rubin H, et al. (1956), “Statistical inference in factor analysis,” in “Proceedings of the third Berkeley symposium on mathematical statistics and probability,” volume 5, 111– 150. 
+
+Andersson MK, Palmqvist S, and Waggoner DF (2010), “Density-conditional forecasts in dynamic multivariate models,” Sveriges Riksbank Working Paper Series 247 .
+
+Antolin-Diaz J, Petrella I, and Rubio-Ram´ ırez JF (2021), “Structural scenario analysis with SVARs,” Journal of Monetary Economics 117 , 798–815. 
+
+Arias JE, Rubio-Ram´ ırez JF, Rudolf D, and Shin M (2026), “Large SVARs,” Manuscript (unpublished) .
+
+Arias JE, Rubio-Ram´ ırez JF, and Waggoner DF (2018), “Inference based on structural vector autoregressions identified with sign and zero restrictions: Theory and applications,” 
+
+Econometrica 86 (2), 685–720. 
+
+Ba´ nbura M, Bobeica E, and Mart´ ınez Hern´ andez C (2026), “What drives core inflation? The role of supply shocks,” ECB Working Paper 2875 .
+
+Ba´ nbura M, Giannone D, and Lenza M (2015), “Conditional forecasts and scenario analysis with vector autoregressions for large cross-sections,” International Journal of Forecasting 
+
+31 (3), 739–756. 
+
+Ba´ nbura M, Giannone D, and Reichlin L (2010), “Large Bayesian vector auto regressions,” 
+
+Journal of Applied Econometrics 25 (1), 71–92. 
+
+Baumeister C (2025), “Discussion of ’Local Projections or VARs? A Primer for Macroe-conomists’,” NBER Macroeconomics Annual forthcoming .
+
+Baumeister C, and Hamilton JD (2015), “Sign restrictions, structural vector autoregressions, and useful prior information,” Econometrica 83 (5), 1963–1999. 
+
+Berend L, and Pr¨ user J (2025), “Large structural VARs with multiple linear shock and impact inequality restrictions,” arXiv 2505.19244 .
+
+Breitenlechner M, Geiger M, and Klein M (2024), “The fiscal channel of monetary policy,” 
+
+WPs in Economics and Statistics 2024-07 .
+
+Caravello TE, McKay A, and Wolf CK (2025), “Evaluating Monetary Policy Counterfac-tuals:(When) Do We Need Structural Models?” NBER 32988 .
+
+Carriero A, Chan J, Clark TE, and Marcellino M (2022), “Corrigendum to “Large Bayesian vector autoregressions with stochastic volatility and non-conjugate priors”[J. Econo-metrics 212 (1)(2019) 137–154],” Journal of Econometrics 227 (2), 506–512. 
+
+Carriero A, Clark TE, Marcellino M, and Mertens E (2024), “Addressing COVID-19 outliers in BVARs with stochastic volatility,” Review of Economics and Statistics 1–15. 
+
+Chan J, Eisenstat E, and Yu X (2022), “Large Bayesian VARs with factor stochastic volatility: Identification, order invariance and structural analysis,” arXiv 2207.03988 .
+
+> 14
+
+Chan J, Matthes C, and Yu X (2026), “Large structural VARs with multiple sign and ranking restrictions,” Quantitative Economics forthcoming .
+
+Chan JC, Pettenuzzo D, Poon A, and Zhu D (2025), “Conditional Forecasts in Large Bayesian VARs with Multiple Equality and Inequality Constraints,” Journal of Economic Dynamics and Control 105061 .
+
+Cong Y, Chen B, and Zhou M (2017), “Fast simulation of hyperplane-truncated multivariate normal distributions,” Bayesian Analysis 12 (4), 1017–1037. 
+
+Crump RK, Eusepi S, Giannone D, Qian E, and Sbordonea A (2025), “A Large Bayesian VAR of the US Economy,” International Journal of Central Banking 21 (2), 351–409. 
+
+Doan T, Litterman R, and Sims C (1984), “Forecasting and conditional projection using realistic prior distributions,” Econometric Reviews 3(1), 1–100. 
+
+Gambetti L, Korobilis D, Tsoukalas J, and Zanetti F (2023), “Agreed and disagreed uncertainty,” arXiv 2302.01621 .
+
+Huber F, and Feldkircher M (2019), “Adaptive shrinkage in Bayesian vector autoregressive models,” Journal of Business & Economic Statistics 37 (1), 27–39. 
+
+Kastner G, and Huber F (2020), “Sparse Bayesian vector autoregressions in huge dimensions,” 
+
+Journal of Forecasting 39 (7), 1142–1165. 
+
+Kilian L, Plante MD, Richter AW, and Zhou X (2026), “The Impact of the 2026 Iran War on US Inflation: A Scenario Analysis,” FRB Dallas Working Paper 2609 .
+
+Korobilis D (2022), “A new algorithm for structural restrictions in Bayesian vector autoregres-sions,” European Economic Review 148 , 104241. ——— (2025), “Exploring monetary policy shocks with large-scale Bayesian VARs,” arXiv 
+
+2505.06649 .
+
+Leeper EM, and Zha T (2003), “Modest policy interventions,” Journal of Monetary Economics 
+
+50 (8), 1673–1700. 
+
+McKay A, and Wolf CK (2023), “What can time-series regressions tell us about policy coun-terfactuals?” Econometrica 91 (5), 1695–1725. 
+
+Pfarrhofer M, and Stelzer A (2025), “High-frequency and heteroskedasticity identification in multicountry models: Revisiting spillovers of monetary shocks,” Macroeconomic Dynamics 
+
+29 , e122. 
+
+Pr¨ user J (2024), “A large non-Gaussian structural VAR with application to monetary policy,” 
+
+arXiv 2412.17598 .
+
+Robertson JC, Tallman EW, and Whiteman CH (2005), “Forecasting Using Relative En-tropy,” Journal of Money, Credit and Banking 37 (3), 383–401. 
+
+Waggoner DF, and Zha T (1999), “Conditional forecasts in dynamic multivariate models,” 
+
+Review of Economics and Statistics 81 (4), 639–651. 
+
+> 15
+
+# Online Appendix: 
+
+# Conditional projection methods for large-scale Bayesian VARs 
+
+A. TECHNICAL APPENDIX A.1. Priors, posteriors and computational aspects of the algorithm 
+
+Models as in (1) and (2) have several computational advantages. Using yt−Lε t = ˜ yt = (˜ y1t, . . . , ˜ynt )′,
+
+Ai• is the ith row of A, ˜ xt = ( x′
+
+> t
+
+, 1) ′ and βi = ( Ai•, a i)′, we obtain the ith VAR equation as: ˜yit = ˜ x′
+
+> t
+
+βi + siuit , uit ∼ N (0 , 1) , i = 1 , . . . , n. 
+
+We rely on a horseshoe prior, which is among the class of global–local priors. This prior assumes vec( A) ∼ N (0k, τ 2 · diag( λ21, . . . , λ 2
+
+> k
+
+)). The global parameter τ ∼ C +(0 , 1), where C+ is the half-Cauchy distribution, controls the overall amount of shrinkage towards the prior mean, which may be offset by the local scalings λj ∼ C +(0 , 1) for j = 1 , . . . , k , when the corresponding predictor is important. The resulting prior is βi ∼ N (0, V βi), where the diagonal elements of V βi are the products of the squared global and local scales ( τ 2λ2 
+
+> j
+
+) associated with the ith equation, and we add a normal prior with variance 10 for the intercept. The hyperparameters τ and λj are updated with auxiliary inverse-Gamma variables (Makalic and Schmidt, 2015). Draws from these posteriors can be updated equation-by-equation with standard formulas, using yi = (˜ yi1, . . . , ˜yiT )′/s i and 
+
+Xi = ( ˜ x1, . . . , ˜xT )′/s i, for a conditionally conjugate Gaussian linear regression: 
+
+βi|• ∼ N (V βi X′
+
+> i
+
+yi, V βi), V βi = ( V −1 
+
+> βi
+
++ X′
+
+> i
+
+Xi)−1. (A.1) When nP ≫ T we follow Kastner and Huber (2020) and use the fast sampling algorithm of Bhattacharya et al. (2016) which significantly speeds up the algorithm. A draw is obtained by first sampling c ∼ N (0nP +1 , V βi) and d ∼ N (0T , IT ). Set v = Xic + d and compute w =(XiV βiX′ 
+
+> i
+
++ IT )−1(yi − v). A draw from the posterior of βi is obtained as c + V βiX′
+
+> i
+
+w. This ties the respective dominant computational cost to the sample size rather than the number of parameters. 
+
+> A1
+
+We denote by l′ 
+
+> i
+
+the ith row and lij the ( i, j )th element of the matrix L with i = 1 , . . . , n and 
+
+j = 1 , . . . , q . The prior on the loadings implements the restrictions R introduced in Section 2: 
+
+lij ∼
+
+
+
+N (mL,ij , v L,ij ) · I(lij ≥ 0) , if Rij = + ,
+
+N (mL,ij , v L,ij ) · I(lij ≤ 0) , if Rij = −,δcij , if Rij = cij ,
+
+N (mL,ij , v L,ij ), if Rij = NA ,
+
+where δcij is the point mass at cij ; we use weakly informative choices for the prior means mL,ij = 0 and variances vL,ij = 3. The elements of the lower ( li) and upper ( li) bounds are set as follows: if Rij = + → (0 , ∞), if Rij = − → (−∞ , 0), if Rij = NA → (−∞ , ∞). Point-mass restrictions 
+
+Rij = cij fix the respective loadings and exclude them from the update (for cij = 0, this is a zero restriction); let Fi collect the free indices of row i and li, Fi the corresponding subvector, with the bounds above referring to the free coordinates. Stacking the reduced form error ηit = l′
+
+> i
+
+εt + siuit 
+
+across t = 1 , . . . , T , with E = ( ε1, . . . , εT )′, yields ηi = El i + siui. Collecting in EFi the columns of E associated with the free loadings, and adjusting for the contribution of the fixed ones via 
+
+ηci = ηi − EFci li, Fci (with Fci the fixed indices), using Vli = ( s−2 
+
+> i
+
+E′Fi EFi + V −1
+
+> L,i
+
+)−1 the posterior of the free equation-specific loadings is truncated normal: 
+
+li, Fi |• ∼ N  Vli (s−2 
+
+> i
+
+E′Fi ηci + V −1
+
+> L,i
+
+mL,i ), Vli
+
+ · I(li < li, Fi < li), (A.2) where mL,i and the diagonal matrix V L,i collect the prior means and variances of the free loadings. We sample from this multivariate truncated normal distribution using the minimax tilting method of Botev (2017). A sample from the posterior of the factors can be obtained by writing the model in a seem-ingly unrelated regression form, using ε(1: T ) = ( ε′
+
+> 1
+
+, . . . , ε′ 
+
+> T
+
+)′, η(1: T ) = ( η′
+
+> 1
+
+, . . . , η′ 
+
+> T
+
+)′, u(1: T ) =(u′
+
+> 1
+
+, . . . , u′ 
+
+> T
+
+)′, L(T ) = ( IT ⊗ L), S1/2(T ) = ( IT ⊗ S1/2), so that η(1: T ) = L(T )ε(1: T ) + S1/2(T )u(1: T ).The posterior is a normal distribution: 
+
+ε(1: T )|• ∼ N (VεL′ 
+
+> (T)
+
+S−1(T )η(1: T ), Vε), Vε = ( L′ 
+
+> (T)
+
+S−1(T )L(T ) + IT q )−1. (A.3) 
+
+> A2
+
+On the diagonal elements of S, we impose inverse Gamma priors s2 
+
+> i
+
+∼ G −1(a0, b 0) and set a0 = 5 and b0 = 0 .4. Since the series are standardized, this prior centers the idiosyncratic share of each series’ unit variance at 10 percent a priori, mildly favoring the common component. Draws for the variances of the idiosyncratic component can be obtained equation-by-equation from textbook inverse Gamma posteriors, 
+
+s2 
+
+> i
+
+|• ∼ G −1(a0 + T / 2, b 0 +
+
+> T
+
+X
+
+> t=1
+
+(˜ yit − ˜x′
+
+> t
+
+βi)2/2) . (A.4) This prior setup allows for Gibbs updates of all parameters, cycling iteratively through the distributions given by (A.1) to (A.4). All results are based on 8,000 sweeps of this algorithm; we discard the first 2,000 as burn-in and retain every second of the remaining draws, yielding 3,000 posterior draws. Note that in our empirical application, we follow Chan et al. (2025) and sample from the conditional forecast distributions after running the main sampling algorithm, and thus do not condition any model parameters on the restrictions. The sampling step for the conditional forecasts can straightforwardly be moved into the main estimation algorithm to update the parameters conditional on the restrictions via data augmentation. 
+
+A.2. Static representation of the joint forecast vector 
+
+The matrix H = ( InH − ˜H) encodes the dynamic coefficients while h = ˜h + ( ιH ⊗ a) collects the predetermined terms (initial conditions and intercepts). Specifically, the required vectors and matrices are defined as: ˜h =
+
+PPp=1 ApyT +1 −p
+
+PPp=2 ApyT +2 −p
+
+PPp=3 ApyT +3 −p
+
+...
+
+AP yT
+
+0n
+
+...
+
+0n
+
+
+
+, ˜H =
+
+
+
+0n×n · · · · · · · · · · · · · · · · · · 0n×n
+
+A1 0n×n · · · · · · · · · · · · · · · 0n×n
+
+A2 A1 0n×n · · · · · · · · · · · · 0n×n
+
+... . . . . . . . . . ...
+
+AP · · · A2 A1 0n×n · · · · · · 0n×n
+
+0n×n
+
+. . . . . . . . . . . . ...... . . . . . . . . . . . . . . . ...
+
+0n×n · · · 0n×n AP · · · A2 A1 0n×n
+
+
+
+.
+
+> A3
+
+Note that in case H < P one may subset H and h to their respective upper nH blocks. It can be shown (see below) that the inversion results again in a lower triangular matrix, with a specific structure: 
+
+H−1 =
+
+
+
+Φ0 0n · · · · · · 0n
+
+Φ1 Φ0
+
+. . . ...
+
+Φ2 Φ1 Φ0
+
+. . . ...... . . . . . . . . . 0n
+
+ΦH−1 · · · Φ2 Φ1 Φ0
+
+
+
+where Φ0 = In. That is, this matrix collects the dynamic coefficients of the vector moving average representation on its main diagonal and subdiagonals — which measure the dynamic response and propagation of the system to a shock. Since H is lower block-triangular with In on its main block diagonal, det( H) = QHi=1 det( In) = 1, and thus invertible. To establish the structure of H−1, solve Hx = Ej block by block via for-ward substitution, where Ej = [ 0n×n(j−1) , In, 0n×n(H−j)]′ is an nH × n matrix. For i = 1 the sum is empty and the equation reduces to x1 = I(1 = j) · In. For i > 1, the ith block equation reads 
+
+xi −
+
+> min( P, i −1)
+
+X
+
+> p=1
+
+Ap xi−p = I(i = j) · In.
+
+For i < j , forward substitution gives xi = 0n. For i = j, xj = In = Φ0. For i > j , the recursion 
+
+xi =
+
+> min( P, i −j)
+
+X
+
+> p=1
+
+Ap xi−p
+
+coincides with the VMA recursion Φs = Pmin( P,s ) 
+
+> p=1
+
+Ap Φs−p, so that xi = Φi−j follows by induction. The columns of H−1 are thus given by the solutions x. In practice, our R-code never explicitly forms H−1 or the full matrix M ′ but constructs them recursively, which is algebraically equivalent and offers substantial computational gains. 
+
+> A4
+
+A.3. The restricted innovation distribution 
+
+Define ξ := ξT +(1: H) and d := ( q + n)H, with unconditional distribution ξ ∼ N (0, Id) by the assumptions in (2). The restriction matrix R is r × d with full row rank, so R+ = R′(RR ′)−1 is a right inverse, RR + = Ir, and P := R+R is the orthogonal projection matrix onto the row space of R; it is symmetric and idempotent. Split ξ into its row-space and null-space parts, and write w
+
+for the r-dimensional restricted combination, 
+
+ξ = P ξ + ξ⊥, ξ⊥ := ( Id − P )ξ, w := Rξ ∼ N (0, RR ′).
+
+Since RP = R, we have w = R(P ξ ), P ξ = R+w, and conditioning on Rξ is equivalent to conditioning on P ξ , while ξ⊥ carries the remaining variation. The two parts are jointly Gaussian with covariance P (Id − P ) = 0, hence independent, with ξ⊥ ∼ N (0, Id − P ). Given the restricted combination we therefore obtain p(ξ | w) = N R+w, Id − P , or equivalently ξ = R+w + ξ⊥.The revision replaces the marginal distribution of w with w∗ ∼ N (r, Ω), independent of ξ⊥, while leaving this conditional unchanged, which defines the restricted innovations ξ∗ = R+w∗ + ξ⊥.Hence ξ∗ ∼ N (μξ, Vξ) with μξ = R+r and Vξ = ( Id − P ) + R+ΩR+′. By construction, using 
+
+R(Id − P ) = 0, we have Rμ ξ = r and RV ξR′ = Ω.When treating the restrictions as noisy observations, the posterior variance ˜Vξ = ( Id +
+
+R′Ω−1R)−1 can be rewritten by applying the Woodbury matrix identity, which yields: ˜Vξ = Id −
+
+R′(Ω + RR ′)−1R. Substituting the Woodbury form of ˜Vξ into the posterior mean ˜ μξ = ˜VξR′Ω−1r
+
+yields ˜ μξ = R′  Ω−1 − (Ω + RR ′)−1RR ′Ω−1 r = R′(Ω + RR ′)−1r. For Ω = 0, i.e., under hard restrictions, these are the same moments as shown in Waggoner and Zha (1999) and identical to those in (6). 
+
+Sampling the restricted innovations . Drawing directly from N (μξ, Vξ) requires factor-izing the d × d matrix Vξ. Algorithm 1 samples from the same distribution using only the r × r
+
+matrices RR ′ and Ω. We use R+ and P as defined above; Proposition 1 formalizes the properties of the algorithm. 
+
+> A5
+
+Proposition 1. Draw ξ0 ∼ N (0, Id) and v0 ∼ N (0, Ω) independently. Then 
+
+ξ∗ = ξ0 + R′(RR ′)−1(r + v0 − Rξ 0) (A.5) 
+
+satisfies ξ∗ ∼ N (μξ, Vξ), and the restrictions hold by construction, Rξ ∗ = ( r + v0) ∼ N (r, Ω).Proof. Using R+ = R′(RR ′)−1 and P = R+R, the draw (A.5) rearranges to 
+
+ξ∗ = R+(r + v0) + ( Id − P )ξ0. (A.6) Setting w∗ := ( r + v0) ∼ N (r, Ω) and ξ⊥ := ( Id − P )ξ0 ∼ N (0, Id − P ), with w∗ ⊥ ξ⊥ since 
+
+v0 ⊥ ξ0, this is exactly the representation ξ∗ = R+w∗ + ξ⊥ derived above. Hence ξ∗ is Gaussian, being a linear combination of jointly Gaussian variates, with 
+
+E(ξ∗) = R+r = μξ,
+
+Var( ξ∗) = ( Id − P )2 + R+ΩR+′ = ( Id − P ) + R+ΩR+′ = Vξ,
+
+using independence of ξ0 and v0 and idempotence of Id −P . Finally, Rξ ∗ = Rξ 0 +RR ′(RR ′)−1(r+
+
+v0 − Rξ 0) = ( r + v0), which is N (r, Ω) by construction. Note that this algorithm is related to Jaroci´ nski (2010) who uses an SVD of the matrix R,instead of orthogonal projections, to speed up the computations described in Waggoner and Zha (1999). The draw v0 takes the role of the Monte Carlo draw from the distribution of the soft constraints in Waggoner and Zha (1999): the realized target w∗ = r + v0 is imposed exactly, which guarantees Rξ ∗ = w∗ ∼ N (r, Ω) by construction. 
+
+> A6
+
+B. EMPIRICAL APPENDIX B.1. Competing algorithms and computation times 
+
+We benchmark the per-draw cost of Algorithm 1 against four competing samplers of the same conditional forecast distribution. So that all methods are applicable, the comparison is conducted in the canonical SVAR special case of our framework ( q = n structural shocks and no idiosyncratic components), for which the competing algorithms were originally designed. The experimental grid varies the number of variables n ∈ { 10 , 20 , 50 }, the lag order P ∈ { 4, 12 , 24 }, and the forecast horizon H ∈ { 8, 12 , 24 }.Soft restrictions are imposed on the observables by conditioning a fixed share of the variables at every horizon, so that the restriction “density” r/ (nH ) takes values of 10, 30, 50, and 80 percent; this spans settings from a small number of conditioning assumptions to scenarios that pin down most of the joint forecast distribution. Costs are accounted for on a per-iteration basis, mimicking use with an MCMC sampler; the total cost per draw is the sum of a construction step, which must be repeated for every draw of the VAR parameters (the baseline forecast and impulse response or multiplier objects), and the conditioning step, which produces the conditional forecast draw itself. All methods run in R 4.5.2 , in a single session on identical hardware (MacBook Air, M1). Figure B.1 reports total times per draw relative to Algorithm 1, whose row shows absolute numbers in seconds per 1,000 draws. 
+
+Implementation details . The labels in Figure B.1 refer to the following samplers. “Joint (shocks)” and “Joint (obs.)” refer to a direct implementation of the formulas in Antolin-Diaz et al. 
+
+(2021). These compute the Gaussian moments explicitly and factorize a dense nH × nH covariance matrix for every draw, an O(( nH )3) operation, in the space of structural shocks (their equations 10– 12) and observables (equations 13–14), respectively. “SVD” is the algorithm of Jaroci´ nski (2010), which accelerates Waggoner and Zha (1999) by taking a singular value decomposition (SVD) of the 
+
+r ×nH restriction map, obtaining the conditional mean through the pseudo-inverse in factored form and the stochastic component from a draw in the ( nH − r)-dimensional null space; its per-draw cost is of order O(r(nH )2). “Precision” is the sampler of Chan et al. (2025), which partitions the stacked observable vector into restricted and free coordinates and samples the free block from its 
+
+> A7
+
+Gaussian conditional using the sparse precision matrix of the stacked system; each draw requires one sparse factorization of the free-block precision of dimension nH − r.We took care to make this comparison as fair as possible. That is, no method unnecessarily forms an explicit matrix inverse or the full inverse lag polynomial; whenever several algebraically equivalent construction routes exist (recursive, companion-form, and joint stacked representations), each method takes the fastest available route. For “Precision,” since the sparsity patterns of the precision matrix and of its free-block submatrix are fixed across draws, the sparse Cholesky factorization is initialized only once and the free block is assembled by a single vectorized copy per draw; each draw then merely updates the numeric values of the factor, which serves both the conditional mean and the simulation step. Analogously, since the sparsity structure of the restriction map of Algorithm 1 is fixed across draws, its assembly indices are computed once per chain, and each draw fills the map with a single vectorized copy. This bookkeeping matters because language-level overhead — e.g., method dispatch and object validation for the sparse-matrix classes in R — can dominate the actual floating-point work in small systems; we profiled all implementations and removed such overhead wherever the algorithm permits it, so that measured differences reflect each sampler’s linear algebra rather than implementation artifacts. 
+
+Computation times . The relative rankings in Figure B.1 follow directly from the dom-inant factorization of each algorithm. Algorithm 1 factorizes an r × r matrix, at a cost of order 
+
+O(r2nH + r3) that increases with the number of restrictions, whereas the precision sampler fac-torizes the complementary free block of dimension nH − r, whose cost falls as more of the system is restricted. The two methods are therefore complements rather than substitutes. For sparse and moderately dense restriction sets, Algorithm 1 dominates, with the advantage over the precision sampler widening in the size of the system; at 50 percent density the two methods are roughly on par, and once most of the system is restricted the ranking flips, with the precision sampler fastest in nearly the entire 80 percent row. The lag order reinforces this pattern. It enters Algorithm 1 only through the construction of the impulse responses (the conditioning step is invariant to P ), whereas the bandwidth of the stacked precision matrix grows with nP , so that for long lag orders the banded matrix H becomes denser, and the precision-based approach of Chan et al. (2025) slows down markedly; this is visible in the figure as its relative cost deteriorates across the P panels. 
+
+> A8
+
+0.2s ×1.8 ×0.6 ×0.9 ×1.6 ×1.3 ×1.9 ×1.3 ×1.2 0.3s ×1.9 ×1.9 0.7s ×1.7 ×0.8 
+
+×1.9 ×1.5 0.3s ×1.9 ×1.1 ×1.3 ×1.4 ×1.7 ×1.5 0.4s ×1.8 1.0s ×1.6 ×1.7 ×1.4 
+
+×1.6 ×1.2 ×1.5 ×1.0 0.4s ×1.8 ×1.5 ×1.6 ×1.2 0.5s ×1.8 ×1.6 ×2.2 ×1.4 1.2s 0.2s ×2.6 ×2.1 ×2.3 ×2.2 ×2.8 0.5s ×2.2 ×2.5 ×2.4 ×4.9 ×4.6 ×4.9 ×2.0 0.9s 
+
+×1.9 ×1.7 0.4s ×1.6 ×2.8 ×2.3 0.7s ×2.3 ×3.3 ×1.8 ×4.0 ×3.6 ×3.5 1.3s ×5.1 
+
+×1.8 ×1.5 ×2.0 ×1.3 0.5s ×2.1 ×1.9 ×2.7 ×1.6 0.9s ×2.8 ×2.7 ×6.5 ×3.1 1.8s 
+
+×4.3 ×6.4 ×4.5 ×4.3 0.7s ×6.2 ×8.2 1.4s ×5.9 ×6.0 ×9.6 3.3s ×12 ×8.1 ×5.5 
+
+×3.3 ×3.4 ×3.3 ×7.8 0.9s ×5.0 1.5s ×14 ×4.8 ×5.1 ×8.9 ×6.2 ×16 ×9.2 4.7s 
+
+×3.1 ×2.6 ×6.9 ×3.0 1.2s ×4.4 ×4.1 ×11 ×4.9 1.8s ×4.9 ×7.0 6.7s ×7.0 ×20 
+
+×1.2 0.2s ×0.9 ×1.1 ×1.7 ×0.9 ×1.9 ×1.6 ×1.8 0.3s ×0.5 ×2.2 ×2.6 ×2.0 0.7s 
+
+×1.4 ×1.3 ×1.5 0.3s ×1.2 ×1.7 ×1.7 ×1.8 0.4s ×1.3 1.2s ×1.0 ×1.8 ×1.5 ×1.7 
+
+×1.2 ×1.5 ×1.2 ×1.6 0.4s ×1.3 ×1.6 ×1.7 ×1.6 0.5s ×1.6 ×1.6 ×1.8 ×1.8 1.3s 
+
+×2.5 ×1.3 0.3s ×2.1 ×2.9 ×1.9 ×2.7 ×2.8 ×4.4 0.5s ×0.9 ×3.7 ×3.8 ×6.3 1.4s 
+
+×2.0 ×2.1 ×2.2 ×1.8 0.4s ×2.0 0.7s ×2.3 ×2.5 ×2.3 ×4.5 ×2.4 ×3.2 1.8s ×3.0 
+
+×1.6 ×1.4 ×1.6 ×1.7 0.6s ×2.7 ×2.1 ×2.1 ×2.1 0.8s ×3.0 ×2.4 ×2.7 ×3.9 2.5s 0.9s ×3.4 ×6.5 ×4.4 ×4.2 ×2.9 ×4.7 ×5.1 1.8s ×9.0 ×1.8 ×6.8 ×6.1 ×11 6.3s 
+
+×4.7 ×3.7 ×5.8 ×3.8 1.0s 2.4s ×5.2 ×6.9 ×3.6 ×3.8 ×9.3 ×4.8 ×5.1 8.0s ×6.2 
+
+×4.0 ×2.6 ×3.3 ×2.7 1.5s ×4.4 ×6.4 ×5.2 ×3.8 2.5s ×5.3 9.5s ×5.2 ×9.6 ×8.2 
+
+×1.3 0.2s ×0.9 ×1.4 ×1.7 ×2.6 ×2.1 ×1.8 0.3s ×0.8 ×3.1 ×1.8 ×1.6 ×0.4 0.9s 
+
+×1.4 ×1.6 ×1.3 ×1.4 0.3s ×1.7 ×1.1 0.4s ×1.6 ×2.3 ×2.6 ×0.8 1.2s ×1.7 ×1.6 
+
+×1.5 0.4s ×1.2 ×1.5 ×1.5 0.5s ×1.9 ×1.1 ×1.7 ×2.1 ×1.0 ×1.7 1.6s ×1.3 ×2.0 ×3.4 0.4s ×0.8 ×2.5 ×2.3 ×4.4 ×3.2 ×0.9 ×2.9 0.6s ×6.4 ×3.1 ×0.4 ×2.9 2.0s 
+
+×1.7 ×2.1 ×1.1 ×1.8 0.6s ×1.9 0.9s ×2.4 ×3.2 ×1.3 ×5.7 ×1.1 2.3s ×3.0 ×2.7 
+
+×1.9 0.7s ×1.0 ×1.8 ×1.4 ×2.4 1.1s ×1.2 ×1.9 ×1.5 3.0s ×2.2 ×4.9 ×2.6 ×1.7 
+
+×7.0 1.4s ×3.0 ×1.3 ×4.1 ×9.3 ×1.1 ×3.7 2.6s ×4.7 ×12 ×5.4 ×0.5 ×5.6 10s 
+
+×3.6 ×2.2 1.3s ×3.3 ×6.8 ×4.2 ×7.9 3.0s ×2.3 ×3.7 12s ×9.8 ×1.6 ×5.1 ×4.7 
+
+×5.4 ×1.9 1.7s ×3.4 ×3.0 ×6.8 3.7s ×2.0 ×2.9 ×3.0 ×4.5 ×4.9 15s ×9.0 ×2.7 
+
+×1.3 0.2s ×2.1 ×1.6 ×0.7 ×3.8 0.3s ×1.8 ×0.7 ×2.1 ×4.5 1.2s ×2.0 ×0.3 ×1.6 
+
+×2.2 0.3s ×1.6 ×1.2 ×1.5 0.6s ×0.6 ×1.5 ×2.4 ×1.9 ×3.4 ×1.4 1.7s ×1.4 ×0.5 
+
+×1.3 ×0.9 0.5s ×1.7 ×1.2 0.6s ×1.5 ×2.3 ×0.9 ×1.9 ×3.3 1.8s ×1.5 ×1.6 ×0.8 
+
+×4.5 ×0.5 ×2.1 ×2.2 0.5s ×5.4 1.0s ×1.9 ×0.5 ×2.3 ×7.6 3.4s ×2.6 ×0.2 ×2.8 
+
+×1.6 ×3.2 ×1.5 0.7s ×1.0 1.1s ×2.0 ×2.0 ×5.2 ×0.9 ×3.0 3.8s ×6.9 ×0.4 ×2.3 
+
+×3.0 ×1.5 0.8s ×1.8 ×0.8 ×1.7 ×0.8 1.4s ×3.9 ×1.7 ×2.3 ×2.3 4.7s ×0.7 ×5.7 ×7.5 2.2s ×3.5 ×0.6 ×3.2 ×8.7 4.6s ×3.5 ×0.3 ×2.9 ×12 22s ×4.5 ×0.1 ×4.0 
+
+2.5s ×0.8 ×2.3 ×6.3 ×2.5 ×7.9 ×3.2 ×0.8 ×3.0 5.3s 21s ×4.5 ×11 ×0.4 ×5.0 
+
+×2.4 2.5s ×6.8 ×0.9 ×2.9 ×8.1 ×4.1 5.3s ×3.1 ×0.9 ×4.1 ×0.8 26s ×4.7 ×12 
+
+n = 10 n = 20 n = 50 
+
+p = 4 p = 12 p = 24 p = 4 p = 12 p = 24 p = 4 p = 12 p = 24 
+
+> = 10% = 30% = 50% r / nH = 80%
+
+8 12 24 8 12 24 8 12 24 8 12 24 8 12 24 8 12 24 8 12 24 8 12 24 8 12 24 
+
+SVD Precision Joint (obs.) Joint (shocks) Algorithm 1 
+
+SVD Precision Joint (obs.) Joint (shocks) Algorithm 1 
+
+SVD Precision Joint (obs.) Joint (shocks) Algorithm 1 
+
+SVD Precision Joint (obs.) Joint (shocks) Algorithm 1 
+
+Forecast horizons (H) 
+
+> Algorithm
+
+Time / Algorithm 1 (benchmark in s/1,000 draws) ×0.1 ×1.0 ×10 Figure B.1: Computation times of competing conditional forecasting algorithms. 
+
+Cells show timings relative to Algorithm 1 (red: slower, blue: faster, log scale); the row for Algorithm 1 reports absolute benchmarks in seconds per 1,000 draws. Panels vary the number of variables n and lag order P ; the horizontal axis varies the forecast horizon H; panel rows vary the restriction density r/ (nH ). 
+
+The joint approaches behave as expected given that the O(( nH )3) factorization does not depend on the number of restrictions: their relative position is nearly flat across density rows, narrowing only slightly at high densities as the cost of Algorithm 1 grows with r, and the two variants perform very similarly, since dense moment products and the factorization of the same order dominate both. The SVD approach sits in between: its cost grows with r(nH )2, so it is competitive in small and sparsely restricted settings but falls behind at scale. A caveat applies to reading the small-system cells: absolute differences there are on the order of a millisecond per draw or less, so the ranking in those cells is of little practical consequence. Overall, the differences across methods are modest in small systems but large at scale: in the biggest sparsely restricted configurations, Algorithm 1 outpaces the joint samplers by factors of five to ten, the SVD sampler by up to twelve, and the precision sampler by up to twenty. Within our benchmark grid, it is the fastest option in the empirically relevant larger-system cells of the sparse-to-moderate density range, while the precision sampler takes over in the most densely restricted settings. 
+
+A9 B.2. Data and additional empirical results 
+
+Table B.1 lists the variables used in the empirical application, alongside series mnemonics (FRED-QD where available; constructed series are described in the table notes) and transformations. This information set corresponds to the one used in Crump et al. (2025), which we use with the sign restrictions of Arias et al. (2026); Chan et al. (2026). Most variables enter in year-over-year growth rates except those already in percent. Note that the oil price enters in log-levels, because the scenarios are stated in terms of the nominal price of oil and encoding them for a differenced series would be more complicated. 
+
+Table B.1: Variables, transformations, and sign/ranking restrictions 
+
+Code Description (Tr.) (a) (b) (c) (d) (e) (f ) (g) (h) (i) (j)
+
+GDPC1 Real GDP (1) + + + − + + + + − +
+
+PCECC96 Real PCE (1) + + − +
+
+PRFIx Residential investment (1) + +
+
+PNFIx Nonresidential investment (1) + + − +
+
+EXPGSC1 Exports (1) 
+
+IMPGSC1 Imports (1) 
+
+GCEC1 Govt consumption & investment (1) +
+
+GDPCTPI GDP deflator (1) + + + − + − − − + +
+
+PCECTPI PCE deflator (1) + + + − + − − − + +
+
+PCEPILFE Core PCE deflator (1) + + + − + − − − + +
+
+CPIAUCSL CPI (1) + + + − + − − − + +
+
+CPILFESL Core CPI (1) + + + − + − − − + +
+
+AHETPIx Avg hourly earnings (1) + − − −
+
+OPHNFB Labor productivity (NFB) (1) + −
+
+PAYEMS Nonfarm payrolls (1) + + + − + + − + − −
+
+INDPRO Industrial production (1) + + + −
+
+CUMFNS Capacity utilization (2) + + + −
+
+TFP Util-adjusted TFP (Fernald) (1) + −
+
+HOUST Housing starts (1) 
+
+DPIC96 Real disposable income (1) 
+
+UMCSENTx Consumer sentiment (2) 
+
+FEDFUNDS Federal funds rate (2) + + + + +
+
+TB3MS 3-month T-bill rate (2) + + + + +
+
+GS5 5-year Treasury note (2) +
+
+GS10 10-year Treasury bond (2) +
+
+AAASPR Moody’s AAA spread (vs. FFR) (2) +
+
+BAASPR Moody’s BAA spread (vs. FFR) (2) +
+
+MPRIME Prime rate (2) + + + + +
+
+SP500 S&P 500 (1) − + − +
+
+EXUSUKx USD/GBP exchange rate (1) 
+
+OILPRICEx Oil price (3) − +
+
+PNFI GDP Nonres. inv / GDP (2) − + +
+
+GCEC GDP Govt spending / GDP (2) − − − +                   
+
+> + ( −) denotes a positive (negative) sign restriction on the corresponding factor loading (equivalently, the sign of the variable’s impact response to the shock); empty cells indicate no restriction. The last two rows are ranking-restriction auxiliaries (relative responses): a positive (negative) restriction on these constructed ratio series requires the numerator to respond more (less) strongly than GDP to the respective shock. The monetary-policy restrictions on AAASPR /BAASPR apply to corporate bond spreads over the federal funds rate, which widen after a contractionary monetary policy shock. TFP is Fernald’s utilization-adjusted TFP; AAASPR /BAASPR are Moody’s AAA/BAA yields minus the federal funds rate;
+> PNFI GDP and GCEC GDP are 100 ×ratios to real GDP. All other series are FRED-QD mnemonics. Transformations: (1) 100 ∆ 4log( x), year-over-year % growth; (2) level (rates, indices, and ratios already in %); (3) 100 log( x), log-level. Shocks: (a) = Demand; ( b) = Investment; ( c) = Financial; (d) = Monetary policy; ( e) = Government spending; ( f) = Technology; ( g) = Labor supply; ( h) = Wage bargaining; ( i) = Oil price; ( j) = Consumer sentiment.
+
+A10 Impulse response functions of selected variables, computed as described in Section 2, are shown in Figure B.2. The figure shows the responses of selected variables to all structural shocks. The responses are computed as the median of the posterior draws, with 68% and 90% credible intervals. They are qualitatively similar to those of the closely related work of Chan et al. (2026) and Arias et al. (2026). Demand Investment Financial Monetary Government Technology Labor Wage Oil Consumer                              
+
+> Real GDP GDP deflator
+> Federal funds rate
+> Nonresidential investment
+> Avg hourly earnings
+> Oil price
+> 048 12 16 048 12 16 048 12 16 048 12 16 048 12 16 048 12 16 048 12 16 048 12 16 048 12 16 048 12 16
+> −0.4 0.0 0.4 0.8
+> −0.2 0.0 0.2 0.4
+> −0.4 0.0 0.4
+> −1 012
+> −0.3 −0.2 −0.1 0.0 0.1 0.2
+> −5 05
+
+Horizon 
+
+Figure B.2: Impulse responses of selected variables to all structural shocks. 
+
+REFERENCES 
+
+Antolin-Diaz J, Petrella I, and Rubio-Ram´ ırez JF (2021), “Structural scenario analysis with SVARs,” Journal of Monetary Economics 117 , 798–815. 
+
+A11 Arias JE, Rubio-Ram´ ırez JF, Rudolf D, and Shin M (2026), “Large SVARs,” Manuscript (unpublished) .
+
+Bhattacharya A, Chakraborty A, and Mallick BK (2016), “Fast sampling with Gaussian scale mixture priors in high-dimensional regression,” Biometrika asw042. 
+
+Botev ZI (2017), “The normal law under linear restrictions: simulation and estimation via mini-max tilting,” Journal of the Royal Statistical Society (Series B) 79 (1), 125–148. 
+
+Chan J, Matthes C, and Yu X (2026), “Large structural VARs with multiple sign and ranking restrictions,” Quantitative Economics forthcoming .
+
+Chan JC, Pettenuzzo D, Poon A, and Zhu D (2025), “Conditional Forecasts in Large Bayesian VARs with Multiple Equality and Inequality Constraints,” Journal of Economic Dynamics and Control 105061 .
+
+Crump RK, Eusepi S, Giannone D, Qian E, and Sbordonea A (2025), “A Large Bayesian VAR of the US Economy,” International Journal of Central Banking 21 (2), 351–409. 
+
+Jaroci´ nski M (2010), “Conditional forecasts and uncertainty about forecast revisions in vector autoregressions,” Economics Letters 108 (3), 257–259. 
+
+Kastner G, and Huber F (2020), “Sparse Bayesian vector autoregressions in huge dimensions,” 
+
+Journal of Forecasting 39 (7), 1142–1165. 
+
+Makalic E, and Schmidt DF (2015), “A simple sampler for the horseshoe estimator,” IEEE Signal Processing Letters 23 (1), 179–182. 
+
+Waggoner DF, and Zha T (1999), “Conditional forecasts in dynamic multivariate models,” 
+
+Review of Economics and Statistics 81 (4), 639–651.
