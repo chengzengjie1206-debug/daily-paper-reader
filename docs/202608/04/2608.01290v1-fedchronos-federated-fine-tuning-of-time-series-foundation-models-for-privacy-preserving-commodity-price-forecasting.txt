@@ -1,0 +1,478 @@
+Title: FedChronos: Federated Fine-Tuning of Time-Series Foundation Models for Privacy-Preserving Commodity Price Forecasting
+
+URL Source: https://arxiv.org/pdf/2608.01290v1
+
+Published Time: Tue, 04 Aug 2026 01:44:49 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# FedChronos: Federated Fine-Tuning of Time-Series Foundation Models for Privacy-Preserving Commodity Price Forecasting 
+
+Amit Sharma ∗, Nitin Auluck ∗, and Akramul Azim †∗Indian Institute of Technology Ropar, Punjab, India Email: {amit.21csz0028, nitin }@iitrpr.ac.in 
+
+†Ontario Tech University, Oshawa, Canada Email: akramul.azim@ontariotechu.ca 
+
+Abstract —Time-series foundation models (TSFMs) such as Chronos have demonstrated strong forecasting capabilities across domains, yet adapting them to institutionally fragmented settings, where data cannot be centralized due to regulatory, competitive, or sovereignty constraints, remains unexplored. We introduce FedChronos, a framework for federated parameter-efficient fine-tuning of an already pre-trained TSFM, a setting that exist-ing federated time-series work has not addressed, since prior methods either pre-train from scratch or align prototypes rather than adapt a fixed backbone. Our approach applies Low-Rank Adaptation (LoRA) to the Chronos-T5 backbone and trains across distributed clients using FedAvg and FedProx, transmitting only lightweight adapter weights (384 KB per round, an 86 ×
+
+reduction over full-model exchange). We evaluate FedChronos on daily commodity prices from 15 Indian agricultural markets across 9 states, a naturally non-IID federated setting, and find that na¨ ıve LoRA fine-tuning overfits substantially on small per-client datasets, dropping below zero-shot performance. We further observe that differential privacy (DP) noise can act as implicit regularization and counteract this overfitting: in our experiments the strongest configuration ( ε = 5) reduces mean absolute percentage error (MAPE) by 31% over zero-shot and 26% over the best traditional baseline, while bounding each round’s information leakage via per-round (ε, δ )-differential privacy. Because the model is compact and the updates are small, the approach also suits edge AI deployments where both the network link and the client device are constrained. Overall, our findings suggest that privacy and accuracy can be complementary rather than competing objectives in federated TSFM fine-tuning. 
+
+Index Terms —Federated Learning, Time-Series Foundation Models, LoRA, Differential Privacy, Edge Computing, Agricul-tural Price Forecasting 
+
+I. I NTRODUCTION 
+
+A potato farmer in Agra harvests 12 tonnes in March and has to decide what to do with the crop: sell now at the local mandi for Rs. 800/quintal, hold for two weeks and hope prices rise, or transport the harvest to the Delhi wholesale market 200 km away, where prices might reach Rs. 1,100, but transport costs may eat into the margin. Without reliable forecasts of how prices move across these markets, he relies on word of mouth and broker advice, information that is often days old and biased toward the broker’s own interests. The same decision repeats across roughly 140 million farming 
+
+The Problem   
+
+> Mandi
+> Agra
+> Mandi
+> Mumbai
+> Mandi
+> Kochi
+> price data price data price data
+> Data sovereignty, DPDP Act, competitive sensitivity
+> Central pool
+
+FedChronos   
+
+> Mandi
+> Agra
+> Mandi
+> Mumbai
+> Mandi
+> Kochi
+> train locally train locally train locally
+> Aggregate
+> model updates only
+> Better forecasts
+> for all mandis
+> Data stays local. Only tiny model updates shared.
+
+Fig. 1: The data sovereignty challenge in agricultural price forecasting. India’s 7,000+ mandis each hold valuable price data, but cannot pool it due to regulatory (DPDP Act), competitive, and institutional barriers. FedChronos enables collaborative model improvement by sharing only lightweight model updates; raw data never leaves the mandi. households growing onions in Nashik, wheat in Amritsar, and rice in Kolkata, and the aggregate cost is large: information asymmetry alone is estimated to cost Indian farmers 15–20% of their crop value annually [1]. The raw data needed to build better forecasts already exists. India operates over 7,000 regulated wholesale markets (mandis), each recording daily arrival quantities and modal prices for dozens of commodities. A model trained on this combined data could, in principle, learn cross-regional price dynamics: how a supply glut in Maharashtra’s onion belt depresses prices in Kerala two weeks later, or how a cold snap in Uttar Pradesh ripples through potato markets from Agra to Kolkata. The obstacle is not data scarcity, but data fragmentation. State agricultural marketing boards operate un-der independent mandates, traders treat price-volume patterns as proprietary intelligence, and India’s Digital Personal Data Protection Act (2023) [2] adds compliance burdens to cross-entity data pooling. No single entity has access to all the data, and no institution is willing to hand over its share. Fig. 1 illustrates this challenge, and it is not unique to Indian agriculture. Financial time series are siloed across arXiv:2608.01290v1 [cs.LG] 2 Aug 2026 banks, energy load data is partitioned across regional utilities, and healthcare signals are distributed across hospitals. In each domain the data exists in sufficient quantity for effective model training, but regulatory frameworks (GDPR [3], HIPAA, sectoral data sovereignty laws), competitive dynamics, or plain institutional inertia prevent centralized aggregation. Collecting everything into one place and training a single model, the standard machine learning workflow, simply does not work here. Foundation models have recently offered a promising start-ing point. Models such as Chronos [4], Lag-Llama [5], TimesFM [6], and TimeGPT [7] re-purpose transformer archi-tectures [8] for temporal prediction, pre-training on large and diverse time-series corpora to learn general temporal patterns. The natural next step is domain-specific fine-tuning, adapting the pre-trained representations to the statistical properties of a target application. However, this step requires access to the target data, which brings us back to the fragmentation problem. Federated learning (FL) [9] offers a way around this. Each institution trains on its own data and shares only model parameter updates, never raw observations, and a central server aggregates these updates into a global model that benefits from all participants’ data, without any single party revealing theirs. Applying FL directly to foundation mod-els, however, runs into a practical bottleneck: exchanging a full 8.4-million-parameter model every communication round across bandwidth-constrained rural networks is not feasible. Parameter-efficient fine-tuning through Low-Rank Adaptation (LoRA) [10] resolves this by constraining updates to a small set of low-rank adapter matrices, under 2% of the model, which cuts per-round transmission from megabytes to kilo-bytes. This same footprint, an 8.4M-parameter base model plus a 98,304-parameter adapter, fits comfortably on edge accelerators as well as server-class GPUs, which puts federated TSFM fine-tuning within reach of edge AI deployments where both the network link and the device itself are constrained. Federated LoRA has been explored for text-based large language models [11], [12], but no prior work has attempted federated parameter-efficient fine-tuning for time-series foun-dation models, in agriculture or any other domain. This gap has practical consequences: the institutions that need collabo-rative forecasting most, rural markets, regional utilities, small healthcare networks, have no path to benefit from pre-trained temporal models without surrendering their data. This paper addresses that gap. We introduce FedChronos ,a framework that applies LoRA-based federated fine-tuning to Chronos-T5-Tiny [4], a pre-trained time-series foundation model built on the T5 encoder-decoder architecture [13]. Each client, representing a regional agricultural market, fine-tunes only the LoRA adapter layers on its local price history, and transmits the adapter weights to a central server for aggregation via FedAvg [9] or FedProx [14]. The frozen base model parameters are never communicated. We further integrate client-level differential privacy [15], clipping and noising each round’s adapter update to a per-round (ε, δ ) target to bound the information leakage from any single update. We evaluate FedChronos on real daily commodity price data from 15 Indian mandis spanning 9 states, selected from the 464 that pass our data-quality filters, a naturally non-IID setting where regional markets exhibit distinct price levels, seasonal patterns, and volatility profiles shaped by local geog-raphy, supply chains, and state-level agricultural policy. Our experiments show that differential privacy is not an optional safeguard layered on top of FedChronos, but a necessary part of it. Without DP, LoRA fine-tuning, whether centralized or federated, overfits on the small per-client datasets typical of this setting, and drops below the Chronos zero-shot baseline (MAPE ∼102%). With client-level DP enabled at ε = 5 , the injected noise appears to act as implicit regularization and FedChronos reaches a MAPE of 69.78% in this configuration, a 31% improvement over zero-shot and 26% over the strongest traditional baseline, while transmitting 86 × less data per round than full-model exchange and bounding each round’s information leakage via per-round (ε, δ )-differential privacy. Separately, FedProx reduces per-client accuracy variance com-pared to FedAvg in this heterogeneous setting, though the DP-driven accuracy gain is an order of magnitude larger than the gap between aggregation strategies. We therefore treat FedChronos as a DP-regularized framework by design, not as federated fine-tuning with privacy bolted on afterward. Our contributions are as follows: 1) We study federated parameter-efficient fine-tuning of an already pre-trained time-series foundation model, a setting distinct from concurrent federated-TSFM work that pre-trains from scratch (FFTS [16]) or uses pro-totype alignment (FeDPM [17]), and we identify an overfitting problem specific to it: na¨ ıve LoRA fine-tuning on small federated datasets degrades below zero-shot performance, a failure that holds across every unregularized method we test. 2) We observe that differential privacy noise can act as im-plicit regularization: our strongest configuration ( ε = 5 )yields a 31% MAPE improvement over zero-shot and the best accuracy among the methods we evaluate. We report this as a promising effect and discuss its scope and current limits in Section VI. 3) We compare FedAvg, FedProx, and local-only training under naturally non-IID conditions. FedProx reduces per-client variance, but the accuracy gain from DP regularization is an order of magnitude larger than the gap between aggregation strategies, so noise calibration matters more than the FedAvg-vs-FedProx choice in this setting. 4) We show an 86 × reduction in per-round communication cost via LoRA adapters (384 KB vs. 33 MB for full model exchange), making federated TSFM fine-tuning practical for bandwidth-constrained and edge deploy-ments. The remainder of this paper is organized as follows. Sec-tion II surveys related work across time-series foundation mod-els, federated learning with parameter-efficient fine-tuning, and agricultural applications. Section III details the FedChronos methodology, including the Chronos tokenization scheme, LoRA adaptation, federated protocol, and differential pri-vacy integration. Section IV describes the experimental setup, dataset characteristics, and evaluation protocol. Section V presents results and analysis. Section VI discusses broader implications and limitations, and Section VII concludes the paper. II. R ELATED WORK 
+
+Our work sits at the intersection of three active research threads: time-series foundation models, federated learning with parameter-efficient fine-tuning, and machine learning for agricultural markets. We survey each in turn, highlighting the gap that FedChronos addresses. 
+
+A. Time-Series Foundation Models 
+
+The idea of pre-training large models on diverse time-series corpora and deploying them zero-shot on unseen forecasting tasks has gained rapid momentum since 2023. The approaches differ in architecture and training strategy, but share the premise that temporal patterns transfer across domains. Chronos [4] tokenizes real-valued time series into discrete bins via mean-scale uniform quantization and trains a T5 encoder-decoder [13] with cross-entropy loss, treating fore-casting as sequence-to-sequence generation. It reaches com-petitive zero-shot performance across 42 benchmark datasets spanning energy, finance, weather, and retail demand. Lag-Llama [5] takes a decoder-only approach, conditioning on lag features for probabilistic forecasting. TimesFM [6] uses a patched-decoder architecture that processes fixed-length patches of the input series. TimeGPT [7] takes a similar transformer-based approach, trained on a large proprietary corpus of time series and offered as a commercial forecasting API. TIME-LLM [18] reprograms frozen language models by aligning time-series patches with text prototypes, showing that linguistic pre-training captures temporal structure. All of these models are designed and evaluated in central-ized settings. To our knowledge, none has been adapted for federated training, a gap that matters once the target domain data is distributed across institutions that cannot, or will not pool their records. 
+
+B. Federated Learning with Parameter-Efficient Fine-Tuning 
+
+Federated learning [9] enables collaborative model training without centralizing data. In its canonical form (FedAvg), a server distributes a global model to participating clients, each client performs several epochs of local training, and the server aggregates the resulting model updates via weighted averaging. FedProx [14] extends this with a proximal regularization term that penalizes local model drift from the global parameters, which improves convergence when client data distributions are heterogeneous, the non-IID problem that affects most real-world FL deployments [19]. The cost of exchanging full model weights every FL round has motivated parameter-efficient fine-tuning (PEFT) within the federated pipeline. LoRA [10] decomposes weight up-dates into products of low-rank matrices, training only about 1% of parameters while preserving task performance, and QLoRA [20] extends this further by combining low-rank adapters with quantized base weights to fine-tune even larger models on a single GPU. In a federated setting, this means only the compact adapter weights need to travel each round rather than the entire model. This same compactness is what makes federated PEFT attractive at the edge, where memory, energy, and uplink bandwidth are all limited, and it underlies a growing body of work on edge-oriented federated adaptation. This combination has so far been explored only for text-based language models. FAH-QLoRA [11] combines heteroge-neous quantization with LoRA for federated LLM fine-tuning across devices with varying compute budgets. Wu et al. [12] survey the emerging landscape of federated PEFT for language models and identify aggregation strategies and convergence properties as open problems. Edge-FIT [21] applies federated QLoRA instruction tuning in smart home settings. The gap relevant to our work is that all of this federated PEFT research targets text-based models. Two concurrent works address federated learning of TSFMs from a different angle. FFTS [16] (AAAI’25) proposes federated pre-training 
+
+of time-series foundation models, training a model from scratch across heterogeneous client datasets with regularization to align shared knowledge. FeDPM [17] employs discrete prototypical memories to align time-series data with language model representations in a federated setting. FedChronos is distinct from both: we address federated fine-tuning of an already pre-trained TSFM using PEFT adapters, rather than training from scratch or using prototype alignment. This dis-tinction matters practically, because organizations with limited data and bandwidth benefit most from adapting an existing pre-trained model with low-rank updates, rather than collabo-ratively training a new foundation model from scratch. While FFTS and FeDPM address federated learning of TSFMs from scratch or through prototype alignment, we are not aware of prior work that applies federated PEFT to adapt an already pre-trained TSFM, which is the specific gap FedChronos targets. 
+
+C. Machine Learning for Agricultural Markets 
+
+Federated learning has found agricultural applications mainly in crop disease classification [22] and yield pre-diction [23]. VLLFL [24] combines vision-language mod-els with FL for agricultural object detection on edge de-vices. Separately, and without a federated learning component, AgriGen [25] offers a prompt-tuned multilingual LLM-based question-answering system for farmer advisory, illustrating the broader push toward LLM-based agricultural tools that, like our work, still rely on centralized model access. Agricultural price forecasting has more direct economic impact on farmer livelihoods than yield estimation does [1], yet it has received surprisingly little attention in the FL literature. Existing price forecasting studies rely on centralized models [26] that implicitly assume access to pooled data from multiple markets. In practice this assumption does not hold: mandis are run by different state bodies with no obligation, and often no willingness, to share data. Our work addresses this gap by bringing federated foundation model fine-tuning to the agricultural price domain, using real mandi data that carries the heterogeneity and institutional fragmentation of an actual deployment. III. M ETHODOLOGY 
+
+This section presents the FedChronos framework in four parts: we first formulate the distributed forecasting problem, then describe how Chronos converts time-series forecasting into a language modeling task, explain how LoRA constrains the fine-tuning to a small parameter subspace, and finally detail the federated training protocol and its differential privacy extension. 
+
+A. Problem Formulation 
+
+Consider K distributed clients (regional markets), each holding a local time-series dataset Dk = {x(1)  
+
+> k
+
+, . . . , x (nk ) 
+
+> k
+
+}
+
+of daily commodity prices. The clients cannot share raw data due to regulatory, competitive, or institutional constraints. The goal is to collaboratively fine-tune a pre-trained time-series foundation model fθ such that the global model minimizes the aggregate forecasting loss: 
+
+min 
+
+> θK
+
+X
+
+> k=1
+
+nk
+
+N Lk(θ), N =
+
+> K
+
+X
+
+> k=1
+
+nk (1) Here, Lk(θ) = 1
+
+> nk
+
+Pnk 
+
+> i=1
+
+ℓ(fθ (x(i) 
+
+> k
+
+), y (i) 
+
+> k
+
+) is the local empirical loss on client k, and ℓ denotes the per-sample forecasting loss. 
+
+B. Chronos: Forecasting as Language Modeling 
+
+Chronos [4] recasts time-series forecasting as conditional token generation. This design choice is the main reason LoRA, originally developed for language models, transfers naturally to the time-series setting. Given a context window of T real-valued observations, the model proceeds in three stages: 
+
+Mean Scaling. The input series is normalized by its mean absolute value, centering the distribution and making the quantization scheme robust to varying price scales across markets: 
+
+ˆxt = xt
+
+> 1
+> T
+
+PTi=1 |xi| + ε (2) 
+
+Uniform Bin Quantization. The scaled values are mapped to B = 4 ,096 discrete bins uniformly distributed between configurable limits [ℓ, u ] = [ −15 , 15] , producing integer to-ken IDs. This turns the continuous forecasting problem into a classification problem over a fixed vocabulary, the same formulation used in language modeling. 
+
+Encoder-Decoder Generation. The token sequence is fed into a T5 encoder-decoder architecture [13], trained to predict the next H tokens (the forecast horizon) via cross-entropy loss. At inference, the decoder generates multiple stochastic forecast trajectories through temperature-scaled sampling, and point forecasts are computed as the median across samples. TABLE I: LoRA configuration for Chronos-T5-Tiny. Only 1.16% of parameters are trainable; the rest remain frozen.            
+
+> Configuration Value
+> Base model parameters 8,394,496 LoRA rank ( r)8LoRA scaling ( α)16 LoRA dropout 0.05 Target modules q,vprojections Adapted matrices 24 Trainable parameters 98,304 (1.16%) Adapter size per round 384 KB
+
+The Chronos-T5-Tiny variant that we adopt uses dmodel =256 , 4 encoder layers, 4 decoder layers, and 4 attention heads per layer, totaling 8.4M parameters. Its compact size makes it well-suited for federated settings where clients may have limited compute resources, while still capturing the temporal representations learned during pre-training on diverse time-series corpora. 
+
+C. LoRA Adaptation of Chronos 
+
+Fine-tuning all 8.4M parameters would erase the communi-cation benefits of federated learning, since each client would then need to transmit the entire model every round. Instead, we apply LoRA [10] to constrain updates to a low-dimensional subspace. For each pre-trained weight matrix W0 ∈ Rd×d in the atten-tion mechanism, LoRA introduces a low-rank decomposition of the update: 
+
+W = W0 + αr BA , B ∈ Rd×r , A ∈ Rr×d (3) Here, r ≪ d is the rank, and α is a scaling factor that controls the magnitude of the adaptation relative to the pre-trained weights. The matrix A is initialized from a Gaussian distribution, B is initialized to zero, so the adaptation starts from the pre-trained model and gradually learns task-specific adjustments. Only A and B are trained; the original weights 
+
+W0 remain frozen throughout. We apply LoRA to the query ( Wq ) and value ( Wv ) pro-jection matrices in every attention layer. With r = 8 , α = 16 ,and d = 256 , each adapted matrix adds 2 × 256 × 8 = 4 ,096 
+
+parameters. The Chronos-T5-Tiny architecture contains 24 attention projection matrices across its encoder self-attention (4 layers × { q, v }), decoder self-attention (4 layers × { q, v }), and decoder cross-attention (4 layers × { q, v }). The total trainable parameter count is therefore 24 × 4,096 = 98 ,304 ,representing just 1.16% of the model. Table I summarizes this configuration. 
+
+D. Federated Training Protocol 
+
+With the LoRA parameterization in place, the federated protocol operates exclusively on the adapter parameters ϕ
+
+(|ϕ| = 98 ,304 ), leaving the frozen base model untouched. We implement this protocol as a direct simulation loop, rather than through a dedicated FL framework such as Flower [27], since our setting (a fixed set of 15 clients on a single GPU) does Price series     
+
+> x1, . . . , x T
+> Mean-scale tokenizer
+> Encoder
+> 4 layers
+> LoRA
+> q, v
+> Decoder
+> 4 layers
+> LoRA
+> q, v
+> cross-attn
+> Softmax
+> 4096 bins
+> Forecast
+> ˆy1, . . . , ˆyH
+> frozen = frozen LoRA = trainable
+
+Fig. 2: Internal architecture of FedChronos at each client. A price series is tokenized via mean-scale uniform binning, passed through the frozen Chronos-T5 encoder-decoder, and decoded into forecast bins. Only the LoRA adapters (green) on the q and v projections are trainable; all other parameters remain frozen. 
+
+Algorithm 1 FedChronos: Federated LoRA Fine-Tuning 
+
+1: Server: Initialize global LoRA parameters ϕ(0) 
+
+2: for each round t = 1 , . . . , R do 
+
+3: Broadcast ϕ(t−1) to all K clients 
+
+4: for each client k = 1 , . . . , K in parallel do 
+
+5: Load frozen Chronos-T5 base + ϕ(t−1) 
+
+6: ϕ(t) 
+
+> k
+
+← LOCAL TRAIN (k, ϕ (t−1) , E )
+
+7: if DP enabled then 
+
+8: ∆k ← ϕ(t) 
+
+> k
+
+− ϕ(t−1) 
+
+9: ∆k ← CLIP AND NOISE (∆ k, C, σ )
+
+10: ϕ(t) 
+
+> k
+
+← ϕ(t−1) + ∆ k
+
+11: end if 
+
+12: end for 
+
+13: ϕ(t) ← PKk=1  
+
+> nk
+> N
+
+ϕ(t) 
+
+> k
+
+// FedAvg aggregation 
+
+14: end for 
+
+15: return ϕ(R)
+
+not require the process orchestration and device heterogeneity support that such frameworks are built for. Fig. 2 illustrates the internal architecture at each client, where only the green LoRA adapters are trained and the rest stays frozen; Fig. 3 shows the overall federated workflow, where only the 384 KB adapter crosses the network and raw data never leaves the mandi; and Algorithm 1 describes the procedure formally. Each client performs E local epochs of training on its own price data before transmitting only the LoRA adapter parameters ϕ(t) 
+
+> k
+
+to the server. The server computes a weighted average, where each client’s contribution is proportional to its local dataset size nk. The key communication advantage is that only the adapter parameters (384 KB) are exchanged, rather than the full model (33 MB), leading to a reduction of 86 ×.
+
+FedProx Extension. In non-IID settings, where different clients have markedly different data distributions, FedAvg can suffer from client drift: local models diverge during training and their average may not represent any individual client well. FedProx [14] addresses this by adding a proximal regularization term to the local training objective: 
+
+Lprox  
+
+> k
+
+(ϕ) = Lk(ϕ) + μ
+
+2 ∥ϕ − ϕ(t−1) ∥2 (4) Mandi-1 Agra, UP 
+
+> Mandi-2 Akola, MH
+> Mandi-3 Aluva, KL
+> Mandi-K Azadpur, DL
+> LoRA
+> fi ne-tune
+> LoRA
+> fi ne-tune
+> LoRA
+> fi ne-tune
+> LoRA
+> fi ne-tune
+> Aggregation Server
+> FedAvg / FedProx
+> Raw price data never leaves the mandi. Only LoRA adapters (1.16% of model) are transmitted
+> .....
+> Global Adapters
+> .....
+
+Fig. 3: FedChronos federated workflow. Each mandi fine-tunes LoRA adapters locally and uploads only the lightweight adapter weights (384 KB) to the server for aggregation. The server broadcasts the updated global adapters for the next round. Raw data never leaves the client. Here, μ controls the strength of the penalty. This term dis-courages local adapters from straying too far from the current global consensus during each round. In our agricultural setting, where a mandi in Kerala may have fundamentally different price dynamics than one in Punjab, this regularization proves important for maintaining consistent performance across all participants. 
+
+E. Threat Model and Privacy Guarantees 
+
+We operate under the honest-but-curious threat model standard in federated learning: the aggregation server and participating clients follow the protocol faithfully, but may attempt to infer private information from the model updates they observe. Concretely, the server receives LoRA adapter updates from each client and may try to reconstruct local price data or infer sensitive market intelligence (trading volumes, supplier relationships inferred from price correlations) from these updates. To bound the information leakage from shared adapter weights, we integrate client-level differential privacy (DP) [28]. The protected unit is each client’s entire local dataset: the DP guarantee ensures that an adversary observing a single round’s adapter update cannot determine whether any given client participated, protecting the full training corpus of that market. This is client-level (dataset-level) DP, not example-level DP; example-level DP, which protects individual records, would require per-sample gradient clipping during local training and is not implemented here. Before transmitting its update ∆k = ϕ(t) 
+
+> k
+
+− ϕ(t−1) , each client applies two operations: 
+
+Norm Clipping. The update is projected onto an ℓ2-ball of radius C:
+
+¯∆k = ∆ k · min 
+
+
+
+1, C
+
+∥∆k∥2
+
+
+
+(5) This ensures that no single data point in a client’s local dataset can influence the shared update by more than a bounded amount, which is the precondition for the DP guarantee. 
+
+Gaussian Noise Addition. Calibrated noise is added to the clipped update: 
+
+˜∆k = ¯∆k + N (0 , σ 2C2I) (6) Here, the noise multiplier σ is calibrated to achieve a target privacy budget (ε, δ ).The privacy budget ε quantifies the maximum information leakage: smaller ε provides stronger privacy, but introduces more noise into the learning process. The parameter δ bounds the probability of a catastrophic privacy failure. We set δ =10 −5 (substantially smaller than 1/n for any client’s dataset), and sweep ε ∈ { 3, 5, 8} in our experiments. An important structural advantage of the LoRA-based ap-proach is that the noise is distributed across only 98,304 parameters, rather than 8.4 million. For a fixed noise multiplier 
+
+σ, the per-parameter signal-to-noise ratio is therefore higher than it would be under full-model DP-FL, making LoRA a natural fit for privacy-preserving federated fine-tuning. We calibrate the noise multiplier σ to achieve a target 
+
+(ε, δ ) guarantee for a single round’s update via the Gaussian mechanism, and apply this same calibration at every round. We do not perform formal privacy composition (e.g., via the moments accountant or R´ enyi DP [29]) across the R = 50 
+
+communication rounds; the reported ε ∈ {3, 5, 8} should therefore be interpreted as a per-round privacy parameter, rather than an end-to-end guarantee for the full training run. Composing the privacy loss across all 50 rounds would yield a substantially larger (weaker) cumulative ε than the per-round value reported here. We leave rigorous end-to-end privacy accounting, and its interaction with the regularization effect we report, to future work. IV. E XPERIMENTAL SETUP 
+
+A. Dataset and Preprocessing 
+
+We use daily commodity price data from the Agmarknet platform (Government of India), sourced via a publicly avail-able Kaggle mirror 1. The raw dataset spans June 2023 to June 2025, and contains 737,392 price records across 1,598 mar-kets in 30 Indian states, covering five commodity categories: Potato, Onion, Wheat, Tomato, and Rice. The preprocessing pipeline involves several steps needed to handle the messiness of real-world agricultural data. First, we standardize column names and parse dates (the raw data uses M/D/YYYY format). Multiple varieties of the same commodity are often recorded separately at a single mandi: a market might report prices for “Potato (Local)” and “Potato (Red)” on the same day, so we aggregate across varieties using the daily mean modal price. We then resample each market-commodity pair to daily frequency, interpolate gaps of up to 7 consecutive days (reflecting weekends and local holidays), and apply density filters to exclude series with more than 50% 
+
+> 1Dataset: arjunyadav99/indian-agricultural-mandi-prices-20232025
+
+TABLE II: Selected FL clients (mandis) for experiments, spanning 9 Indian states. Each client holds 2 commodity series (Potato and Onion); each series has approximately 515 train-ing observations (1,030 per client across both commodities), drawn from the June 2023–June 2025 dataset with a 70/15/15 temporal split.                                                 
+
+> ID Mandi State Region
+> 1Achalda Uttar Pradesh North 5Ahmedabad Gujarat West 11 Akola Maharashtra West 13 Alipurduar West Bengal East 15 Aluva Kerala South 16 Alwar Rajasthan North 18 Amritsar Punjab North 34 Azadpur Delhi North 41 Ballabhgarh Haryana North 42 Ballia Uttar Pradesh North 45 Banda Uttar Pradesh North 47 Bangarmau Uttar Pradesh North 48 Bankura Sadar West Bengal East 49 Bara Bazar West Bengal East 50 Barabanki Uttar Pradesh North
+
+missing values or fewer than 400 total observations. After filtering, 813 valid daily price series remain, covering Potato and Onion across 464 mandis. The temporal split allocates the first 70% of each series to training, the next 15% to validation, and the final 15% to testing. 
+
+B. Federated Client Partitioning 
+
+Each mandi constitutes a natural FL client, mirroring the real-world institutional structure where each market operates independently under its state’s agricultural marketing board. From the 464 available mandis, we select 15 for our experi-ments, spanning 9 Indian states with diverse climates, market scales, and trading volumes (Table II). The raw dataset spans June 2023 to June 2025 (approximately 735 daily observa-tions per series after interpolation), yielding approximately 515 training, 110 validation, and 110 test observations per commodity series under the 70/15/15 temporal split. This partitioning is inherently non-IID along several dimen-sions. Geographically, the clients span from Kerala in the south to Punjab in the north, covering tropical, semi-arid, and subtropical climate zones that drive different seasonal price patterns. Economically, Azadpur (Delhi) is one of Asia’s largest wholesale markets with high liquidity and tight bid-ask spreads, while Achalda (rural Uttar Pradesh) serves a primarily local catchment area with thinner trading volumes and more volatile prices. Commodity-wise, onion prices in Maharashtra’s production belt behave very differently from onion prices in Kerala, which is a net-importing state where prices reflect transport costs and supply delays on top of the base production price. 
+
+C. Baselines and Comparisons 
+
+We compare seven methods spanning classical statistics, deep learning, and federated approaches: • ARIMA [30]: Per-series auto-order ARIMA via 
+
+pmdarima , fit independently on each test client’s training data. This represents the classical statistical baseline.  
+
+> •
+
+LSTM [31]: Single-layer LSTM with hidden dimension 
+
+h = 64 , trained on pooled data from all 15 clients. This represents the standard deep learning baseline with centralized data access.  
+
+> •
+
+Chronos Zero-Shot : Pre-trained Chronos-T5-Tiny ap-plied directly without any fine-tuning. This measures how well the foundation model’s pre-trained knowledge transfers to Indian commodity prices.  
+
+> •
+
+Centralized LoRA : LoRA fine-tuning on pooled data from all clients. This represents the privacy-violating upper bound, the best accuracy achievable if data sharing were unconstrained.  
+
+> •
+
+FedAvg LoRA : Federated LoRA fine-tuning with stan-dard weighted averaging [9].  
+
+> •
+
+FedProx LoRA : Federated LoRA with proximal regular-ization ( μ = 0 .01 ) [14].  
+
+> •
+
+Local-Only LoRA : Each client fine-tunes its own LoRA adapter independently with no federated aggregation. This measures the benefit of federation. 
+
+D. Training Configuration 
+
+For centralized LoRA fine-tuning, we train with a learning rate of 10 −3 (AdamW optimizer) for up to 5,000 steps. For federated experiments, we run 50 communication rounds with 3 local epochs per round and a batch size of 32. The context window is 256 time steps and the prediction horizon is 64 steps. DP experiments use a clipping norm of C = 1 .0 with 
+
+ε ∈ { 3, 5, 8} and δ = 10 −5. The noise multiplier σ for each target is calibrated via the Gaussian mechanism formula σ =p2 ln(1 .25 /δ )/ε applied to a single round’s update, yielding 
+
+σ ∈ { 1.615 , 0.969 , 0.606 } for ε ∈ { 3, 5, 8} respectively; as noted in Section III, these are per-round values and do not account for composition across rounds. All experiments are conducted on an NVIDIA RTX 3090 GPU. We evaluate using three standard forecasting metrics com-puted on the temporally held-out test data: Mean Absolute Error (MAE), Root Mean Squared Error (RMSE), and Mean Absolute Percentage Error (MAPE). MAE and RMSE are reported in the original price units (Indian Rupees per quintal), while MAPE provides a scale-invariant measure that allows comparison across commodities with different price levels. All reported metrics are macro-averaged across clients and commodities (i.e., each series is weighted equally regardless of length); per-client distributions are shown via box plots in Fig. 5. V. R ESULTS 
+
+We organize our experimental evaluation around four ques-tions: (1) How do baselines and the pre-trained model perform on mandi data? (2) Does na¨ ıve fine-tuning improve over zero-shot? (3) How do FL algorithms compare, and what role does non-IID heterogeneity play? (4) How does differential privacy TABLE III: Baseline forecasting performance on mandi price data.             
+
+> Method MAE RMSE MAPE (%)
+> ARIMA 1597.87 1634.23 112.28 LSTM (pooled) 1342.47 1379.26 94.97 Chronos Zero-Shot 1413.46 1444.58 101.76
+
+TABLE IV: Fine-tuning without regularization. All methods overfit, performing worse than the zero-shot baseline (MAPE 101.76%).                   
+
+> Method MAE RMSE MAPE (%)
+> Chronos Zero-Shot 1413.46 1444.58 101.76 Centralized LoRA 2001.99 2061.01 140.33 FedAvg LoRA 1986.51 2034.72 139.60 FedProx LoRA 1914.51 1963.28 134.82 Local-Only LoRA 1767.83 1812.45 123.79
+
+interact with fine-tuning? Does it simply cost accuracy, or is something more interesting going on? 
+
+A. Baseline Performance 
+
+Table III presents baseline forecasting performance. All baselines exhibit MAPE near or above 100%, con-firming the difficulty of Indian commodity price forecasting. The Chronos foundation model in zero-shot mode (MAPE 101.76%) performs no better than predicting the series mean. This is expected: the Chronos pre-training corpus consists of Western financial, energy, and retail time series, which differ fundamentally from Indian agricultural prices driven by mon-soon cycles, government MSP announcements, and regional supply shocks. The LSTM achieves the best baseline (MAPE 94.97%) by learning cross-market patterns from pooled data, but requires centralized data access. With these baselines fixed, the question is whether fine-tuning the foundation model on local data beats its own zero-shot performance. It does not. Understanding why is where the more interesting result lies. 
+
+B. The Overfitting Challenge in TSFM Fine-Tuning 
+
+Table IV shows a problem that, to our knowledge, has not been documented before: na¨ ıve LoRA fine-tuning of TSFMs on small federated datasets leads to severe overfitting, producing models that are worse than the zero-shot baseline. With only 30 short price series (15 mandis × 2 commodi-ties) and 98,304 trainable LoRA parameters, every unregular-ized fine-tuning method overfits: the model memorizes training patterns that do not generalize. Centralized LoRA, despite having access to all data, performs worst (MAPE 140.33%), because pooling the heterogeneous price distributions from 9 states produces a noisy training signal that the model overfits to. Local-only training does best among the unregularized methods (MAPE 123.79%), since each client’s model can at least learn its own market’s patterns, though it still overfits its limited local data. Fig. 4 backs this up: validation loss reaches its minimum around round 5–7 and rises steadily after that, while training 0 10 20 30 40 50 
+
+> Communication Round
+> 1.6
+> 1.7
+> 1.8
+> 1.9
+> 2.0
+> 2.1
+> 2.2
+> 2.3
+> Loss
+
+Federated Convergence 
+
+> FedAvg (train)
+> FedAvg (val)
+> FedProx (train)
+> FedProx (val)
+
+Fig. 4: Validation loss during federated training. Both Fe-dAvg and FedProx reach minimum validation loss within 5– 7 rounds, and overfit thereafter. FedProx overfits marginally more slowly due to its proximal regularization. loss keeps falling, the classic overfitting signature. The effect holds across every unregularized method and both aggregation strategies: fine-tuning a TSFM on small, fragmented data hurts unless something holds the adaptation in check, an echo of similar findings for LoRA on small NLP datasets [10]. Early stopping at the validation minimum is a natural complement to DP-based regularization here, and one we return to in Section VI. 
+
+C. FL Algorithm Comparison 
+
+Fig. 5 compares per-client MAPE distributions. All unreg-ularized methods overfit, but they do not all overfit the same way. Per-client consistency matters here: one market near 200% MAPE is a real deployment failure regardless of the mean, and FedProx narrows that spread. FedProx (std=32.59) achieves lower per-client variance than FedAvg (std=32.96), since its proximal term keeps local mod-els from drifting too far from the global consensus. Local-only training has the lowest aggregate MAPE (123.79%) because each client avoids the interference that comes from averaging adapters trained on heterogeneous distributions. This points to a real difficulty for federated TSFM fine-tuning: regional commodity prices are non-IID enough that na¨ ıve parameter averaging can hurt more than it helps. 
+
+D. DP as Implicit Regularization: The Key Finding 
+
+Neither aggregation strategy fixes the underlying overfitting, which raises the question of what does. Table V and Fig. 6 present the main finding of this paper. Differential privacy noise appears to act as implicit regularization and turns models that were overfitting into the best performers we observe. Without DP, federated fine-tuning overfits to MAPE 134.73%, performing worse than zero-shot. Adding DP noise at ε = 5 brings MAPE down to 69.78% , a 31% improvement Local  
+
+> Only
+> FedAvg FedProx
+> 100
+> 120
+> 140
+> 160
+> 180
+> 200
+> 220
+> MAPE (%)
+
+Per-Client Accuracy by FL Strategy 
+
+Fig. 5: Per-client MAPE distribution. FedProx achieves lower variance than FedAvg, and local-only training yields the lowest median error among unregularized methods due to reduced cross-client interference. TABLE V: DP-regularized federated fine-tuning. At ε = 5 ,DP noise prevents overfitting and achieves the best accuracy across all methods ( 31% lower MAPE than zero-shot, and 26% lower than the best baseline, LSTM ).                     
+
+> Privacy Budget ( ε)MAE RMSE MAPE (%)
+> No DP ( ε=∞)1892.22 1941.82 134.73
+> ε= 8 1180.14 1254.19 90.41
+> ε= 5 988.86 1347.01 69.78
+> ε= 3 1529.81 1914.17 88.64
+
+over Chronos zero-shot (101.76%), and a 26% improvement over the best baseline (LSTM at 94.97%). Privacy budget and accuracy follow a U-shaped curve: too little noise ( ε = 8 ,MAPE 90.41%) gives insufficient regularization, while too much noise ( ε = 3 , MAPE 88.64%) starts to overwhelm the learning signal. The best point we observe is at ε = 5 , which pairs a reasonable per-round privacy budget with the strongest generalization in our sweep. Table V does carry one wrinkle that we want to flag directly. MAE and MAPE both favor ε = 5 , but RMSE is lowest at 
+
+ε = 8 (1254.19 versus 1347.01 at ε = 5 ). Because RMSE penalizes large errors more heavily than MAE, the most likely reading is that ε = 5 lowers the typical forecast error across most series while still leaving a few larger misses on high-price series, whereas ε = 8 distributes its error more evenly. We report all three metrics rather than only the most favorable one, and we interpret the ε = 5 result as the strongest point on the typical-error metrics rather than a clean win on every measure. Since these numbers come from a single training configuration per ε, we treat the exact location of the optimum as indicative rather than settled, and we return to this point in the limitations. 0.0 2.5 5.0 7.5 10.0 12.5 15.0 
+
+> Privacy Budget (ε)
+> 80
+> 100
+> 120
+> 140
+> MAPE (%)
+> ε=3
+> ε=5
+> ε=8
+> no DP
+> Privacy–Accuracy Tradeoff
+
+Fig. 6: MAPE as a function of privacy budget ε. The curve suggests an apparent optimum near ε = 5 : too little noise (large ε) allows overfitting, while too much noise (small ε)overwhelms the learning signal. A plausible mechanistic explanation is the following. LoRA fine-tuning constrains updates to a 98,304-dimensional sub-space, and on small datasets the optimizer can easily fit noise within that subspace, which is what leads to overfitting. The Gaussian noise injected by DP behaves much like other regularization techniques such as dropout or weight noise [32]: it keeps the adapter weights from settling into sharp minima that generalize poorly. This is consistent with theoretical work connecting differential privacy to generalization more broadly [33], where bounding the influence of any single training example also bounds how much a model can overfit to it. Because LoRA has far fewer parameters than full-model fine-tuning, the per-parameter noise magnitude at any given ε
+
+is larger, which amplifies this regularization effect. The practical takeaway is that in federated TSFM fine-tuning, privacy and accuracy need not be in tension. DP noise, calibrated per round to an (ε, δ ) target, bounds the information leakage of each shared update, while also acting as the regularization that makes fine-tuning work. This dual role depends on a specific combination of conditions: a pre-trained foundation model, low-rank adaptation, and small per-client datasets, conditions that are common in real federated deployments. 
+
+E. Communication Efficiency 
+
+Table VI summarizes the communication overhead across LoRA rank configurations. Over a complete training run (50 rounds, 15 clients, bidirec-tional communication), LoRA r = 8 requires 562 MB of total data transfer compared to 48.5 GB for full-model exchange. This 86 × reduction matters beyond convenience: it determines whether the approach is feasible at all on the low-bandwidth, intermittent mobile connections typical of rural mandis. The LoRA-based approach is the difference between a system that works in practice and one that only works in simulation. The same footprint that keeps the uplink cheap also keeps on-TABLE VI: Communication cost per FL round. LoRA adapters reduce per-round transmission by 86 × at rank r = 8 ,compared to full model exchange.                           
+
+> Configuration Params KB/round Compress.
+> Full model 8,492,800 33,175 1×
+> LoRA r= 4 49,152 192 172 ×
+> LoRA r= 8 98,304 384 86 ×
+> LoRA r= 16 196,608 768 44 ×
+> LoRA r= 32 393,216 1,536 22 ×
+
+device memory and compute modest, so running each client on an edge accelerator rather than a server-class GPU is realistic; we simulate all 15 clients on one GPU here, and testing this profile on real edge hardware such as Jetson-class or Raspberry Pi-class devices at the mandi is a follow-up we plan to pursue. VI. D ISCUSSION 
+
+A. Broader Implications 
+
+Our central finding, that DP noise regularizes LoRA fine-tuning of pre-trained TSFMs on small federated datasets, has implications beyond agriculture. The conditions that produce this effect, a large pre-trained model adapted via low-rank updates, limited per-client data, and heterogeneous client dis-tributions, arise naturally when energy utilities fine-tune load forecasting models or hospital networks adapt clinical time-series models. In these settings DP may work as a principled replacement for ad hoc regularization while also bounding the information leakage of each shared update. The practical recipe is simple: freeze most parameters via LoRA, aggregate via FedAvg or FedProx, and calibrate the DP noise multiplier so it doubles as regularization. The 86 ×
+
+communication reduction from LoRA adapters keeps this feasible even over bandwidth-constrained rural networks, and the same small footprint makes the recipe a plausible building block for edge AI systems that need to adapt on-device without sending data to a central server. 
+
+B. Limitations 
+
+Our study is a first step, and a few points frame how far its conclusions reach. The evaluation covers two commodity classes across 15 mandis in a simulated setting, so a production system would still have to contend with stragglers, dropped connections, Byzantine clients, and a move onto real edge hardware. Some of our choices are also deliberately conserva-tive: we use the smallest Chronos variant, we fix a single small client cohort, and we tune ε on this dataset, so the specific optimum near ε = 5 is best read as dataset-dependent guidance rather than a universal setting. The privacy side has room to grow in a similar way. We calibrate DP noise to a per-round (ε, δ ) target and reuse that calibration each round, so the reported ε is a per-round figure; a full end-to-end account via the moments accountant or R´ enyi DP would yield a larger cumulative value, and pairing that with secure aggregation is what a deployment-grade guarantee would require. Strengthening the empirical case is the other priority we see most clearly. The numbers here come from a single run per configuration, so confirming the U-shaped 
+
+ε curve across seeds, with confidence intervals, and adding a non-private control (early stopping at the validation minimum, or matched-magnitude noise without clipping) would pin down how much of the gain is specific to differential privacy rather than to regularization in general. These, together with a closer theoretical look at why DP helps here and a joint study of DP with FedProx, are the threads we intend to pursue in the journal extension of this work. VII. C ONCLUSION 
+
+We introduced FedChronos, a framework for federated parameter-efficient fine-tuning of a pre-trained time-series foundation model. We are not aware of prior work that adapts a fixed pre-trained TSFM through low-rank federated updates, which sets it apart from concurrent efforts that train such models from scratch. Our experiments on Indian agricultural commodity prices uncover a real problem and an apparent fix. Na¨ ıve LoRA fine-tuning, whether centralized or federated, overfits substantially on small per-client datasets and ends up worse than the zero-shot baseline. Adding client-level differential privacy changes this outcome: at ε = 5, DP noise appears to act as implicit regularization, cutting MAPE by 31% over zero-shot, and 26% over the best traditional baseline, while bounding each round’s information leakage. This connection between privacy and accuracy is consistent with LoRA’s small parameter space, where the per-parameter noise magnitude regularizes the model without drowning out the learning signal. Our results suggest that, in federated TSFM fine-tuning, privacy and generalization can be complementary rather than competing objectives, though confirming the strength and stability of this effect across seeds and against non-private regularization baselines is important future work. The 86 ×
+
+communication reduction from LoRA adapters keeps the ap-proach practical even over bandwidth-constrained and edge networks. Future work would look at adaptive noise cali-bration, early stopping strategies, formal privacy composition across rounds, extension to larger TSFM variants, validation on real edge devices, and deployment with real communication constraints. We plan to release code, pre-processing scripts, and data partition configurations upon acceptance to facilitate reproducibility. REFERENCES [1] R. Ladhar, S. Sharma, S. Tangirala, N. Gupta et al. , “AI-based market intelligence systems for farmer collectives: A case study from India,” 
+
+ACM Journal on Computing and Sustainable Societies , 2023. [2] Government of India, “The Digital Personal Data Protection Act, 2023,” Ministry of Electronics and Information Technology, 2023. [3] European Parliament and Council of the European Union, “Regulation (EU) 2016/679 — General Data Protection Regulation,” 2016. [4] A. F. Ansari, L. Stella, C. Turkmen, X. Zhang, P. Mercado, H. Shen, O. Shchur, S. S. Rangapuram, S. P. Arango, S. Kapoor et al. , “Chronos: Learning the language of time series,” arXiv preprint arXiv:2403.07815 ,2024. [5] K. Rasul, A. Ashok, A. R. Williams, H. Ghonia, R. Bhagwatkar, A. Kho-rasani et al. , “Lag-Llama: Towards foundation models for probabilistic time series forecasting,” arXiv preprint arXiv:2310.08278 , 2024. [6] A. Das, W. Kong, R. Sen, and Y. Zhou, “A decoder-only foundation model for time-series forecasting,” arXiv preprint arXiv:2310.10688 ,2024. [7] A. Garza, C. Challu, and M. Mergenthaler-Canseco, “TimeGPT-1,” 
+
+arXiv preprint arXiv:2310.03589 , 2024. [8] A. Vaswani, N. Shazeer, N. Parmar, J. Uszkoreit, L. Jones, A. N. Gomez, L. Kaiser, and I. Polosukhin, “Attention is all you need,” in Advances in Neural Information Processing Systems (NeurIPS) , 2017. [9] B. McMahan, E. Moore, D. Ramage, S. Hampson, and B. A. y Arcas, “Communication-efficient learning of deep networks from decentralized data,” in International Conference on Artificial Intelligence and Statistics (AISTATS) , 2017. [10] E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and W. Chen, “LoRA: Low-rank adaptation of large language models,” in International Conference on Learning Representations (ICLR) , 2022. [11] Z. Gao, Z. Zhang, Y. Guo, and Y. Gong, “Federated adaptive fine-tuning of large language models with heterogeneous quantization and LoRA,” in IEEE INFOCOM , 2025. [12] Y. Wu, C. Tian, J. Li, H. Sun, K.-H. Tam, and Z. Zhou, “A survey on federated fine-tuning of large language models,” arXiv preprint arXiv:2503.12016 , 2025. [13] C. Raffel, N. Shazeer, A. Roberts, K. Lee, S. Narang, M. Matena, Y. Zhou, W. Li, and P. J. Liu, “Exploring the limits of transfer learning with a unified text-to-text transformer,” Journal of Machine Learning Research , vol. 21, no. 140, pp. 1–67, 2020. [14] T. Li, A. K. Sahu, M. Zaheer, M. Sanjabi, A. Talwalkar, and V. Smith, “Federated optimization in heterogeneous networks,” in Conference on Machine Learning and Systems (MLSys) , 2020. [15] M. Abadi, A. Chu, I. Goodfellow, H. B. McMahan, I. Mironov, K. Tal-war, and L. Zhang, “Deep learning with differential privacy,” in ACM Conference on Computer and Communications Security (CCS) , 2016. [16] S. Chen, G. Long, J. Jiang, and C. Zhang, “Federated foundation models on heterogeneous time series,” in Proceedings of the AAAI Conference on Artificial Intelligence , 2025. [17] L. Deng, Q. Liu, X. Niu, S. Chen, S. Sun, Y. Wu, G. Long, and Y. Liang, “Discrete prototypical memories for federated time series foundation models,” arXiv preprint arXiv:2604.04475 , 2026. [18] M. Jin, S. Wang, L. Ma, Z. Chu, J. Y. Zhang, X. Shi, P.-Y. Chen, Y. Liang, Y.-F. Li, S. Pan, and Q. Wen, “Time-LLM: Time series forecasting by reprogramming large language models,” in International Conference on Learning Representations (ICLR) , 2024. [19] Y. Zhao, M. Li, L. Lai, N. Suda, D. Civin, and V. Chandra, “Federated learning with non-IID data,” arXiv preprint arXiv:1806.00582 , 2018. [20] T. Dettmers, A. Pagnoni, A. Holtzman, and L. Zettlemoyer, “QLoRA: Efficient finetuning of quantized language models,” in Advances in Neural Information Processing Systems (NeurIPS) , 2023. [21] V. Venkatesh, V. Kamanuru, L. Kumar et al. , “Edge-FIT: Federated instruction tuning of quantized LLMs for privacy-preserving smart home environments,” arXiv preprint , 2025. [22] R. Dembani, I. Karvelas, N. Akbar, S. Rizou et al. , “Agricultural data privacy and federated learning: A review of challenges and opportuni-ties,” Computers and Electronics in Agriculture , 2025. [23] S. Kumar, T. Maurya, M. Rai et al. , “Federated learning-based approach for crop recommendation and market stability in agriculture,” Federated Learning for Agriculture , 2026. [24] L. Li, J. Li, D. Chen, L. Pu, H. Yao, and Y. Huang, “VLLFL: A vision-language model based lightweight federated learning framework for smart agriculture,” arXiv preprint arXiv:2504.13365 , 2025. [25] V. Kamduri, P. Gupta, and C. El Kari, “AgriGen: A prompt-tuned, mul-tilingual LLM-based Q&A system for smarter agriculture,” in Applied Imagery Pattern Recognition Workshop (AIPR) . Springer, 2026. [26] S. Srivastava and S. Dahiya, “A review paper on the study of deep learning and machine learning models used in forecasting Indian crop prices,” in International Conference on Data Analytics . Springer, 2025. [27] D. J. Beutel, T. Topal, A. Mathur, X. Qiu, J. Fernandez-Marques, Y. Gao, L. Sani, K. H. Li, T. Parcollet, P. P. B. de Gusm˜ ao, and N. D. Lane, “Flower: A friendly federated learning research framework,” arXiv preprint arXiv:2007.14390 , 2020. [28] C. Dwork and A. Roth, “The algorithmic foundations of differential privacy,” Foundations and Trends in Theoretical Computer Science ,vol. 9, no. 3–4, pp. 211–407, 2014. [29] I. Mironov, “R´ enyi differential privacy,” in IEEE 30th Computer Security Foundations Symposium (CSF) , 2017, pp. 263–275. [30] G. E. P. Box and G. M. Jenkins, Time Series Analysis: Forecasting and Control . San Francisco: Holden-Day, 1976. [31] S. Hochreiter and J. Schmidhuber, “Long short-term memory,” Neural Computation , vol. 9, no. 8, pp. 1735–1780, 1997. [32] A. Neelakantan, L. Vilnis, Q. V. Le, I. Sutskever, L. Kaiser, K. Karol, and J. Martens, “Adding gradient noise improves learning for very deep networks,” arXiv preprint arXiv:1511.06807 , 2015. [33] C. Dwork, V. Feldman, M. Hardt, T. Pitassi, O. Reingold, and A. Roth, “Generalization in adaptive data analysis and holdout reuse,” in Ad-vances in Neural Information Processing Systems (NeurIPS) , 2015.

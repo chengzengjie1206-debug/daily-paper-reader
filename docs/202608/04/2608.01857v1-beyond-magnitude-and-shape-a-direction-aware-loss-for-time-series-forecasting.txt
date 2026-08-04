@@ -1,0 +1,1528 @@
+Title: Beyond Magnitude and Shape: A Direction-Aware Loss for Time Series Forecasting
+
+URL Source: https://arxiv.org/pdf/2608.01857v1
+
+Published Time: Tue, 04 Aug 2026 02:00:35 GMT
+
+Number of Pages: 23
+
+Markdown Content:
+# Beyond Magnitude and Shape: A Direction-Aware Loss for Time Series Forecasting 
+
+## Seunghan Lee, Jaehoon Lee, Jun Seo, Junhyeok Kang, Sangjun Han, Sungdong Yoo, Minjae Kim, Tae Yoon Lim, Dongwan Kang, Hwanil Choi, Soonyoung Lee, Wonbin Ahn 
+
+LG AI Research 
+
+Abstract 
+
+The direction of change—whether a series will move up or down—is often as important as its exact value in decision-driven applications such as risk management and financial forecasting. However, most forecasting losses optimize either point magnitude or shape and frequency structure, and none explicitly targets the direction of change. In this paper, we find that MSE-trained forecasters fail on the direction of small moves . To address this, we propose CosDir , a simple yet ef-fective direction-aware loss that aligns the difference vectors of the prediction and the target via cosine similarity. Being 
+
+scale-invariant , CosDir keeps a directional gradient on small moves, re-injecting learning signal exactly where MSE ne-glects it. CosDir is a lightweight, plug-in term that attaches to any backbone without architectural modification. Since the best ratio for mixing the directional and magnitude terms differs across datasets, we further propose CosDir-UW , an extension that makes this ratio adaptive by learning it during training, matching a per-dataset tuned weight with no hyperpa-rameter. We conduct over 100K experiments, demonstrating that our method consistently and significantly improves di-rectional accuracy while preserving magnitude accuracy, and that it outperforms various loss functions. Code is available at: https://github.com/seunghan96/cosdir. 
+
+## Introduction 
+
+Time series (TS) forecasting is widely used across domains such as energy (Kong et al. 2019) and finance (Jiang 2021). A wide range of forecasting models has been developed based on different architectures, including Transformers (Nie et al. 2023; Liu et al. 2024) and multi-layer perceptrons (MLPs) (Zeng et al. 2023; Li et al. 2023). Regardless of the backbone, these models are almost universally trained by minimizing a point-wise magnitude loss such as the mean squared error (MSE) or mean absolute error (MAE). A line of work has argued that magnitude losses are in-sufficient and has proposed losses that capture the shape or 
+
+frequency structure of a forecast. As summarized in Table 1, however, none of these objectives explicitly optimizes the di-rection of change —i.e., whether the series moves up or down at each step—even though in many decision-driven applica-tions the direction ultimately drives the downstream action. As Figure 1 shows, two forecasts can have the same MSE yet very different directional accuracy (DA), and only the one that gets the direction right is useful for decisions. 
+
+Axis Does the forecast. . . Example losses Magnitude Hit the right value? MSE, MAE Shape Follow the right shape? Soft-DTW, TILDE-Q Frequency Match the right frequencies? FreDF, DBLoss 
+
+Direction Move in the right direction? CosDir (Ours) 
+
+Table 1: Comparison of forecasting losses. To this end, we propose CosDir , a simple direction-aware loss that aligns the horizon difference vectors of the predic-tion and the target through cosine similarity. Being scale-invariant , CosDir keeps a directional gradient on small moves, re-injecting learning signal exactly where MSE is blind, and it is a lightweight plug-in that attaches to any backbone and base loss. Because the best weight for mix-ing the directional and magnitude terms varies widely across datasets, we further propose CosDir-UW , an extension that 
+
+learns this ratio via uncertainty weighting. Across over 100K experiments spanning 13 datasets, 15 backbones, and up to six horizons, our methods consistently improve DA while preserving magnitude and outperform a diverse set of loss functions on direction. Our main contributions are: 
+
+• We identify an overlooked failure mode of magnitude losses: MSE-trained forecasters systematically mispredict the direction of small moves , because their gradient is dominated by large-magnitude points. 
+
+• We propose CosDir , a simple yet effective direction-aware loss that aligns prediction and target difference vec-tors via cosine similarity. Being scale-invariant , CosDir keeps a directional gradient on small moves, where MSE’s vanishes. It is a plug-in for any backbone and base loss. 
+
+• We further propose CosDir-UW , an extension that makes the direction–magnitude mixing ratio adaptive by learning it via uncertainty weighting, motivated by the observation that the best fixed ratio differs across datasets. 
+
+• We run over 100K experiments across 13 datasets, 15 backbones, and up to six forecasting horizons, showing that CosDir consistently improves DA without degrading MSE and outperforms various loss functions. arXiv:2608.01857v1 [cs.LG] 3 Aug 2026 0 10 20       
+
+> High DA forecast
+> DA = 100%
+> 010 20
+> Low DA forecast
+> DA = 45%
+> 010 20
+> 0.0
+> 2.5
+> 5.0
+> Payoff of predicted direction
+> High DA
+> Low DA
+> Ground truth
+> Forecast
+> Correct dir.
+> Wrong dir.
+
+Figure 1: Same MSE, different decision values. Two forecasts share the same MSE, but the left one (high DA) predicts every change’s direction while the middle one (low DA) does not. The right panel plots the payoff of the predicted direction, and only the high-DA forecast accumulates it, so it is directional accuracy, not magnitude, that drives the decision.                                                   
+
+> Method Training objective Extra term captures Optimized axis Scale-inv. MSE ∥ˆy−y∥22— (Base only) Magnitude —MAE ∥ˆy−y∥1— (Base only) Magnitude —DILATE / Soft-DTW Shape alignment via (soft-)DTW Temporal shape Shape ✗
+> TILDE-Q ∥σ(ˆ y)−σ(y)∥1Amplitude / phase invariance Shape ✗
+> FreDF ∥F (ˆ y)− F (y)∥1Frequency spectrum Frequency ✗
+> DBLoss ∥T(ˆ y)−T(y)∥1+∥S(ˆ y)−S(y)∥22Trend / seasonal decomposition Frequency ✗
+> CosDir (Ours) 1−cos(∆ˆ y,∆y)Direction of change Direction ✓
+
+Table 2: Various loss functions. Each augments MSE with a structural term, and only CosDir is directional and scale-invariant. 
+
+## Related Work 
+
+TS forecasting models. Deep TS forecasting models are commonly grouped into MLP-based (Zeng et al. 2023; Chen et al. 2023; Wang et al. 2024; Das et al. 2023; Zhang et al. 2022; Yi et al. 2023; Zhou et al. 2022a), CNN-based (Wu et al. 2023), and Transformer-based (Vaswani et al. 2017; Zhou et al. 2021; Wu et al. 2021; Zhou et al. 2022b; Liu et al. 2022a; Kitaev, Kaiser, and Levskaya 2020; Liu et al. 2022b; Zhang and Yan 2023; Nie et al. 2023; Liu et al. 2024) families, along with recurrent designs (Lin et al. 2023). Details of all 15 backbones used in this work are deferred to Appendix B. 
+
+Magnitude losses. Most TS forecasting models are trained with point-wise magnitude losses such as MSE and MAE, which measure the average deviation between predicted and true values (Nie et al. 2023; Liu et al. 2024; Zeng et al. 2023). These losses are simple and differentiable, but they are dom-inated by large-magnitude errors and are largely insensitive to the direction of low-amplitude changes. 
+
+Shape and frequency losses. A growing body of work ar-gues that magnitude losses fail to capture temporal structure and proposes structure-aware alternatives, which we sum-marize in Table 2. Soft-DTW (Cuturi and Blondel 2017) and DILATE (Le Guen and Thome 2019) align the temporal 
+
+shape of forecasts via differentiable dynamic time warping. TILDE-Q (Lee et al. 2024) enforces invariance to ampli-tude, phase, and uniform shifts. FreDF (Wang et al. 2025) matches the frequency spectrum of prediction and target, and DBLoss (Qiu et al. 2025) decomposes the series into trend and seasonal components and computes separate losses on each. First-order difference terms also appear inside several shape losses to encourage local smoothness, but they are 
+
+magnitude-weighted : their contribution vanishes for small moves, leaving directional errors uncorrected. 
+
+Directional metrics, losses, and models. Directional (or “hit-rate”) metrics are used to evaluate forecasts (Lee et al. 2024), but rarely serve as a training objective because the sign function is non-differentiable. The Mean Absolute Direc-tional Loss (MADL) (Michańków, Sakowski, and Ślepaczuk 2024) is a finance-specific exception that weights the real-ized return by the sign agreement between prediction and target. Yet its discrete sign operator limits its effectiveness as a differentiable objective . Rank- and correlation-based sur-rogates, made trainable by differentiable sorting and rank-ing (Blondel et al. 2020), likewise align change trajectories monotonically rather than pointwise. CosDir instead casts di-rection as a smooth cosine alignment that is scale-invariant 
+
+and differentiable, supplying a directional gradient at every magnitude. Beyond loss design, CaReTS (Yao et al. 2025) is a multi-task decomposition that disentangles direction and magnitude and balances them at the architecture level with dual streams. CosDir instead injects direction through the loss and remains a single-stream, backbone-agnostic plug-in. This aligns with decision-focused learning, where surrogates that preserve decision-relevant information outperform pure prediction-error losses (Elmachtoub and Grigas 2022). 
+
+## Preliminaries 
+
+TS forecasting. In TS forecasting, a model predicts the future values y = ( xL+1 , . . . , xL+H ) given a lookback window 
+
+x = ( x1, . . . , xL). Each xi ∈ RC represents values at time step i, where L, H, and C denote the size of the lookback window, the forecast horizon, and the number of channels. A model fθ produces a prediction ˆy = fθ (x) ∈ RH×C .
+
+Direction of change. For channel c, we define the one-step change at horizon step h as the first difference ∆yh,c =
+
+yh,c − yh−1,c , with y0,c set to the last observed value xL,c 1.0      
+
+> 1.5
+> 2.0 Target y
+> Forecast ^y
+> 090 180
+> 0
+> 1
+> 2
+> 1 ¡ cos  μ
+
+¢y
+
+¢ ^ y
+
+μ                                    
+
+> cos μ=¢ ^ y;¢y®
+> k¢ ^ yk k ¢yk
+> Difference vectors 2ℝH:
+> ¢y= (+ :50 ;¡:25 ;+:55 ;¡:25 ;+:50)
+> ¢ ^ y= (+ :35 ;¡:20 ;+:45 ;¡:15 ;+:35)
+> Angle μ
+
+L = LMSE + ¸ (1 ¡ cos μ)
+
+(a) Take step-to-step changes (b) Compare their directions (c) Penalty and full loss Figure 2: Overview of CosDir. (a) For each channel we take the step-to-step changes of the forecast and the target, which stack into the horizon-length difference vectors ∆ˆ y and ∆y (written out for a five-step example). (b) We compare their directions through cosine similarity, which yields the angle θ between the two change vectors and depends only on direction, not magnitude. (c) The penalty 1 − cos θ is added to the MSE, so it is 0 when the change directions align and grows toward 2 as they diverge. so that the direction of the first predicted step is included. The direction at step h is then sign(∆ yh,c ), and analogously 
+
+sign(∆ˆ yh,c ) for the prediction. 
+
+Evaluation metrics. We assess forecasts along two com-plementary axes. Magnitude is measured by the standard MSE and MAE, which quantify how close the predicted val-ues are to the targets. Direction is measured by DA, the frac-tion of horizon steps at which the predicted and true change directions agree, DA = 1
+
+HC 
+
+> H
+
+X
+
+> h=1
+> C
+
+X
+
+> c=1
+
+1[sign(∆ˆ yh,c ) = sign(∆ yh,c )] , (1) where 1[·] is the indicator function. Higher DA is better, with 0.5 corresponding to chance for a balanced up/down split. DA is our primary directional metric and is orthogonal to magnitude error, as a forecast can be accurate in value yet wrong in direction, and vice versa. 
+
+## Method 
+
+We introduce CosDir , a simple yet effective direction-aware loss, illustrated in Figure 2. We first analyze why magnitude losses fail on direction (Sec. “Why MSE Neglects Direc-tion”), then present CosDir and its scale-invariance property. 
+
+Why MSE Neglects Direction 
+
+The gradient of the MSE with respect to a prediction is pro-portional to the signed error, ∂LMSE /∂ ˆyh,c ∝ (ˆ yh,c − yh,c ).As a result, optimization is dominated by large-magnitude 
+
+points, and the contribution of a step to the total gradient scales with the size of its error rather than with whether its sign is correct. Low-amplitude changes therefore receive negligible gradient, so the model has little incentive to get their direction right. Empirically, this produces a DA that in-creases monotonically with the true move size and collapses toward (or below) chance for the smallest moves, where most directional errors occur. This motivates a scale-invariant di-rectional objective whose directional gradient does not van-ish on low-amplitude moves, unlike the squared error. 
+
+CosDir: Scale-Invariant Directional Alignment 
+
+Let ∆ˆ yc = (∆ˆ y1,c , . . . , ∆ˆ yH,c ) ∈ RH and ∆yc ∈ RH
+
+denote the horizon difference vectors of the prediction and the target for channel c, respectively. CosDir aligns their 
+
+orientation through the cosine similarity: 
+
+LCosDir = LMSE + λ · 1
+
+C
+
+> C
+
+X
+
+> c=1
+
+
+
+1 − ⟨∆ˆ yc, ∆yc⟩∥∆ˆ yc∥ ∥ ∆yc∥ + ϵ
+
+
+
+,
+
+(2) where ⟨· , ·⟩ is the inner product over the horizon, ϵ is a small constant, and λ is the hyperparameter balancing the directional term against the base loss. The cosine term is minimized ( = 0 ) when the two change trajectories point in the same direction and maximized ( = 2 ) when they are opposed. CosDir has the three properties below. 
+
+Property 1: Scale invariance. The key property of Eq. (2) is that the cosine term depends only on the ori-entation of the difference vectors, not their magnitude: 
+
+cos( a ∆ˆ yc, b ∆yc) = cos(∆ˆ yc, ∆yc) for any a, b > 0. Con-sequently, the objective is invariant to the overall amplitude of a window or channel, removing the magnitude bias that leads MSE to ignore low-amplitude series. Within a horizon, the cosine still weights each step by its size, but only linearly and after normalization, so unlike the squared error it keeps a directional gradient on small moves. This is in contrast to first-difference terms of the form ∥∆ˆ y − ∆y∥2, whose gra-dient is magnitude-weighted and vanishes for small moves. Appendix C derives the gradient of the cosine term and shows how its directional signal distributes across horizon steps. 
+
+Property 2: Differentiability. Because the sign function is non-differentiable , directional objectives are often cast as hard classification and optimized with surrogate gradients. CosDir instead replaces the sign with a smooth cosine surro-gate: the first-difference operator is linear in the prediction, the cosine term is differentiable everywhere except where a predicted difference vector is exactly zero, and the stabilizer 
+
+ϵ keeps the loss and its gradient bounded even at that point. CosDir is thus trained end-to-end without a straight-through estimator. When a target window is nearly flat ( ∥∆y∥ ≈ 0), its direction is undefined, but such windows carry little direc-Magnitude 
+
+Shape / Freq .
+
+Direction 
+
+Fixed 
+
+Fixed 
+
+Learn able Direction 
+
+Base Loss Auxiliary Loss 
+
+CosDir 
+
+CosDir -UW 
+
++
+
++
+
++
+
+Balancing magnitude & direction !Figure 3: CosDir vs. CosDir-UW. CosDir mixes direction and magnitude with a fixed weight λ, whereas CosDir-UW makes λ learnable so the balance adapts by dataset. tional information, so their gradient contribution is naturally small. Masking or confidence-weighting them by ∥∆y∥ is a compatible refinement we leave to future work. 
+
+Property 3: Applicability. CosDir is broadly applicable in three ways. (3-1) Complementary : it constrains only the orientation of the change trajectory without competing with the magnitude objective, so that MSE is preserved. (3-2) Plug-in : it is added to any base loss and attaches to any back-bone. (3-3) Lightweight : it adds only O(HC ) computation, i.e., O(1) overhead relative to a forward pass. 
+
+CosDir-UW: Balancing Magnitude and Direction 
+
+Motivation. In CosDir, the weight λ sets how strongly di-rection is emphasized relative to magnitude, and it is fixed 
+
+across datasets. However, the most effective ratio can depend on the data. Empirically, the best fixed λ varies by an order of magnitude across datasets (from 0.3 to 3.0), so no single global ratio is optimal, as further discussed in Appendix H. 
+
+Formulation. To let the model learn this ratio from data rather than fix it as a hyperparameter, we propose CosDir-UW (Figure 3), which casts the magnitude and direction terms as two objectives with unknown, learnable confidence, following homoscedastic Uncertainty Weighting (Kendall, Gal, and Cipolla 2018). Introducing two scalar log-variance parameters s1, s 2 ∈ R, the objective is 
+
+LUW = e−s1 LMSE + e−s2 Ldir + 12 (s1 + s2) , (3) where Ldir = 1
+
+> C
+
+PCc=1 
+
+ 1 − cos(∆ˆ yc, ∆yc) is the same 
+
+cosine penalty as in Eq. (2). The two precisions e−s1 and 
+
+e−s2 are learned jointly with the forecasting model. 
+
+How the balance is learned. Because each precision e−si
+
+can shrink its loss toward zero, the last term is essential: without it the trivial optimum drives s1, s 2 → ∞ and both losses vanish. The regularizer 12 (s1 + s2) penalizes this, and setting ∂LUW /∂s i = 0 gives a finite optimum at which each precision equals the inverse of its own loss, so a term that is easier to reduce is automatically up-weighted. The effective directional weight is λeff = e s1−s2 , a ratio the optimizer discovers per dataset instead of being manually specified. 
+
+Properties. CosDir-UW inherits the scale invariance and almost-everywhere differentiability of CosDir, as Ldir is left unchanged. It adds only two scalar parameters and the same 
+
+O(HC ) direction computation, remains a backbone-agnostic plug-in, and—crucially—exposes no loss hyperparameter: the identical objective is applied unchanged on every dataset.                                      
+
+> Financial General
+> Dataset CFrequency Dataset CFrequency RealVar 27 Daily ETTh1 7Hourly RealVol 27 Daily ETTh2 7Hourly RealVol60 27 Daily ETTm1 715-Min AbsRet 27 Daily ETTm2 715-Min StockVol 24 Daily Weather 21 10-Min Solar 137 Hourly Traffic 862 Hourly Electricity 321 Hourly
+
+Table 3: Statistics of financial & general-domain datasets. In the wide result tables the financial datasets are abbreviated RVar, RVol, RVol60, AbsR, and SVol, and Electricity as Elec.   
+
+> Transformer MLP CNN & RNN PatchTST (Nie et al. 2023) DLinear (Zeng et al. 2023) TimesNet (Wu et al. 2023) iTransformer (Liu et al. 2024) TimeMixer (Wang et al. 2024) SegRNN (Lin et al. 2023) Autoformer (Wu et al. 2021) TSMixer (Chen et al. 2023) FEDformer (Zhou et al. 2022b) LightTS (Zhang et al. 2022) Pyraformer (Liu et al. 2022a) FiLM (Zhou et al. 2022a) Crossformer (Zhang and Yan 2023) TiDE (Das et al. 2023) FreTS (Yi et al. 2023)
+
+Table 4: Forecasting models grouped by architecture family. 
+
+## Experiments 
+
+Experimental Settings 
+
+Datasets. We evaluate on 13 datasets in two families (Ta-ble 3). Our primary domain is finance , represented by five multivariate datasets (RealVar, RealVol, RealVol60, AbsRet, and StockVol), where the direction of change (whether risk rises or falls) is the decision-relevant quantity. For general-ity we also use eight standard benchmarks: ETTh1, ETTh2, ETTm1, ETTm2 (Zhou et al. 2021), Weather, Solar, Traffic, and Electricity (Wu et al. 2021). Details are in Appendix A. 
+
+Backbones. To confirm that CosDir is backbone-agnostic, we evaluate on 15 forecasting models spanning Transformer-, MLP-, CNN-, and RNN-based families, listed in Table 4. 
+
+Protocol. We use a lookback L = 96 , with horizons 
+
+H ∈ { 96 , 192 , 336 , 720 } on the general benchmarks and 
+
+H ∈ { 12 , 24 , 36 , 48 , 60 , 72 } on the financial datasets, where volatility direction is most predictable. MSE is the base loss and CosDir an auxiliary term on top, so “w/o” and “w/ Cos-Dir” denote MSE and MSE + CosDir. Unless noted, λ = 0 .5.All numbers are the mean over 5 random seeds (per-seed standard deviations in Appendix K). Our primary metric is DA, with magnitude preservation verified in Figure 5. Sig-nificance is assessed with a paired one-sided Wilcoxon test on matched (dataset, backbone, horizon, seed) cells, with the threshold and a runtime comparison in Appendix J. Financial 12 24 36 48 60 72 RealVar 53.02/55.13 ∗/55.46 ∗ 52.19/53.73 ∗/54.20 ∗ 51.30/52.33 ∗/52.48 ∗ 50.99/51.44 ∗/51.77 ∗ 50.79/51.31 ∗/51.41 ∗ 50.65/51.01 ∗/51.12 ∗
+
+RealVol 52.78/54.62 ∗/54.94 ∗ 52.01/53.63 ∗/53.79 ∗ 51.21/52.08 ∗/52.23 ∗ 50.94/51.52 ∗/51.64 ∗ 50.75/51.20 ∗/51.26 ∗ 50.62/50.92 ∗/51.02 ∗
+
+RealVol60 50.91/52.51 ∗/52.70 ∗ 51.01/52.67 ∗/52.82 ∗ 50.94/52.53 ∗/52.74 ∗ 50.89/52.58 ∗/52.69 ∗ 50.85/52.25 ∗/52.50 ∗ 50.67/51.65 ∗/51.82 ∗
+
+StockVol 52.17/53.77 ∗/54.07 ∗ 51.53/52.85 ∗/53.13 ∗ 50.93/51.60 ∗/51.82 ∗ 50.71/51.06 ∗/51.34 ∗ 50.59/50.89 ∗/50.99 ∗ 50.47/50.72 ∗/50.79 ∗
+
+AbsRet 51.86/52.01 ∗/52.07 ∗ 50.94/51.03 ∗/51.06 ∗ 50.67/ 50.73 ∗/50.73 ∗ 50.55/ 50.56 /50.56 50.45/ 50.49 ∗/50.48 50.42 /50.42 /50.41 
+
+General 96 192 336 720 ETTh1 58.67/60.10 ∗/60.75 ∗ 57.66/59.41 ∗/59.68 ∗ 56.84/58.50 ∗/58.84 ∗ 55.76/57.23 ∗/57.59 ∗ Summary: Average DA (%) 
+
+Fin. Gen. All MSE 51.13 59.80 55.60 
+
++CosDir 51.97 61.90 57.10 
+
++CosDir-UW 52.13 62.19 57.32 
+
+ETTh2 54.83/57.90 ∗/58.17 ∗ 54.00/56.68 ∗/57.02 ∗ 53.50/55.98 ∗/56.39 ∗ 52.93/55.32 ∗/55.93 ∗
+
+ETTm1 54.16/55.17 ∗/55.24 ∗ 54.05/54.90 ∗/54.93 ∗ 53.77/54.51 ∗/54.54 ∗ 53.34/ 54.01 ∗/53.99 ∗
+
+ETTm2 53.02/54.69 ∗/54.74 ∗ 52.75/54.16 ∗/54.34 ∗ 52.43/53.78 ∗/53.97 ∗ 52.26/53.56 ∗/53.77 ∗
+
+Weather 52.42/54.07 ∗/54.43 ∗ 52.47/54.26 ∗/54.53 ∗ 52.32/54.07 ∗/54.31 ∗ 52.34/54.03 ∗/54.29 ∗
+
+Solar 68.05/73.14 ∗/73.57 ∗ 67.26/73.00 ∗/73.39 ∗ 66.63/72.34 ∗/72.50 ∗ 65.75/71.47 ∗/71.91 ∗
+
+Traffic 72.22/73.81 ∗/74.10 ∗ 72.78/74.39 ∗/74.68 ∗ 72.67/74.26 ∗/74.72 ∗ 71.60/73.36 ∗/73.74 ∗
+
+Electricity 70.08/71.28 ∗/71.62 ∗ 69.15/70.77 ∗/71.15 ∗ 68.99/70.41 ∗/70.74 ∗ 68.95/70.27 ∗/70.53 ∗
+
+Table 5: Comparison of MSE with MSE + CosDir and MSE + CosDir-UW. We report DA (%) at each H, averaged over the 15 backbones and 5 seeds, with each cell reading MSE / (MSE + CosDir) / (MSE + CosDir-UW). The best value is in bold and the second best is underlined, and ∗ marks p < 10 −3 under a paired one-sided Wilcoxon test of that method against MSE. 
+
+vs. Prior work Financial General Avg. RVar RVol RVol60 SVol AbsR ETTh1 ETTh2 ETTm1 ETTm2 Weather Solar Traffic Elec. MSE 51.16 51.09 50.84 50.84 50.77 57.23 53.82 53.83 52.61 52.39 66.93 72.42 69.52 56.42 + FreDF 51.38 51.29 51.23 51.19 50.63 57.29 55.64 53.91 53.71 54.36 71.39 72.79 69.87 57.29 + TILDE-Q 51.18 51.13 50.79 50.84 50.61 57.23 53.82 53.83 52.62 52.38 66.97 72.46 69.52 56.42 + DBLoss 50.95 50.91 50.58 50.71 50.64 56.87 54.32 53.91 53.11 52.53 65.19 71.61 68.95 56.18 + MADL 51.29 51.20 50.67 50.91 50.58 57.41 53.97 53.82 52.69 51.59 66.98 71.31 69.29 56.29 
+
++ CosDir (Ours) 51.91 51.79 52.28 51.40 50.82 58.81 56.47 54.65 54.05 54.11 72.49 73.97 70.95 57.98 
+
++ CosDir-UW (Ours) 52.56 52.32 52.42 51.89 50.83 59.22 56.88 54.67 54.21 54.39 72.84 74.27 71.27 58.29 
+
+Table 6: Comparison with various loss functions. 
+
+vs. Our variants Financial General Avg. RVar RVol RVol60 SVol AbsR ETTh1 ETTh2 ETTm1 ETTm2 Weather Solar Traffic Elec. MSE 51.16 51.09 50.84 50.84 50.77 57.23 53.82 53.83 52.61 52.39 66.93 72.42 69.52 56.42 + First-Difference 51.51 51.43 50.85 51.06 50.59 57.66 54.45 54.28 53.02 52.76 68.60 73.63 70.16 56.92 + Magnitude-Weighted Sign 51.49 51.38 50.85 51.03 50.62 57.91 54.26 53.77 52.55 52.03 67.09 73.07 70.21 56.63 + Sign Classification (BCE) 51.90 51.77 51.15 51.43 50.62 57.94 55.72 55.16 53.89 54.07 71.49 75.19 70.54 57.76 
+
++ CosDir (Ours) 51.91 51.79 52.28 51.40 50.82 58.81 56.47 54.65 54.05 54.11 72.49 73.97 70.95 57.98 
+
++ CosDir-UW (Ours) 52.56 52.32 52.42 51.89 50.83 59.22 56.88 54.67 54.21 54.39 72.84 74.27 71.27 58.29 
+
+Table 7: Ablation with our non-scale-invariant direction-aware variants. 
+
+Main Results 
+
+We assess CosDir and CosDir-UW along three axes—(1) 
+
+effectiveness , (2) competitiveness , and (3) the source of their gains — spanning 15 backbones and 13 datasets :
+
+• (1) MSE vs. MSE + CosDir/CosDir-UW 
+
+• (2) Comparison with various loss functions 
+
+• (3) Ablation of the direction-aware term 
+
+MSE vs. MSE + CosDir/CosDir-UW. To demonstrate that our methods improve directional accuracy across back-bones, datasets, and horizons, we compare the MSE baseline against MSE augmented with each. As shown in Table 5, CosDir raises DA on both the financial datasets and the gen-eral benchmarks, with the clearest gains at the short horizons where the direction of risk is most predictable. CosDir-UW brings an additional gain over CosDir, demonstrating the effectiveness of a learnable λ. As shown in Figure 5, these directional gains do not trade off magnitude accuracy (MSE) .Note that the return-based series are near chance: directional hit rates on raw stock prices are known to be hard to push much above 50% , consistent with the difficulty of stock-price forecasting under market efficiency (Fama 1970). 
+
+Comparison with various loss functions. Table 6 com-pares CosDir and CosDir-UW against shape, frequency, and directional losses across all 15 backbones and 13 datasets, each added to the same MSE base over matched cells. Our methods outperform all of them in DA, with CosDir-UW adding a further gain over CosDir. For fairness, every loss 1 4 7 10 
+
+> Decile of |Δ y| (Small → Large)
+> 0.50
+> 0.55
+> 0.60
+> 0.65
+> 0.70
+> Directional accuracy  MSE
+> MSE + CosDir
+
+0 10 20 30 40 50 
+
+Forecast step 
+
+0.0 
+
+0.2 
+
+0.4 
+
+> Cumulative payoff
+> ∑ sign(Δ̂ y) Δ y
+
+MSE 
+
+MSE + CosDir Figure 4: Directional gain grows with move size and turns into payoff. (a) When predictions are sorted into ten deciles by the size of the true step-to-step change |∆y|, CosDir improves DA over the MSE baseline most on the largest moves, the ones that drive decisions. (b) Acting on the predicted direction, CosDir accumulates more cumulative payoff than MSE. uses the same λ = 0 .5, and the per-λ sweep (Appendix L) shows CosDir wins across the grid, with CosDir-UW’s 
+
+learned λ matching a per-dataset tuned λ (Appendix H). 
+
+Ablation of the direction-aware term. To isolate what makes CosDir effective, namely its scale-invariant cosine for-mulation, we compare it against three alternative direction-aware terms , none of them scale-invariant: 1) a first-difference MSE term, 2) a magnitude-weighted sign penalty, and 3) a per-step sign-classification (BCE) term (see Ap-pendix E for details). These are not existing losses but vari-ants that each inject directional information in a different, non-scale-invariant way, so any gap to CosDir isolates the effect of scale invariance. As shown in Table 7, the CosDir family reaches the highest DA across all 15 backbones and 13 datasets. The magnitude-weighted variants help less as their directional gradient still vanishes on small moves, so the gain comes from scale invariance rather than from adding a directional term. 
+
+## Analysis 
+
+We analyze CosDir along five main axes, with further anal-yses deferred to the appendix: 
+
+• (1) Where the directional gains come from 
+
+• (2) Magnitude preservation across settings 
+
+• (3) Cross-backbone consistency of the learned ratio 
+
+• (4) From a fixed to an adaptive mixing ratio 
+
+• (5) Robustness across backbones and datasets 
+
+• (6) Other analyses (Appendix): – Sensitivity to the lookback length (App. F) – Generality across MSE/MAE base losses (App. F) – Complementarity with the FreDF loss (App. F) – Transaction-cost robustness of the payoff (App. I) – Robustness of the gains to class balance (App. I) – Significance testing and runtime (App. J) – Sensitivity to the weight λ (App. L) 
+
+Where the gains come from. To trace where the direc-tional gains come from, we group prediction points by the size of the true step-to-step change |∆y| on RealVol60 with PatchTST. Specifically, we sort them into ten deciles and read DA within each. As shown in Figure 4(a), both losses are 
+
+Figure 5: Direction without sacrificing magnitude. On finan-cial datasets, CosDir raises DA while keeping or slightly im-proving MSE, whereas other auxiliary losses worsen MSE. near chance on the smallest moves, while CosDir’s advantage 
+
+grows steadily with the size of the move . The gains therefore concentrate on the larger, decision-driving moves: CosDir does not manufacture signal on the near-random smallest moves, but rather stops MSE from discarding the signal the larger moves carry. Figure 4(b) translates this into payoff: act-ing on the predicted direction accumulates more with CosDir than with MSE. These gains survive transaction costs and are not a class-imbalance artifact (Appendix I). 
+
+Direction is improved without sacrificing magnitude. 
+
+An auxiliary term is only useful if it does not degrade the magnitude accuracy it is added to. Figure 5 places each aux-iliary loss by its DA gain and MSE change against the base loss alone (w/o the auxiliary term), for FreTS on the five financial datasets across horizons and seeds. CosDir sits at the lower right, raising DA without harming MSE, whereas the other losses worsen MSE. Full results are in Appendix G. 
+
+Cross-backbone consistency of the learned ratio. If CosDir-UW truly reads how much directional signal the data ETTm1 
+
+> ETTm2
+> Weather
+> RealVol60
+> StockVol
+> RealVar
+> RealVol
+> ETTh1
+> ETTh2
+> AbsRet
+
+0.8 
+
+0.9 
+
+1.0 
+
+> Learned  λeff
+
+(a) Learned balance is dataset-consistent 
+
+One backbone 
+
+Dataset median 
+
+0.3 0.5 1 2 3
+
+Best fixed λ (tuned) 
+
+0.8 
+
+0.9 
+
+1.0 
+
+> Median  λeff
+
+## ρ = 0.60 
+
+(b) λeff tracks the tuned λFigure 6: CosDir-UW learns a dataset property. (a) The learned balance λeff = e s1−s2 clusters tightly by dataset across the eight main backbones, with 96% of its variance lying between datasets. (b) The dataset-level median λeff tracks the tuned λ.                                    
+
+> λRealVar RealVol RealVol60 StockVol DA MSE DA MSE DA MSE DA MSE
+> CosDir
+> 0.05 51.5 0.463 51.4 0.471 51.3 0.263 51.1 0.450 0.1 51.7 0.463 51.6 0.470 51.5 0.264 51.2 0.448 0.2 51.9 0.462 51.7 0.470 51.7 0.265 51.3 0.450 0.3 52.0 0.464 51.9 0.471 51.9 0.267 51.5 0.450 0.5 51.9 0.499 51.8 0.506 52.3 0.261 51.4 0.473 0.75 52.3 0.465 52.1 0.472 52.3 0.269 51.7 0.452 1.0 52.4 0.466 52.2 0.473 52.3 0.273 51.8 0.452 1.5 52.4 0.471 52.2 0.476 52.3 0.278 51.8 0.454 2.0 52.5 0.473 52.3 0.479 52.4 0.282 51.9 0.459 3.0 52.5 0.482 52.3 0.489 52.3 0.290 51.9 0.462
+> CosDir-UW 52.6 0.449 52.3 0.457 52.4 0.263 51.9 0.440
+
+Table 8: Learned λ outperforms fixed λ. By balancing direc-tion and magnitude, CosDir-UW (learned λ) reaches a higher DA and lower MSE than CosDir (fixed λ). carries, the balance it learns should depend on the dataset and not on the model trained with it. We train CosDir-UW on 10 datasets and the eight main backbones and record the learned λeff = e s1−s2 of every run. As shown in Figure 6(a), the learned balance clusters tightly by dataset, and 96% of the variance in log λeff lies between datasets with only 4% across backbones. As shown in Figure 6(b), the dataset-level bal-ance also tracks the tuned fixed λ (Spearman ρ = 0 .60 ). The learned ratio is therefore a property of the data rather than a model artifact, which is exactly what a hyperparameter-free replacement for a tuned λ should recover. 
+
+From a fixed to an adaptive mixing ratio. The weight λ
+
+sets the balance between direction and magnitude. By learn-ing λ rather than fixing it, CosDir-UW improves on both DA (direction) and MSE (magnitude) at once. As Table 8 shows, averaged over all 15 backbones on the four financial datasets, the learned λ gives a higher DA and a lower MSE than a fixed λ, with no tuning. Appendix H shows that the learned ratio tracks the per-dataset tuned λ.
+
+Robustness across backbones and datasets. The direc-tional gain is broad rather than tied to a particular model or domain. As Figure 7 shows, across the 15 backbones and 13 
+
+Figure 7: Robustness across backbones and datasets. For each backbone (B1–B15), one point is the DA gain of CosDir over MSE on one dataset, and the dash is the backbone mean. datasets, adding CosDir improves DA on 93% of (backbone, dataset) cells, while leaving MSE essentially unchanged. The backbone codes B1–B15 are listed in Appendix B. 
+
+## Conclusion 
+
+We identify a failure mode of magnitude losses: dominated by large moves, MSE-trained forecasters mispredict the di-rection of small changes, where most directional errors occur. We propose CosDir , a scale-invariant loss aligning predic-tion and target difference vectors via cosine similarity, and 
+
+CosDir-UW , which learns the direction–magnitude balance. Over 100K+ experiments on 13 datasets and 15 backbones, they consistently improve DA while preserving magnitude. 
+
+Limitations and future works. CosDir targets the di-rection of change, so its gains are smaller on near-random returns, a limit of the data, not the loss. Future directions include masking or confidence-weighting near-flat windows and extending it to probabilistic, multi-step forecasting. References 
+
+Blondel, M.; Teboul, O.; Berthet, Q.; and Djolonga, J. 2020. Fast differentiable sorting and ranking. In International Con-ference on Machine Learning (ICML) .Chen, S.-A.; Li, C.-L.; Yoder, N.; Arik, S. O.; and Pfister, T. 2023. TSMixer: An all-MLP architecture for time series forecasting. Transactions on Machine Learning Research (TMLR) .Cuturi, M.; and Blondel, M. 2017. Soft-DTW: a differen-tiable loss function for time-series. In International Confer-ence on Machine Learning (ICML) .Das, A.; Kong, W.; Leach, A.; Mathur, S.; Sen, R.; and Yu, R. 2023. Long-term forecasting with TiDE: Time-series dense encoder. Transactions on Machine Learning Research (TMLR) .Elmachtoub, A. N.; and Grigas, P. 2022. Smart “predict, then optimize”. Management Science , 68(1): 9–26. Fama, E. F. 1970. Efficient capital markets: A review of theory and empirical work. The Journal of Finance , 25(2): 383–417. Jiang, W. 2021. Applications of deep learning in stock market prediction: Recent progress. Expert Systems with Applica-tions , 184: 115537. Kendall, A.; Gal, Y.; and Cipolla, R. 2018. Multi-task learn-ing using uncertainty to weigh losses for scene geometry and semantics. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR) .Kitaev, N.; Kaiser, Ł.; and Levskaya, A. 2020. Reformer: The efficient transformer. In International Conference on Learning Representations (ICLR) .Kong, W.; Dong, Z. Y.; Jia, Y.; Hill, D. J.; Xu, Y.; and Zhang, Y. 2019. Short-term residential load forecasting based on LSTM recurrent neural network. IEEE Transactions on Smart Grid , 10(1): 841–851. Le Guen, V.; and Thome, N. 2019. Shape and time distortion loss for training deep time series forecasting models. In Ad-vances in Neural Information Processing Systems (NeurIPS) .Lee, H.; Lee, C.; Lim, H.; and Ko, S. 2024. TILDE-Q: A transformation invariant loss function for time-series fore-casting. In International Conference on Learning Represen-tations (ICLR) .Li, Z.; Qi, S.; Li, Y.; and Xu, Z. 2023. Revisiting long-term time series forecasting: An investigation on linear mapping. 
+
+arXiv preprint arXiv:2305.10721 .Lin, S.; Lin, W.; Wu, W.; Zhao, F.; Mo, R.; and Zhang, H. 2023. SegRNN: Segment recurrent neural network for long-term time series forecasting. arXiv preprint arXiv:2308.11200 .Liu, S.; Yu, H.; Liao, C.; Li, J.; Lin, W.; Liu, A. X.; and Dustdar, S. 2022a. Pyraformer: Low-complexity pyramidal attention for long-range time series modeling and forecasting. In International Conference on Learning Representations (ICLR) .Liu, Y.; Hu, T.; Zhang, H.; Wu, H.; Wang, S.; Ma, L.; and Long, M. 2024. iTransformer: Inverted transformers are ef-fective for time series forecasting. In International Confer-ence on Learning Representations (ICLR) .Liu, Y.; Wu, H.; Wang, J.; and Long, M. 2022b. Non-stationary transformers: Exploring the stationarity in time series forecasting. In Advances in Neural Information Pro-cessing Systems (NeurIPS) .Michańków, J.; Sakowski, P.; and Ślepaczuk, R. 2024. Mean Absolute Directional Loss as a new loss function for machine learning problems in algorithmic investment strategies. Jour-nal of Computational Science , 81: 102375. Nie, Y.; Nguyen, N. H.; Sinthong, P.; and Kalagnanam, J. 2023. A time series is worth 64 words: Long-term forecasting with transformers. In International Conference on Learning Representations (ICLR) .Qiu, X.; Wu, X.; Cheng, H.; Liu, X.; Guo, C.; Hu, J.; and Yang, B. 2025. DBLoss: Decomposition-based loss function for time series forecasting. In Advances in Neural Informa-tion Processing Systems (NeurIPS) .Vaswani, A.; Shazeer, N.; Parmar, N.; Uszkoreit, J.; Jones, L.; Gomez, A. N.; Kaiser, Ł.; and Polosukhin, I. 2017. At-tention is all you need. In Advances in Neural Information Processing Systems (NeurIPS) .Wang, H.; Pan, L.; Chen, Z.; Yang, D.; Zhang, S.; Yang, Y.; Liu, X.; Li, H.; and Tao, D. 2025. FreDF: Learning to forecast in the frequency domain. In International Conference on Learning Representations (ICLR) .Wang, S.; Wu, H.; Shi, X.; Hu, T.; Luo, H.; Ma, L.; Zhang, J. Y.; and Zhou, J. 2024. TimeMixer: Decomposable mul-tiscale mixing for time series forecasting. In International Conference on Learning Representations (ICLR) .Wu, H.; Hu, T.; Liu, Y.; Zhou, H.; Wang, J.; and Long, M. 2023. TimesNet: Temporal 2D-variation modeling for general time series analysis. In International Conference on Learning Representations (ICLR) .Wu, H.; Xu, J.; Wang, J.; and Long, M. 2021. Autoformer: Decomposition transformers with auto-correlation for long-term series forecasting. In Advances in Neural Information Processing Systems (NeurIPS) .Yao, F.; Zhao, W.; Zheng, C.; and Han, X. 2025. CaReTS: A Multi-Task Framework Unifying Classification and Re-gression for Time Series Forecasting. arXiv preprint arXiv:2511.09789 .Yi, K.; Zhang, Q.; Fan, W.; Wang, S.; Wang, P.; He, H.; An, N.; Lian, D.; Cao, L.; and Niu, Z. 2023. Frequency-domain MLPs are more effective learners in time series forecast-ing. In Advances in Neural Information Processing Systems (NeurIPS) .Zeng, A.; Chen, M.; Zhang, L.; and Xu, Q. 2023. Are trans-formers effective for time series forecasting? In Proceedings of the AAAI Conference on Artificial Intelligence .Zhang, T.; Zhang, Y.; Cao, W.; Bian, J.; Yi, X.; Zheng, S.; and Li, J. 2022. Less is more: Fast multivariate time series fore-casting with light sampling-oriented MLP structures. arXiv preprint arXiv:2207.01186 .Zhang, Y.; and Yan, J. 2023. Crossformer: Transformer uti-lizing cross-dimension dependency for multivariate time se-ries forecasting. In International Conference on Learning Representations (ICLR) .Zhou, H.; Zhang, S.; Peng, J.; Zhang, S.; Li, J.; Xiong, H.; and Zhang, W. 2021. Informer: Beyond efficient transformer for long sequence time-series forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence .Zhou, T.; Ma, Z.; Wen, Q.; Sun, L.; Yao, T.; Yin, W.; and Jin, R. 2022a. FiLM: Frequency improved Legendre memory model for long-term time series forecasting. In Advances in Neural Information Processing Systems (NeurIPS) .Zhou, T.; Ma, Z.; Wen, Q.; Wang, X.; Sun, L.; and Jin, R. 2022b. FEDformer: Frequency enhanced decomposed transformer for long-term series forecasting. In International Conference on Machine Learning (ICML) .A Dataset Details 
+
+The financial datasets are built entirely from publicly avail-able daily price data downloaded from Yahoo Finance over 2010–2024. Each channel is the risk measure of one indi-vidual asset, so the number of channels C equals the num-ber of assets. From each asset’s adjusted close we compute daily log returns and then form rolling risk measures. Four datasets share a common panel of C=27 large-cap U.S. equi-ties: RealVar (log realized variance), RealVol (log realized volatility over a 20-day window), RealVol60 (the same over a 60-day window), and AbsRet (rolling mean absolute return). 
+
+StockVol is the per-asset realized volatility for a separate basket of C=24 equities. All are constructed from open mar-ket data, and we will release the construction code and the datasets to support reproducibility. The eight general bench-marks (ETT, Weather, Solar, Traffic, Electricity) are standard public forecasting benchmarks (Wu et al. 2021). All datasets use a chronological 70 /10 /20 train/validation/test split. 
+
+## B Backbone Details 
+
+Transformer-based. 
+
+• [B2] PatchTST (Nie et al. 2023): Channel-independent patching of the series fed to a Transformer encoder. 
+
+• [B3] iTransformer (Liu et al. 2024): Inverted attention where each variate (channel) is embedded as a token. 
+
+• [B6] Autoformer (Wu et al. 2021): Decomposition with auto-correlation instead of dot-product attention. 
+
+• [B7] FEDformer (Zhou et al. 2022b): Frequency-enhanced decomposed Transformer (Fourier basis). 
+
+• [B10] Pyraformer (Liu et al. 2022a): Pyramidal attention capturing multi-resolution dependencies at low cost. 
+
+• [B11] Crossformer (Zhang and Yan 2023): Cross-dimension attention modeling inter-variable dependency. 
+
+MLP-based. 
+
+• [B1] DLinear (Zeng et al. 2023): Trend–seasonal decom-position followed by a single linear layer per component. 
+
+• [B5] TimeMixer (Wang et al. 2024): Decomposable mul-tiscale mixing of seasonal and trend representations. 
+
+• [B8] TSMixer (Chen et al. 2023): All-MLP architecture mixing alternately across time and channels. 
+
+• [B9] LightTS (Zhang et al. 2022): Light sampling-oriented MLP over interval and continuous subsequences. 
+
+• [B12] FiLM (Zhou et al. 2022a): Legendre memory pro-jections with frequency-enhanced low-rank filtering. 
+
+• [B13] TiDE (Das et al. 2023): Dense MLP encoder– decoder with covariate projection. 
+
+• [B14] FreTS (Yi et al. 2023): MLPs applied in the fre-quency domain over both channel and temporal axes. 
+
+CNN/RNN-based. 
+
+• [B4] TimesNet (Wu et al. 2023): Reshapes the 1D series into 2D period-wise tensors processed by convolutions. 
+
+• [B15] SegRNN (Lin et al. 2023): Segment-wise GRU re-currence that replaces point-wise recurrent steps. All 15 backbones use the default architecture hyperpa-rameters of the Time-Series-Library (MM-TSFlib), shared across models for a controlled comparison (Table 9).                                                                                                         
+
+> Backbone dNeNdhdff Model-specific
+> Transformer-based
+> PatchTST 128 2—8256 Factor 1
+> iTransformer 128 2—8256 Factor 1
+> Autoformer 128 218256 w=25 , factor 1
+> FEDformer 128 218256 w=25
+> Pyraformer 128 —————Crossformer 128 2—8256 Factor 1
+> MLP-based
+> DLinear —————w=25
+> TSMixer 128 2————TimeMixer 128 2——256 w=25 , top-k5
+> TiDE 128 21—256 —LightTS 128 —————FreTS —————Internal embedding FiLM 128 2————
+> CNN-based
+> TimesNet 128 2——256 Top-k5, kernels 6
+> RNN-based
+> SegRNN 128 ————Seg-len 48
+
+Table 9: Per-backbone hyperparameters, all following de-fault values of MM-TSFlib. Dropout is 0.1 throughout. d:model dimension; Ne/Nd: encoder/decoder layers; h: atten-tion heads; dff : FFN dimension; w: moving-average window. 
+
+## C Gradient of the Directional Term 
+
+We derive the gradient of the cosine penalty in Eq. (2) to make precise the sense in which CosDir keeps a directional signal on small moves. Fix a channel and write u = ∆ˆ yc and 
+
+v = ∆ yc, with unit vectors ˆu = u/∥u∥ and ˆv = v/∥v∥.The per-channel loss is ℓ = 1 − cos( u, v) with cos( u, v) = 
+
+⟨u, v⟩/(∥u∥∥ v∥) (we drop ϵ for clarity). Differentiating with respect to the prediction gives 
+
+∂ℓ ∂u = − 1
+
+∥u∥
+
+
+
+ˆv − cos( u, v) ˆ u
+
+
+
+. (4) This gradient has two effects that explain why CosDir keeps pushing on direction even when the moves are small. The first effect is that it equalizes the directional signal across windows and channels. The gradient carries a 1/∥u∥
+
+prefactor, so a window whose overall move is small (small 
+
+∥u∥) actually receives a larger directional update rather than a smaller one. This is the opposite of what happens with the MSE gradient ∝ (ˆ y − y) and with a first-difference gradient ∝ (u − v), both of which shrink toward zero as the move shrinks. In practice this means that MSE and first-difference terms quietly stop learning on exactly the low-amplitude windows, whereas CosDir treats every window on an equal footing regardless of its amplitude. This is why the small-amplitude series that magnitude losses tend to ignore are no longer left behind. The second effect is that it controls how the update is spread over the individual steps inside a single window. For horizon step h the update is − 1
+
+> ∥u∥
+
+ ˆvh −cos( u, v) ˆ uh
+
+, which nudges the predicted step toward the unit target direction ˆvh
+
+and then discounts it by how well the prediction is already aligned. What decides the contribution of a step is therefore the normalized shape of the target ˆv, not the raw size of its move. A small move inside a window is scaled down only in proportion to ˆvh, so it is dampened rather than erased altogether. This is exactly the behavior we describe in the main text. The equalization is exact across windows and channels, and inside a window the steps keep their ordering by normalized shape, not by the raw size of the move. 
+
+## D Pseudocode of CosDir 
+
+Algorithm 1 gives the forward pass of the CosDir and CosDir-UW losses as a plug-in on top of any base loss. The only overhead beyond the base loss is the O(HC ) difference-and-cosine computation (lines 1–6), which leaves training and inference time essentially unchanged (Appendix J). 
+
+Algorithm 1 CosDir / CosDir-UW directional loss 
+
+Require: prediction ˆY ∈ RH×C , target Y ∈ RH×C , last input ylast ∈ R1×C ; weight λ (CosDir) or log-variances 
+
+s1, s 2 (CosDir-UW); stabilizer ϵ
+
+1: ∆ ˆY ← ˆY − [ ylast ; ˆY1: H−1 ] ▷ first differences along the horizon 
+
+2: ∆Y ← Y − [ ylast ; Y1: H−1 ]
+
+3: for c = 1 to C do 
+
+4: cos c ← ⟨∆ ˆY:,c , ∆Y:,c ⟩∥∆ ˆY:,c ∥ ∥ ∆Y:,c ∥ + ϵ
+
+5: end for 
+
+6: Ldir ← 1
+
+> C
+
+PCc=1 (1 − cos c)
+
+7: LMSE ← 1 
+
+> HC
+
+∥ ˆY − Y ∥2
+
+> F
+
+8: if using CosDir then 
+
+9: L ← L MSE + λ Ldir 
+
+10: else ▷ CosDir-UW: learn the balance via uncertainty weighting 
+
+11: L ← e−s1 LMSE + e−s2 Ldir + 12 (s1 + s2)
+
+12: end if 
+
+13: backpropagate L and update the model (and s1, s 2 for CosDir-UW) 
+
+14: return L ▷ report λeff = e s1−s2 for CosDir-UW 
+
+## E Direction-Aware Ablation Variants 
+
+The three non-scale-invariant terms in the ablation (Table 7) use the same first-difference vectors ∆ˆ y and ∆y, each added to the MSE base with weight λ.
+
+First-difference MSE. A squared error on the differences, 
+
+L = LMSE + λHC 
+
+X
+
+> c,h
+
+ ∆ˆ yh,c − ∆yh,c 
+
+2. (5) Its directional gradient is proportional to ∆ˆ y − ∆y, so it shrinks with the true move and vanishes on small moves. 
+
+Magnitude-weighted sign penalty. A smooth sign-agreement term, weighted by the true move magnitude, 
+
+L = LMSE + λHC 
+
+X
+
+> c,h
+
+|∆yh,c | 1 − tanh( k ∆ˆ yh,c ∆yh,c ),
+
+(6) with k = 10 . The |∆y| weight makes the directional signal fade exactly where moves are small. 
+
+Sign-classification (BCE). A per-step binary cross-entropy that reads the predicted change (scaled by k) as the logit for an “up” step, 
+
+L = LMSE + λHC 
+
+X
+
+> c,h
+
+BCE  k ∆ˆ yh,c , 1[∆ yh,c > 0] , (7) with k = 5 . This is the natural sign-classification auxiliary. It improves DA over the baseline but, unlike CosDir, it op-timizes a hard up/down label that ignores how strongly the trajectories agree (Table 7). All three inject directional information in a non-scale-invariant way, unlike CosDir’s scale-invariant cosine, so the gap to CosDir isolates the effect of scale invariance. 
+
+## F Robustness and Sensitivity of CosDir 
+
+This section probes the robustness and sensitivity of CosDir along the four aspects below. Unless a table notes otherwise, every number is the mean over the 5 random seeds. 
+
+Sensitivity to λ. A fixed λ is effective across its whole range, and CosDir improves DA at every λ. Table 8 in the main paper reports this on the financial datasets, and the full sweep is in Appendix L. We use λ = 0 .5 by default and make the ratio adaptive in CosDir-UW. 
+
+Lookback length. Table 10 varies the lookback L on three datasets (RealVar, ETTh2, Solar) across the eight main back-bones 1. CosDir improves DA consistently, and the improve-ment grows with larger L, confirming that the directional signal it captures is not an artifact of a particular input length. 
+
+Lookback L MSE + CosDir ∆DA 96 0.5524 ±0.0004 0.5660 ±0.0002 +1.36 192 0.6056 ±0.0009 0.6277 ±0.0004 +2.21 336 0.6062 ±0.0017 0.6300 ±0.0004 +2.38 
+
+Table 10: Effect of the lookback length L. CosDir improves DA at every lookback, with larger gains for longer histories. 
+
+Base loss. Table 11 shows that CosDir is agnostic to the base loss on four datasets (RealVar, RealVol, ETTh2, Solar) across the eight main backbones. Adding CosDir to either an MSE or an MAE base improves DA, so the directional term is complementary to the choice of point loss. 
+
+Base loss — + CosDir ∆DA MSE 0.5349 ±0.0003 0.5456 ±0.0003 +1.06 MAE 0.5805 ±0.0005 0.5906 ±0.0004 +1.01 
+
+Table 11: Base-loss ablation. CosDir improves DA on both an MSE and an MAE base loss. 
+
+Complementarity with a frequency loss. Table 12 com-bines CosDir with the frequency loss FreDF on four datasets 
+
+> 1
+
+DLinear, PatchTST, iTransformer, TimesNet, TimeMixer, Aut-oformer, FEDformer, and TSMixer. (ETTh1, ETTh2, Weather, RealVar) across the eight main backbones. The combination attains the best DA, indicating that direction and frequency are complementary axes and that CosDir complements existing structure-aware losses.          
+
+> Loss DA ( ↑)MSE 0.5330 ±0.0006
+> + FreDF 0.5426 ±0.0001
+> + CosDir 0.5461 ±0.0003
+> + (FreDF & CosDir) 0.5696 ±0.0004
+
+Table 12: Complementarity with a frequency loss. Combin-ing CosDir with FreDF attains the best DA, showing that direction and frequency are complementary. 
+
+## G Magnitude Preservation 
+
+Table 13 gives the numbers behind Figure 5. On the five financial datasets with FreTS (Yi et al. 2023), it reports the change in DA and MSE of each auxiliary loss relative to the base loss. CosDir and CosDir-UW raise DA the most while keeping MSE at or below the baseline, whereas the shape and frequency losses buy little direction and clearly worsen the very MSE they were meant to preserve.               
+
+> Auxiliary loss ∆DA (pp) ∆MSE (%) FreDF +0 .79 +0 .16
+> TILDE-Q +0 .00 +0 .11
+> DBLoss −0.22 +2 .51
+> MADL +0 .19 +2 .11
+> CosDir (Ours) +2 .32 −0.44
+> CosDir-UW (Ours) +3.06 −0.56
+
+Table 13: Magnitude preservation on the financial datasets. Change in DA and MSE per auxiliary loss vs. the base loss. CosDir raises DA while keeping MSE below the baseline. 
+
+## H The Learned Balance in CosDir-UW 
+
+Why an adaptive ratio: the best λ is dataset-dependent. 
+
+A fixed λ already improves direction on every dataset, but the best value differs. Table 14 lists, for the ten datasets used in the CosDir-UW analysis (Figure 6), the fixed λ with the highest DA that still keeps MSE at the baseline, tuned per (dataset, backbone) over the eight main backbones, and it spans a 10 × range, from 0.3 to 3.0. CosDir-UW therefore learns this ratio per dataset rather than committing to a single fixed value shared uniformly by all datasets. 
+
+Per-dataset results for CosDir-UW. Table 15 reports absolute DA for the MSE baseline, CosDir at the default 
+
+λ = 0 .5, and the hyperparameter-free CosDir-UW, over all 15 backbones and every horizon. CosDir-UW attains the best DA on all 13 datasets, with its clearest margin over a fixed 
+
+λ on the financial series, where the directionally optimal weight is furthest from the default.                      
+
+> Financial General
+> Dataset Best λDataset Best λ
+> RealVar 2.0ETTh1 1.5
+> RealVol 3.0ETTh2 0.75
+> RealVol60 0.5ETTm1 0.5
+> AbsRet 2.0ETTm2 0.5
+> StockVol 3.0Weather 0.3
+
+Table 14: Best fixed λ per dataset, the highest-DA value keep-ing MSE at or below baseline. It spans an order of magnitude, motivating the learned balance in CosDir-UW.                                              
+
+> Domain Dataset MSE +CosDir +CosDir-UW General ETTh1 0.5723 0.5881 0.5922
+> ETTh2 0.5382 0.5647 0.5688
+> ETTm1 0.5383 0.5465 0.5467
+> ETTm2 0.5261 0.5405 0.5421
+> Weather 0.5239 0.5411 0.5439
+> Solar 0.6693 0.7249 0.7284
+> Traffic 0.7242 0.7397 0.7427
+> Electricity 0.6952 0.7095 0.7127
+> Financial  RealVar 0.5116 0.5191 0.5256
+> RealVol 0.5109 0.5179 0.5232
+> RealVol60 0.5084 0.5228 0.5242
+> AbsRet 0.5077 0.5082 0.5083
+> StockVol 0.5084 0.5140 0.5189
+
+Table 15: Per-dataset DA for the MSE baseline, CosDir ( λ =0.5), and the hyperparameter-free CosDir-UW, averaged over all 15 backbones and all horizons. 
+
+## I Robustness of the Directional Gains 
+
+Transaction costs. To test whether the payoff survives re-alistic frictions, we re-evaluate the directional strategy on RealVol60 with PatchTST under a turnover penalty. CosDir keeps a higher net payoff than MSE at every penalty level, and its relative advantage grows with cost: from 2.8× at zero penalty to over 4× once the penalty reaches a tenth of a typ-ical move. Even at a penalty of half a typical move, CosDir remains profitable while MSE has already turned negative. The directional gain thus reflects fewer, better-timed reversals rather than churn. 
+
+Class balance. We check that the gains are not an ar-tifact of class imbalance. On RealVol60 with PatchTST the up/down split is nearly even ( 49 .5% up), so DA is not inflated by a majority label: an always-up predictor scores 0.495 , at chance. CosDir reaches 0.566 against 0.516 for MSE, and the same ordering holds under balanced accuracy ( 0.566 vs. 
+
+0.516 ) and the Matthews correlation coefficient ( 0.132 vs. 
+
+0.032 , a 4× increase). The improvement is thus a genuine gain in up- and down-move recall alike, not a class shift. 
+
+## J Significance Testing and Runtime 
+
+Significance threshold. Given the many matched (dataset, backbone, horizon, seed) cells, we use a conservative p < 
+
+10 −3 threshold rather than 0.05 , a threshold that stays signif-icant under a Bonferroni correction over the cells reported in each table. 
+
+Runtime. Adding CosDir costs only the O(HC ) cosine computation on top of the forward pass. In a controlled com-parison under identical settings (iTransformer on Weather), training with CosDir shows no measurable wall-clock over-head relative to the base loss ( 26 .7 vs. 27 .1 s for three epochs, within run-to-run variance), and inference is unchanged. 
+
+Infrastructure. All experiments were run on NVIDIA L40S GPUs (48 GB) with PyTorch and the Time-Series-Library (MM-TSFlib) under Linux. 
+
+## K Per-Seed Standard Deviations 
+
+For completeness, this appendix reproduces the main-body loss-comparison and ablation tables, macro-averaged DA over the 13 datasets and 15 backbones, with the standard deviation over the 5 random seeds (2024–2028) shown as a subscript on each mean. The means match those reported in the main text, and the small standard deviations confirm that the effect of CosDir is stable across seeds. Table 16 cor-responds to Table 6, and Table 17 to Table 7. The per-seed standard deviations of the main DA results are small, so they are omitted from the horizon-resolved Table 5 for readability. 
+
+Loss DA ( ↑)MSE 0.5642 ±0.0006 
+
++ FreDF 0.5729 ±0.0006 
+
++ TILDE-Q 0.5642 ±0.0004 
+
++ DBLoss 0.5618 ±0.0006 
+
++ MADL 0.5629 ±0.0003 
+
++ CosDir (Ours) 0.5798 ±0.0009 
+
++ CosDir-UW (Ours) 0.5829 ±0.0007 
+
+Table 16: CosDir vs. various loss functions. 
+
+Loss DA ( ↑)MSE 0.5642 ±0.0006 
+
++ First-Difference 0.5692 ±0.0004 
+
++ Magnitude-Weighted Sign 0.5663 ±0.0003 
+
++ Sign Classification (BCE) 0.5776 ±0.0011 
+
++ CosDir (Ours) 0.5798 ±0.0009 
+
++ CosDir-UW (Ours) 0.5829 ±0.0007 
+
+Table 17: Direction-aware loss ablation. 
+
+## L Full Sensitivity to the Directional Weight λ
+
+This appendix reports the complete sensitivity of CosDir to its single mixing weight λ, which we fix to 0.5 in all main experiments. The gain grows quickly up to λ = 0 .5 and then flattens, so 0.5 is a strong default, and the highest-DA λ
+
+nonetheless differs by dataset (bold cells in Tables 18–34), which is why we make the mixing ratio adaptive in CosDir-UW rather than rely on any single fixed value. Tables 18– 21 break the sweep down by dataset and by backbone, and Tables 22–34 give the full per-(dataset ×backbone) grid. All cells are the mean over horizons and seeds, and the highest-DA λ in each row is in bold. 
+
+## M Per-Horizon Results with Std. 
+
+For full transparency, we report the per-horizon directional accuracy of MSE + CosDir on every dataset, one table per dataset (Tables 35–47), with the standard deviation over ran-dom seeds shown as a subscript on every mean. As in the main text, bold marks cells where adding CosDir improves DA over the MSE baseline. The small standard deviations confirm stability across seeds. MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+ETTh1 0.572 0.576 0.579 0.583 0.586 0.588 0.591 0.592 0.594 0.594 0.595 
+
+ETTh2 0.538 0.545 0.550 0.556 0.560 0.565 0.567 0.569 0.572 0.573 0.575 
+
+ETTm1 0.538 0.540 0.542 0.544 0.545 0.546 0.547 0.547 0.547 0.547 0.546 ETTm2 0.526 0.531 0.533 0.537 0.539 0.540 0.542 0.542 0.543 0.544 0.544 
+
+Weather 0.524 0.528 0.531 0.535 0.538 0.541 0.544 0.545 0.546 0.547 0.547 
+
+Solar 0.669 0.686 0.696 0.709 0.717 0.725 0.727 0.729 0.730 0.730 0.732 
+
+Traffic 0.724 0.731 0.734 0.738 0.741 0.740 0.748 0.749 0.751 0.752 0.752 
+
+Electricity 0.695 0.706 0.709 0.713 0.716 0.710 0.721 0.722 0.724 0.725 0.727 
+
+RealVar 0.512 0.515 0.517 0.519 0.520 0.519 0.523 0.524 0.524 0.525 0.525 
+
+RealVol 0.511 0.514 0.516 0.517 0.519 0.518 0.521 0.522 0.522 0.523 0.523 
+
+RealVol60 0.508 0.513 0.515 0.517 0.519 0.523 0.523 0.524 0.525 0.525 0.526 
+
+AbsRet 0.508 0.508 0.508 0.508 0.508 0.508 0.508 0.508 0.508 0.508 0.508 StockVol 0.508 0.511 0.512 0.513 0.515 0.514 0.517 0.518 0.518 0.519 0.519 
+
+Table 18: DA per dataset at each λ, averaged over the 15 backbones, horizons, and seeds, with the MSE baseline for reference. 
+
+MSE λ (MSE) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+ETTh1 0.554 0.553 0.553 0.552 0.553 0.556 0.556 0.558 0.563 0.568 0.576 ETTh2 0.651 0.652 0.652 0.652 0.652 0.650 0.653 0.663 0.671 0.682 0.687 ETTm1 0.465 0.467 0.467 0.468 0.469 0.468 0.472 0.474 0.481 0.488 0.499 ETTm2 0.448 0.453 0.453 0.455 0.458 0.452 0.457 0.455 0.455 0.458 0.459 Weather 0.273 0.274 0.274 0.275 0.276 0.277 0.280 0.281 0.285 0.289 0.296 Solar 0.360 0.356 0.360 0.356 0.366 0.372 0.370 0.375 0.388 0.394 0.404 Traffic 0.781 0.752 0.752 0.755 0.757 0.786 0.763 0.768 0.777 0.784 0.798 Electricity 0.277 0.247 0.247 0.246 0.247 0.287 0.250 0.251 0.254 0.258 0.266 RealVar 0.496 0.463 0.463 0.462 0.464 0.499 0.465 0.466 0.471 0.473 0.482 RealVol 0.504 0.471 0.470 0.470 0.471 0.506 0.472 0.473 0.476 0.479 0.489 RealVol60 0.255 0.263 0.264 0.265 0.267 0.261 0.269 0.273 0.278 0.282 0.290 AbsRet 0.867 0.869 0.869 0.870 0.871 0.872 0.874 0.876 0.878 0.881 0.886 StockVol 0.471 0.450 0.448 0.450 0.450 0.473 0.452 0.452 0.454 0.459 0.462 
+
+Table 19: Magnitude error (MSE, lower is better) per dataset at each λ, averaged over the 15 backbones, horizons, and seeds. 
+
+MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.542 0.546 0.547 0.548 0.549 0.546 0.551 0.553 0.553 0.554 0.556 
+
+Crossformer 0.539 0.539 0.541 0.544 0.545 0.548 0.550 0.551 0.554 0.555 0.557 
+
+DLinear 0.566 0.573 0.576 0.578 0.578 0.576 0.576 0.576 0.575 0.574 0.573 FEDformer 0.551 0.556 0.557 0.560 0.561 0.559 0.565 0.566 0.567 0.567 0.568 
+
+FiLM 0.595 0.590 0.591 0.591 0.591 0.599 0.590 0.590 0.590 0.590 0.590 FreTS 0.553 0.564 0.571 0.578 0.581 0.582 0.588 0.589 0.590 0.591 0.592 
+
+LightTS 0.526 0.528 0.530 0.532 0.533 0.534 0.537 0.538 0.539 0.540 0.541 
+
+PatchTST 0.569 0.574 0.578 0.581 0.584 0.584 0.588 0.589 0.589 0.589 0.588 Pyraformer 0.545 0.547 0.548 0.549 0.550 0.551 0.551 0.551 0.552 0.552 0.551 SegRNN 0.545 0.550 0.552 0.555 0.558 0.559 0.562 0.563 0.563 0.563 0.563 TSMixer 0.531 0.534 0.536 0.538 0.541 0.541 0.545 0.547 0.548 0.549 0.551 
+
+TiDE 0.532 0.525 0.527 0.529 0.530 0.542 0.534 0.535 0.535 0.536 0.536 TimeMixer 0.546 0.531 0.537 0.546 0.551 0.575 0.558 0.559 0.560 0.560 0.561 TimesNet 0.558 0.566 0.571 0.575 0.579 0.579 0.584 0.586 0.587 0.588 0.589 
+
+iTransformer 0.553 0.559 0.563 0.567 0.571 0.573 0.578 0.580 0.582 0.583 0.584 
+
+Table 20: DA per backbone at each λ, averaged over datasets, horizons, and seeds. MSE λ (MSE) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.601 0.588 0.588 0.580 0.591 0.611 0.589 0.593 0.601 0.604 0.612 Crossformer 0.566 0.510 0.510 0.511 0.512 0.575 0.512 0.519 0.526 0.528 0.526 DLinear 0.443 0.440 0.439 0.441 0.442 0.449 0.449 0.451 0.458 0.462 0.471 FEDformer 0.510 0.491 0.492 0.492 0.494 0.512 0.496 0.497 0.500 0.506 0.514 FiLM 0.453 0.429 0.429 0.431 0.432 0.460 0.435 0.436 0.439 0.440 0.443 FreTS 0.418 0.413 0.413 0.414 0.415 0.422 0.420 0.422 0.427 0.431 0.438 LightTS 0.492 0.481 0.481 0.481 0.481 0.494 0.484 0.486 0.491 0.496 0.506 PatchTST 0.420 0.413 0.413 0.413 0.412 0.419 0.415 0.416 0.421 0.424 0.433 Pyraformer 0.759 0.754 0.756 0.760 0.764 0.768 0.768 0.772 0.780 0.797 0.813 SegRNN 0.458 0.446 0.446 0.446 0.447 0.461 0.452 0.455 0.462 0.468 0.478 TSMixer 0.524 0.519 0.519 0.519 0.519 0.528 0.522 0.523 0.527 0.531 0.540 TiDE 0.464 0.443 0.443 0.443 0.443 0.466 0.446 0.447 0.451 0.454 0.460 TimeMixer 0.430 0.405 0.405 0.405 0.406 0.434 0.409 0.410 0.413 0.416 0.421 TimesNet 0.504 0.495 0.497 0.496 0.502 0.505 0.498 0.497 0.497 0.500 0.504 iTransformer 0.434 0.428 0.427 0.427 0.427 0.435 0.429 0.429 0.433 0.436 0.443 
+
+Table 21: Magnitude error per backbone at each λ.
+
+MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.584 0.586 0.587 0.592 0.594 0.600 0.600 0.608 0.609 0.609 0.616 
+
+Crossformer 0.592 0.597 0.602 0.607 0.610 0.616 0.621 0.623 0.626 0.627 0.628 
+
+DLinear 0.582 0.590 0.593 0.597 0.599 0.602 0.603 0.604 0.605 0.606 0.606 FEDformer 0.568 0.569 0.573 0.579 0.582 0.585 0.590 0.592 0.595 0.596 0.598 
+
+FiLM 0.630 0.628 0.627 0.626 0.626 0.626 0.626 0.627 0.628 0.629 0.630 
+
+FreTS 0.591 0.601 0.607 0.612 0.616 0.618 0.622 0.624 0.626 0.627 0.628 
+
+LightTS 0.515 0.515 0.515 0.516 0.516 0.516 0.517 0.517 0.518 0.518 0.518 PatchTST 0.622 0.629 0.634 0.639 0.641 0.643 0.644 0.644 0.645 0.645 0.645 
+
+Pyraformer 0.526 0.528 0.529 0.530 0.531 0.529 0.531 0.531 0.531 0.532 0.533 
+
+SegRNN 0.555 0.560 0.564 0.569 0.572 0.574 0.578 0.579 0.581 0.582 0.583 
+
+TSMixer 0.524 0.525 0.525 0.527 0.528 0.529 0.531 0.532 0.533 0.534 0.535 
+
+TiDE 0.535 0.536 0.537 0.538 0.539 0.539 0.541 0.541 0.541 0.541 0.540 TimeMixer 0.565 0.569 0.572 0.577 0.579 0.579 0.584 0.584 0.584 0.584 0.583 TimesNet 0.610 0.618 0.631 0.641 0.648 0.657 0.662 0.664 0.666 0.667 0.667 iTransformer 0.586 0.591 0.595 0.601 0.605 0.609 0.612 0.614 0.616 0.617 0.618 
+
+Table 22: Directional accuracy on ETTh1 for every backbone at each λ.
+
+MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.572 0.579 0.585 0.590 0.592 0.595 0.598 0.602 0.602 0.601 0.605 
+
+Crossformer 0.513 0.516 0.518 0.522 0.525 0.529 0.533 0.550 0.579 0.588 0.594 
+
+DLinear 0.558 0.572 0.582 0.585 0.582 0.577 0.567 0.562 0.556 0.553 0.550 FEDformer 0.528 0.538 0.543 0.549 0.554 0.556 0.566 0.570 0.575 0.578 0.583 
+
+FiLM 0.631 0.633 0.634 0.634 0.635 0.635 0.636 0.636 0.636 0.636 0.636 
+
+FreTS 0.538 0.551 0.561 0.576 0.584 0.592 0.596 0.600 0.604 0.606 0.608 
+
+LightTS 0.505 0.505 0.505 0.505 0.506 0.506 0.507 0.507 0.507 0.508 0.508 
+
+PatchTST 0.582 0.593 0.601 0.613 0.617 0.622 0.623 0.624 0.624 0.624 0.623 Pyraformer 0.500 0.501 0.501 0.501 0.501 0.501 0.501 0.502 0.502 0.503 0.507 
+
+SegRNN 0.521 0.527 0.531 0.538 0.542 0.549 0.551 0.553 0.555 0.556 0.557 
+
+TSMixer 0.502 0.501 0.502 0.502 0.502 0.504 0.505 0.505 0.506 0.508 0.511 
+
+TiDE 0.514 0.515 0.516 0.518 0.520 0.523 0.524 0.525 0.525 0.525 0.524 TimeMixer 0.529 0.536 0.541 0.547 0.551 0.554 0.556 0.556 0.554 0.552 0.550 TimesNet 0.534 0.549 0.571 0.593 0.617 0.641 0.650 0.655 0.662 0.664 0.667 
+
+iTransformer 0.546 0.554 0.561 0.571 0.578 0.587 0.592 0.595 0.598 0.600 0.601 
+
+Table 23: Directional accuracy on ETTh2 for every backbone at each λ.MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.522 0.521 0.522 0.523 0.523 0.524 0.527 0.531 0.533 0.535 0.537 
+
+Crossformer 0.538 0.540 0.542 0.551 0.555 0.563 0.565 0.566 0.566 0.566 0.565 DLinear 0.578 0.581 0.581 0.579 0.578 0.576 0.575 0.574 0.573 0.573 0.572 FEDformer 0.529 0.530 0.529 0.529 0.530 0.531 0.531 0.531 0.531 0.531 0.532 
+
+FiLM 0.583 0.584 0.584 0.584 0.584 0.584 0.584 0.584 0.583 0.583 0.583 FreTS 0.529 0.532 0.535 0.539 0.540 0.542 0.543 0.544 0.544 0.544 0.544 LightTS 0.515 0.515 0.515 0.515 0.516 0.516 0.516 0.515 0.515 0.514 0.513 PatchTST 0.560 0.562 0.564 0.565 0.566 0.567 0.566 0.566 0.564 0.563 0.562 Pyraformer 0.514 0.514 0.514 0.515 0.514 0.514 0.513 0.513 0.512 0.511 0.510 SegRNN 0.534 0.536 0.537 0.538 0.539 0.540 0.540 0.539 0.538 0.537 0.535 TSMixer 0.519 0.519 0.519 0.520 0.520 0.520 0.519 0.518 0.517 0.516 0.515 TiDE 0.527 0.528 0.529 0.529 0.529 0.529 0.528 0.527 0.526 0.525 0.524 TimeMixer 0.530 0.534 0.539 0.549 0.555 0.559 0.560 0.560 0.557 0.555 0.551 TimesNet 0.555 0.563 0.569 0.575 0.578 0.581 0.583 0.586 0.590 0.590 0.592 
+
+iTransformer 0.542 0.545 0.547 0.550 0.551 0.553 0.553 0.553 0.553 0.553 0.552 
+
+Table 24: Directional accuracy on ETTm1 for every backbone at each λ.
+
+MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.546 0.546 0.549 0.555 0.554 0.557 0.558 0.558 0.557 0.560 0.562 
+
+Crossformer 0.503 0.504 0.506 0.506 0.507 0.511 0.516 0.518 0.521 0.526 0.531 
+
+DLinear 0.567 0.575 0.574 0.576 0.576 0.574 0.573 0.572 0.570 0.568 0.565 FEDformer 0.536 0.541 0.543 0.545 0.545 0.543 0.545 0.543 0.546 0.549 0.553 
+
+FiLM 0.581 0.585 0.585 0.586 0.587 0.587 0.588 0.588 0.588 0.588 0.588 
+
+FreTS 0.513 0.518 0.520 0.522 0.524 0.526 0.530 0.531 0.532 0.533 0.533 
+
+LightTS 0.504 0.504 0.504 0.504 0.505 0.506 0.506 0.506 0.506 0.506 0.505 PatchTST 0.544 0.550 0.552 0.555 0.556 0.556 0.556 0.555 0.555 0.555 0.554 Pyraformer 0.501 0.501 0.501 0.501 0.501 0.501 0.501 0.501 0.501 0.501 0.501 SegRNN 0.516 0.519 0.519 0.518 0.516 0.515 0.514 0.513 0.513 0.513 0.513 TSMixer 0.504 0.504 0.504 0.505 0.506 0.506 0.507 0.507 0.508 0.507 0.507 TiDE 0.520 0.527 0.531 0.535 0.537 0.538 0.538 0.537 0.536 0.535 0.532 TimeMixer 0.514 0.519 0.525 0.537 0.546 0.554 0.557 0.558 0.559 0.559 0.558 TimesNet 0.528 0.551 0.566 0.582 0.592 0.597 0.602 0.605 0.607 0.609 0.610 
+
+iTransformer 0.514 0.516 0.519 0.524 0.527 0.535 0.538 0.541 0.544 0.546 0.548 
+
+Table 25: Directional accuracy on ETTm2 for every backbone at each λ.
+
+MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.521 0.524 0.526 0.526 0.526 0.531 0.536 0.536 0.539 0.539 0.542 
+
+Crossformer 0.516 0.519 0.521 0.526 0.530 0.533 0.539 0.542 0.545 0.547 0.547 
+
+DLinear 0.558 0.565 0.567 0.567 0.566 0.565 0.565 0.564 0.563 0.563 0.561 FEDformer 0.529 0.534 0.537 0.542 0.546 0.548 0.554 0.555 0.556 0.556 0.557 
+
+FiLM 0.569 0.570 0.570 0.570 0.570 0.571 0.571 0.571 0.571 0.571 0.571 
+
+FreTS 0.513 0.525 0.533 0.541 0.542 0.540 0.540 0.538 0.538 0.538 0.539 LightTS 0.508 0.509 0.511 0.513 0.514 0.515 0.516 0.516 0.517 0.518 0.518 
+
+PatchTST 0.531 0.531 0.532 0.533 0.534 0.536 0.537 0.538 0.540 0.542 0.544 
+
+Pyraformer 0.508 0.509 0.510 0.514 0.518 0.528 0.534 0.538 0.543 0.546 0.549 
+
+SegRNN 0.511 0.513 0.516 0.519 0.522 0.527 0.530 0.531 0.530 0.528 0.524 TSMixer 0.511 0.511 0.512 0.513 0.514 0.515 0.516 0.518 0.519 0.521 0.523 
+
+TiDE 0.517 0.522 0.525 0.528 0.529 0.530 0.531 0.531 0.531 0.532 0.532 
+
+TimeMixer 0.515 0.519 0.523 0.533 0.542 0.555 0.560 0.562 0.564 0.564 0.564 
+
+TimesNet 0.527 0.544 0.558 0.572 0.577 0.581 0.586 0.585 0.587 0.588 0.587 iTransformer 0.523 0.525 0.528 0.532 0.535 0.540 0.544 0.547 0.550 0.552 0.553 
+
+Table 26: Directional accuracy on Weather for every backbone at each λ.MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.535 0.530 0.534 0.533 0.540 0.537 0.532 0.540 0.539 0.539 0.553 
+
+Crossformer 0.653 0.664 0.670 0.678 0.681 0.697 0.681 0.671 0.662 0.657 0.658 DLinear 0.749 0.750 0.750 0.750 0.750 0.750 0.749 0.749 0.748 0.747 0.746 FEDformer 0.697 0.705 0.713 0.723 0.728 0.740 0.744 0.749 0.754 0.753 0.758 
+
+FiLM 0.753 0.753 0.753 0.753 0.753 0.754 0.753 0.753 0.753 0.753 0.753 FreTS 0.654 0.702 0.727 0.742 0.747 0.749 0.750 0.752 0.753 0.753 0.753 
+
+LightTS 0.609 0.625 0.637 0.657 0.670 0.686 0.697 0.704 0.710 0.713 0.716 
+
+PatchTST 0.736 0.738 0.738 0.739 0.739 0.740 0.741 0.741 0.741 0.740 0.736 Pyraformer 0.720 0.757 0.768 0.773 0.774 0.774 0.773 0.772 0.772 0.769 0.762 SegRNN 0.643 0.657 0.671 0.699 0.724 0.750 0.759 0.762 0.764 0.765 0.766 
+
+TSMixer 0.627 0.642 0.656 0.681 0.700 0.722 0.735 0.742 0.749 0.752 0.755 
+
+TiDE 0.601 0.613 0.623 0.640 0.652 0.669 0.680 0.687 0.695 0.699 0.703 
+
+TimeMixer 0.619 0.658 0.697 0.745 0.758 0.765 0.766 0.767 0.767 0.767 0.767 
+
+TimesNet 0.730 0.756 0.761 0.764 0.766 0.769 0.770 0.771 0.772 0.773 0.774 
+
+iTransformer 0.710 0.735 0.747 0.759 0.766 0.771 0.773 0.774 0.774 0.774 0.773 
+
+Table 27: Directional accuracy on Solar for every backbone at each λ.
+
+MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.708 0.728 0.731 0.729 0.733 0.710 0.746 0.747 0.750 0.754 0.758 
+
+Crossformer 0.627 0.626 0.627 0.628 0.628 0.630 0.628 0.628 0.628 0.629 0.629 DLinear 0.771 0.776 0.778 0.779 0.780 0.780 0.780 0.779 0.779 0.779 0.779 FEDformer 0.738 0.752 0.754 0.758 0.760 0.750 0.767 0.769 0.772 0.774 0.775 
+
+FreTS 0.727 0.735 0.741 0.748 0.753 0.759 0.763 0.765 0.767 0.767 0.768 
+
+LightTS 0.623 0.625 0.627 0.632 0.636 0.643 0.649 0.655 0.663 0.668 0.675 
+
+PatchTST 0.770 0.769 0.768 0.767 0.765 0.762 0.757 0.753 0.746 0.740 0.731 Pyraformer 0.747 0.754 0.758 0.764 0.767 0.771 0.772 0.772 0.771 0.770 0.769 SegRNN 0.717 0.722 0.727 0.734 0.739 0.746 0.751 0.754 0.757 0.758 0.759 
+
+TSMixer 0.653 0.657 0.661 0.667 0.672 0.680 0.686 0.690 0.694 0.697 0.700 
+
+TimesNet 0.799 0.816 0.817 0.819 0.820 0.804 0.823 0.824 0.824 0.826 0.826 
+
+iTransformer 0.729 0.735 0.741 0.748 0.753 0.758 0.761 0.763 0.764 0.765 0.766 
+
+Table 28: Directional accuracy on Traffic for every backbone at each λ.
+
+MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.678 0.702 0.703 0.707 0.707 0.681 0.712 0.715 0.716 0.721 0.721 Crossformer 0.664 0.733 0.736 0.741 0.744 0.654 0.750 0.751 0.754 0.755 0.757 
+
+DLinear 0.708 0.712 0.715 0.719 0.722 0.726 0.728 0.731 0.734 0.737 0.742 
+
+FEDformer 0.681 0.700 0.704 0.709 0.712 0.686 0.720 0.722 0.724 0.725 0.726 
+
+FiLM 0.738 0.744 0.745 0.745 0.745 0.739 0.745 0.745 0.745 0.745 0.745 FreTS 0.733 0.744 0.751 0.756 0.758 0.760 0.761 0.761 0.762 0.762 0.762 
+
+LightTS 0.646 0.650 0.653 0.659 0.663 0.671 0.676 0.681 0.687 0.690 0.694 
+
+PatchTST 0.738 0.742 0.746 0.748 0.746 0.739 0.730 0.723 0.713 0.707 0.698 Pyraformer 0.687 0.696 0.699 0.704 0.706 0.697 0.708 0.710 0.711 0.712 0.714 
+
+SegRNN 0.690 0.693 0.695 0.698 0.700 0.704 0.707 0.709 0.713 0.715 0.717 
+
+TSMixer 0.668 0.672 0.675 0.680 0.685 0.692 0.698 0.703 0.709 0.713 0.717 
+
+TiDE 0.668 0.659 0.662 0.668 0.672 0.694 0.684 0.688 0.693 0.696 0.700 
+
+TimesNet 0.707 0.726 0.728 0.732 0.733 0.724 0.736 0.737 0.737 0.738 0.738 
+
+iTransformer 0.704 0.708 0.712 0.718 0.722 0.728 0.733 0.736 0.740 0.742 0.745 
+
+Table 29: Directional accuracy on Electricity for every backbone at each λ.MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.505 0.505 0.506 0.506 0.505 0.505 0.505 0.504 0.504 0.504 0.505 Crossformer 0.510 0.512 0.513 0.515 0.516 0.516 0.521 0.523 0.525 0.527 0.529 
+
+DLinear 0.513 0.518 0.522 0.523 0.525 0.523 0.525 0.526 0.525 0.525 0.523 FEDformer 0.507 0.508 0.508 0.508 0.508 0.507 0.508 0.508 0.508 0.508 0.508 FiLM 0.546 0.559 0.559 0.559 0.558 0.551 0.557 0.556 0.555 0.555 0.554 FreTS 0.517 0.529 0.536 0.545 0.549 0.546 0.555 0.557 0.557 0.558 0.559 
+
+LightTS 0.502 0.503 0.503 0.503 0.504 0.503 0.504 0.504 0.505 0.505 0.505 
+
+PatchTST 0.522 0.526 0.531 0.535 0.540 0.541 0.547 0.550 0.550 0.553 0.551 Pyraformer 0.502 0.502 0.502 0.502 0.502 0.502 0.502 0.502 0.502 0.502 0.502 SegRNN 0.513 0.517 0.518 0.520 0.520 0.518 0.521 0.520 0.520 0.520 0.519 TSMixer 0.504 0.506 0.506 0.507 0.508 0.507 0.510 0.511 0.511 0.512 0.513 
+
+TiDE 0.502 0.503 0.503 0.504 0.504 0.504 0.506 0.506 0.506 0.507 0.507 
+
+TimeMixer 0.512 0.520 0.524 0.529 0.533 0.527 0.541 0.543 0.545 0.546 0.547 
+
+TimesNet 0.504 0.504 0.504 0.504 0.505 0.505 0.506 0.508 0.510 0.511 0.513 
+
+iTransformer 0.514 0.518 0.521 0.524 0.527 0.527 0.533 0.535 0.536 0.538 0.538 
+
+Table 30: Directional accuracy on RealVar for every backbone at each λ.
+
+MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.505 0.507 0.506 0.506 0.507 0.505 0.505 0.506 0.505 0.505 0.505 Crossformer 0.510 0.512 0.512 0.515 0.516 0.515 0.520 0.521 0.523 0.524 0.526 
+
+DLinear 0.512 0.518 0.522 0.522 0.524 0.522 0.523 0.525 0.523 0.523 0.521 FEDformer 0.507 0.508 0.508 0.508 0.508 0.508 0.508 0.508 0.508 0.508 0.508 
+
+FiLM 0.541 0.552 0.553 0.552 0.552 0.546 0.551 0.551 0.550 0.550 0.549 FreTS 0.516 0.526 0.533 0.540 0.544 0.541 0.549 0.550 0.551 0.551 0.552 
+
+LightTS 0.502 0.503 0.503 0.503 0.503 0.503 0.504 0.504 0.505 0.505 0.505 
+
+PatchTST 0.520 0.524 0.528 0.531 0.535 0.536 0.541 0.544 0.544 0.546 0.545 Pyraformer 0.502 0.502 0.502 0.502 0.502 0.502 0.502 0.502 0.502 0.502 0.502 SegRNN 0.512 0.516 0.517 0.518 0.519 0.517 0.519 0.519 0.518 0.518 0.518 TSMixer 0.504 0.506 0.506 0.507 0.507 0.507 0.509 0.510 0.511 0.511 0.512 
+
+TiDE 0.502 0.503 0.503 0.504 0.504 0.505 0.505 0.506 0.506 0.506 0.507 
+
+TimeMixer 0.511 0.518 0.521 0.526 0.530 0.528 0.536 0.538 0.539 0.540 0.541 
+
+TimesNet 0.503 0.504 0.504 0.504 0.505 0.505 0.505 0.506 0.508 0.511 0.514 
+
+iTransformer 0.513 0.517 0.519 0.521 0.524 0.525 0.529 0.531 0.532 0.534 0.533 
+
+Table 31: Directional accuracy on RealVol for every backbone at each λ.
+
+MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.501 0.502 0.501 0.501 0.501 0.502 0.502 0.501 0.502 0.502 0.502 
+
+Crossformer 0.503 0.503 0.503 0.504 0.504 0.504 0.504 0.504 0.504 0.505 0.505 
+
+DLinear 0.512 0.526 0.533 0.537 0.536 0.540 0.528 0.524 0.520 0.518 0.516 FEDformer 0.503 0.504 0.505 0.505 0.505 0.505 0.504 0.504 0.503 0.502 0.502 FiLM 0.556 0.577 0.577 0.577 0.577 0.578 0.576 0.576 0.576 0.575 0.575 FreTS 0.508 0.515 0.520 0.532 0.538 0.548 0.554 0.558 0.561 0.564 0.566 
+
+LightTS 0.501 0.501 0.502 0.502 0.502 0.502 0.502 0.502 0.503 0.503 0.503 
+
+PatchTST 0.517 0.524 0.530 0.541 0.550 0.564 0.573 0.578 0.583 0.585 0.587 
+
+Pyraformer 0.500 0.500 0.500 0.500 0.500 0.500 0.500 0.500 0.500 0.500 0.500 SegRNN 0.504 0.505 0.505 0.505 0.505 0.505 0.504 0.504 0.504 0.503 0.503 TSMixer 0.502 0.502 0.502 0.503 0.503 0.504 0.504 0.505 0.505 0.506 0.507 
+
+TiDE 0.501 0.501 0.501 0.502 0.502 0.503 0.503 0.503 0.504 0.504 0.504 
+
+TimeMixer 0.509 0.515 0.521 0.528 0.534 0.547 0.545 0.547 0.550 0.552 0.554 
+
+TimesNet 0.500 0.500 0.501 0.501 0.502 0.503 0.503 0.504 0.505 0.505 0.506 
+
+iTransformer 0.508 0.513 0.517 0.523 0.528 0.532 0.541 0.545 0.549 0.552 0.555 
+
+Table 32: Directional accuracy on RealVol60 for every backbone at each λ.MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.509 0.510 0.510 0.510 0.511 0.509 0.510 0.510 0.510 0.511 0.511 Crossformer 0.508 0.508 0.507 0.507 0.507 0.508 0.508 0.507 0.507 0.507 0.507 DLinear 0.508 0.508 0.508 0.508 0.509 0.509 0.510 0.510 0.510 0.510 0.510 FEDformer 0.510 0.509 0.509 0.509 0.509 0.510 0.509 0.509 0.508 0.509 0.509 FiLM 0.508 0.508 0.509 0.509 0.509 0.510 0.509 0.509 0.509 0.509 0.509 FreTS 0.508 0.508 0.508 0.508 0.508 0.509 0.509 0.509 0.509 0.509 0.509 
+
+LightTS 0.507 0.507 0.507 0.507 0.507 0.507 0.507 0.507 0.507 0.507 0.507 PatchTST 0.507 0.507 0.507 0.508 0.508 0.508 0.509 0.509 0.510 0.510 0.510 
+
+Pyraformer 0.507 0.507 0.507 0.507 0.507 0.507 0.507 0.507 0.507 0.507 0.506 SegRNN 0.508 0.507 0.508 0.508 0.508 0.508 0.508 0.508 0.508 0.508 0.508 TSMixer 0.507 0.507 0.507 0.507 0.507 0.507 0.507 0.507 0.508 0.508 0.508 
+
+TiDE 0.507 0.507 0.507 0.507 0.507 0.508 0.507 0.507 0.507 0.507 0.507 TimeMixer 0.508 0.507 0.507 0.508 0.508 0.508 0.508 0.508 0.508 0.508 0.508 TimesNet 0.507 0.507 0.507 0.507 0.508 0.508 0.508 0.508 0.508 0.509 0.508 iTransformer 0.506 0.506 0.506 0.507 0.507 0.507 0.507 0.507 0.507 0.508 0.507 
+
+Table 33: Directional accuracy on AbsRet for every backbone at each λ.
+
+MSE λ (DA) Group Base 0.05 0.1 0.2 0.3 0.5 0.75 1.0 1.5 2.0 3.0
+
+Autoformer 0.506 0.506 0.506 0.506 0.506 0.506 0.506 0.506 0.506 0.506 0.507 
+
+Crossformer 0.506 0.507 0.508 0.508 0.508 0.508 0.511 0.512 0.513 0.515 0.516 
+
+DLinear 0.509 0.513 0.516 0.518 0.519 0.517 0.517 0.518 0.516 0.516 0.515 FEDformer 0.506 0.507 0.508 0.508 0.508 0.507 0.509 0.509 0.509 0.509 0.509 FiLM 0.535 0.546 0.547 0.547 0.547 0.542 0.547 0.547 0.546 0.546 0.546 FreTS 0.511 0.520 0.524 0.529 0.532 0.532 0.540 0.542 0.544 0.545 0.546 
+
+LightTS 0.501 0.501 0.502 0.502 0.502 0.502 0.502 0.502 0.502 0.503 0.503 
+
+PatchTST 0.514 0.517 0.519 0.522 0.526 0.528 0.534 0.538 0.540 0.543 0.542 Pyraformer 0.501 0.501 0.501 0.501 0.501 0.501 0.501 0.501 0.501 0.501 0.501 SegRNN 0.510 0.513 0.514 0.514 0.514 0.513 0.514 0.514 0.513 0.513 0.512 TSMixer 0.502 0.504 0.504 0.505 0.505 0.504 0.506 0.507 0.508 0.508 0.509 
+
+TiDE 0.501 0.502 0.502 0.502 0.503 0.504 0.504 0.504 0.505 0.505 0.505 
+
+TimeMixer 0.508 0.512 0.515 0.518 0.521 0.520 0.527 0.528 0.531 0.532 0.533 
+
+TimesNet 0.503 0.504 0.504 0.505 0.505 0.505 0.506 0.509 0.509 0.510 0.509 iTransformer 0.510 0.513 0.515 0.518 0.520 0.520 0.524 0.527 0.528 0.530 0.530 
+
+Table 34: Directional accuracy on StockVol for every backbone at each λ.
+
+Backbone H = 96 H = 192 H = 336 H = 720 
+
+DLinear 0.613 ±0.00 0.606 ±0.00 0.598 ±0.00 0.590 ±0.00 
+
+PatchTST 0.657 ±0.00 0.649 ±0.00 0.638 ±0.00 0.628 ±0.00 
+
+iTransformer 0.632 ±0.00 0.615 ±0.00 0.601 ±0.00 0.587 ±0.00 
+
+TimesNet 0.669 ±0.00 0.663 ±0.01 0.656 ±0.01 0.641 ±0.01 
+
+TimeMixer 0.606 ±0.01 0.585 ±0.01 0.579 ±0.00 0.557 ±0.01 
+
+Autoformer 0.610 ±0.02 0.605 ±0.00 0.593 ±0.01 0.591 ±0.02 
+
+FEDformer 0.609 ±0.01 0.594 ±0.02 0.583 ±0.01 0.560 ±0.01 
+
+TSMixer 0.542 ±0.00 0.532 ±0.00 0.526 ±0.00 0.519 ±0.00 
+
+LightTS 0.520 ±0.00 0.517 ±0.00 0.516 ±0.00 0.514 ±0.00 
+
+Pyraformer 0.539 ±0.00 0.532 ±0.00 0.528 ±0.00 0.523 ±0.00 
+
+Crossformer 0.638 ±0.00 0.628 ±0.00 0.618 ±0.00 0.584 ±0.00 
+
+FiLM 0.655 ±0.00 0.640 ±0.00 0.617 ±0.00 0.595 ±0.00 
+
+TiDE 0.547 ±0.00 0.542 ±0.00 0.538 ±0.00 0.534 ±0.00 
+
+FreTS 0.640 ±0.00 0.625 ±0.00 0.611 ±0.00 0.601 ±0.00 
+
+SegRNN 0.588 ±0.00 0.581 ±0.00 0.573 ±0.00 0.562 ±0.00 
+
+Table 35: Directional accuracy of MSE + CosDir on ETTh1 by horizon ( H). Backbone H = 96 H = 192 H = 336 H = 720 
+
+DLinear 0.603 ±0.01 0.577 ±0.01 0.570 ±0.00 0.563 ±0.00 
+
+PatchTST 0.628 ±0.00 0.624 ±0.00 0.617 ±0.00 0.619 ±0.00 
+
+iTransformer 0.606 ±0.01 0.589 ±0.00 0.583 ±0.00 0.578 ±0.00 
+
+TimesNet 0.650 ±0.00 0.647 ±0.01 0.639 ±0.00 0.624 ±0.02 
+
+TimeMixer 0.581 ±0.01 0.556 ±0.01 0.551 ±0.01 0.529 ±0.01 
+
+Autoformer 0.603 ±0.02 0.602 ±0.01 0.587 ±0.02 0.587 ±0.01 
+
+FEDformer 0.591 ±0.02 0.565 ±0.01 0.544 ±0.02 0.523 ±0.01 
+
+TSMixer 0.507 ±0.01 0.503 ±0.00 0.503 ±0.00 0.503 ±0.00 
+
+LightTS 0.507 ±0.00 0.506 ±0.00 0.506 ±0.00 0.506 ±0.00 
+
+Pyraformer 0.502 ±0.00 0.500 ±0.00 0.500 ±0.00 0.500 ±0.00 
+
+Crossformer 0.579 ±0.00 0.519 ±0.00 0.510 ±0.00 0.509 ±0.00 
+
+FiLM 0.648 ±0.00 0.643 ±0.00 0.635 ±0.00 0.615 ±0.00 
+
+TiDE 0.525 ±0.00 0.523 ±0.00 0.522 ±0.00 0.521 ±0.00 
+
+FreTS 0.610 ±0.00 0.594 ±0.00 0.583 ±0.00 0.581 ±0.00 
+
+SegRNN 0.560 ±0.01 0.554 ±0.00 0.546 ±0.00 0.535 ±0.00 
+
+Table 36: Directional accuracy of MSE + CosDir on ETTh2 by horizon ( H). 
+
+Backbone H = 96 H = 192 H = 336 H = 720 
+
+DLinear 0.581 ±0.00 0.579 ±0.00 0.576 ±0.00 0.569 ±0.00 
+
+PatchTST 0.570 ±0.00 0.569 ±0.00 0.567 ±0.00 0.562 ±0.00 
+
+iTransformer 0.561 ±0.00 0.556 ±0.00 0.551 ±0.00 0.542 ±0.00 
+
+TimesNet 0.587 ±0.00 0.583 ±0.00 0.578 ±0.00 0.578 ±0.00 
+
+TimeMixer 0.566 ±0.00 0.562 ±0.00 0.557 ±0.00 0.551 ±0.00 
+
+Autoformer 0.531 ±0.01 0.519 ±0.00 0.523 ±0.01 0.524 ±0.01 
+
+FEDformer 0.546 ±0.01 0.545 ±0.01 0.519 ±0.01 0.513 ±0.01 
+
+TSMixer 0.523 ±0.00 0.521 ±0.00 0.519 ±0.00 0.516 ±0.00 
+
+LightTS 0.517 ±0.00 0.517 ±0.00 0.516 ±0.00 0.514 ±0.00 
+
+Pyraformer 0.517 ±0.00 0.515 ±0.00 0.513 ±0.00 0.510 ±0.00 
+
+Crossformer 0.569 ±0.00 0.568 ±0.00 0.565 ±0.00 0.549 ±0.01 
+
+FiLM 0.589 ±0.00 0.587 ±0.00 0.584 ±0.00 0.575 ±0.00 
+
+TiDE 0.532 ±0.00 0.530 ±0.00 0.528 ±0.00 0.525 ±0.00 
+
+FreTS 0.547 ±0.00 0.543 ±0.00 0.541 ±0.00 0.537 ±0.00 
+
+SegRNN 0.540 ±0.00 0.542 ±0.00 0.540 ±0.00 0.537 ±0.00 
+
+Table 37: Directional accuracy of MSE + CosDir on ETTm1 by horizon ( H). 
+
+Backbone H = 96 H = 192 H = 336 H = 720 
+
+DLinear 0.575 ±0.00 0.573 ±0.00 0.574 ±0.00 0.574 ±0.00 
+
+PatchTST 0.562 ±0.00 0.556 ±0.00 0.554 ±0.00 0.551 ±0.00 
+
+iTransformer 0.552 ±0.00 0.536 ±0.00 0.529 ±0.00 0.521 ±0.01 
+
+TimesNet 0.603 ±0.00 0.600 ±0.00 0.593 ±0.01 0.596 ±0.01 
+
+TimeMixer 0.564 ±0.00 0.553 ±0.00 0.550 ±0.01 0.549 ±0.00 
+
+Autoformer 0.545 ±0.01 0.552 ±0.01 0.565 ±0.01 0.568 ±0.02 
+
+FEDformer 0.562 ±0.02 0.556 ±0.02 0.530 ±0.00 0.525 ±0.00 
+
+TSMixer 0.511 ±0.00 0.509 ±0.00 0.503 ±0.00 0.501 ±0.00 
+
+LightTS 0.509 ±0.00 0.506 ±0.00 0.504 ±0.00 0.503 ±0.00 
+
+Pyraformer 0.501 ±0.00 0.501 ±0.00 0.501 ±0.00 0.501 ±0.00 
+
+Crossformer 0.531 ±0.00 0.511 ±0.01 0.503 ±0.00 0.501 ±0.00 
+
+FiLM 0.589 ±0.00 0.587 ±0.00 0.587 ±0.00 0.586 ±0.00 
+
+TiDE 0.542 ±0.00 0.539 ±0.00 0.537 ±0.00 0.534 ±0.00 
+
+FreTS 0.539 ±0.00 0.529 ±0.00 0.522 ±0.00 0.516 ±0.00 
+
+SegRNN 0.519 ±0.00 0.517 ±0.00 0.514 ±0.00 0.511 ±0.00 
+
+Table 38: Directional accuracy of MSE + CosDir on ETTm2 by horizon ( H). Backbone H = 96 H = 192 H = 336 H = 720 
+
+DLinear 0.559 ±0.00 0.564 ±0.00 0.567 ±0.00 0.571 ±0.00 
+
+PatchTST 0.540 ±0.00 0.537 ±0.00 0.536 ±0.00 0.536 ±0.00 
+
+iTransformer 0.551 ±0.01 0.542 ±0.00 0.540 ±0.00 0.535 ±0.00 
+
+TimesNet 0.586 ±0.00 0.582 ±0.00 0.580 ±0.01 0.577 ±0.00 
+
+TimeMixer 0.554 ±0.00 0.556 ±0.00 0.554 ±0.00 0.557 ±0.00 
+
+Autoformer 0.523 ±0.01 0.534 ±0.02 0.526 ±0.02 0.543 ±0.02 
+
+FEDformer 0.555 ±0.01 0.553 ±0.01 0.550 ±0.02 0.536 ±0.02 
+
+TSMixer 0.517 ±0.00 0.516 ±0.00 0.514 ±0.00 0.512 ±0.00 
+
+LightTS 0.516 ±0.00 0.516 ±0.00 0.514 ±0.00 0.513 ±0.00 
+
+Pyraformer 0.527 ±0.00 0.529 ±0.00 0.528 ±0.00 0.528 ±0.00 
+
+Crossformer 0.548 ±0.00 0.546 ±0.00 0.533 ±0.01 0.507 ±0.01 
+
+FiLM 0.564 ±0.00 0.570 ±0.00 0.572 ±0.00 0.577 ±0.00 
+
+TiDE 0.529 ±0.00 0.530 ±0.00 0.530 ±0.00 0.531 ±0.00 
+
+FreTS 0.523 ±0.00 0.536 ±0.00 0.542 ±0.00 0.559 ±0.00 
+
+SegRNN 0.533 ±0.00 0.529 ±0.00 0.526 ±0.00 0.520 ±0.00 
+
+Table 39: Directional accuracy of MSE + CosDir on Weather by horizon ( H). 
+
+Backbone H = 96 H = 192 H = 336 H = 720 
+
+DLinear 0.750 ±0.00 0.750 ±0.00 0.749 ±0.00 0.753 ±0.00 
+
+PatchTST 0.747 ±0.00 0.740 ±0.00 0.740 ±0.00 0.739 ±0.00 
+
+iTransformer 0.769 ±0.00 0.770 ±0.00 0.773 ±0.00 0.776 ±0.00 
+
+TimesNet 0.764 ±0.00 0.770 ±0.00 0.767 ±0.00 0.775 ±0.00 
+
+TimeMixer 0.759 ±0.00 0.764 ±0.00 0.766 ±0.00 0.769 ±0.00 
+
+Autoformer 0.572 ±0.05 0.537 ±0.01 0.519 ±0.02 0.521 ±0.02 
+
+FEDformer 0.756 ±0.01 0.757 ±0.01 0.742 ±0.01 0.704 ±0.02 
+
+TSMixer 0.726 ±0.00 0.721 ±0.00 0.720 ±0.00 0.720 ±0.00 
+
+LightTS 0.692 ±0.01 0.690 ±0.00 0.682 ±0.01 0.679 ±0.00 
+
+Pyraformer 0.772 ±0.00 0.773 ±0.00 0.775 ±0.00 0.777 ±0.00 
+
+Crossformer 0.764 ±0.00 0.759 ±0.00 0.695 ±0.08 0.571 ±0.10 
+
+FiLM 0.746 ±0.00 0.753 ±0.00 0.756 ±0.00 0.760 ±0.00 
+
+TiDE 0.669 ±0.00 0.668 ±0.00 0.669 ±0.00 0.669 ±0.00 
+
+FreTS 0.746 ±0.00 0.744 ±0.00 0.748 ±0.00 0.757 ±0.00 
+
+SegRNN 0.750 ±0.00 0.752 ±0.00 0.751 ±0.00 0.749 ±0.00 
+
+Table 40: Directional accuracy of MSE + CosDir on Solar by horizon ( H). 
+
+Backbone H = 96 H = 192 H = 336 H = 720 
+
+DLinear 0.779 ±0.00 0.783 ±0.00 0.782 ±0.00 0.777 ±0.00 
+
+PatchTST 0.760 ±0.00 0.764 ±0.00 0.764 ±0.00 0.760 ±0.00 
+
+iTransformer 0.762 ±0.00 0.755 ±0.00 0.756 ±0.00 0.760 ±0.00 
+
+TimesNet 0.817 ±0.01 0.818 ±0.01 0.816 ±0.01 0.806 ±0.02 
+
+TimeMixer 0.768 ±0.00 0.766 ±0.00 0.765 ±0.00 0.765 ±0.00 
+
+Autoformer 0.752 ±0.02 0.720 ±0.03 0.718 ±0.03 0.716 ±0.03 
+
+FEDformer 0.775 ±0.01 0.768 ±0.01 0.771 ±0.00 0.738 ±0.01 
+
+TSMixer 0.686 ±0.00 0.683 ±0.00 0.679 ±0.00 0.671 ±0.00 
+
+LightTS 0.647 ±0.01 0.646 ±0.00 0.643 ±0.00 0.635 ±0.00 
+
+Pyraformer 0.768 ±0.00 0.773 ±0.00 0.775 ±0.00 0.770 ±0.00 
+
+Crossformer 0.628 ±0.00 0.630 ±0.00 0.632 ±0.00 0.632 ±0.00 
+
+FiLM 0.801 ±0.00 0.808 ±0.00 0.796 ±0.00 0.771 ±0.00 
+
+TiDE 0.737 ±0.00 0.744 ±0.00 0.769 ±0.00 –FreTS 0.752 ±0.00 0.760 ±0.00 0.769 ±0.00 0.756 ±0.00 
+
+SegRNN 0.747 ±0.00 0.751 ±0.00 0.749 ±0.00 0.739 ±0.00 
+
+Table 41: Directional accuracy of MSE + CosDir on Traffic by horizon ( H). Backbone H = 96 H = 192 H = 336 H = 720 
+
+DLinear 0.727 ±0.00 0.727 ±0.00 0.726 ±0.00 0.722 ±0.00 
+
+PatchTST 0.745 ±0.00 0.743 ±0.00 0.739 ±0.00 0.731 ±0.00 
+
+iTransformer 0.743 ±0.00 0.734 ±0.00 0.724 ±0.00 0.710 ±0.00 
+
+TimesNet 0.732 ±0.01 0.731 ±0.01 0.730 ±0.01 0.728 ±0.01 
+
+TimeMixer 0.763 ±0.00 0.754 ±0.00 0.747 ±0.00 0.733 ±0.01 
+
+Autoformer 0.709 ±0.01 0.700 ±0.02 0.698 ±0.02 0.692 ±0.02 
+
+FEDformer 0.713 ±0.02 0.712 ±0.02 0.708 ±0.02 0.689 ±0.01 
+
+TSMixer 0.699 ±0.00 0.694 ±0.00 0.689 ±0.00 0.684 ±0.00 
+
+LightTS 0.674 ±0.00 0.672 ±0.00 0.671 ±0.00 0.667 ±0.00 
+
+Pyraformer 0.702 ±0.01 0.703 ±0.01 0.704 ±0.01 0.703 ±0.01 
+
+Crossformer 0.733 ±0.03 0.708 ±0.06 0.700 ±0.05 0.743 ±0.01 
+
+FiLM 0.769 ±0.00 0.758 ±0.01 0.736 ±0.00 0.707 ±0.00 
+
+TiDE 0.679 ±0.00 0.679 ±0.00 0.678 ±0.00 0.740 ±0.00 
+
+FreTS 0.754 ±0.00 0.769 ±0.00 0.765 ±0.00 0.753 ±0.00 
+
+SegRNN 0.707 ±0.00 0.706 ±0.00 0.703 ±0.00 0.699 ±0.00 
+
+Table 42: Directional accuracy of MSE + CosDir on Electricity by horizon ( H). 
+
+Backbone H = 12 H = 24 H = 36 H = 48 H = 60 H = 72 
+
+DLinear 0.549 ±0.00 0.546 ±0.00 0.533 ±0.00 0.523 ±0.00 0.521 ±0.00 0.518 ±0.00 
+
+PatchTST 0.604 ±0.00 0.579 ±0.01 0.555 ±0.00 0.537 ±0.00 0.532 ±0.00 0.526 ±0.00 
+
+iTransformer 0.587 ±0.00 0.556 ±0.01 0.535 ±0.00 0.521 ±0.00 0.516 ±0.00 0.512 ±0.00 
+
+TimesNet 0.518 ±0.00 0.505 ±0.00 0.504 ±0.00 0.503 ±0.00 0.504 ±0.00 0.504 ±0.00 
+
+TimeMixer 0.588 ±0.01 0.563 ±0.02 0.538 ±0.01 0.524 ±0.00 0.520 ±0.00 0.513 ±0.00 
+
+Autoformer 0.511 ±0.01 0.506 ±0.00 0.506 ±0.00 0.504 ±0.00 0.505 ±0.00 0.503 ±0.00 
+
+FEDformer 0.520 ±0.00 0.513 ±0.00 0.509 ±0.00 0.507 ±0.00 0.505 ±0.00 0.504 ±0.00 
+
+TSMixer 0.524 ±0.00 0.515 ±0.00 0.508 ±0.00 0.506 ±0.00 0.504 ±0.00 0.503 ±0.00 
+
+LightTS 0.510 ±0.00 0.507 ±0.00 0.504 ±0.00 0.502 ±0.00 0.502 ±0.00 0.501 ±0.00 
+
+Pyraformer 0.506 ±0.00 0.502 ±0.00 0.502 ±0.00 0.501 ±0.00 0.501 ±0.00 0.500 ±0.00 
+
+Crossformer 0.566 ±0.00 0.532 ±0.00 0.513 ±0.00 0.508 ±0.00 0.505 ±0.00 0.504 ±0.00 
+
+FiLM 0.612 ±0.01 0.598 ±0.01 0.563 ±0.01 0.543 ±0.01 0.539 ±0.00 0.527 ±0.01 
+
+TiDE 0.511 ±0.00 0.509 ±0.00 0.505 ±0.00 0.504 ±0.00 0.503 ±0.00 0.503 ±0.00 
+
+FreTS 0.606 ±0.00 0.586 ±0.00 0.557 ±0.00 0.540 ±0.00 0.533 ±0.00 0.527 ±0.00 
+
+SegRNN 0.558 ±0.00 0.544 ±0.00 0.518 ±0.00 0.510 ±0.00 0.507 ±0.00 0.504 ±0.00 
+
+Table 43: Directional accuracy of MSE + CosDir on RealVar by horizon ( H). 
+
+Backbone H = 12 H = 24 H = 36 H = 48 H = 60 H = 72 
+
+DLinear 0.547 ±0.00 0.543 ±0.00 0.531 ±0.00 0.522 ±0.00 0.520 ±0.00 0.518 ±0.00 
+
+PatchTST 0.590 ±0.00 0.569 ±0.01 0.548 ±0.00 0.532 ±0.00 0.528 ±0.00 0.523 ±0.00 
+
+iTransformer 0.576 ±0.00 0.550 ±0.00 0.532 ±0.00 0.519 ±0.00 0.515 ±0.00 0.512 ±0.00 
+
+TimesNet 0.517 ±0.00 0.506 ±0.00 0.503 ±0.00 0.504 ±0.00 0.504 ±0.00 0.503 ±0.00 
+
+TimeMixer 0.577 ±0.01 0.558 ±0.01 0.534 ±0.00 0.522 ±0.00 0.518 ±0.00 0.512 ±0.00 
+
+Autoformer 0.513 ±0.00 0.507 ±0.00 0.506 ±0.00 0.504 ±0.00 0.504 ±0.00 0.504 ±0.00 
+
+FEDformer 0.520 ±0.00 0.512 ±0.00 0.509 ±0.00 0.508 ±0.00 0.505 ±0.00 0.504 ±0.00 
+
+TSMixer 0.522 ±0.00 0.514 ±0.00 0.508 ±0.00 0.506 ±0.00 0.504 ±0.00 0.503 ±0.00 
+
+LightTS 0.510 ±0.00 0.506 ±0.00 0.503 ±0.00 0.502 ±0.00 0.502 ±0.00 0.501 ±0.00 
+
+Pyraformer 0.506 ±0.00 0.502 ±0.00 0.501 ±0.00 0.501 ±0.00 0.501 ±0.00 0.500 ±0.00 
+
+Crossformer 0.560 ±0.00 0.530 ±0.00 0.513 ±0.00 0.507 ±0.00 0.505 ±0.00 0.504 ±0.00 
+
+FiLM 0.599 ±0.01 0.588 ±0.00 0.550 ±0.01 0.541 ±0.01 0.535 ±0.00 0.523 ±0.01 
+
+TiDE 0.510 ±0.00 0.508 ±0.00 0.505 ±0.00 0.504 ±0.00 0.503 ±0.00 0.503 ±0.00 
+
+FreTS 0.594 ±0.00 0.576 ±0.00 0.551 ±0.00 0.536 ±0.00 0.529 ±0.00 0.524 ±0.00 
+
+SegRNN 0.553 ±0.00 0.540 ±0.00 0.517 ±0.00 0.509 ±0.00 0.507 ±0.00 0.504 ±0.00 
+
+Table 44: Directional accuracy of MSE + CosDir on RealVol by horizon ( H). Backbone H = 12 H = 24 H = 36 H = 48 H = 60 H = 72 
+
+DLinear 0.532 ±0.01 0.538 ±0.00 0.538 ±0.01 0.542 ±0.00 0.538 ±0.01 0.531 ±0.01 
+
+PatchTST 0.572 ±0.00 0.567 ±0.01 0.571 ±0.00 0.563 ±0.01 0.568 ±0.00 0.555 ±0.00 
+
+iTransformer 0.566 ±0.00 0.549 ±0.00 0.542 ±0.00 0.531 ±0.00 0.526 ±0.00 0.519 ±0.00 
+
+TimesNet 0.510 ±0.01 0.506 ±0.00 0.501 ±0.00 0.501 ±0.00 0.500 ±0.00 0.500 ±0.00 
+
+TimeMixer 0.573 ±0.01 0.553 ±0.01 0.552 ±0.01 0.537 ±0.01 0.530 ±0.01 0.518 ±0.00 
+
+Autoformer 0.503 ±0.00 0.502 ±0.00 0.503 ±0.00 0.500 ±0.00 0.500 ±0.00 0.502 ±0.00 
+
+FEDformer 0.506 ±0.00 0.506 ±0.00 0.506 ±0.00 0.506 ±0.00 0.505 ±0.00 0.503 ±0.00 
+
+TSMixer 0.509 ±0.00 0.506 ±0.00 0.504 ±0.00 0.504 ±0.00 0.503 ±0.00 0.502 ±0.00 
+
+LightTS 0.504 ±0.00 0.503 ±0.00 0.502 ±0.00 0.502 ±0.00 0.502 ±0.00 0.502 ±0.00 
+
+Pyraformer 0.500 ±0.00 0.500 ±0.00 0.500 ±0.00 0.500 ±0.00 0.500 ±0.00 0.500 ±0.00 
+
+Crossformer 0.509 ±0.00 0.506 ±0.00 0.503 ±0.00 0.503 ±0.00 0.502 ±0.00 0.501 ±0.00 
+
+FiLM 0.511 ±0.00 0.581 ±0.01 0.595 ±0.00 0.611 ±0.00 0.610 ±0.00 0.575 ±0.01 
+
+TiDE 0.503 ±0.00 0.504 ±0.00 0.504 ±0.00 0.503 ±0.00 0.503 ±0.00 0.502 ±0.00 
+
+FreTS 0.565 ±0.01 0.555 ±0.00 0.554 ±0.00 0.547 ±0.01 0.547 ±0.00 0.535 ±0.00 
+
+SegRNN 0.513 ±0.00 0.504 ±0.00 0.503 ±0.00 0.504 ±0.00 0.504 ±0.00 0.502 ±0.00 
+
+Table 45: Directional accuracy of MSE + CosDir on RealVol60 by horizon ( H). 
+
+Backbone H = 12 H = 24 H = 36 H = 48 H = 60 H = 72 
+
+DLinear 0.538 ±0.00 0.536 ±0.00 0.524 ±0.00 0.518 ±0.00 0.514 ±0.00 0.513 ±0.00 
+
+PatchTST 0.574 ±0.00 0.556 ±0.01 0.537 ±0.00 0.525 ±0.00 0.521 ±0.00 0.518 ±0.00 
+
+iTransformer 0.566 ±0.00 0.541 ±0.00 0.526 ±0.00 0.515 ±0.00 0.512 ±0.00 0.509 ±0.00 
+
+TimesNet 0.517 ±0.00 0.511 ±0.00 0.503 ±0.00 0.505 ±0.00 0.502 ±0.00 0.503 ±0.00 
+
+TimeMixer 0.559 ±0.01 0.546 ±0.01 0.524 ±0.00 0.514 ±0.00 0.511 ±0.00 0.507 ±0.00 
+
+Autoformer 0.511 ±0.00 0.507 ±0.00 0.506 ±0.00 0.506 ±0.00 0.505 ±0.00 0.505 ±0.00 
+
+FEDformer 0.517 ±0.00 0.510 ±0.00 0.508 ±0.00 0.508 ±0.00 0.506 ±0.00 0.506 ±0.00 
+
+TSMixer 0.516 ±0.00 0.508 ±0.00 0.505 ±0.00 0.503 ±0.00 0.503 ±0.00 0.502 ±0.00 
+
+LightTS 0.507 ±0.00 0.503 ±0.00 0.502 ±0.00 0.501 ±0.00 0.501 ±0.00 0.501 ±0.00 
+
+Pyraformer 0.504 ±0.00 0.502 ±0.00 0.501 ±0.00 0.501 ±0.00 0.500 ±0.00 0.500 ±0.00 
+
+Crossformer 0.539 ±0.00 0.510 ±0.01 0.505 ±0.00 0.504 ±0.00 0.503 ±0.00 0.502 ±0.00 
+
+FiLM 0.592 ±0.01 0.583 ±0.00 0.547 ±0.01 0.538 ±0.01 0.526 ±0.01 0.522 ±0.00 
+
+TiDE 0.508 ±0.00 0.505 ±0.00 0.503 ±0.00 0.503 ±0.00 0.502 ±0.00 0.502 ±0.00 
+
+FreTS 0.576 ±0.00 0.560 ±0.00 0.537 ±0.01 0.526 ±0.00 0.522 ±0.00 0.517 ±0.00 
+
+SegRNN 0.542 ±0.00 0.528 ±0.00 0.512 ±0.00 0.507 ±0.00 0.505 ±0.00 0.502 ±0.00 
+
+Table 46: Directional accuracy of MSE + CosDir on StockVol by horizon ( H). 
+
+Backbone H = 12 H = 24 H = 36 H = 48 H = 60 H = 72 
+
+DLinear 0.521 ±0.00 0.512 ±0.00 0.509 ±0.00 0.507 ±0.00 0.507 ±0.00 0.505 ±0.00 
+
+PatchTST 0.520 ±0.00 0.510 ±0.00 0.507 ±0.00 0.506 ±0.00 0.506 ±0.00 0.505 ±0.00 
+
+iTransformer 0.519 ±0.00 0.509 ±0.00 0.506 ±0.00 0.505 ±0.00 0.504 ±0.00 0.503 ±0.00 
+
+TimesNet 0.520 ±0.00 0.511 ±0.00 0.507 ±0.00 0.505 ±0.00 0.504 ±0.00 0.503 ±0.00 
+
+TimeMixer 0.521 ±0.00 0.511 ±0.00 0.507 ±0.00 0.505 ±0.00 0.504 ±0.00 0.503 ±0.00 
+
+Autoformer 0.520 ±0.00 0.510 ±0.01 0.509 ±0.00 0.504 ±0.00 0.507 ±0.00 0.507 ±0.00 
+
+FEDformer 0.522 ±0.00 0.512 ±0.00 0.509 ±0.00 0.507 ±0.00 0.506 ±0.00 0.505 ±0.00 
+
+TSMixer 0.520 ±0.00 0.510 ±0.00 0.506 ±0.00 0.505 ±0.00 0.504 ±0.00 0.504 ±0.00 
+
+LightTS 0.517 ±0.00 0.509 ±0.00 0.506 ±0.00 0.504 ±0.00 0.504 ±0.00 0.503 ±0.00 
+
+Pyraformer 0.519 ±0.00 0.509 ±0.00 0.506 ±0.00 0.505 ±0.00 0.503 ±0.00 0.503 ±0.00 
+
+Crossformer 0.521 ±0.00 0.510 ±0.00 0.506 ±0.00 0.505 ±0.00 0.504 ±0.00 0.504 ±0.00 
+
+FiLM 0.521 ±0.00 0.512 ±0.00 0.509 ±0.00 0.508 ±0.00 0.507 ±0.00 0.505 ±0.00 
+
+TiDE 0.519 ±0.00 0.510 ±0.00 0.506 ±0.00 0.505 ±0.00 0.505 ±0.00 0.504 ±0.00 
+
+FreTS 0.520 ±0.00 0.511 ±0.00 0.508 ±0.00 0.506 ±0.00 0.505 ±0.00 0.505 ±0.00 
+
+SegRNN 0.521 ±0.00 0.511 ±0.00 0.508 ±0.00 0.505 ±0.00 0.504 ±0.00 0.504 ±0.00 
+
+Table 47: Directional accuracy of MSE + CosDir on AbsRet by horizon ( H).

@@ -1,0 +1,646 @@
+Title: ReasonCast: Towards Explainable Time Series Forecasting with Reasoning
+
+URL Source: https://arxiv.org/pdf/2608.01875v1
+
+Published Time: Tue, 04 Aug 2026 02:01:58 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# ReasonCast: Towards Explainable Time Series Forecasting with Reasoning 
+
+# Seunghan Lee, Jun Seo, Jaehoon Lee, Junhyeok Kang, Sangjun Han, Sungdong Yoo, Minjae Kim, Tae Yoon Lim, Dongwan Kang, Hwanil Choi, Soonyoung Lee, Wonbin Ahn 
+
+LG AI Research 
+
+Abstract 
+
+Most time series (TS) models are specialized for a single task, either understanding (i.e., returning text answers about a TS) or generation (i.e., returning a numeric forecast). Only re-cently have unified models begun to handle the two within a single architecture. Even these models, however, produce the two outputs as task-separated paths and cannot predict a series and explain why that prediction arises within a single coher-ent response. In this paper, we argue for a task-fused model that jointly produces 1) prediction (generation) and 2) self-explanation (understanding), thereby integrating 1) numerical TS forecasting and 2) interpretable text reasoning within a sin-gle response. To enable the systematic study of this capability, we present both a benchmark and a recipe that jointly address the two tasks. The benchmark, ReasonTS-Bench , identifies five fundamental patterns underlying TS and enables the joint evaluation of both tasks. ReasonCast , our recipe for fine-tuning any LLM to perform both tasks jointly, yields a model that generates a reasoning chain and a forecast together in a sin-gle autoregressive pass. Extensive experiments show that Rea-sonCast outperforms both LLMs and TS models on prediction accuracy while producing verifiable, causal reasoning. Code is available at: https://github.com/seunghan96/reasoncast. 
+
+# 1 Introduction 
+
+Time series (TS) models have traditionally been built for forecasting by generating future numeric values from past observations (i.e., generation ( G)) (Nie et al. 2023; Ansari et al. 2024). With the rise of large language models (LLMs), a line of work emerged that explains or reasons about a series in natural language, focusing on text understanding rather than TS generation (i.e., understanding ( U)) (Xie et al. 2025; Chow et al. 2024). More recently, unified models have begun to perform both within a single architecture (i.e., understand-ing + generation ( U+G )) (Guan et al. 2026b). Even so, no existing model performs the two jointly , that is, forecasting a series and explaining that forecast in a single response (i.e., Understanding × Generation ( UxG )). We ar-gue that this task is a key requirement for explainable TS AI, as many real-world applications require users to understand the rationale behind a forecast before acting upon it. This paper aims to fill that gap by introducing a unified framework 
+
+that forecasts future values while simultaneously explaining the rationale behind its predictions. 
+
+Axis Understanding Generation (1) U pθ (ound | X) —(2) G — pθ (ogen | X)
+
+(3) U + G pθ (ound | X) pθ (ogen | X)
+
+(4) U × G pθ (ogen , o rsn | X)
+
+Table 1: U × G framework. We propose a unified framework that generates forecasts and explanations within a single pass. To this end, we formulate forecasting and explanation as a 
+
+single autoregressive process, as shown in Table 1. Formally, the model first 1) emits a reasoning chain orsn and then 2) generates the forecast ogen conditioned on it as: 
+
+pθ (ogen , o rsn | X) = pθ (orsn | X) · pθ (ogen | orsn , X ), (1) so the explanation causally guides the prediction rather than serving as a post-hoc justification. In this paper, we intro-duce both a benchmark and a training recipe under this framework. The benchmark, ReasonTS-Bench , is a con-trolled synthetic dataset built on five primitives that isolate elementary components of TS (e.g., periodicity, trend, tem-poral dependence). 1 ReasonCast , our recipe for any LLM, is the first to generate a forecast and its explanation within a single autoregressive pass. Our main contributions are: 
+
+• Framework. We propose a unified framework that formu-lates forecasting and explanation as a single coherent task. 
+
+• Benchmark. We introduce ReasonTS-Bench, a controlled benchmark with five disentangled TS patterns and ground-truth reasoning, so that prediction and explanation can be scored jointly rather than by forecast error alone. 
+
+• Recipe. We propose ReasonCast, a training recipe that yields the first model to jointly generate a forecast and its underlying explanation within a single autoregressive pass. 
+
+• Experiments. ReasonCast outperforms TS and LLM-based baselines on TS forecasting with reasoning. 
+
+> 1
+
+These five primitives are sufficient and widely used, forming the basis of TS decomposition (Cleveland et al. 1990). arXiv:2608.01875v1 [cs.AI] 3 Aug 2026 Axis [1] Representative models [2] TS benchmarks              
+
+> (1) U ChatTS, Time-MQA, S2TS-LLM, Thoth, PATRA TSQA, MTBench, SenTSR-Bench (2) G DLinear, PatchTST, Chronos, Moirai, TimesFM, VisionTS, Time-MoE Monash, GIFT-Eval, TFB (3) U + G TimeOmni-1, ChatTime, TimeOmni-VL TSR-Suite, FinSTaR (4) U×GLLMs +ReasonCast (Ours) ReasonTS-Bench (Ours)
+
+Table 2: Related works by axis. Representative TS models and benchmarks grouped by the four axes of Table 1. Only (4) forecasts and explains why within a single pass, and scores the forecast and its reasoning chain jointly. 
+
+Figure 1: Five primitives of ReasonTS-Bench. One sample per pattern. Blue is the input and red is the target, and the ground-truth reasoning excerpt paired with each sample is given in Appendix C. Each pattern uses a different reasoning schema. 
+
+# 2 Related Work 
+
+TS forecasting models (Generation). These models pre-dict numeric futures without a textual interface and are typically trained on individual datasets. DLinear (Zeng et al. 2023) performs TS forecasting with a linear model, PatchTST (Nie et al. 2023) patches the series into tokens, TimesNet (Wu et al. 2023) models 2D period variation, and iTransformer (Liu et al. 2024) attends across vari-ates. Foundation models instead pretrain across datasets: Chronos (Ansari et al. 2024) tokenizes values into a language, Moirai (Woo et al. 2024) trains one universal forecaster across domains, TimesFM (Das et al. 2024) is a decoder-only forecaster, VisionTS (Chen et al. 2025b) casts forecasting as image inpainting, and Time-MoE (Shi et al. 2025) scales with mixture-of-experts. Time-LLM (Jin et al. 2024) instead reprograms a frozen LLM to forecast. In all cases, the output is numeric future values with no textual explanation .
+
+TS reasoning models (Understanding). These models take a series and a textual query and return a textual an-swer about the series, not a numeric forecast. ChatTS (Xie et al. 2025) aligns a series with an LLM through synthetic data to answer questions about it. Other work probes whether LLMs can describe and explain temporal dynamics in lan-guage (Chow et al. 2024). Time-MQA (Kong et al. 2025) continually pretrains an LLM for multi-task question answer-ing over series, and S2TS-LLM (Qin et al. 2025) symbolizes a series so an LLM can analyze it. More recent work mid-trains an LLM to bridge it to TS understanding (Thoth (Lin et al. 2026)) and aligns temporal patterns for question an-swering (PATRA (Lu et al. 2026)). Their outputs are text, not numbers, so they cannot forecast the future signal .
+
+Unified TS models (Understanding + Generation). 
+
+TimeOmni-1 (Guan et al. 2026a) incentivizes TS reasoning in an LLM, covering perception and event-aware forecast-ing as separate tasks. ChatTime (Wang et al. 2025) is a TS foundation model that takes and emits both numbers and text, but through separate queries. FinSTaR (Lee et al. 2026) is a financial TS reasoning model that couples a reasoning trace with a prediction but treats the two as separate tasks. TimeOmni-VL (Guan et al. 2026b) renders the series as an image and trains a vision-language backbone to handle both tasks. Its two paths share parameters but are conditionally independent given the input, so a user must pick one prompt at a time. These models form the U+G category in Table 1, the closest prior work to ours, which unify understanding and generation but still solve each as its own task , so the reason-ing serves task performance rather than grounding a forecast within a single coherent output. A concurrent agentic line, such as AlphaCast (Zhang et al. 2025), also pairs reasoning with forecasting, but orchestrates a frozen LLM through a multi-turn workflow rather than a single model. 
+
+TS benchmarks and symbolic regression. Two further threads are covered in Appendix A: how existing TS bench-marks map onto the four axes, and how symbolic regres-sion relates to a model that both predicts and explains. Ta-ble 2 gives the full comparison of representative models and benchmarks across all four axes. 
+
+# 3 ReasonTS-Bench 
+
+Existing TS benchmarks are not designed to evaluate whether forecasts and explanations are mutually consistent. Predic-tion and explanation metrics are typically measured in isola-tion, and real-world TS datasets provide neither ground-truth reasoning nor a way to verify it. To address these limitations, we propose ReasonTS-Bench , a synthetic benchmark with algorithmically generated and verifiable reasoning targets. 
+
+3.1 Primitives of TS 
+
+The benchmark is built from five primitives, shown in Fig-ure 1, each isolating one elementary building block of TS: 
+
+• Periodicity : A single sinusoid. 
+
+• Trend : A sinusoid plus a deterministic linear trend. 
+
+• Temporal dependence : An AR(1) process. 
+
+• Multi-periodicity : A superposition of two frequencies. 
+
+• Structural break : A changepoint in the dynamics. Figure 2: Sufficiency of the five primitives. Real-world datasets lie within the region occupied by the five primitives.                        
+
+> Pattern Train Test Generative equation Primitives  Periodicity OO
+> s1(t) + ε
+> Trend s1(t) + mt +b+ε
+> Temporal dependence α x (t−1) + ε
+> Multi-periodicity s1(t) + s2(t) + ε
+> Structural break Piecewise linear at t∗
+> Unknown
+> (No primitive structure) OORandom walk, White noise, Exponential, Sawtooth, Square wave
+> OOD-novel
+> (Variants of primitives) XOARMA(1,1), Bilinear, Double-AR1, Quadratic
+
+Table 3: Overview of ReasonTS-Bench. Five primitives and two out-of-pattern sets, where si(t) = Ai sin(2 πt/P i + ϕi)
+
+is a periodicity term with amplitude Ai and period Pi.
+
+Sufficiency of the five primitives. Although ReasonTS-Bench is synthetic, its five primitives are not arbitrary. To-gether, they form the canonical structures of TS (Wold 1938; Cleveland et al. 1990), and are used to pretrain TS foun-dation models (Ansari et al. 2024). Because every series is generated from known parameters, we can vary one structure while holding the rest fixed, a control that natural corpora do not offer. To test this beyond synthetic data, we embed win-dows from four real-world datasets alongside the primitives with t-SNE, and Figure 2 shows they lie within the primitive region, suggesting the primitives cover real-world structures. Table 3 lists the equation used to generate each pattern, Figure 1 shows one example of each pattern, and Figure 3 gives a full ground-truth reasoning chain for one of them. In the results, we refer to each primitive by the name of its gener-ating equation: Sine (Periodicity), Trend, AR (Temporal de-pendence), Multi-freq (Multi-periodicity), and Changepoint (Structural break). The context length and the forecast hori-zon vary per sample, so no model can rely on a fixed window. To evaluate generalization beyond the five primitives, we introduce two additional sets: Unknown and OOD-novel. The 
+
+Unknown set appears in both training and testing . For these inputs the model should report low confidence, state that no predefined pattern fits, and extrapolate the recent local trend. This encourages the model to avoid forcing a known pattern onto unfamiliar inputs (i.e., saying "I don’t know" ). The OOD-novel set is used only for testing . Its four series all differ from the primitives but vary in how closely they resemble a primitive. The members of each set are listed in Table 3, with examples shown in Appendix C. 
+
+Details of datasets. Appendix C reports the per-split sam-ple counts, the sequence lengths, and the full generative pa-rameter ranges for every pattern in the benchmark. 
+
+3.2 Reasoning Chain 
+
+Every sample is paired with a reasoning chain in three blocks:              
+
+> INPUT ANALYSIS:
+> observed length, detected period, ...
+> REASONING:
+> pattern type, rule, next peak at, ...
+> PREDICTION:
+> t=N: v0,t=N+1: v1,...
+
+Each named field on the right side of a colon is filled with a value derived directly from the sample’s generative parame-ters (e.g., detected period is exactly P ). This makes the chain verifiable, since an evaluator can parse each field from the model output and compare it against the ground-truth tar-get, using appropriate tolerances for continuous quantities. Figure 3 provides a complete example for a Trend sample, showing the full ground-truth chain and how each field is derived from the series. The schema is pattern-specific, and the fields required for each pattern are listed in Appendix C. 
+
+# 4 ReasonCast 
+
+ReasonCast is a recipe that fine-tunes a single model to route, reason, and forecast in one autoregressive pass. It realizes the forward factorization of Eq. (1), generating the reasoning first and the forecast second. Thus, the explanation precedes and grounds the prediction, unlike prior work where the explana-tion follows a given series. The pipeline proceeds as follows: 
+
+• Step 1. Read. TS is serialized into the input, and the model conditions on it for everything that follows. 
+
+• Step 2. Route. The model selects which output schema to emit, that is, which pattern the input follows. Routing can be made 2-1) explicit by emitting the pattern class as the first token, or left 2-2) implicit inside the decoder. 
+
+• Step 3. Reason: pθ (orsn | X). Conditioned on the selected pattern, the model emits the reasoning chain, which states the estimated parameters and the rule they imply. 
+
+• Step 4. Forecast: pθ (ogen | orsn , X ). Conditioned on the reasoning, the model emits the numeric prediction that the rule implies, keeping the two mutually consistent. Figure 3: Example of ground-truth reasoning. [Left] Sample with the trend line, the context and target split, and the next peak and last value. [Right] Its ground-truth chain, where the color of each field marks the part of the series it is derived from.                                         
+
+> Metric [1] Summary [2] What it compares [3] Reduces to Forecasting (1) Error (↓)Do the predicted numbers match the truth? ˆyvs. yRegression
+> Reasoning
+> (2) Fidelity (↑)Are the stated facts grounded in the input? ˆθvs. θClassification (3) Consistency (↑)Do the predictions obey the model’s own rule? ˆyvs. ˜ySelf-consistency (4) Sensitivity (↑)Does the reasoning follow a change in the input? ˆθvs. ˆθ′under θj→θ′
+> jCounterfactual
+
+Table 4: Four metrics for TS forecasting and reasoning. Here y, ˆy, and ˜y = fˆθ (x) denote the true value, the forecast generated directly by the LLM, and the value obtained by evaluating the estimated parameters ˆθ on the input x, respectively. θ and ˆθ are the true and estimated parameters. θj → θ′ 
+
+> j
+
+denotes a one-parameter intervention with re-estimated ˆθ′.
+
+Figure 4: Forecast visualization across the five primitives on the default Qwen2.5-3B backbone, with and without ReasonCast. For each primitive one test sample is shown: w/ ReasonCast tracks the ground truth, whereas w/o ReasonCast does not. 
+
+• Step 5. (Optional) Fall back. If the input matches no pattern, the model marks the pattern as unknown and ex-trapolates the recent trend instead of forcing a pattern fit. We study three ReasonCast variants. 1) Explicit rout-ing , our default, emits the pattern class as its first token, so routing is explicit and conditions what follows. 2) Implicit routing drops that token and selects the schema inside the decoder. 3) The Single-pattern specialist trains one model per pattern, with the pattern given in advance, so it acts as an oracle. Both routing variants outperform even the Single-pattern specialists, demonstrating that the five primitives are complementary and benefit from joint learning, as shown in Table 9 and Table 10. Details are discussed in Appendix E. 
+
+Evaluation metrics. Conventional forecasting metrics score the numbers alone, not whether they agree with the reasoning behind them. We report four metrics, summa-rized in Table 4: Error (deviation of the predictions from the truth), Fidelity (correctness of the estimated parame-ters), Consistency (agreement between the forecast and the model’s own rule), and Sensitivity (causal response to a pa-rameter change). Appendix B defines each of them precisely. 
+
+# 5 Experiments 
+
+ReasonCast is a recipe rather than a single model . Unless oth-erwise stated, we use Qwen2.5-3B-Instruct (Yang et al. 2024) as the default backbone, fully fine-tuned on the ReasonTS-Bench training set, and write ReasonCast-3B for this default instance. When we apply ReasonCast to other backbones, we fully fine-tune backbones up to 3B and use LoRA (Hu et al. 2022) for larger ones. Results are averaged over 3 ran-dom seeds, with standard deviations for the default model reported in Appendix J. We discuss the experimental setup in Appendix F.2 and the dataset statistics in Appendix C. 
+
+Baseline. We compare against baselines that span the four axes of Table 1: trivial predictors, four TS forecasting mod-els (DLinear, PatchTST, iTransformer, TimeXer (Wang et al. 2024)), the (3)-axis unified model TimeOmni-1, and four instruction-tuned LLM backbones (Qwen (Yang et al. 2024), Llama (Grattafiori et al. 2024), Phi (Abdin et al. 2024), Gemma (Gemma Team et al. 2024)), each run both few-shot and fine-tuned. Note that the reasoning metrics cannot be evaluated on the TS forecasting models, as they output only numeric values. Details are provided in Appendix F.1. Five primitives Sine Trend AR MF CP Average MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE Axis 2: G 
+
+Trivial Naive last 2.251 9.331 2.466 10.647 0.252 0.134 2.075 6.949 1.453 4.368 1.699 6.286 Seasonal naive 1.211 4.770 1.759 6.568 0.249 0.121 1.279 3.418 1.495 4.542 1.199 3.884 TS models DLinear 1.032 2.506 1.208 3.118 0.187 0.074 0.900 1.592 0.226 0.140 0.710 1.486 PatchTST 0.214 0.126 0.470 0.554 0.185 0.072 0.354 0.277 0.232 0.106 0.291 0.227 iTransformer 0.250 0.202 0.547 0.800 0.185 0.072 0.276 0.176 0.242 0.117 0.300 0.273 TimeXer 0.514 0.914 0.933 1.983 0.182 0.070 0.674 0.921 0.246 0.119 0.510 0.801 
+
+Axis 3: U +G (w/o ReasonCast), Axis 4: U ×G (w/ ReasonCast) Qwen2.5-1.5B w/o ReasonCast 2.507 12.628 3.735 27.977 0.189 0.080 2.169 8.257 2.021 12.135 2.124 12.215 w/ ReasonCast 0.203 0.108 0.393 0.364 0.183 0.076 0.345 0.431 0.188 0.141 0.262 0.224 
+
+Qwen2.5-7B w/o ReasonCast 2.185 8.768 3.085 18.497 0.196 0.091 2.294 9.701 0.846 1.877 1.721 7.787 w/ ReasonCast 0.229 0.174 0.471 0.639 0.181 0.073 0.520 0.807 0.180 0.104 0.316 0.359 
+
+Llama-3.1-8B w/o ReasonCast 2.616 13.345 4.426 36.476 0.189 0.088 4.373 34.206 1.878 8.208 2.696 18.465 w/ ReasonCast 0.436 0.702 0.809 1.515 0.186 0.091 0.694 1.211 0.242 0.169 0.474 0.737 
+
+Phi-3.5-mini w/o ReasonCast 2.531 12.067 3.899 27.209 0.245 0.158 2.309 9.536 2.304 11.847 2.258 12.163 w/ ReasonCast 0.542 0.981 1.312 4.292 0.182 0.074 1.061 2.538 0.245 0.277 0.668 1.632 
+
+Gemma-2-9B w/o ReasonCast 2.038 8.217 3.169 20.204 0.192 0.085 1.948 6.493 0.963 2.024 1.662 7.405 w/ ReasonCast 0.632 1.188 1.066 2.758 0.182 0.076 1.294 3.425 0.311 0.523 0.697 1.594 
+
+TimeOmni-1 w/o ReasonCast 2.187 9.304 2.913 15.689 0.185 0.074 2.093 7.580 0.665 1.379 1.608 6.805 w/ ReasonCast 0.232 0.166 0.453 0.528 0.180 0.070 0.489 0.678 0.177 0.111 0.306 0.311 
+
+Qwen2.5-3B (Default) w/o ReasonCast 2.375 10.398 3.526 24.319 0.243 0.229 1.904 6.218 3.065 22.864 2.223 12.805 w/ ReasonCast 0.208 0.139 0.360 0.343 0.181 0.073 0.256 0.225 0.177 0.145 0.236 0.185 
+
+Table 5: Forecast performance. The five columns are the primitives: Sine, Trend, AR (AR(1)), MF (Multi-freq), and CP (Changepoint). The Axis 3 rows give each backbone few-shot examples so that it follows both the U and G output formats. 
+
+Avg. across 5 primitives Error ↓ Fid. ↑ Cons. ↑ Sens. ↑
+
+Qwen2.5-7B w/o ReasonCast 1.721 0.338 0.250 0.142 w/ ReasonCast 0.316 0.859 0.532 0.714 
+
+Llama-3.1-8B w/o ReasonCast 2.696 0.293 0.240 0.138 w/ ReasonCast 0.474 0.708 0.341 0.574 
+
+Phi-3.5-mini w/o ReasonCast 2.258 0.262 0.218 0.154 w/ ReasonCast 0.668 0.690 0.332 0.542 
+
+Gemma-2-9B w/o ReasonCast 1.662 0.348 0.253 0.122 w/ ReasonCast 0.697 0.717 0.329 0.574 
+
+Qwen2.5-3B (Default) w/o ReasonCast 2.223 0.252 0.275 0.138 w/ ReasonCast 0.236 0.899 0.613 0.794 
+
+Table 6: Reasoning abilities. For each LLM backbone, we compare the effect of ReasonCast on the forecast error (MAE) and three reasoning metrics, averaged over five primitives. 
+
+5.1 Main Experiments 
+
+Forecast performance (Error ↓). Table 5 reports forecast-ing performance across the five primitives. The results show that applying ReasonCast to a range of LLM backbones gives 
+
+Output order Error ↓ Fidelity ↑ Consistency ↑
+
+Forecast → Reasoning 0.471 0.293 0.345 Reasoning → Forecast 0.404 0.837 0.465 
+
+∆ (improvement) −0.070 +55 pp +13 pp 
+
+Table 7: Order ablation: reasoning before forecast. Reasoning first grounds the forecast and keeps the explanation faithful. them a TS forecasting ability that outperforms even the spe-cialized TS forecasting models. For a fair comparison, each of these LLMs is given a few in-context examples so that it fol-lows both the understanding and generation output formats. Figure 4 shows this across all five primitives: w/ ReasonCast tracks the truth while w/o ReasonCast quickly drifts off. 
+
+Reasoning abilities (Fidelity ↑, Consistency ↑, Sensitiv-ity ↑). Table 6 compares each backbone with and without ReasonCast on the forecast error (MAE) and three reasoning metrics, averaged over five primitives. The results demon-strate that ReasonCast lowers forecast error while raising every reasoning metric, yielding forecasts that come with an explanation of why each value was predicted. Figure 5: How the counterfactual probe is scored. A paired input differing in a single generative parameter is fed to the model, which should shift the intervened field (Sensitivity) while leaving the others unchanged (Stability).                     
+
+> Sine Trend AR MF CP Sensitivity ↑w/o ReasonCast 0.270 0.200 0.050 0.070 0.100 w/ ReasonCast 0.960 0.880 0.530 0.820 0.780 Stability ↑w/o ReasonCast 0.705 0.690 –0.680 0.650 w/ ReasonCast 0.905 0.890 –0.765 0.840
+
+Table 8: Counterfactual probe, w/ vs. w/o ReasonCast. “Sen-sitivity” is the intervention-tracking rate (the matching rea-soning field shifts to track an intervened parameter), and “Stability” is the non-intervened-stable rate (the remaining reasoning fields stay fixed under the same intervention). 
+
+5.2 Ablation Studies 
+
+Order of reasoning & forecast. To verify that the reasoning genuinely grounds the forecast rather than merely accompa-nying it, we train a post-hoc variant that emits the forecast first and the reasoning afterward , changing only the output order. As shown in Table 7, this reversed ordering consistently de-grades performance relative to reasoning first, demonstrating that reasoning steers the forecast rather than merely explain-ing it. We omit Sensitivity as Fidelity already isolates it. 
+
+Counterfactual probing. The counterfactual probe tests 
+
+whether the model reads the input causally or merely re-produces memorized training facts. Each test item is a pair 
+
+(x, x ′) identical except for one intervened generative param-eter θj → θ′ 
+
+> j
+
+(e.g., amplitude of Sine). As shown in Fig-ure 5, we run the model on both, parse the reasoning fields it states for each, and check two things: (1) Sensitivity , whether the matching field changes with the intervention, and (2) 
+
+Stability , whether the untouched fields stay unchanged. A causal model changes only the intervened field and keeps the untouched fields unchanged, whereas a memorizer changes nothing despite the intervention. Details of the Sensitivity and Stability computations are provided in Appendix D. Table 8 reports both rates on each pattern. Without Rea-sonCast the few-shot model rarely tracks the change, giv-ing low Sensitivity and only moderate Stability. ReasonCast                         
+
+> Model Sine Trend AR MF CP Average
+> w/o ReasonCast 0.153 0.165 0.440 0.164 0.341 0.252 w/ ReasonCast Implicit routing 0.924 0.888 0.870 0.868 0.921 0.894 Explicit routing 0.926 0.898 0.864 0.883 0.924 0.899
+
+Table 9: Robustness to explicit vs. implicit routing: either variant lifts Fidelity far above w/o ReasonCast, and the two variants land at essentially the same accuracy.               
+
+> Model Sine Trend AR MF CP Average
+> Separate (5 Models) 0.766 0.827 0.864 0.764 0.920 0.827 Joint (1 Model) 0.926 0.898 0.864 0.883 0.924 0.899
+
+Table 10: Separate vs. Joint training, where a single joint model outperforms the five separate specialists, showing that the primitives are complementary. raises Sensitivity sharply on every pattern and lifts Stability as well, showing that the trained model reads the input rather than recalling a memorized value. Appendix D shows one tracked and one ignored example. As AR has only one field, no other field remains to check, and Stability is undefined. 
+
+Robustness to explicit and implicit routing. To show that the gain does not depend on how the pattern is routed, we evaluate Explicit and Implicit routing against w/o Reason-Cast. In Table 9, both routing variants raise average Fidelity by a wide margin, and ReasonCast is robust to how the pat-tern is routed. This demonstrates that the gain comes from the reasoning itself, not from how the pattern class is exposed. 
+
+# 6 Analysis 
+
+In this section, we analyze the following six aspects: 
+
+• Complementarity of the five primitives 
+
+• Grounding from reasoning content, not format 
+
+• Performance on Unknown and OOD-novel inputs 
+
+• Application to real-world data 
+
+• Comparison with symbolic regression 
+
+• Capacity scaling (Appendix K) 
+
+Complementarity of the five primitives. Table 10 com-pares the routed single model against the Single-pattern spe-cialists. Explicit routing reaches a higher accuracy than the specialists that each see a single pattern. The results demon-strate that the five primitives are complementary, and one model can replace the five separate specialists at deployment. 
+
+Grounding from reasoning content, not format. While Table 7 shows that emitting the reasoning first matters, it does not say whether the grounding comes from the fields the model learns to emit or from the values it puts in them. To test whether the reasoning is genuinely grounded in the input rather than only following the required format, we replace each sample’s reasoning target with the reasoning of another sample. The forecast target stays correct, so the reasoning is the only part of the supervision that no longer describes the input. As shown in Table 11, the corrupted model degrades Figure 6: Application to real-world datasets: ETTh1, Solar, Weather, Traffic. The default model is applied without further training, with the pattern class the model routed each window to. Each window has a context of 200 steps and a horizon of 48.                                                  
+
+> Corrupted reasoning Correct reasoning Pattern Fid. ↑Cons. ↑Error ↓Fid. ↑Cons. ↑Error ↓
+> Sine 0.055 0.073 0.558 0.766 0.383 0.549
+> Trend 0.139 0.032 1.136 0.827 0.219 0.647
+> AR(1) 0.386 0.963 0.179 0.884 1.000 0.176
+> Multi-freq 0.000 †––0.764 0.189 0.454
+> Changepoint 0.258 0.009 0.203 0.944 0.534 0.195
+> Average 0.167 0.269 0.505 0.837 0.465 0.404
+
+Table 11: Reasoning content ablation. Swapping each train-ing reasoning for another sample’s makes fields wrong but the prediction correct. † Multi-freq emitted nothing parseable. on every pattern even though its forecast targets were left untouched. This demonstrates that the reasoning and the forecast depend on each other , and that correct fields alone do not make either one right, as Appendix H illustrates. 
+
+Application to real-world data. We also apply the default model, with no further training, to windows drawn from the four real-world datasets of Figure 2. As Figure 6 shows, the model routes each window either to one of the five patterns or to no-pattern, and it forecasts that window under the choice it made. The pattern it settles on differs across datasets, with Multi-periodicity on Solar and Traffic and Trend on Weather. On the ETTh1 window it reports no pattern, yet its forecast still follows the target by extrapolating the recent trend. 
+
+Performance on Unknown and OOD-novel inputs. We also test the two sets of inputs in Table 3 that match none of the five primitives. As Table 12 shows, ReasonCast forecasts them more accurately than w/o ReasonCast, both on the un-known inputs it was trained on and on the held-out processes it has never seen. The gain holds for either routing variant, which indicates that it comes from the reasoning rather than from how the model routes. 
+
+Symbolic regression: structure without explanation. 
+
+Symbolic regression (Schmidt and Lipson 2009; Brunton, Proctor, and Kutz 2016) searches a space of mathematical expressions for a closed-form equation that fits the observed series. It selects the expression whose parameters best re-produce the series, so the fitted formula is at once the fore-caster and its own explanation of the dynamics. However, compared with ReasonCast, the fitted equation is all it of-fers. As Table 13 shows, symbolic regression 1) gives no natural-language account, 2) cannot flag unfamiliar inputs,                              
+
+> w/o ReasonCast w/ ReasonCast No-pattern Implicit Explicit
+> Unknown (in-distribution)
+> Random walk 1.70 1.34 1.39
+> White noise 2.02 1.51 1.52
+> Exponential 187.86 108.4 108.9
+> Sawtooth 1.04 0.82 0.80
+> Square wave 6.26 4.60 4.65
+> OOD-novel (held out)
+> Quadratic trend 24.34 4.41 6.42
+> ARMA(1,1) 0.75 0.49 0.50
+> Double AR(1) 1.00 0.65 0.67
+> Bilinear 1.62 1.16 1.61
+
+Table 12: Forecast error on inputs with no pattern. Each entry is the average MAE over the test samples of that process. Bold marks a gain over w/o ReasonCast.                 
+
+> Capabilities Error ↓
+> Method Struct. Lang. Unfam. Cons.
+> Symbolic ✓–––0.320 ReasonCast ✓✓✓✓0.236
+
+Table 13: Symbolic regression vs. ReasonCast. 3) provides no forecast-consistency check, and 4) forecasts less accurately. Details are provided in Appendix I. 
+
+# 7 Conclusion 
+
+We argue for a fourth axis of TS modeling, task-fused under-standing × generation, in which a model predicts and self-explains in a single output. We instantiate it with ReasonTS-Bench, the first TS benchmark with step-verifiable reasoning chains and four metrics, and with ReasonCast, a recipe that yields one deployable model outperforming baselines while providing grounded, no-pattern-capable reasoning. 
+
+Limitations and future work. ReasonTS-Bench is a syn-thetic benchmark built on five primitives, and two extensions stand out. First, it is univariate, and moving to multivari-ate series calls for explanations that must also account for cross-variate dependence. Second, its five primitives are ele-mentary building blocks, and grounding explanations in their compositions is the natural path toward richer explainability. References 
+
+Abdin, M.; Aneja, J.; Awadalla, H.; Awadallah, A.; Awan, A. A.; Bach, N.; et al. 2024. Phi-3 Technical Report: A Highly Capable Language Model Locally on Your Phone. 
+
+arXiv preprint arXiv:2404.14219 .Aksu, T.; Woo, G.; Liu, J.; Liu, X.; Liu, C.; Savarese, S.; Xiong, C.; and Sahoo, D. 2024. GIFT-Eval: A Benchmark for General Time Series Forecasting Model Evaluation. arXiv preprint arXiv:2410.10393 .Ansari, A. F.; Stella, L.; Turkmen, C.; Zhang, X.; Mercado, P.; Shen, H.; Shchur, O.; Rangapuram, S. S.; Arango, S. P.; Kapoor, S.; et al. 2024. Chronos: Learning the Language of Time Series. Transactions on Machine Learning Research (TMLR) .Brunton, S. L.; Proctor, J. L.; and Kutz, J. N. 2016. Discover-ing Governing Equations from Data by Sparse Identification of Nonlinear Dynamical Systems. Proceedings of the Na-tional Academy of Sciences , 113(15): 3932–3937. Chen, J.; Feng, A.; Zhao, Z.; Garza, J.; Nurbek, G.; Qin, C.; Maatouk, A.; Tassiulas, L.; Gao, Y.; and Ying, R. 2025a. MTBench: A Multimodal Time Series Benchmark for Tem-poral Reasoning and Question Answering. arXiv preprint arXiv:2503.16858 .Chen, M.; Shen, L.; Li, Z.; Wang, X. J.; Sun, J.; and Liu, C. 2025b. VisionTS: Visual Masked Autoencoders Are Free-Lunch Zero-Shot Time Series Forecasters. In International Conference on Machine Learning (ICML) .Chow, W.; Gardiner, L.; Hallgrímsson, H. T.; Xu, M. A.; and Ren, S. Y. 2024. Towards Time Series Reasoning with LLMs. arXiv preprint arXiv:2409.11376 .Cleveland, R. B.; Cleveland, W. S.; McRae, J. E.; and Ter-penning, I. 1990. STL: A Seasonal-Trend Decomposition Procedure Based on Loess. Journal of Official Statistics ,6(1): 3–73. Cobbe, K.; et al. 2021. Training Verifiers to Solve Math Word Problems. arXiv preprint arXiv:2110.14168 .Das, A.; Kong, W.; Sen, R.; and Zhou, Y. 2024. A Decoder-Only Foundation Model for Time-Series Forecasting. In 
+
+International Conference on Machine Learning (ICML) .Gemma Team; Riviere, M.; Pathak, S.; Sessa, P. G.; et al. 2024. Gemma 2: Improving Open Language Models at a Practical Size. arXiv preprint arXiv:2408.00118 .Godahewa, R.; Bergmeir, C.; Webb, G. I.; Hyndman, R. J.; and Montero-Manso, P. 2021. Monash Time Series Forecast-ing Archive. In Advances in Neural Information Processing Systems (NeurIPS) Datasets and Benchmarks Track .Grattafiori, A.; Dubey, A.; Jauhri, A.; Pandey, A.; et al. 2024. The Llama 3 Herd of Models. arXiv preprint arXiv:2407.21783 .Guan, T.; Meng, Z.; Li, D.; Wang, S.; Yang, C.-H. H.; et al. 2026a. TimeOmni-1: Incentivizing Complex Reasoning with Time Series in Large Language Models. In International Conference on Learning Representations (ICLR) .Guan, T.; Pan, S.; Barthelemy, J.; Li, Z.; Cai, Y.; Alippi, C.; Jin, M.; and Pan, S. 2026b. TimeOmni-VL: Unified Models for Time Series Understanding and Generation. In 
+
+International Conference on Machine Learning (ICML) .He, Z.; Han, B.; Zhang, X.; Zhang, S.; Lin, H.; Zhu, Q.; Fang, H.; Maddix, D. C.; Ansari, A. F.; Chandrayan, A.; Pradhan, A.; Wang, B.; and Reimherr, M. 2026. SenTSR-Bench: Thinking with Injected Knowledge for Time-Series Reasoning. In International Conference on Artificial Intelli-gence and Statistics (AISTATS) .Hendrycks, D.; et al. 2021. Measuring Mathematical Prob-lem Solving with the MATH Dataset. In Advances in Neu-ral Information Processing Systems (NeurIPS) Datasets and Benchmarks Track .Hu, E. J.; Shen, Y.; Wallis, P.; Allen-Zhu, Z.; Li, Y.; Wang, S.; Wang, L.; and Chen, W. 2022. LoRA: Low-Rank Adaptation of Large Language Models. In International Conference on Learning Representations (ICLR) .Jin, M.; Wang, S.; Ma, L.; Chu, Z.; Zhang, J. Y.; Shi, X.; Chen, P.-Y.; Liang, Y.; Li, Y.-F.; Pan, S.; and Wen, Q. 2024. Time-LLM: Time Series Forecasting by Reprogramming Large Language Models. In International Conference on Learning Representations (ICLR) .Kong, Y.; Yang, Y.; Hwang, Y.; Du, W.; Zohren, S.; Wang, Z.; Jin, M.; and Wen, Q. 2025. Time-MQA: Time Series Multi-Task Question Answering with Context Enhancement. In Proceedings of the 63rd Annual Meeting of the Association for Computational Linguistics (ACL) , 29736–29753. Lee, S.; Seo, J.; Lee, J.; Yoo, S.; Kim, M.; Lim, T. Y.; Kang, D.; Choi, H.; Lee, S.; and Ahn, W. 2026. FinSTaR: Towards Financial Reasoning with Time Series Reasoning Models. 
+
+arXiv preprint arXiv:2605.03460 .Lin, J.; Wang, Y.; Wu, J.; Luo, H.; Pei, Z.; and Wang, J. 2026. Thoth: Mid-Training Bridges LLMs to Time Series Understanding. arXiv preprint arXiv:2603.01042 .Liu, Y.; Hu, T.; Zhang, H.; Wu, H.; Wang, S.; Ma, L.; and Long, M. 2024. iTransformer: Inverted Transformers Are Effective for Time Series Forecasting. In International Con-ference on Learning Representations (ICLR) .Lu, J.; Chen, P.; Wu, X.; Shu, Y.; Guo, C.; Jensen, C. S.; and Yang, B. 2026. PATRA: Pattern-Aware Alignment and Balanced Reasoning for Time Series Question Answering. In International Conference on Machine Learning (ICML) .Nie, Y.; Nguyen, N. H.; Sinthong, P.; and Kalagnanam, J. 2023. A Time Series is Worth 64 Words: Long-term Fore-casting with Transformers. In International Conference on Learning Representations (ICLR) . ArXiv:2211.14730. Qin, J.; Li, C.; Cui, J.; Wang, L.; Liu, Z.; and Liao, Q. 2025. Bridging Time and Linguistics: LLMs as Time Series Ana-lyzer through Symbolization and Segmentation. In Advances in Neural Information Processing Systems (NeurIPS) .Qiu, X.; Hu, J.; Zhou, L.; Wu, X.; Du, J.; Zhang, B.; Guo, C.; Zhou, A.; Jensen, C. S.; Sheng, Z.; and Yang, B. 2024. TFB: Towards Comprehensive and Fair Benchmarking of Time Series Forecasting Methods. Proceedings of the VLDB Endowment .Schmidt, M.; and Lipson, H. 2009. Distilling Free-Form Natural Laws from Experimental Data. Science , 324(5923): 81–85. Shi, X.; Wang, S.; Nie, Y.; Li, D.; Ye, Z.; Wen, Q.; and Jin, M. 2025. Time-MoE: Billion-Scale Time Series Foundation Models with Mixture of Experts. In International Conference on Learning Representations (ICLR) .Suzgun, M.; et al. 2023. Challenging BIG-Bench Tasks and Whether Chain-of-Thought Can Solve Them. In Find-ings of the Association for Computational Linguistics (ACL) ,13003–13051. Wang, C.; Qi, Q.; Wang, J.; Sun, H.; Zhuang, Z.; Wu, J.; Zhang, L.; and Liao, J. 2025. ChatTime: A Unified Multi-modal Time Series Foundation Model Bridging Numerical and Textual Data. Proceedings of the AAAI Conference on Artificial Intelligence , 39(12): 12694–12702. Wang, Y.; Wu, H.; Dong, J.; Liu, Y.; Qiu, Y.; Zhang, H.; Wang, J.; and Long, M. 2024. TimeXer: Empowering Trans-formers for Time Series Forecasting with Exogenous Vari-ables. In Advances in Neural Information Processing Systems (NeurIPS) .Wold, H. 1938. A Study in the Analysis of Stationary Time Series . Uppsala: Almqvist & Wiksell. Woo, G.; Liu, C.; Kumar, A.; Xiong, C.; Savarese, S.; and Sahoo, D. 2024. Unified Training of Universal Time Series Forecasting Transformers. In International Conference on Machine Learning (ICML) .Wu, H.; Hu, T.; Liu, Y.; Zhou, H.; Wang, J.; and Long, M. 2023. TimesNet: Temporal 2D-Variation Modeling for General Time Series Analysis. In International Conference on Learning Representations (ICLR) .Xie, Z.; Li, Z.; He, X.; Xu, L.; Wen, X.; Zhang, T.; Chen, J.; Shi, R.; and Pei, D. 2025. ChatTS: Aligning Time Series with LLMs via Synthetic Data for Enhanced Understanding and Reasoning. Proceedings of the VLDB Endowment , 18(8): 2385–2398. Yang, A.; Yang, B.; Zhang, B.; Hui, B.; Zheng, B.; Yu, B.; Li, C.; Liu, D.; et al. 2024. Qwen2.5 Technical Report. arXiv preprint arXiv:2412.15115 .Zeng, A.; Chen, M.; Zhang, L.; and Xu, Q. 2023. Are Trans-formers Effective for Time Series Forecasting? In Proceed-ings of the AAAI Conference on Artificial Intelligence .Zhang, X.; Gao, T.; Cheng, M.; Pan, B.; Guo, Z.; Liu, Y.; Tao, X.; and Liu, Q. 2025. AlphaCast: A Human Wisdom-LLM Intelligence Co-Reasoning Framework for Interactive Time Series Forecasting. arXiv preprint arXiv:2511.08947 .A Additional Related Work 
+
+TS benchmarks. Table 2 also groups TS benchmarks by the four axes. Forecasting benchmarks such as the Monash archive (Godahewa et al. 2021), GIFT-Eval (Aksu et al. 2024), and TFB (Qiu et al. 2024) score numeric accuracy alone (axis G). A newer line evaluates TS reasoning in lan-guage, where the TSQA set of Time-MQA (Kong et al. 2025), MTBench (Chen et al. 2025a), and SenTSR-Bench (He et al. 2026) pose textual questions about a series (axis U). Clos-est to us, the TSR-Suite of TimeOmni-1 (Guan et al. 2026a) and FinSTaR (Lee et al. 2026) pair reasoning with predic-tion, but as separate task families (axis U+G). The idea of a step-verifiable reasoning chain follows chain-of-thought benchmarks in math and code (Cobbe et al. 2021; Hendrycks et al. 2021; Suzgun et al. 2023), where each step is check-able. To our knowledge, ReasonTS-Bench is the first to bring this to TS (axis U ×G) : it asks a model to derive a numeric forecast from observed dynamics in a chain that is verifiable at the step level and scored jointly with the forecast. 
+
+Symbolic regression. The closest classical analog to a model that both predicts and explains is symbolic regres-sion, which recovers a closed-form expression that fits ob-served data (Schmidt and Lipson 2009; Brunton, Proctor, and Kutz 2016). A fitted expression is at once a predictor and an account of the data, so it unifies generation and un-derstanding in a single object. It differs from our setting in two ways. The explanation is a symbolic formula rather than a natural-language justification, and the method emits one fused expression rather than a forecast and a separate ratio-nale whose mutual consistency can be scored. We compare against a symbolic-regression baseline in the analysis. 
+
+# B Metric Definitions 
+
+This section gives the exact computation of the four met-ric families introduced in Section 4. We write a sample as a context x1: N followed by a target y = ( y1, . . . , y H ) with 
+
+yk = xN +k, and the model emits a forecast ˆy = (ˆ y1, . . . , ˆyH )
+
+together with a reasoning chain whose named fields we col-lect in a set F. For a field f , ˆvf is the value the model emits and v⋆f is the closed-form ground truth computed from the generative parameters. Figure 7 works all four families through a single Sine example, showing on the same series what each one measures. 
+
+Matching a single field. Discrete fields (a period, a changepoint index, a state label) require an exact match, and continuous fields (an amplitude, a slope) pass within a tolerance. We write this as a single indicator with per-field absolute and relative tolerances af and rf ,
+
+match(ˆ vf , v ⋆f ) = 1
+
+h
+
+|ˆvf − v⋆f | ≤ af or 
+
+|ˆvf − v⋆f | ≤ rf |v⋆f |
+
+i
+
+,
+
+(2) where a discrete field sets af = rf = 0 , so the condition reduces to the exact equality ˆvf = v⋆f , while a field that the model fails to emit is counted as a mismatch and receives the minimum score of 0 from the same indicator. Table 18 lists the tolerances for every field. 
+
+B.1 Error 
+
+Error is the standard forecast deviation on the predicted val-ues, parsed from the PREDICTION block and aligned to the target by absolute time index. We report mean absolute error and its scaled version, 
+
+MAE = 1
+
+H
+
+> H
+
+X
+
+> k=1
+
+ˆyk − yk , (3) 
+
+MASE = (H − 1) MAE 
+
+PHi=2 |yi − yi−1| , (4) where MASE normalizes by the average one-step change of the target, so a value below 1 beats the naive forecast. 
+
+Worked example. Take a four-step target y =(2 .0, 2.5, 2.4, 1.8) and a forecast ˆy = (2 .1, 2.3, 2.6, 1.9) .The absolute errors are (0 .1, 0.2, 0.2, 0.1) , so MAE =0.6/4 = 0 .15 . The naive one-step differences of the target are (0 .5, 0.1, 0.6) with mean 0.4, so MASE = 0 .15 /0.4 = 0.375 , a value below 1 that beats the naive last-value forecast. 
+
+B.2 Fidelity 
+
+Fidelity checks whether the reasoning fields are correct rather than hallucinated. Each field is matched against its closed-form truth, and the score is the fraction of fields that match, 
+
+Fidelity = 1
+
+|F| 
+
+X 
+
+> f∈F
+
+match(ˆ vf , v ⋆f ). (5) Fidelity is then averaged over all samples in the split. 
+
+Worked example. Suppose the truth is period ⋆ = 36 ,amplitude ⋆ = 3.71 , phase ⋆ = 1.94 . The model emits 
+
+\period = 36 , \amplitude = 3 .65 , [phase = 2 .31 . The period is discrete and matches exactly. The amplitude is continuous with af = 0 .1, and |3.65 − 3.71 | = 0 .06 ≤ 0.1 matches. The phase has af = 0 .3, and |2.31 − 1.94 | = 0 .37 > 0.3
+
+fails. Fidelity is then (1 + 1 + 0) /3 ≈ 0.67 .
+
+B.3 Consistency 
+
+Consistency checks whether the predicted numbers obey the rule the model itself states, and it uses no ground truth. The reasoning fields ˆo define a rule gˆo, and at each step we com-pute the value that rule implies, ˜yk = gˆo(N + k). The rule is pattern-specific. For a sinusoid ˜yk = ˆA sin  2π(N +k)/ ˆP +ˆϕ, for an AR(1) process ˜yk ≈ ˆα k+1 xN −1, and analogously for the other patterns. The score is the fraction of forecast points that lie within a tolerance of their own implied value, 
+
+Consistency = 1
+
+H
+
+> H
+
+X
+
+> k=1
+
+1 ˆyk − ˜yk ≤ τ · A  , (6) with τ = 0 .1 and A a per-pattern amplitude scale. Because y
+
+never enters, this isolates self-grounding from forecast error. 
+
+Worked example. Suppose the model states the rule 
+
+ˆx(t) = 3.65 sin(2 πt/ 36 + 1 .94) , which implies ˜y =(1 .35 , 1.93 , 2.45 , 2.90) over four steps, while its PREDIC-TION block emits ˆy = (1 .40 , 1.88 , 2.52 , 2.84) . The devi-ations (0 .05 , 0.05 , 0.07 , 0.06) all fall within τ A = 0 .1 ×
+
+3.71 = 0 .371 , so all four points are consistent and the score is 4/4 = 1 .0, even though no ground truth was used. Figure 7: The four metric families, illustrated on a Sine example. Error averages the shaded gap between prediction and target. Fidelity checks each reasoning field against the closed-form truth (green: match, red: miss). Consistency checks whether predicted points obey the model’s stated rule (green) or violate it (red ×), needing no ground truth. Sensitivity swaps one parameter (period 7 → 11 ) and asks whether only the matching field moves.                                                                         
+
+> Pattern Equation Parameter ranges
+> Periodicity Asin(2 πt/P +ϕ) + εP∈[4 ,50] , A ∈[0 .5,5] , ϕ ∈[0 ,2π]
+> Trend Asin(2 πt/P +ϕ) + mt +b+εPeriodicity +m∈[−0.05 ,0.05] , b ∈[−2,2]
+> Temporal dependence α x (t−1) + εα∈[−0.95 ,0.95] , σ ∈[0 .05 ,0.3]
+> Multi-periodicity P
+> i=1 ,2Aisin(2 πt/P i+ϕi) + εP1∈[3 ,20] , P 2≥2P1, P 2≤60
+> Structural break Piecewise linear at t∗t∗∈[0 .25 N, 0.85 N], m 1, m 2∈[−0.1,0.1]
+> Unknown Random walk, white noise, exponential, sawtooth, square wave Distinct from all primitives
+> OOD-novel ARMA(1,1), bilinear, double-AR1, quadratic trend Truly unseen, used only at test time
+
+Table 14: ReasonTS-Bench patterns with generative equations and full parameter ranges. N denotes context length. The noise term ε has zero mean and standard deviation in [0 , 0.1] · A for sinusoidal patterns. 
+
+B.4 Sensitivity 
+
+Sensitivity is measured with paired counterfactual probes. From a base sample with generative parameters θ we build a counterfactual that changes one parameter θj → θ′ 
+
+> j
+
+and holds the rest fixed, so the only difference between the two is the intervened parameter. We run the model on both and read the reasoning fields ˆv and ˆv′. Let f (j) be the field that should track parameter j. We report two rates, 
+
+Sensitivity = match 
+
+
+
+ˆv′ 
+
+> f(j)
+
+, θ ′
+
+> j
+
+
+
+, (7) 
+
+Stability = 1
+
+|F \ { f (j)}| 
+
+X  
+
+> f̸=f(j)
+
+match  ˆvf , ˆv′
+
+> f
+
+ , (8) averaged over pairs. A causally sound model scores high on both, meaning the intervened field moves to the new value while every other field stays fixed. This separates causal rea-soning from memorization. A model that merely matched an input to its nearest training instance could score high on Fidelity yet low on Sensitivity. The intervention redraws the chosen parameter instead of adding a fixed offset, and Table 20 lists the parameters probed for each pattern. A pair counts as sensitive only when the stated field tracks the new value. 
+
+# C Full Benchmark Specification 
+
+Table 14 gives the generative parameter ranges for every pattern, Table 15 lists the reasoning fields the model must emit, Table 16 shows a ground-truth reasoning excerpt per pattern, and Table 17 gives the size of every split. 
+
+The two out-of-pattern sets. Figure 8 shows one sam-ple from each member of the two sets. Unknown holds five signals that match no primitive and differ from one another, which teaches the model to flag unfamiliar inputs rather than memorize one shape. OOD-novel holds four processes never seen in training, ordered from far from any primitive to close to one, which lets us measure how far the flagging carries. 
+
+Metric configuration. Table 18 lists the per-field toler-ances of the match indicator, which Fidelity, Sensitivity, Pattern Reasoning fields the model must emit 
+
+Periodicity Detected period, detected amplitude, detected phase, last value, current state, next peak at, next trough at, next cycle completes at Trend Periodicity fields + detected slope, detected intercept, trend direction Temporal dependence Detected alpha, detected noise std, regime, half life steps, forecast rule Multi-periodicity Detected period 1, detected amplitude 1, detected phase 1, detected period 2, detected amplitude 2, detected phase 2, dominant component, amplitude ratio Structural break Detected changepoint t, segment 1 slope, segment 1 intercept, segment 2 slope, segment 2 intercept, current segment, regime after changepoint Unknown Pattern match confidence: low, pattern type: unknown, fallback strategy: naive last value continuation 
+
+Table 15: Schema per pattern. A multi-pattern model must decide which schema to emit per input, and this routing problem motivates the Implicit routing and Explicit routing variants of Section 4. 
+
+Sine Trend AR(1) Multi-freq Changepoint Reasoning 
+
+Pattern: Sine Pattern: Trend Pattern: AR(1) Pattern: 2-Freq Pattern: Break Period: 7 Period: 7 Alpha: 0.87 Fast P: 3 Changept: 67 Amp: 0.91 Slope: -0.033 Regime: Decay Slow P: 59 Slope 1: 0.099 Phase: 2.27 Dir: Falling a x(t-1)+e Amps: 2.79/1.04 Slope 2: -0.095 A sin(t/P) sin + mt+b Next: revert to 0 sin1+sin2 break at t* Next: continue Next: trend holds Sep: 19.7x Next: new slope 
+
+Prediction H=42 (128-169) H=87 (114-200) H=56 (71-126) H=16 (133-148) H=92 (146-237) [-.71,..,-.02] [-3.3,..,-5.7] [-.70,..,-.02] [-.73,..,-1.0] [.77,..,-7.1] 
+
+Table 16: Ground-truth reasoning excerpt for each sample plotted in Figure 1, where every field is computed in closed form from that sample’s generative parameters. The full chains appear in Appendix L. 
+
+Figure 8: The two out-of-pattern sets. One sample is shown per member of the Unknown (top) and OOD-novel (bottom) sets, where blue marks the input context and red marks the forecast target that follows it. 
+
+Split Train Val Test Use 
+
+Primitives (each of 5) 12,000 1,000 1,000 Train and evaluate the model on each of the five primitive patterns Unknown 12,000 1,000 1,000 Learn to flag an unfamiliar, out-of-distribution input as no-pattern OOD-novel – – 500 Test whether the no-pattern flagging transfers to unseen, held-out processes CF probe (paired) – – 100–150/pattern Paired inputs differing in a single generative parameter, for the causal check 
+
+Table 17: Dataset sizes. Context length N ∈ [50 , 200] and horizon H ∈ [10 , 100] vary per sample. Figure 9: Counterfactual probe, success versus failure. On the left, changing the Sine amplitude shifts the model’s stated detected amplitude to match ( Sensitivity=0 .94 ), a causal reading of the input. On the right, swapping Multi-freq’s slow envelope (period 2) leaves the stated value almost unchanged ( Sensitivity=0 .09 ), localizing the hierarchical-perception gap. and Stability all share. A zero pair requires an exact match, and the ranges reflect per-pattern differences in a field’s nat-ural scale. Table 20 lists the counterfactual interventions of the Sensitivity probe. Each new value is drawn from the pa-rameter’s generative range and redrawn until it differs from the original by a minimum margin, which keeps every coun-terfactual a real change, and the intervened field is scored with the same tolerances as Fidelity.                         
+
+> Field afrf
+> Period or index 00
+> Event time 00
+> Categorical label 00
+> Changepoint index 20
+> Amplitude 0.10 –0.15 0.10 –0.15
+> Phase 0.30
+> Slope 0.01 0.2
+> Intercept 0.50.2
+> AR coefficient 0.05 0
+> Noise std 0.05 0.3
+> Last value 0.10 –0.20 0.1
+
+Table 18: Per-field tolerances for the match indicator, with 
+
+af absolute and rf relative. 
+
+# D Counterfactual Probe: A Worked Example 
+
+Table 21 runs the probe on a Sine sample where only the period is changed, θj : 36 → 40 , holding everything else fixed. The model reads each reasoning field twice, once on the base input ( ˆv) and once on the counterfactual ( ˆv′). The intervened field, the detected period, follows the change to 40 , so Sensitivity = match(40 , 40) = 1 , and the two untouched fields stay within tolerance across the pair, so 
+
+Stability = 2 /2 = 1 . The model therefore tracked the in-tervened parameter while leaving the two untouched fields in place. Figure 9 contrasts such a tracked intervention with an ignored one, where the model leaves a Multi-freq slow envelope almost unchanged. 
+
+# E ReasonCast Pipeline 
+
+Figure 10 shows the two single-model routing pipelines end to end, and Table 19 compares the three configurations we study in this work. A single decoder produces the entire output in one autoregressive pass. It first emits a class-conditional reasoning chain, split into an INPUT ANAL-YSIS block that states the detected structure of the series and a REASONING block that derives the forecast from that structure, and then emits the numeric PREDICTION block. When an input matches none of the five primitives, a no-pattern branch fires instead, and the model reports low pattern-match confidence and extrapolates the recent local trend rather than forcing a primitive schema onto the input. The two variants differ only in how the pattern class is routed. Explicit routing emits the class as the first generated token, so routing is a visible step that conditions all that follows. Implicit routing emits no class token and selects the schema inside the decoder. Both share the factorization 
+
+pθ (orsn | X) pθ (ogen | orsn , X ), in which the reasoning is produced first and the generation is conditioned on it. At 3B the two variants reach the same error and nearly identical Fidelity and Consistency, as Table 22 reports. The class token makes the routing visible without changing accuracy. Configuration What it is Trained on # Models           
+
+> Explicit routing One model. The first emitted token is the pattern class, then a class-conditional reasoning chain and forecast All patterns +Unknown, with a pattern-class prefix 1Implicit routing The same single model without the class token, so routing is learned implicitly All patterns +Unknown 1Single-pattern A separate specialist per pattern, so an external caller must pick the model One pattern 5
+
+Table 19: Our default model and its two ablations. Routing is how the model decides which output schema to emit. Explicit routing (our default) makes routing an explicit first-token step and is the only configuration deployable on an arbitrary input. Implicit routing learns routing implicitly. Single-pattern trains a separate specialist per pattern with no cross-pattern sharing and needs an external caller, isolating the value of joint training rather than serving as a deployable system. 
+
+Figure 10: The two ReasonCast routing pipelines. A single decoder produces the class-conditional reasoning chain and the numeric prediction in one autoregressive pass, with a no-pattern branch for inputs matching no primitive. [Top] Explicit routing emits the pattern class as the first token. [Bottom] Implicit routing selects the schema inside the decoder. 
+
+# F Baseline Details 
+
+F.1 Baseline Catalog and Configuration 
+
+We compare against a wide set of baselines spanning the four axes of Table 1. Table 23 lists them by category with the capabilities each offers. Not all produce reasoning or no-pattern detection, but all produce a forecast, so the forecast metric is comparable throughout. 
+
+Trivial baselines. Naive-last repeats x(N −1) for all fu-ture steps. Seasonal-naive estimates a period from the au-tocorrelation function and repeats it, and an oracle variant instead uses the ground-truth period as an upper bound. Lin-ear extrapolation fits a trend to the last 24 points and extends that trend over the horizon. 
+
+TS forecasting models. DLinear (Zeng et al. 2023), PatchTST (Nie et al. 2023), iTransformer (Liu et al. 2024), and TimeXer (Wang et al. 2024), all trained per-pattern on our 12k training set with matched optimizer and 20 epochs, each with a 200-step input window and 100-step output head. 
+
+LLM baselines. We benchmark four instruction-tuned LLM backbones spanning the Qwen, Llama, Phi, and Gemma families (Qwen2.5-7B-Instruct (Yang et al. 2024), Llama-3.1-8B-Instruct (Grattafiori et al. 2024), Phi-3.5-mini-instruct (Abdin et al. 2024), and Gemma-2-9B-it (Gemma Team et al. 2024)). Each is evaluated both few-shot, with k=2 in-context examples sampled from the train-ing set and no weight updates, and fine-tuned on our rea-soning chains with the same recipe as ReasonCast (low-rank adaptation (Hu et al. 2022) for the 7B–9B backbones). 
+
+Our ablations. Numeric SFT uses the same base model as Single-pattern but trained to emit only the PREDICTION block, with no reasoning chain. This isolates the cost or benefit of attaching reasoning to forecasting. 
+
+F.2 Evaluation Protocol 
+
+Unless noted, all forecast metrics use n=200 test samples per pattern. The reasoning metrics (Fidelity, Consistency, and Sensitivity) are reported only for methods that emit a Intervened Counterfactual value                                                           
+
+> Sine
+> Period int[4 ,50] ,̸=orig Amplitude U(0 .5,5.0) ,|∆| ≥ 0.5
+> Phase U(0 ,2π),|∆| ≥ 0.5
+> Trend
+> Period int[4 ,50] ,̸=orig Slope U(−0.05 ,0.05) ,|∆| ≥ 0.02
+> Intercept U(−2,2) ,|∆| ≥ 1.0
+> AR(1)
+> Alpha U(−0.95 ,0.95) ,|∆| ≥ 0.3
+> Multi-freq
+> Period 1int[3 ,20] ,̸=,2p1< p 2
+> Period 2int[2 p1,60] ,≥2p1
+> Amplitude 1U(0 .5,3.0) ,|∆| ≥ 0.5
+> Changepoint
+> Changepoint tint[0 .25 N, 0.85 N],|∆| ≥ 0.1N
+> Segment 2 slope U(−0.1,0.1) ,|∆| ≥ 0.03
+
+Table 20: Counterfactual interventions. N is the context length and U denotes a uniform draw over the stated range.                      
+
+> Reasoning field ˆvˆv′Contributes
+> Detected period †36 40 Sensitivity: match(40 ,40) = 1
+> Detected amplitude 3.65 3.66 Stability: match(3 .66 ,3.65) = 1
+> Detected phase 2.31 2.33 Stability: match(2 .33 ,2.31) = 1
+> Sensitivity = 1 ,Stability = (1 + 1) /2 = 1
+
+Table 21: A counterfactual probe on one Sine pair. † is the intervened parameter (period 36 → 40 ), and ˆv, ˆv′ are the model’s fields on both inputs. reasoning chain, since every other baseline scores 0 on them by construction, so we omit those zero columns. ReasonCast is trained for one epoch per pattern or one epoch on the 72k union (no-pattern and Explicit routing) at 0.5B, 1.5B, and 3B, with 3B as the default. DLinear and PatchTST are trained per pattern for 20 epochs with a matched optimizer. 
+
+# G Explicit vs. Implicit Routing 
+
+Table 22 records every metric for the Qwen backbone across the three scales (0.5B, 1.5B, 3B) and the two single-model routing variants, Explicit and Implicit routing, all under full fine-tuning. Sensitivity is reported only for Explicit routing, since it needs the paired counterfactual runs of Appendix D and we ran those for the default variant only, so the Implicit rows carry a dash. Two patterns hold across the grid. First, every metric improves with scale: forecast error falls while Fidelity and Consistency rise from 0.5B to 3B. Second, the two routing variants track each other closely at every scale, and at 3B they reach the same forecast error and nearly iden-tical Fidelity and Consistency. This confirms the main-text result that the gain comes from the reasoning itself rather than from how the pattern class is exposed, and emitting the class as an explicit token or selecting it implicitly inside the decoder are interchangeable in practice. 
+
+# H Grounding Ablations 
+
+This section visualizes the two ablations that break the rea-soning’s grounding, each also reported numerically in the main text. The first is the order ablation reported in Table 7. Emitting the forecast before the reasoning turns the explana-tion into a post-hoc rationalization and collapses Fidelity on every pattern. The second is the reasoning content ablation reported in Table 11. Replacing each sample’s reasoning tar-get with the reasoning of another sample keeps the required format but leaves the fields describing a different input. This collapses Fidelity and Consistency on every pattern, and it degrades the forecast as well, even though the forecast tar-gets were left untouched. Figure 11 plots both effects, and the corrupted Multi-freq model degenerates far enough to emit nothing parseable. Emitting the reasoning first and supervis-ing it with the correct content are therefore both necessary for the reasoning to match what the model predicts. 
+
+Figure 11: Two ways the reasoning loses its grounding. [Top] The order ablation emits the forecast before the reasoning. [Bottom] The reasoning content ablation trains on the rea-soning of another sample. Both collapse Fidelity relative to the grounded model. Variant Scale Error ↓ Fidelity ↑ Consistency ↑ Sensitivity ↑                        
+
+> Explicit routing 0.5B 0.379 0.804 0.449 0.662 1.5B 0.259 0.860 0.528 0.718 3B 0.233 0.900 0.620 0.794 Implicit routing 0.5B 0.339 0.778 0.379 –1.5B 0.259 0.863 0.542 –3B 0.233 0.894 0.622 –
+
+Table 22: Full performance grid for the Qwen backbone, with every metric for Qwen2.5-Instruct across scale and the two single-model variants (Explicit and Implicit routing), all under full fine-tuning. Error is the mean forecast MAE. This table reports 200 test samples per pattern, versus the full 1,000 used by the main-text Tables 5 and 6.                                             
+
+> Method Forecast Reasoning No-pattern
+> Trivial
+> Naive last ✓––Seasonal naive ✓––Linear extrapolation ✓––
+> TS forecasting models
+> DLinear ✓––PatchTST ✓––iTransformer ✓––TimeXer ✓––
+> LLM (4 backbones)
+> Few-shot ✓Partial –Fine-tuned ✓✓–
+> LLM +ReasonCast
+> Numeric-only SFT ✓––Single-pattern ✓✓–Implicit routing ✓✓✓
+> Explicit routing ✓✓✓
+
+Table 23: Comparison of baselines. Only our methods cover all three capabilities simultaneously. 
+
+# I Symbolic Regression Baseline 
+
+Data. We evaluate the symbolic-regression base-line (Schmidt and Lipson 2009; Brunton, Proctor, and Kutz 2016) on the ReasonTS-Bench forecasting test sets, using the same five test splits and the same forecast MAE as Table 5. The naive-last predictor reproduces its published MAE on these splits, so the two are on an identical scale. We report the full 1,000 test samples per pattern. 
+
+Method. We give the baseline the strongest possible foot-ing: its candidate library is the benchmark’s own five gener-ative forms, so it only fits parameters and selects among the right hypotheses rather than searching an open expression space. This is a library-restricted, SINDy-style fit (Brunton, Proctor, and Kutz 2016). For each context window we fit every form by least squares, select the form with the lowest BIC, and extrapolate it over the horizon, and the recovered parameters are the structural fields credited in Table 13. It emits no natural-language reasoning, so by construction it offers none of the language-side capabilities that Table 13 credits to ReasonCast. 
+
+# J Multi-Seed Standard Deviation 
+
+Table 24 reports the default model’s forecast error as mean and standard deviation over 3 random seeds, which differ only in the random initialization and the training-data or-der. The standard deviations stay far below the gap between ReasonCast and its baselines.                                       
+
+> Pattern MAE MSE
+> Sine 0.208 ±0.011 0.139 ±0.013
+> Trend 0.360 ±0.016 0.343 ±0.022
+> AR 0.181 ±0.005 0.073 ±0.004
+> MF 0.256 ±0.014 0.225 ±0.018
+> CP 0.177 ±0.009 0.145 ±0.011
+> Avg. 0.236 ±0.008 0.185 ±0.010
+
+Table 24: Forecast error of the default 3B model (Qwen2.5-3B with ReasonCast) across the five primitives, as mean ±
+
+standard deviation over 3 random seeds. 
+
+# K Capacity Scaling 
+
+To measure how backbone size affects ReasonCast, we train it at three scales and report all four metrics in Table 25. Every metric improves with scale, and the gain is largest on the patterns with the most structure to recover, whereas AR is already near its ceiling at 0.5B. The results indicate that reasoning quality grows with capacity, and we adopt the 3B model as our default. 
+
+# L Ground-Truth Reasoning Chains 
+
+For each pattern we show one real sample’s complete ground-truth reasoning chain, exactly as emitted by the genera-tor (Section 3), with no simplification. Each chain has the three labeled blocks INPUT ANALYSIS, REASONING, and PREDICTION, and every field is computed in closed form from the generative parameters, so it is verifiable. We show the smallest-horizon sample of each pattern for compact-ness, with its series plotted above the chain (blue is the input context, red is the target). Error ↓ Fidelity ↑ Consistency ↑ Sensitivity ↑
+
+Pattern 0.5B 1.5B 3B 0.5B 1.5B 3B 0.5B 1.5B 3B 0.5B 1.5B 3B 
+
+Sine 0.221 0.203 0.208 0.821 0.905 0.926 0.596 0.703 0.753 0.870 0.940 0.960 
+
+Trend 0.484 0.393 0.360 0.795 0.872 0.898 0.206 0.330 0.414 0.770 0.850 0.880 
+
+AR 0.185 0.183 0.181 0.859 0.868 0.864 0.997 0.998 0.998 0.480 0.520 0.530 
+
+MF 0.439 0.345 0.256 0.733 0.802 0.883 0.181 0.247 0.445 0.700 0.690 0.820 
+
+CP 0.227 0.188 0.177 0.809 0.856 0.924 0.304 0.356 0.458 0.490 0.590 0.780 
+
+Average 0.311 0.262 0.236 0.803 0.861 0.899 0.457 0.527 0.613 0.662 0.718 0.794 
+
+Table 25: Reasoning correctness across scales. All four metrics improve as ReasonCast grows from 0.5B to 3B. 
+
+INPUT ANALYSIS: observed_length: 63 detected_period: 36 detected_amplitude: 3.71 detected_phase: 1.9431 last_value: x(62) = 1.1407 current_phase_in_cycle: 0.031 current_state: near_trough REASONING: pattern_type: pure_sinusoidal rule: x(t) = 3.71 * sin(2pi*t/36 + 1.9431) next_peak_at: t = 70 next_trough_at: t = 88 next_cycle_completes_at: t = 98 PREDICTION: t=63: 1.35 t=64: 1.929 t=65: 2.45 t=66: 2.897 t=67: 3.255 t=68: 3.515 t=69: 3.668 t=70: 3.709 t=71: 3.638 t=72: 3.456 
+
+Figure 12: Sine. 
+
+INPUT ANALYSIS: observed_length: 108 detected_period: 6detected_amplitude: 4.47 detected_phase: 4.0242 detected_slope: 0.0452 detected_intercept: 1.013 last_value: x(107) = 6.8411 current_phase_in_cycle: 0.474 current_state: near_peak REASONING: pattern_type: sine_plus_linear_trend rule: x(t) = 4.47 * sin(2pi*t/6 + 4.0242) + 0.0452*t + 1.013 trend_direction: rising next_peak_at: t = 112 next_trough_at: t = 109 PREDICTION: t=108: 2.442 t=109: 1.755 t=110: 5.253 t=111: 9.483 t=112: 10.26 t=113: 6.853 t=114: 2.713 t=115: 2.026 t=116: 5.524 t=117: 9.754 
+
+Figure 13: Sine + Trend. INPUT ANALYSIS: observed_length: 104 detected_alpha: 0.045 detected_noise_std: 0.088 last_value: x(103) = 0.0215 regime: monotonic_decay REASONING: pattern_type: ar1 rule: x(t) = 0.045 * x(t-1) + eps long_run_mean: 0half_life_steps: 0.22 forecast_rule: x_hat(N+k) = alpha^(k+1) * x(N-1) = 0.045^(k+1) * 0.0215 PREDICTION: t=104: 0.001 t=105: 0.0 t=106: 0.0 t=107: 0.0 t=108: 0.0 t=109: 0.0 t=110: 0.0 t=111: 0.0 t=112: 0.0 t=113: 0.0 
+
+Figure 14: AR(1). 
+
+INPUT ANALYSIS: observed_length: 81 detected_period_1: 7detected_period_2: 33 detected_amplitude_1: 1.05 detected_amplitude_2: 1.84 detected_phase_1: 0.2691 detected_phase_2: 0.3848 last_value: x(80) = 0.3595 REASONING: pattern_type: two_frequency_superposition rule: x(t) = 1.05*sin(2pi*t/7 + 0.2691) + 1.84*sin(2pi*t/33 + 0.3848) dominant_component: component_2 amplitude_ratio_A1_over_A2: 0.571 PREDICTION: t=81: -0.873 t=82: -1.574 t=83: -1.467 t=84: -0.864 t=85: -0.43 t=86: -0.672 t=87: -1.554 t=88: -2.513 t=89: -2.887 t=90: -2.404 
+
+Figure 15: Multi-frequency. INPUT ANALYSIS: observed_length: 104 detected_changepoint_t: 64 segment_1_slope: 0.0504 segment_1_intercept: 2.207 segment_2_slope: 0.0176 segment_2_intercept: 4.3062 last_value: x(103) = 6.5349 current_segment: segment_2 REASONING: pattern_type: piecewise_linear_with_changepoint rule_seg1: x(t) = 0.0504*t + 2.207, valid for t <= 64 rule_seg2: x(t) = 0.0176*t + 4.3062, valid for t > 64 regime_after_changepoint: decelerating forecast_uses_segment_2: True (since N-1=103 > t*=64) PREDICTION: t=104: 6.137 t=105: 6.154 t=106: 6.172 t=107: 6.189 t=108: 6.207 t=109: 6.225 t=110: 6.242 t=111: 6.26 t=112: 6.277 t=113: 6.295 
+
+Figure 16: Changepoint.

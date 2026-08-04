@@ -1,0 +1,512 @@
+Title: An AI-Based Decision-Support Pipeline for Day-Ahead Photovoltaic Forecasting
+
+URL Source: https://arxiv.org/pdf/2608.02088v1
+
+Published Time: Tue, 04 Aug 2026 02:17:03 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# An AI-Based Decision-Support Pipeline for Day-Ahead Photovoltaic Forecasting ∗
+
+## Fariba Dehghan 1, Sebastian Stein 1, Vahid Yazdanpanah 1, Stephanie Gauthier 1, Masood Nazari 11University of Southampton 
+
+F.Dehghan@soton.ac.uk, ss2@ecs.soton.ac.uk, V.Yazdanpanah@soton.ac.uk S.Gauthier@soton.ac.uk, M.Nazari@soton.ac.uk 
+
+Abstract: Reliable photovoltaic (PV) forecasts are needed for low-carbon energy systems, but newly de-ployed sites often have short, imperfect records. This makes standard day-ahead forecasting difficult: persis-tence and physical baselines can be sensitive to calibration and timestamp alignment, while single machine-learning models may capture only one structure in the data and overstate skill under non-temporal validation. We study this problem at a United Kingdom charging-station site, where PV forecast errors affect charg-ing availability, storage scheduling, and downstream control. Using measured inverter output and publicly available meteorological inputs, we develop a deployment-oriented environmental-AI pipeline for day-ahead hourly PV forecasting. The pipeline corrects timestamp conventions, constructs leakage-safe solar-geometry and clearness-index features, adds short-term atmospheric context, and combines complementary predictors through validation-learned stacking. Against smart persistence, a clear-sky baseline that adjusts recent PV output using expected clear-sky irradiance, the best ensemble reduces daylight normalised RMSE by about 32% under random day-blocked evaluation and 9% under the stricter rolling-origin protocol. It also reduces daylight RMSE relative to the strongest individual machine-learning baseline by 6.6% and 6.4%, respectively. The results show that physics-aware stacking can support PV forecasts from limited site data, but its value depends on model class, evaluation protocol, and deployment context. 
+
+Keywords: Environmental Artificial Intelligence, Photovoltaic Forecasting, Decision Support 
+
+# 1. Introduction 
+
+Machine learning is now central to forecasting environmental quantities that affect energy, climate, and infrastructure decisions, including solar generation, wind power, electricity demand, river flow, and air quality [1, 2]. In these settings, the practical value of a forecast depends on whether it can support timely and reliable decisions, not only on whether it improves an isolated error metric. These tasks are not standard tabular prediction problems. The target is usually a structured time series; the drivers are multivariate, weather-dependent, and partly predictable; and forecast skill often depends as much on how data are aligned and represented as on the model itself [3, 4]. Day-ahead forecasting, predicting the next 24 hours at hourly resolution, is a particularly important decision-support setting. It is close enough for weather information to remain informative, but far enough ahead for cloud evolution and atmospheric uncertainty to make the task difficult. Photovoltaic (PV) power forecasting is a useful case study for environmental artificial intelligence (AI) because generation is bounded, non-linear, strongly seasonal, and driven by physical variables that are often available only through numerical 
+
+> ∗This paper has been accepted for publication in the Proceedings of the UK AI Conference (UK-AI 2026). The final version will appear in the conference proceedings.
+
+1arXiv:2608.02088v1 [cs.LG] 3 Aug 2026 UK AI Conference 2026 weather products or reanalysis rather than direct site measurements [1, 2]. The setting studied here is especially operationally relevant because the PV measurements come from the Future Electric Vehicle Energy Networks supporting Renewables (FEVER) site in Southampton [5]. In such a system, uncertainty in PV generation directly affects charging availability, scheduling, storage use, reserve margins, and the robustness of downstream control decisions. The forecasting task is therefore treated as an AI pipeline for reliable operational decision support in a low-carbon energy system, rather than as a descriptive modelling exercise alone. A further practical constraint is that the FEVER site is new, so the available PV record spans only about one year and includes missing observations. This limited-data setting is typical of newly deployed energy infrastructure, where forecasting models are often needed before long, clean, multi-year archives exist. The results should therefore be interpreted not only as benchmark accuracy values, but also as evidence of what can be achieved when operational data are scarce, seasonally incomplete, and affected by real-world data gaps. Existing methods approach this problem from different directions. Physical and hybrid models trans-late weather inputs into expected power using irradiance models and plant geometry, but require reliable metadata and calibrated atmospheric data [6]. Statistical time-series models capture persistence and au-toregressive structure, sometimes with exogenous weather variables, but can struggle when rapid weather changes dominate [7]. Machine-learning models, including gradient boosting, convolutional networks, recur-rent networks, and neural stacking approaches, learn richer non-linear relationships [8–10]. However, any single architecture usually imposes one view of the data: tabular, sequential, normalised, or spatiotemporal. This paper starts from a simple observation: in day-ahead environmental forecasting, the main limitation is not always the absence of a deeper model. Forecasts can fail because measurements and weather fields are misaligned, because calendar encodings do not capture solar physics, or because a single learner cannot exploit multiple complementary structures in the data. These issues are often treated as implementation details, yet they directly shape whether the forecast is reliable enough for downstream scheduling, storage, and control decisions. We therefore study day-ahead hourly PV forecasting as an end-to-end AI decision-support pipeline through three connected questions. First, how should operational generation data be aligned with gridded environmental inputs whose timestamps follow different conventions, and for which model classes does this matter? Second, how can exogenous features encode solar and atmospheric structure rather than only time-of-day and day-of-year, and how should that structure be injected? Third, how can structurally different predictors be combined when their errors are only partially correlated? 
+
+## 1.1. Contributions 
+
+This paper makes the following contributions: 
+
+• A timestamp-aligned forecasting pipeline. We identify and correct a one-hour mismatch between site measurements and gridded weather inputs. This improves physical estimates, raising the daylight coefficient of determination ( R2) of a clear-sky proxy from 0 .42 to 0 .60, while showing that the learned ensemble is largely insensitive to the correction. 
+
+• A leakage-safe, physics-informed problem representation. We derive irradiance-, geometry-, and weather-aware covariates from public reanalysis data without using held-out targets. We show that physics is most effective through the prediction target, using the clearness index, rather than by simply adding raw solar-geometry features. 
+
+• A diverse set of day-ahead forecasting models. We train tabular, clear-sky-normalised, hour-specialised, and spatiotemporal convolutional models under a common setup, enabling comparison of both accuracy and the structures captured by each approach. 
+
+• An interpretable validation-learned ensemble. We combine base forecasts using non-negative weights learned only on validation data. The convex ensemble improves over the best individual model and assigns weight to complementary predictors. 
+
+• A deployment-oriented evaluation and ablation study. We assess forecasts with day-blocked cross-validation and rolling-origin backtesting, reporting all-hours and daylight-only metrics against standard baselines. Ablations show that each pipeline component has model- and protocol-dependent value. 2Dehghan et al. 
+
+# 2. Related Work 
+
+Solar and PV forecasting methods are commonly grouped by forecast horizon, input source, and model family [1, 2]. Day-ahead forecasting occupies an important middle ground: weather information remains informative, but uncertainty in cloud cover and irradiance can still have a substantial impact on forecast accuracy. Recent work has also emphasised the importance of reproducibility, open data, and rigorous evaluation in energy forecasting studies [4]. Physics-based and hybrid approaches combine numerical weather prediction or reanalysis products with irradiance and plant models to estimate PV output [6]. Public datasets such as European Centre for Medium-Range Weather Forecasts Reanalysis v5 (ERA5) provide consistent hourly environmental fields [11], supporting reproducible research and large-scale deployment. However, their effectiveness at site level depends on factors such as spatial resolution, systematic bias, and accurate temporal alignment with ground observations. A one-hour timestamp mismatch can be especially damaging around sunrise and sunset, when the PV profile changes rapidly. Statistical models, including autoregressive moving average with exogenous inputs and related approaches, capture autoregressive behaviour while incorporating exogenous weather information [7]. Gradient boosting remains a strong baseline when paired with informative features, and has the practical advantage of han-dling nonlinear interactions without requiring large datasets. Deep-learning methods, including convolutional neural networks and long short-term memory networks, can learn complex non-linear relationships from mul-tivariate inputs [9, 10]. Nevertheless, improvements are often attributed to model architecture alone, even though data preparation, feature engineering, and evaluation design can have an equally significant influence on performance. Clear-sky normalisation offers a complementary representation by removing much of the deterministic solar component and focusing learning on weather-driven variability. Instead of asking a model to rediscover the solar envelope from data, the target can be expressed relative to a physically motivated irradiance reference. Forecast combination theory further suggests that ensemble performance depends primarily on diversity among constituent models rather than the complexity of any individual predictor [12, 13]. This motivates combining models with genuinely different inductive biases instead of relying on closely related variants of the same architecture. 
+
+# 3. Data and Preprocessing 
+
+## 3.1. Site and PV Measurements 
+
+The case study is based on an hourly PV active-power time series recorded at the FEVER site in Southamp-ton, United Kingdom, with assumed site coordinates of 50 .91 ◦N latitude, 1 .40 ◦W longitude, and an altitude of 30 m. FEVER is treated in this study as a grid-independent charging-station setting [5]: PV generation is not merely a background covariate, but a primary source of operational uncertainty for charging pro-vision and energy-management decisions. This makes day-ahead forecasting especially important, because under- and over-estimation can affect charging schedules and storage allocation. The array is assumed as a fixed-tilt installation with a 30 ◦ tilt and true-south (180 ◦) azimuth, which are the parameters used for all solar-geometry computations. The measured field used as the PV power output is the inverter active-power channel, denoted Y PV  
+
+> τ
+
+at hourly timestamp τ .The raw inverter record covers 5 March 2025 to 1 April 2026 at one-hour resolution. Measurements are reindexed onto a regular Coordinated Universal Time (UTC) hourly grid. Negative values are clipped to zero. Hours with no measurement are given a placeholder value of zero together with a binary missingness indicator 1{τ ∈ M} , where M is the set of hours with no underlying measurement; the placeholder is not treated as a genuine measurement. After reindexing, 868 hours were missing (9 .25% of the hourly grid). The indicator is used throughout the analysis: tabular learners are trained only on non-missing hours; all reported metrics exclude M; and in the convolutional model the mask enters as an explicit input channel (so that historical zeros can be distinguished from unavailable PV) while missing target hours receive zero loss weight. A day with all 24 reindexed slots present is therefore a complete calendar day, not necessarily a fully observed measurement day. We define the empirical plant capacity as: 
+
+CPV = Q0.999 
+
+ Y PV 
+
+> τ
+
+ , (3.1) 3UK AI Conference 2026 where Q0.999 denotes the 99.9th percentile of the observed PV-power distribution; a high quantile reduces the influence of isolated sensor spikes, giving CPV ≈ 1664 kW. To avoid label leakage, the clearness-index target and the convolutional-network normalisation use a capacity estimated from each fold’s training rows, while the single full-series value CPV is retained only as a fixed denominator for normalised metrics, so errors remain comparable across folds and models. After removing partial days at the start and end of the record, the dataset contains 391 complete UTC days. 
+
+## 3.2. Weather Inputs 
+
+Hourly weather inputs are obtained from a public reanalysis archive queried at the plant coordinates through the Open-Meteo historical-archive interface [11]. All weather values are returned in UTC at one-hour reso-lution and joined to the corrected PV series on the hourly timestamp. Remaining gaps in the joined panel are filled by forward and backward propagation of the nearest observed value. The weather input vector wτ
+
+contains fifteen variables spanning irradiance, cloud-cover, temperature, humidity, wind, precipitation, and pressure: 
+
+wτ = (shortwave radiation , direct normal irradiance , direct radiation ,
+
+diffuse radiation , total cloud cover , low-, mid-, and high-level cloud cover ,
+
+2-metre temperature , relative humidity , dew-point temperature ,
+
+10-metre wind speed , wind gust , precipitation , pressure) . (3.2) This representation keeps the reanalysis variables interpretable while giving the learning models information about both irradiance availability and atmospheric attenuation. Because the target-day weather is taken from a historical archive rather than from a forecast issued before the target day, the reported scores characterise the weather-information upper bound of the pipeline under retrospective evaluation, rather than the skill of a fully operational day-ahead deployment. 
+
+## 3.3. Solar-Geometry and Temporal Features 
+
+To encode deterministic solar structure, we compute the solar zenith and elevation angles, the cosine of the zenith angle, relative air mass, extraterrestrial direct normal irradiance, extraterrestrial irradiance on a horizontal plane, the angle of incidence on the tilted array and its cosine, and plane-of-array (POA) global irradiance. The solar azimuth is also computed and used to derive the angle of incidence and the POA irradiance, but it is not itself supplied to the models. These quantities are computed with pvlib [14] and the National Renewable Energy Laboratory (NREL) Solar Position Algorithm [15]. From the irradiance quantities we also construct a clearness index kt τ :kt τ = shortwave radiation τ
+
+extraterrestrial irradiance on horizontal plane τ
+
+, (3.3) clipped to [0 , 1.5] and set to zero outside daylight. The upper bound retains physically plausible over-irradiance from cloud-edge enhancement, which can push kt τ above unity, while excluding pathological extremes from numerical artefacts. Normalising observed irradiance by the extraterrestrial envelope separates the astronomical component of PV production from weather-driven attenuation. Instead of hour-of-day indicators, the model receives solar-position features that encode the diurnal cycle deterministically. Day-of-year (doy) enters through sinusoidal encodings to represent seasonal effects smoothly: doy sin (τ ) = sin 
+
+ 2π doy( τ )365 .25 
+
+
+
+, doy cos (τ ) = cos 
+
+ 2π doy( τ )365 .25 
+
+
+
+, (3.4) Short-term atmospheric context is represented through one-hour lags, one-hour leads, and centred three-hour rolling means for eleven weather-derived variables: the four irradiance components (shortwave, direct normal, direct, and diffuse radiation), the four cloud-cover levels (total, low, mid, and high), 10-metre wind speed, plane-of-array global irradiance, and the clearness index. For a variable z in this set, the added features are: 
+
+zτ −1, zτ +1 , 13 (zτ −1 + zτ + zτ +1 ) . (3.5) 4Dehghan et al. 
+
+These features provide local temporal context for cloud evolution and irradiance persistence while keeping the model input compact. The final 60-dimensional feature vector χPV  
+
+> τ
+
+concatenates the fifteen weather variables, the ten solar-geometry and clearness features, the thirty-three lag/lead/rolling summaries, and the two day-of-year encodings. The mathematical formulation and implementation of this feature-construction pipeline are available in the project GitHub repository 1.
+
+# 4. Forecasting Models 
+
+## 4.1. Base Learners 
+
+We compare five base learners with deliberately different inductive biases. Ridge regression provides a transparent linear baseline and a well-established form of shrinkage for correlated predictors [16]. Given the feature vector χPV  
+
+> τ
+
+, the ridge model predicts 
+
+bY PV  
+
+> τ
+
+= max 
+
+
+
+0, β 0 + β⊤χPV 
+
+> τ
+
+
+
+, (4.1) where β0 is the intercept, β is the coefficient vector, and the features are standardised using training-set statistics. The coefficients are estimated with ℓ2-regularised least squares using regularisation strength 
+
+λridge = 1. The non-negativity clip enforces the physical constraint that PV power cannot be negative. The main nonlinear tabular model is a histogram-based gradient boosting machine (GBM), following the gradient-boosting principle of sequentially fitting weak learners to improve predictive accuracy [17]. It is implemented in scikit-learn [8] and trained on the engineered weather, solar-geometry, calendar, and temporal-context features. GBMs are well suited to this setting because they capture nonlinear interactions between irradiance, cloud cover, temperature, and solar angle without requiring the amount of data usually needed by large neural models. Predictions are clipped to non-negative values. We also train a clearness-index GBM. Instead of predicting PV power directly, this model predicts a daylight-normalised target κτ :
+
+κτ = clip 
+
+ Y PV 
+
+> τ
+
+max( CPV · POA τ /1000 , 1) , 0, 1.5
+
+
+
+, (4.2) where POA τ is plane-of-array global irradiance, and the model is fit only on daylight rows (POA τ >
+
+50 W m −2). Predictions are converted back to PV power by multiplying by the same denominator and setting non-daylight rows to zero. This variant explicitly models attenuation relative to a physically moti-vated solar envelope. The per-hour GBM trains a separate model for each hour of the day, 
+
+fh : χPV  
+
+> τ
+
+7 → bY PV  
+
+> τ
+
+, h = 0 , . . . , 23 , (4.3) using only rows with hour( τ ) = h, where fh denotes the hour-specific prediction function. This allows the learner to specialise across the daily generation profile: morning ramp-up, midday peak, and evening ramp-down can each have different relationships between weather inputs and PV output. The fifth base learner is a two-dimensional convolutional neural network (CNN), using local convolutional filters to exploit neighbourhood structure in the day-by-hour input representation [10]. For each target day 
+
+d, the input is arranged as an eight-day by 24-hour tensor with eight channels: normalised PV output (explicitly zeroed on the target day to prevent leakage of its unknown value), a binary past/future mask, and six reanalysis weather channels (shortwave radiation, direct normal irradiance, total cloud cover, 2-metre temperature, 2-metre relative humidity, and precipitation). The weather channels are standardised using training-day statistics only. Three convolutional blocks with kernels 3 × 5, 3 × 5, and 3 × 3 use Group Normalisation (GroupNorm) [18], Gaussian Error Linear Unit (GELU) activations [19], and two-dimensional dropout (rate 0 .1); the target-day row is then passed to a one-dimensional convolutional head that outputs the 24 hourly predictions for the target day. Training minimises a daylight-weighted mean-squared error in which daylight hours are weighted four times more than non-daylight hours, optimised with AdamW [20] (learning rate 2 × 10 −3, weight decay 10 −4) under a cosine-annealing schedule for at most 120 epochs (batch size 32, early stopping with patience 15). Predictions are rescaled by the fold-training capacity to return to kilowatts. 
+
+> 1https://github.com/FdehghanSoton/AI_Pipeline_PV_Forecasting
+
+5UK AI Conference 2026 Weather inputs 
+
+> Timestamp alignment
+> harmonise temporal conventions
+> Physics-aware features
+> solar geometry, clearness index,
+> lagged & smoothed waether
+> Base learners
+> PV measurements
+> hourly inverter power
+> hourly weather reanalysis
+> Ridge, GBM, per-hour GBM, CNN
+> Stacked ensemble
+> validation-learned fusion
+
+Figure 1. Architecture of the proposed Physics-Aware AI Pipeline for Decision-Support in Day-Ahead PV Fore-casting. 
+
+## 4.2. Ensemble Fusion 
+
+Figure 1 summarises the full forecasting architecture, from data alignment and physics-aware feature con-struction to heterogeneous base learning and ensemble fusion. Let MPV = {Ridge, GBM, clearness-index GBM, per-hour GBM, CNN } denote the base learners. Each ensemble combines their predictions 
+
+{ bY PV 
+
+> τ,m
+
+}m∈M PV . Combination weights are fitted only on held-out validation data (daylight, non-missing rows) inside each fold and then applied unchanged to the corresponding test predictions. The simplest ensemble is the arithmetic mean. We also evaluate inverse-validation root-mean-squared-error (RMSE) weighting, which gives greater weight to base learners with lower validation error. Ridge stacking fits a regularised linear regression from validation predictions to realised PV output. The default ensemble is renormalised non-negative least-squares (NNLS) stacking, closely related to classical non-negative least-squares optimisation [21]. It solves min 
+
+> α≥0
+
+X 
+
+> τ∈S val
+
+Y PV  
+
+> τ
+
+− X
+
+> m∈M PV
+
+αm bY PV 
+
+> τ,m
+
+!2
+
+, (4.4) where Sval is the validation set used for ensemble fitting and αm is the unnormalised weight assigned to base learner m. The weights are then renormalised to sum to one, giving a convex combination, 
+
+bY NNLS  
+
+> τ
+
+= X
+
+> m
+
+αens  
+
+> m
+
+bY PV 
+
+> τ,m
+
+, αens  
+
+> m
+
+≥ 0, X
+
+> m
+
+αens  
+
+> m
+
+= 1 . (4.5) The renormalisation makes the combination convex and improves interpretability; the reported weights are therefore not the exact solution of a least-squares problem with a sum-to-one equality constraint imposed during optimisation. The non-negativity constraint avoids cancellation among base learners. 
+
+# 5. Evaluation 
+
+We evaluate every model under two complementary protocols. The rolling-origin protocol uses the first 120 complete days as the initial training pool. The remaining days are split into four contiguous test windows; for each window, models are fitted on all data preceding the window and tested on the window itself. Within each fold, the most recent max(7 days , 15%) of training rows is held out chronologically as a validation segment used for early stopping and ensemble-weight fitting. This protocol preserves time ordering and is the stricter test of whether the model generalises to future seasons. Because the first 120 days act only as an initial training pool, they are never scored, so this protocol evaluates fewer hourly observations than the random-fold protocol. The random day-fold protocol partitions complete days into five folds uniformly at random (seeded for reproducibility). Each day appears in exactly one held-out fold, so every hourly timestamp receives one held-out forecast across the five folds. For each fold, max(7 days , 10%) of the remaining days are sampled at random as a validation set for ensemble fitting. This protocol provides a larger set of held-out pairs across the year, but it is less stringent because seasons are mixed between training and test sets. The two protocols answer different questions. Rolling-origin evaluation approximates deployment, where the future may differ from the past. Random day-fold evaluation measures within-year predictive skill under broader coverage. Reporting both shows the capacity of the pipeline when training data covers the seasonal range. 6Dehghan et al.  
+
+> Table 1. PV forecasting results
+
+Protocol Model Subset n R2 MAE RMSE nMAE nRMSE (kW) (kW) (%) (%) Rolling-origin Ridge stack All 6076 0.734 90.59 184.35 5.44 11.08 Rolling-origin Ridge stack Daylight 2517 0.567 188.32 281.84 11.32 16.94 Rolling-origin NNLS stack All 6076 0.708 87.62 193.05 5.26 11.60 Rolling-origin NNLS stack Daylight 2517 0.513 197.69 298.81 11.88 17.95 Rolling-origin CNN (best base) Daylight 2517 0.506 207.08 301.09 12.44 18.09 Rolling-origin Smart persistence Daylight 2517 0.478 203.25 309.41 12.21 18.59 Random fold NNLS stack All 8516 0.861 69.69 138.75 4.19 8.34 Random fold NNLS stack Daylight 3869 0.769 139.90 204.98 8.41 12.32 Random fold Ridge stack Daylight 3869 0.762 143.03 208.07 8.59 12.50 Random fold GBM (best base) All 8516 0.841 67.32 148.17 4.05 8.90 Random fold GBM (best base) Daylight 3869 0.735 143.94 219.51 8.65 13.19 Random fold Smart persistence Daylight 3869 0.505 195.87 300.16 11.77 18.04 
+
+## 5.1. Metrics and Daylight Definition 
+
+Forecast accuracy is reported using the R2, mean absolute error (MAE), RMSE, normalised mean absolute error (nMAE), and normalised root-mean-squared error (nRMSE). For a held-out set Stest , where bY PV 
+
+denotes the mean observed PV output over that set, the main metrics are: 
+
+R2 = 1 −
+
+P  
+
+> τ∈S test
+
+(Y PV  
+
+> τ
+
+− bY PV  
+
+> τ
+
+)2
+
+P  
+
+> τ∈S test
+
+(Y PV  
+
+> τ
+
+− ¯Y PV )2 , (5.1) MAE = 1
+
+|S test |
+
+X 
+
+> τ∈S test
+
+|Y PV  
+
+> τ
+
+− bY PV  
+
+> τ
+
+|, (5.2) RMSE = 
+
+s 1
+
+|S test |
+
+X 
+
+> τ∈S test
+
+(Y PV  
+
+> τ
+
+− bY PV  
+
+> τ
+
+)2. (5.3) Normalised errors divide MAE and RMSE by the fixed capacity CPV ≈ 1664 kW. Metrics are reported on two subsets. The all-hours subset uses every non-missing hour in the held-out partition and reflects accuracy over the complete operating day, including night-time zero-generation periods. The daylight subset isolates the harder weather-driven forecasting problem. We define daylight geometrically : an hour is daylight when the solar elevation angle exceeds 5 ◦, computed from the site coordinates with pvlib and the NREL SPA. This definition depends only on astronomical position, so, unlike a per-(month, hour) median-of-PV rule, the evaluation subset does not depend on held-out measurements and introduces no label leakage into the reported daylight metrics. Because this geometric rule admits more low-sun dawn and dusk hours than a PV-median rule, the daylight subset contains slightly more observations than a climatological definition would. To place the learned models in context, we additionally report three standard reference forecasts: diurnal persistence (the measured value 24 hours earlier), training-set climatology (the mean for each month and hour), and smart (clear-sky) persistence. We summarise improvement using the skill score s = 1 −
+
+RMSE model /RMSE reference , where s = 0 denotes no gain over the reference and s = 1 a perfect forecast. 
+
+## 5.2. Results 
+
+Table 1 reports the main results for the strongest ensemble variants, the best single base learner, and the smart-persistence reference under both protocols. These results should be read in the context of a newly deployed site with approximately one year of available data and missing observations. In this setting, the achieved skill is operationally meaningful because the models must learn from a limited record rather than from a long, mature historical archive. Two patterns are visible: First, the gap between the two protocols is large and systematic: the best daylight R2 falls from 0 .77 under random day-fold evaluation to 0 .57 under rolling-origin evaluation, and daylight nRMSE rises from 12 .3% to 16 .9% of capacity. This gap is not a defect of the model but a measurement of temporal distribution shift. When the training data already span 7UK AI Conference 2026 much of the observed seasonal range (random folds), the learner interpolates; when it must extrapolate from a limited and partially incomplete past into unseen seasons (rolling origin), skill drops. For a charging-station operator the rolling-origin number is the honest expectation for a freshly deployed model, and the random-fold number is the ceiling that becomes reachable once a full seasonal cycle has been observed. Second, the daylight subset is consistently harder than the all-hours subset (for example R2 = 0 .77 versus 0.86 under random folds). All-hours metrics are inflated by the trivially predictable night-time zeros, so the daylight subset, not the all-hours headline, is the quantity that reflects forecasting difficulty during hours when generation and therefore decisions actually occur. We report both because downstream schedulers still consume complete 24-hour profiles. The ensemble results support the value of model diversity, but with appropriate caution about effect size. Under random day-fold evaluation, NNLS stacking is the strongest model, reaching daylight R2 = 0 .769 and nRMSE = 12 .32%, ahead of the best single learner (GBM, R2 = 0 .735). The reduction in daylight RMSE of the best ensemble over the best base learner is 6 .6%; a Diebold–Mariano (DM) test of equal squared-error accuracy strongly rejects equality (DM = −6.4, p < 10 −9), and a five-seed repetition gives NNLS daylight 
+
+R2 = 0 .765 ± 0.004 versus 0 .731 ± 0.004 for the best base learner, so the ensemble advantage of roughly 0 .034 greatly exceeds the seed-to-seed spread. The close clustering of NNLS stacking, inverse-RMSE weighting and simple averaging means the choice of fusion rule should not be over-interpreted. Under rolling-origin evaluation ridge stacking is best (daylight R2 = 0 .567, a 6 .4% RMSE reduction over the best base learner, DM = −6.0, p < 10 −8), while NNLS stacking is weaker; the best fusion rule is therefore not stable across validation designs, which reinforces reporting the stricter protocol as the primary deployment estimate. We present additional experiments and an ablation study in Sections A and B, respectively. 
+
+# 6. Conclusion and Future Work 
+
+This paper presented a physics-aware AI pipeline for day-ahead PV forecasting as a decision-support tool for low-carbon energy systems under a realistic limited-data setting. Using approximately one year of UK site measurements from a newly deployed charging-station testbed, with missing values, and public weather inputs, the workflow corrected a timestamp mismatch, constructed leakage-safe solar-geometry and clearness-index features, added atmospheric context through lagged and smoothed weather variables, and fused linear, nonlinear tabular, clear-sky-normalised, hour-specialised, and convolutional predictors through validation-learned stacking. Under random day-fold evaluation the NNLS stacking ensemble achieved R2 = 0 .861 across all hours and R2 = 0 .769 during daylight. Experimental results show that physics-aware pipeline steps are not uniformly beneficial; their value depends on the model class and the evaluation protocol, and this dependence can be measured. A genuine one-hour data misalignment was decisive for parameter-free physical models and physically interpretable quantities, yet was absorbed by the flexible learners. Clear-sky structure was most useful as a normalising target, while supplying the same structure as raw seasonal covariates degraded rolling-origin skill through poor extrapolation. Short-term weather context was the single ingredient that most improved deployment-relevant performance. Robust environmental AI should therefore be pipeline-centred and protocol-aware: it should diagnose alignment for the components that need it, inject physics through stationary normalising representations, preserve short-horizon weather context, and report the stricter temporal protocol as the primary estimate of operational skill. The achieved performance is therefore notable because it is obtained from a short and imperfect operational record, suggesting that useful deployment-oriented PV forecasts can be developed before extensive multi-year site histories are available. At the same time, the rolling-origin results show that limited historical coverage increases sensitivity to temporal distribution shift, so forecast skill should be updated as additional seasonal data become available. Future work should develop probabilistic forecasts, test the method across more PV sites and weather regimes, and quantify how forecast improvements translate into operational value in charging schedules, storage allocation, and reserve management. 
+
+# Acknowledgements 
+
+The authors acknowledge support from EPSRC through the Turing AI Fellowship “Citizen-Centric AI Sys-tems” (EP/V022067/1) and FEVER project (EP/W005883/1), as well as the IRIDIS High Performance Computing Facility and the Low Carbon Comfort Centre (LCCC) at the University of Southampton. 8Dehghan et al. 
+
+# References 
+
+[1] J. Antonanzas, N. Osorio, R. Escobar, R. Urraca, F. J. Martinez-de Pison, and F. Antonanzas-Torres, “Review of photovoltaic power forecasting,” Solar Energy , vol. 136, pp. 78–111, 2016. [2] C. Voyant, G. Notton, S. Kalogirou, M. L. Nivet, C. Paoli, F. Motte, and A. Fouilloy, “Machine learning methods for solar radiation forecasting: A review,” Renewable Energy , vol. 105, pp. 569–582, 2017. [3] C. Bergmeir, R. J. Hyndman, and B. Koo, “A note on the validity of cross-validation for evaluating autoregressive time series prediction,” Computational Statistics & Data Analysis , vol. 120, pp. 70–83, 2018. [4] T. Hong, P. Pinson, S. Fan, H. Zareipour, A. Troccoli, and R. J. Hyndman, “Probabilistic energy fore-casting: Global energy forecasting competition 2014 and beyond,” International Journal of Forecasting ,vol. 32, no. 3, pp. 896–913, 2016. [5] Future Electric Vehicle Energy Networks supporting Renewables Project, “FEVER: Grid-independent electric vehicle charging using renewable energy.” https://www.fever-ev.ac.uk , 2026. Accessed 6 June 2026. [6] E. Lorenz, J. Hurka, D. Heinemann, and H. G. Beyer, “Irradiance forecasting for the power prediction of grid-connected photovoltaic systems,” IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing , vol. 2, no. 1, pp. 2–10, 2009. [7] P. Bacher, H. Madsen, and H. A. Nielsen, “Online short-term solar power forecasting,” Solar Energy ,vol. 83, no. 10, pp. 1772–1783, 2009. [8] F. Pedregosa, G. Varoquaux, A. Gramfort, V. Michel, B. Thirion, O. Grisel, M. Blondel, P. Pret-tenhofer, R. Weiss, V. Dubourg, J. Vanderplas, A. Passos, D. Cournapeau, M. Brucher, M. Perrot, and E. Duchesnay, “Scikit-learn: Machine learning in python,” Journal of Machine Learning Research ,vol. 12, pp. 2825–2830, 2011. [9] S. Hochreiter and J. Schmidhuber, “Long short-term memory,” Neural Computation , vol. 9, no. 8, pp. 1735–1780, 1997. [10] Y. LeCun, L. Bottou, Y. Bengio, and P. Haffner, “Gradient-based learning applied to document recog-nition,” Proceedings of the IEEE , vol. 86, no. 11, pp. 2278–2324, 1998. [11] H. Hersbach, B. Bell, P. Berrisford, S. Hirahara, A. Horanyi, J. Munoz-Sabater, J. Nicolas, C. Peubey, R. Radu, D. Schepers, A. Simmons, C. Soci, S. Abdalla, X. Abellan, G. Balsamo, P. Bechtold, G. Biavati, J. Bidlot, M. Bonavita, G. De Chiara, P. Dahlgren, D. Dee, M. Diamantakis, R. Dragani, J. Flemming, R. Forbes, M. Fuentes, A. Geer, L. Haimberger, S. Healy, R. J. Hogan, E. Holm, M. Janiskova, S. Keeley, P. Laloyaux, P. Lopez, C. Lupu, G. Radnoti, P. de Rosnay, I. Rozum, F. Vamborg, S. Villaume, and J.-N. Thepaut, “The era5 global reanalysis,” Quarterly Journal of the Royal Meteorological Society ,vol. 146, no. 730, pp. 1999–2049, 2020. [12] J. M. Bates and C. W. J. Granger, “The combination of forecasts,” Operational Research Quarterly ,vol. 20, no. 4, pp. 451–468, 1969. [13] D. H. Wolpert, “Stacked generalization,” Neural Networks , vol. 5, no. 2, pp. 241–259, 1992. [14] W. F. Holmgren, C. W. Hansen, and M. A. Mikofski, “pvlib python: a python package for modeling solar energy systems,” Journal of Open Source Software , vol. 3, no. 29, p. 884, 2018. [15] I. Reda and A. Andreas, “Solar position algorithm for solar radiation applications,” Tech. Rep. NREL/TP-560-34302, National Renewable Energy Laboratory, 2004. [16] A. E. Hoerl and R. W. Kennard, “Ridge regression: Biased estimation for nonorthogonal problems,” 
+
+Technometrics , vol. 12, no. 1, pp. 55–67, 1970. 9UK AI Conference 2026 [17] J. H. Friedman, “Greedy function approximation: A gradient boosting machine,” The Annals of Statis-tics , vol. 29, no. 5, pp. 1189–1232, 2001. [18] Y. Wu and K. He, “Group normalization,” arXiv preprint arXiv:1803.08494 , 2018. [19] D. Hendrycks and K. Gimpel, “Gaussian error linear units (gelus),” arXiv preprint arXiv:1606.08415 ,2016. [20] I. Loshchilov and F. Hutter, “Decoupled weight decay regularization,” in International Conference on Learning Representations , 2019. [21] C. L. Lawson and R. J. Hanson, Solving Least Squares Problems . Classics in Applied Mathematics, Philadelphia, PA: Society for Industrial and Applied Mathematics, 1995. 10 Dehghan et al. 
+
+# A. Additional Experiments 
+
+The held-out daylight forecast and a representative week are shown in Figure 2. Against smart (clear-sky) persistence on daylight hours, the best ensemble attains a skill score of s ≈ 0.32 under random day-fold evaluation but only s ≈ 0.09 under rolling-origin evaluation (Figure 3). The contrast is instructive: most of the apparent skill over a trivial diurnal baseline is available only once the model has seen a full seasonal cycle, whereas a freshly deployed model barely outperforms clear-sky persistence on the hardest subset. The diversity that drives the ensemble is confirmed by the pairwise correlations of the base-learner day-light residuals (Figure 4). Under random day-fold evaluation the convolutional model is the least correlated with the others ( ρ ≈ 0.71–0 .74), whereas the two closely related tabular learners (GBM and clearness-index GBM) are the most correlated ( ρ ≈ 0.93); the ensemble gain is largest precisely where this complementary error structure is strongest. Under rolling-origin evaluation all residual correlations rise (the CNN ranges from ρ ≈ 0.76 to 0 .86): distribution shift pushes the learners towards the same systematic errors, which is the mechanistic reason the ensemble advantage shrinks under the stricter protocol. The learned fusion weights make this argument concrete. Figure 5 shows the mean NNLS stacking weight assigned to each base learner across folds. Under random day-fold evaluation the CNN receives the largest weight ( ≈ 0.45) even though it is not the most accurate single learner, precisely because its residuals are the least correlated with the others: the stack rewards complementarity rather than individual accuracy. Under rolling-origin evaluation the weight shifts decisively to the clearness-index GBM ( ≈ 0.41), the learner that injects physics through a stationary normalising target, while the CNN’s weight falls as its residuals become more correlated under distribution shift. Ridge receives near-zero weight in both protocols, indicating it is largely redundant given the nonlinear learners. 0 500 1000 1500   
+
+> Forecast PV power (kW)
+> 0
+> 250
+> 500
+> 750
+> 1000
+> 1250
+> 1500
+> 1750
+> Observed PV power (kW)  R2= 0.769
+> nRMSE = 12.32%
+> Daylight forecast (NNLS stack)
+> 2025-07-14
+> 2025-07-15
+> 2025-07-16
+> 2025-07-17
+> 2025-07-18
+> 2025-07-19
+> 2025-07-20
+> 2025-07-21
+> UTC timestamp
+> 0
+> 250
+> 500
+> 750
+> 1000
+> 1250
+> 1500
+> 1750
+> PV power (kW)
+> Representative held-out week
+> Observed Forecast
+
+Figure 2. Held-out forecast quality of the best random-fold model (NNLS stack). Left: observed versus forecast PV power on daylight hours. Right: a representative held-out week, with missing measurements shown as gaps. 0 5 10 15 20   
+
+> Daylight nRMSE (% of capacity)
+> Persistence
+> Climatology
+> SmartPersistence
+> Ridge
+> GBM
+> GBM_kt
+> GBM_per_hour
+> CNN
+> Mean
+> InvRMSE
+> RidgeStack
+> NNLSStack
+> Random day-fold
+> 010 20
+> Daylight nRMSE (% of capacity)
+> Persistence
+> Climatology
+> SmartPersistence
+> Ridge
+> GBM
+> GBM_kt
+> GBM_per_hour
+> CNN
+> Mean
+> InvRMSE
+> RidgeStack
+> NNLSStack
+> Rolling-origin
+
+Figure 3. Daylight nRMSE of every model and the three reference baselines under both protocols. 
+
+11 UK AI Conference 2026 Ridge GBM Clearness                                           
+
+> GBM
+> Per-hour
+> GBM
+> CNN
+> Ridge
+> GBM
+> Clearness
+> GBM
+> Per-hour
+> GBM
+> CNN
+> 1.00 0.80 0.82 0.84 0.74
+> 0.80 1.00 0.93 0.87 0.72
+> 0.82 0.93 1.00 0.86 0.73
+> 0.84 0.87 0.86 1.00 0.71
+> 0.74 0.72 0.73 0.71 1.00
+> Random day-fold
+> Ridge GBM Clearness
+> GBM
+> Per-hour
+> GBM
+> CNN
+> 1.00 0.84 0.79 0.76 0.84
+> 0.84 1.00 0.95 0.85 0.86
+> 0.79 0.95 1.00 0.80 0.83
+> 0.76 0.85 0.80 1.00 0.80
+> 0.84 0.86 0.83 0.80 1.00
+> Rolling-origin
+> 0.60
+> 0.65
+> 0.70
+> 0.75
+> 0.80
+> 0.85
+> 0.90
+> 0.95
+> 1.00
+> Daylight residual correlation
+
+Figure 4. Pairwise correlation of the five base-learner residuals on daylight hours, under random day-fold (left) and rolling-origin (right) evaluation. Ridge GBM Clearness          
+
+> GBM
+> Per-hour
+> GBM
+> CNN
+> 0.0
+> 0.1
+> 0.2
+> 0.3
+> 0.4
+> 0.5
+> 0.6
+> Mean NNLS stacking weight
+> 0.01
+> 0.27
+> 0.15 0.12
+> 0.45
+> Random day-fold (n= 5 folds)
+> Ridge GBM Clearness
+> GBM
+> Per-hour
+> GBM
+> CNN
+> 0.00
+> 0.30
+> 0.41
+> 0.17
+> 0.12
+> Rolling-origin (n= 4 folds)
+
+Figure 5. Mean ( ± sd across folds) renormalised NNLS stacking weight assigned to each base learner. 
+
+# B. Pipeline Ablation: What Matters, and for Whom 
+
+We disable one ingredient at a time and re-run the full backtest (Table 2). The results show that each component matters differently depending on the model class and evaluation protocol. 
+
+Alignment matters for physics, not for the learned ensemble. The inverter labels hourly PV output by the end of its integration interval, whereas weather data are labelled by the start . Cross-correlation and forecasting diagnostics support shifting the PV index backward by one hour before joining the series. This is important for physical quantities: the parameter-free clear-sky proxy bYτ = CPV ·GHI τ /1000 improves from daylight R2 = 0 .42 without the shift to 0 .60 with the −1 h correction, with the irradiance–power correlation peak moving to zero lag and the clear-sky-index distribution returning to a physical range (Figure 6). However, the learned ensemble is almost invariant to this correction: removing the shift changes rolling-origin daylight nRMSE by at most about 0 .4 percentage points, even when temporal-context features are also removed. Flexible learners can refit to either timestamp convention and observe neighbouring-hour weather and solar geometry. Thus, alignment is essential for interpretable physics and clear-sky baselines, but not a material source of learned-model skill. 
+
+Temporal context helps under distribution shift. Removing lag, lead, and rolling weather features increases rolling-origin daylight nRMSE from 16 .94% to 17 .83% ( R2 0.567 → 0.520), while random-fold performance is largely unchanged. Short-horizon persistence in cloud and irradiance therefore matters most when the model must generalise forward in time, as in deployment. 
+
+Physical structure should be a target, not a raw covariate. Removing solar-geometry and clearness input features leaves random-fold skill unchanged but improves rolling-origin skill substantially, reducing daylight nRMSE from 16 .94% to 14 .07% and increasing R2 from 0 .567 to 0 .701. These covariates are strongly seasonal, so early rolling-origin folds trained on short summer histories extrapolate poorly into winter, especially through linear base learners and the linear meta-learner. The physical envelope remains available through the more stationary clearness-index target, consistent with its dominant stacking weight in Figure 5. The lesson is not that physics is unhelpful, but that under short training histories it is better 12 Dehghan et al. 
+
+injected through a normalised target than through raw seasonal covariates. 
+
+Table 2. Pipeline ablation on the daylight subset. 
+
+Random fold Rolling-origin Configuration R2 nRMSE (%) R2 nRMSE (%) Full pipeline 0.769 12.32 0.567 16.94 No −1 h alignment shift 0.790 11.98 0.565 17.31 Calendar-only (no solar/clearness) 0.766 12.40 0.701 14.07 No temporal context (no lag/roll) 0.767 12.36 0.520 17.83 −3 −2 −1 0 1 2 3
+
+> Candidate PV timestamp shift (hours)
+> −0.6
+> −0.4
+> −0.2
+> 0.0
+> 0.2
+> 0.4
+> 0.6
+> R2
+
+Forecast skill vs alignment shift 
+
+Figure 6. Alignment diagnostic: daylight R2 of the parameter-free clear-sky physics proxy as a function of the candidate PV timestamp shift. 
+
+13
