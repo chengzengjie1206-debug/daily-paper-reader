@@ -1,0 +1,807 @@
+Title: Short-term load forecasting under EU-AI Act Requirements in Safety-Critical Environments: Results from a 41-day live challenge on the aggregated German transmission-grid load
+
+URL Source: https://arxiv.org/pdf/2608.05018v1
+
+Published Time: Thu, 06 Aug 2026 01:13:51 GMT
+
+Number of Pages: 38
+
+Markdown Content:
+# SHORT-TERM LOAD FORECASTING UNDER EU-AI ACT REQUIREMENTS IN SAFETY-CRITICAL ENVIRONMENTS 
+
+# RESULTS FROM A 41-DAY LIVE CHALLENGE ON THE AGGREGATED GERMAN TRANSMISSION-GRID LOAD 
+
+A PREPRINT 
+
+Thomas Bartz-Beielstein 
+
+THK-AI Research Cluster, Germany thomas.bartz-beielstein@th-koeln.de 2026-08-05 
+
+# ABSTRACT 
+
+Short-term load forecasting (STLF) play a vital role in the electric power industry. It serves infras-tructure that European and German law designate as critical. Determinism, reproducibility, and auditability are engineering requirements rather than optional extras. STLF is no longer purely an accuracy problem. It is also a software-engineering and compliance problem. This paper de-scribes results from a 41-day live challenge that evaluated a complete STLF pipeline for the ag-gregated German transmission-grid load. The pipeline is based on the open-source Python library 
+
+spotforecast2-safe , which implements the EU-AI Act Requirements in Safety-Critical Environ-ments by design. The pipeline predicts the 24 hourly load values of a target day from European Network of Transmission System Operators for Electricity (ENTSO-E) data. It includes anomaly detection and gap-aware data preparation, calendar and weather covariates, a recursive multi-step forecasting algorithm, and hyperparameter tuning. Forecast accuracy is measured against the offi-cial ENTSO-E day-ahead forecast. The EU-AI act compliant spotforecast2-safe pipeline beats the ENTSO-E baseline. In-context models show competitive performance. Transparent, low-cost, and auditable local models (referred to as macl2l in this paper) are competitive with more than 100-million-parameter large, energy-intensive pre-trained foundation models such as chronos-2. The chal-lenge infrastructure, the complete submission history of all teams, and the frozen final leaderboard are publicly available. 
+
+Keywords load forecasting • recursive forecasting • LightGBM • gradient boosting • hyperparameter optimization • ENTSO-E • safety-critical machine learning • EU AI Act • green AI 
+
+# 1 Introduction 
+
+Transmission system operators must continuously match generation to demand to keep the electricity grid within its fre-quency and stability limits. Accurate short-term load forecasting (STLF) is the quantitative backbone of this balancing act (Ullah et al. 2024). Day-ahead and intraday load predictions drive unit commitment, reserve sizing, and the bids that market participants submit to electricity exchanges, where forecast errors translate directly into balancing-energy costs and price risk. Table 1 summarizes the key features of different load forecasting problems. This paper addresses a concrete instance of STLF-problem, posed as the live-forecasting challenge (Bartz-Beielstein 2026a). The task is to produce a day-ahead forecast of the 24 hourly values of the aggregated German (DE) market-zone Actual Total Load, measured in megawatts, for a given target day, using historical data from the European Network of Transmission System Operators for Electricity (ENTSO-E) (ENTSO-E 2024). The ground truth is the final ENTSO-E Actual Total Load for that day, and submissions are ranked by the mean absolute error (MAE) in megawatts, averaged across all scored days, with lower values indicating better forecasts. To make the ranking meaningful, the official arXiv:2608.05018v1 [cs.AI] 5 Aug 2026 A PREPRINT - 2026-08-05 ENTSO-E day-ahead forecast, called the ENTSO-E baseline throughout this paper, competes in the same leaderboard alongside two naive forecasts and recent foundation models. The ENTSO-E baseline is a demanding operational ref-erence, but it is not an unbiased one: for the German–Luxembourg bidding zone, Möbius et al. (2025) document that it under-predicts load systematically and that its errors retain enough autoregressive structure for a model of the error alone to remove roughly a fifth of their magnitude. Therefore, the challenge rules do not permit using the ENTSO-E baseline as a covariate, except for submission identities explicitly marked as ENTSO-E-assisted by an entsoe suffix in their name. Table 1: Key features of different load forecasting problems (Hong and Fan 2016). Long-term load forecasting (LTLF), medium term load forecasting (MTLF), short-term load forecasting (STLF), very short term load forecasting (VSTLF), spatial load forecasting (SLF), hierarchical load forecasting (HLF), and probabilistic load forecasting (PLF). Temporal resolution Spatial resolution Forecast horizon Output format LTLF Monthly/annual N/A Years Point MTLF Days / Weeks N/A Weeks to months Point STLF Hourly N/A Days Point VSTLF Sub-hourly N/A Hours to days Point SLF Monthly/annual Small area Years Point HLF Hourly Premise Hours to years Point PLF Hourly N/A Hours to years Density/interval Our forecasting system treats the 24-hour horizon as a recursive multi-step forecasting problem. At its core is a single Light Gradient-Boosting Machine (LightGBM) regressor (Ke et al. 2017) wrapped in a recursive autoregressive fore-caster that predicts one hour at a time and feeds each prediction back as an input for the next step. Before training, the raw ENTSO-E series passes through an anomaly-aware data-preparation stage that flags implausible values, for exam-ple with an Isolation Forest (Liu et al. 2008), and bridges reporting gaps, so that corrupted history does not propagate through the autoregression. The recursive forecaster draws on lagged load values together with calendar covariates such as hour, day of week, and public holidays, and its hyperparameters are tuned by surrogate-model optimization with SpotOptim (Bartz-Beielstein 2026b) and benchmarked against the optimizer implemented in Optuna (Akiba et al. 2019). The recursive engine itself is provided by the safety-critical package spotforecast2-safe (Bartz-Beielstein and Bartz 2026), which vendors a reviewed subset of the skforecast recursive strategy (Amat Rodrigo and Escobar Ortiz 2024). Its SpotOptim-tuned configuration competed on the challenge leaderboard as spotoptim lgbm, and this paper calls it the spotoptim-lgbm forecaster. As such forecasts increasingly feed automated decisions in critical infrastructure, the regulatory frame around them has tightened. The European Union Artificial Intelligence Act (EU AI Act) (European Parliament and Council of the European Union 2024) classifies an artificial intelligence (AI) system used as a safety component in the supply of electricity as high-risk, and requires of such a system accuracy, robustness, and cybersecurity, together with the record-keeping and technical documentation on which an audit rests. 2A PREPRINT - 2026-08-05 CER Directive    
+
+> Dir. (EU) 2022/2557
+> NIS-2 Directive
+> Dir. (EU) 2022/2555
+> EU AI Act
+> Reg. (EU) 2024/1689
+> Cyber Resilience Act
+> Reg. (EU) 2024/2847
+> applies 11 Dec 2027
+> Product Liability Dir.
+> Dir. (EU) 2024/2853
+> applies 9 Dec 2026
+> KRITIS-Dachgesetz BSI-Gesetz
+> BGBl. 2025 I Nr. 301
+> in force 6 Dec 2025
+> ProdHaftG-Novelle
+> BT-Drs. 21/4297
+> Regierungsentwurf
+> Kritisverordnung
+> Referentenentwurf
+> Transmission system operator
+> Betreiber kritischer Anlagen
+> Supplier of the forecasting software
+> manufacturer or open-source steward
+> Day-ahead load forecaster
+> the system studied in this paper
+> in scope of § 30 Abs. 1 BSIG as an information-technology system
+> outside EU AI Act Annex III point 2: not a safety component
+> transposes transposes
+> transposes
+> issued under
+> de fi nes its critical installations
+> Recital 55 refers to the CER annex
+> Art. 12(1): presumption of
+> conformity with AI Act Art. 15
+> 3 700 GWh/a threshold
+> § 30 Abs. 1,
+> § 31 Abs. 2
+> Annex I essential
+> cybersecurity requirements
+> liability for a
+> defective product
+> operates supplies
+
+Figure 1: Regulatory instruments bearing on a day-ahead load forecaster, and the parties they bind. Blue marks Union instruments, green their German counterparts, and pink the two parties. Solid arrows mark derivation, either a directive transposed into German law or an ordinance issued under a statute. The EU AI Act and the Cyber Resilience Act have no German counterpart because a regulation applies directly, which is why no arrow leaves them downwards. Dashed arrows mark a reference from one instrument to another. Ochre arrows mark where a duty attaches, each labelled with the provision that attaches it. A dashed outline marks an instrument that is still a draft or not yet applicable. The two statements below the forecaster are the asymmetry this section describes. Every provision named here is quoted in the appendix on the original wording of the legal provisions cited. STLF is therefore no longer purely an accuracy problem. It is also a software-engineering and compliance problem. Therefore, we will consider the implications for STLF methods that result from relevant rules and regulations in this report, namely • the European Union Artificial Intelligence Act (EU AI Act) (European Parliament and Council of the European Union 2024), • the Cyber Resilience Act (CRA) (European Parliament and Council 2024b), • the NIS-2 Directive (European Parliament and Council of the European Union 2022a), which transposes into the German BSI-Gesetz (Deutscher Bundestag 2025), • the CER Directive (European Parliament and Council of the European Union 2022b), which transposes into the German KRITIS-Dachgesetz (Bundesministerium des Innern 2026), and • the Product Liability Directive (European Parliament and Council 2024a), which transposes into the German ProdHaftG-Novelle (Deutscher Bundestag 2026). Figure 1 provides a visual overview of their relations. For convenience, the corresponding regulations are cited in the Appendix , e.g., Section B.1 presents the EU AI Act regulations relevant for the context of this section. 3A PREPRINT - 2026-08-05 The forecasting systems considered in the challenge treat the German market as a single aggregated zone, the largest in Europe by annual electricity demand (ENTSO-E 2024). The four German transmission zones (50Hertz, Amprion, TenneT, and TransnetBW) are shown in Figure 2. The ENTSO-E Transparency Platform publishes the German load under two closely related aggregations. The bidding zone DE-LU, the area of uniform wholesale electricity pricing, has comprised Germany and Luxembourg since October 2018. The country aggregation DE sums the four German control areas and excludes Luxembourg. The target series of this paper and the ground truth of the challenge use the country aggregation, whose 2022 total of 482 TWh and hourly peak of 78.7 GW lie about one percent below the DE-LUX bidding-zone values. 
+
+Figure 2: Control areas of the four transmission system operators (TSO) for electrical power in Germany. Attribution: Francis McLloyd, CC BY-SA 3.0 https://creativecommons.org/licenses/by-sa/3.0, via Wikimedia Commons. Under the draft German “Kritisverordnung” (Bundesministerium des Innern 2026), supplying the general public with electricity is a critical service, one that expressly comprises generation, transmission, distribution, and trading, and a transmission network becomes a critical installation once final consumers and redistributors withdraw 3,700 GWh from it per year (Section B.2.1, Section B.2.2). Day-ahead load forecasts feed precisely those transmission and trading functions. The Kritisverordnung (Bundesministerium des Innern 2026) governs the physical resilience of installations and never mentions forecasting, software, or models. The information security of the same operators is governed separately, by the BSI-Gesetz (Deutscher Bundestag 2025). The BSI-Gesetz is an information-security statute throughout. The provisions carrying this reading are quoted verbatim in Section B.3: the statute’s title in Section B.3.1, the definitions of critical installation, critical service, and security in information technology (§ 2 Nr. 22, 24, and 39) in Section B.3.2, the operator definition of § 28 Abs. 8 in Section B.3.3, and the IT-security obligations of § 30 Abs. 1 and § 31 Abs. 2 in Section B.3.4 and Section B.3.5. Neither German instrument is free-standing. The BSI-Gesetz and Kritisverordnung both transpose the European leg-islative package of 14 December 2022, i.e., NIS-2 directive (European Parliament and Council of the European Union 2022a) and CER Directive (European Parliament and Council of the European Union 2022b), respectively. The BSI-Gesetz states on its first page that it implements the NIS-2 Directive (Directive (EU) 2022/2555 on a high common level of cybersecurity) (European Parliament and Council of the European Union 2022a), which imposes cybersecurity 4A PREPRINT - 2026-08-05 risk-management and reporting duties on essential and important entities and lists energy first among its sectors of high criticality. The KRITIS-Dachgesetz, under which the Kritisverordnung is issued, transposes the sibling CER Directive (Directive (EU) 2022/2557 on the resilience of critical entities) (European Parliament and Council of the European Union 2022b). The Kritisverordnung is conceived as a joint ordinance for both regimes, so the 3,700 GWh threshold quoted above determines at once who owes the physical-resilience duties of the Dachgesetz and who counts as an oper-ator of critical installations under the BSI-Gesetz. Even the EU AI Act ties into this package: its definition of critical infrastructure is a reference to the CER Directive, and the Recital 55 quoted in Section B.1.1 cites that directive’s annex. The EU AI Act in turn reaches energy applications only where an AI system serves as a safety component, a notion its Recital 55 (Section B.1.1) confines to systems that directly protect physical integrity and are not themselves required for the installation to function (European Parliament and Council of the European Union 2024). A day-ahead load forecaster therefore sits alongside critical infrastructure rather than inside its safety perimeter. We nonetheless hold this system to determinism, reproducibility, and auditability, because it informs decisions taken by operators of critical installations, and because those are the properties an audit of such a system would rest on. Two further instruments, the Cyber Resilience Act (CRA) (European Parliament and Council 2024b) and the revised Product Liability Directive (PLD) (European Parliament and Council 2024a), both adopted on 23 October 2024, com-plete the picture, and both address the supplier rather than the operator: The CRA lays down horizontal cybersecurity requirements for products with digital elements, the product-side counterpart to the risk management the BSI-Gesetz demands of the operator. Its Article 12(1) joins the two Union regulations directly: a product that is also a high-risk AI system is deemed to meet the cybersecurity requirement of Article 15 of the EU AI Act once it satisfies the essential re-quirements of Annex I and demonstrates this in its declaration of conformity (Section B.4.1). The harmonised standards that would carry that presumption are still in development under the standardisation request of February 2025 (Euro-pean Commission 2025). The revised PLD (European Parliament and Council 2024a), which a government bill would transpose into German law (Deutscher Bundestag 2026), makes software a product in its own right (Section B.5.2) and counts safety-relevant cybersecurity requirements, together with a product’s ability to keep learning after deployment, among the circumstances that determine defectiveness (Section B.5.3). Both place free and open-source software supplied outside a commercial activity beyond the manufacturer’s obligations, which is where spotforecast2-safe sits, but that exemption does not travel to whoever integrates the engine into a commercial product (Section B.4.2, Section B.5.1). Neither instrument applied during the live phase reported here, since the CRA applies from 11 December 2027 and the Directive covers products placed on the market after 9 December 2026, so this reading is anticipatory. The design of the reference pipeline builds on two existing artefacts. The first is the open energy-demand forecaster of Chagnet (2025), a software pipeline for the French market that combines skforecast, LightGBM, ENTSO-E data inges-tion, weekly retraining, and Bayesian hyperparameter tuning with Optuna. We adopt it as a pipeline template, a working reference architecture for recursive load forecasting rather than a manuscript or document template, and we re-target and extend it for the German market zone and the challenge evaluation protocol. The second is spotforecast2-safe 
+
+(Bartz-Beielstein and Bartz 2026), which supplies the actual forecasting engine: where a general-purpose library op-timizes for flexibility, this package exposes only a reviewed, deterministic subset of the skforecast recursive strategy (Amat Rodrigo and Escobar Ortiz 2024) so that the resulting system is reproducible and auditable in the sense the EU AI Act requires. Pairing a community pipeline pattern with a safety-critical engine lets us inherit established engineering practice while retaining the guarantees that a critical-infrastructure setting demands. Our contributions are as follows: First, we assemble an end-to-end day-ahead load-forecasting system for the German market zone that is deterministic, reproducible, and auditable by construction, combining a community pipeline pat-tern with the safety-critical spotforecast2-safe engine. Second, we show how surrogate-model hyperparameter tuning can be applied to a recursive LightGBM forecaster and compare two approaches: SpotOptim versus Optuna under an identical budget. Third, we report the accuracy of the system against the ENTSO-E baseline on the challenge leaderboard. Fourth, we compare traditional approaches from recursive forecasting with newer methods using foun-dation models and in-context learning, and we discuss the implications of our findings for operational and regulatory requirements in safety-critical environments. The two newer methods are Chronos-2 (Ansari et al. 2025) and MacL2L (Mac Learning to Learn). Chronos-2 (Ansari et al. 2025) is a more than 100-million-parameter large pretrained model that maps a window of past observations directly onto multi-step quantile forecasts. MacL2L is a small model that uses in-context learning to adapt to new time series. It can be used in a very energy-efficient manner and does not require high-performance hardware. Both models are evaluated on the same ENTSO-E data and challenge protocol as the recursive forecasters. The remainder of the paper is organized as follows. Section 2 describes the data, anomaly handling, and feature con-struction. It also introduces the MAE-based evaluation protocol. Section 3 details the recursive multi-step forecasting 5A PREPRINT - 2026-08-05 algorithm and Section 4 presents the SpotOptim and Optuna hyperparameter tuners. Section 5 describes the challenge framework within which the competing teams built their forecasters. Section 6 reports the empirical findings. Section 7 interprets them with respect to operational and regulatory requirements. Finally Section 8 summarizes the work and outlines directions for future research. 
+
+# 2 Materials and Methods 
+
+The forecasting system is organised as a single, deterministic pipeline that turns raw transmission-grid measurements into a validated day-ahead forecast. Each student team was provided with a reference implementation of the pipeline, which they could modify freely to produce their own submissions. The reference pipeline downloads aggregated load data from the ENTSO-E Transparency Platform (ENTSO-E 2024), annotates the series, and flags anomalous observa-tions before imputing the resulting gaps. Calendar and weather covariates are generated and a recursive forecaster is built using a LightGBM regressor (Ke et al. 2017). The forecaster recursively predicts the twenty-four-hour horizon of a target day. Forecast quality is then evaluated (updated daily) on the leaderboard using the MAE against the actual load. 
+
+2.1 Notation 
+
+Table 2 summarises the notation used throughout the paper. We follow the forecasting conventions of Hyndman and Athanasopoulos (2021), writing actual values as bare symbols and forecasts with a hat. Table 2: Notation used throughout the paper. Symbol Meaning 
+
+𝑦 𝑡 observed (actual) load at hour 𝑡 , in megawatts (MW) ̂𝑦 𝑡 point forecast of 𝑦 𝑡 ̂𝑦 𝑇+ℎ∣𝑇 ℎ-step-ahead forecast for time 𝑇 + ℎ made at forecast origin 𝑇̃ 𝑦 𝑠 substituted series, equal to the observed load for 𝑠 ≤ 𝑇 and to the running forecast for 
+
+𝑠 > 𝑇 𝑇 forecast origin, equivalently the training-sample size 
+
+ℎ forecast lead time (step index), ℎ = 1, … , 𝐻 𝐻 forecast horizon, here 𝐻 = 24 𝑚 seasonal period, here 𝑚 = 24 (one day) 
+
+ℒ set of autoregressive lags; default ℒ = {1, 2, 24} , tuned over the pool of Table 5 
+
+𝑤 history window per training row, 𝑤 = max (max ℒ, 72) hours, where 72 is the rolling-mean window of Section 2.6.3 
+
+x𝑡 vector of exogenous covariates available at hour 𝑡 
+
+z stacked input vector of the regression function (lags and covariates) 
+
+𝑔( ⋅ ; 𝜃) LightGBM regression function with hyperparameters 𝜃 𝐾 number of boosting iterations (trees) 
+
+𝑓 𝑘 𝑘 -th regression tree 
+
+ℓ training loss (squared error) 
+
+Ω tree-complexity penalty 
+
+𝜃, 𝜃 ∗ hyperparameter vector and its optimum 
+
+Θ hyperparameter search space 
+
+𝑒 𝑡 forecast error, 𝑒 𝑡 = 𝑦 𝑡 −̂ 𝑦 𝑡 
+
+2.2 Code design and process rules 
+
+The determinism, reproducibility, and auditability that Section 1 claims for the system and that every team of the chal-lenge must follow are not asserted ad hoc. They are inherited from the forecasting engine: spotforecast2-safe is developed under eight rules, which Bartz-Beielstein and Bartz (2026) define and map to the applicable regulatory pro-visions and industrial safety and security standards. Four code-development rules (CR-1 to CR-4, see Bartz-Beielstein and Bartz (2026)) restrict what the source code may contain, and four related process rules (PR-1 to PR-4) restrict how the package is developed, shipped, and operated. The code-development rules are enforced at commit time by tests and linters: • CR-1, no dead code, requires that no function, class, or branch ships without a test or an executable docstring example reaching it. 6A PREPRINT - 2026-08-05 • CR-2, deterministic transformations, requires that the same input yields the same bit-level output: random-number generators are seeded, dictionary iteration order is never relied upon, and parallelism is pinned to a fixed degree. • CR-3, fail-safe handling, requires invalid inputs to raise an explicit exception rather than be silently imputed or coerced; silent imputation exists only behind a typed switch that must be set explicitly. • CR-4, a minimal attack surface, keeps a short, versioned blocklist of forbidden dependencies that a test checks against the dependency lock files. The process rules are inspected at review or release time. This inspection can be implemented by continuous-integration jobs, for example on GitHub Actions or GitLab CI/CD. • PR-1, traceability, is mechanisable as far as documentation coverage, through a release guard that fails when a public symbol is undocumented or its generated interface stub is stale. • PR-2, a documented threat model, keeps a STRIDE table (spoofing, tampering, repudiation, information dis-closure, denial of service, elevation of privilege) beside the code it describes, and GitHub Actions or GitLab CI/CD workflows can refuse a merge request that touches a network-facing module without updating the cor-responding entry. • PR-3, supply-chain integrity, calls for a software bill of materials and for an attestation binding it to the arte-fact actually shipped. The Open Source Security Foundation (OpenSSF) Scorecard (Open Source Security Foundation 2026) is an established way of checking this rule, scoring the release integrity of a repository through automated checks such as signed releases, pinned dependencies, and workflow token permissions. Its vulnerability and dependency-update checks inspect the same dependency surface that CR-4 keeps minimal, so a Scorecard report additionally lends supporting evidence to that rule. • PR-4, a structured audit log, has every operational action emit a record under a pinned, versioned logging schema, where a unit test holds the schema version to a single source and a comparison job turns the convention that a schema change forces a major version bump into an enforced gate. 
+
+2.3 spotforecast2 and spotforecast2-safe Definition 2.1 (spotforecast2-safe) . spotforecast2-safe, also referred to as sf2-safe, is a specialized Python library designed to facilitate time series forecasting in safety-critical production environments. Unlike standard machine and deep learning libraries, it follows a strict Safety-First architecture by design. Especially, it focuses on the following principles: • Zero Dead Code to minimize the attack surface by excluding visualization and training logic. • Deterministic Logic: The algorithms are designed to be purely mathematical and deterministic. • Fail-Safe Operation: The system is designed to favor explicit errors over silent failures when encountering invalid data. • EU AI Act Support: The architecture supports transparency and data governance, helping users build compli-ant high-risk AI components. For a detailed technical overview of our safety mechanisms, see MODEL_CARD.md. The package is available as open source (Bartz-Beielstein 2026d). 
+
+Definition 2.2 (spotforecast2) . spotforecast2, also referred to as sf2, is an extended version of the spotforecast2-safe library with visualization and additional features. It is available as open source (Bartz-Beielstein 2026c). 
+
+2.4 Data and study domain 
+
+The forecasting target is the aggregated load of the DE market zone, taken as the ENTSO-E Actual Total Load (ENTSO-E code 6.1.A). 1 The series is hourly, expressed in MW, and indexed on a Coordinated Universal Time (UTC) axis. Data 
+
+> 1The identifier 6.1.A is ENTSO-E’s article-based catalogue number for a data item. Commission Regulation (EU) No 543/2013 (European Commission 2013) obliges TSOs to submit market data to ENTSO-E for central publication, and its Article 6(1) lists the load-related items: point (a) is the actual total load per bidding zone and point (b) the day-ahead load forecast. ENTSO-E turned that article structure into the numbering scheme of the Transparency Platform, so 6.1.A reads as Article 6, paragraph 1, point (a) and names the Actual Total Load, while the official day-ahead forecast that serves as the ENTSO-E baseline below is the sibling item 6.1.B, the Day-Ahead Total Load Forecast. The code is visible in three places: on the Transparency Platform (ENTSO-E 2024), whose data views carry it in square brackets (the load view is headed “Total Load – Day Ahead / Actual [6.1.A/B]”); in the detailed data descriptions of the platform’s Manual of Procedures, which list every item under these identifiers; and in the regulation itself. Actual Total Load is not a single meter reading but a calculated quantity, equal to the power generated on the transmission and distribution networks less the net cross-border exchange balance and the power absorbed by storage, and inclusive of grid losses.
+
+7A PREPRINT - 2026-08-05 are retrieved programmatically through the ENTSO-E Transparency Platform application programming interface (API) (ENTSO-E 2024). Recursive forecaster from the reference pipeline can be trained on a window of three years of history. The task is to predict the twenty-four hourly load values of a target day, that is, the full horizon 𝐻 = 24 of Table 2. Every submission is validated against a strict contract: it must contain exactly twenty-four hourly rows, no missing values, and strictly positive forecasts ( ̂ 𝑦 𝑇 +ℎ∣𝑇 > 0 for ℎ = 1, … , 𝐻 ). The ground truth is the final ENTSO-E Actual Total Load, while the ENTSO-E baseline is the reference against which accuracy is reported in Section 2.8. The ENTSO-E baseline is operational rather than unbiased. Analysing the same published series for the German– Luxembourg bidding zone over 2016 to 2019, Möbius et al. (2025) report a systematic under-prediction of load aver-aging 881 MW, an MAE of 1776 MW or 3.14% of mean load, and hourly errors that are strongly autocorrelated. They report that the direction of the error tracks calendar position, with under-prediction on weekdays and over-prediction at weekends, and the largest deviations in the morning and evening ramp hours, see also the discussion in Section 6.7. Table 2 in Möbius et al. (2025) shows that modelling the error series on its own, without any load-specific covariate, lowers its root mean squared error (RMSE) by about 21%. Therefore, the mean bias of Equation 4 and the under-prediction rate (UPR) of Equation 5 are reported here alongside the MAE, RSME, and MAPE: they establish whether the same asymmetry is present in the challenge period, which lies outside the window those authors studied. Figure 3 answers that question. Over the 41 scored days of the completed challenge the ENTSO-E baseline carries a mean bias of −38.42 MW against a mean absolute error of 2155.61 MW, and it forecasts below the actual load in 51.4% of hours. The direction Möbius et al. (2025) report therefore persists, but the constant component is more than an order of magnitude smaller than over 2016 to 2019, so correcting the mean bias alone would recover almost none of the margin against the ENTSO-E baseline. This does not make the remaining error unstructured: the near-zero full-phase bias averages over episodes of opposite sign, and the hour-of-day profile retains the calendar-linked pattern those authors describe (Section 6.7), so a model of the error alone might in principle still remove part of it. For the challenge that route is closed by design, because the rules bar every standard submission identity from consuming the ENTSO-E forecast as a covariate (Section 2.6.1). The accuracy has to come from forecasting the load itself. 
+
+2.5 Overview of load-forecasting methods 
+
+Table 3 locates the forecasters studied in this paper within the wider landscape of forecasting methods. The reader is referred to Ullah et al. (2024) and Hyndman et al. (2026) for a comprehensive survey of the field. The applicability of recursive gradient-boosting pipelines on ENTSO-E data have been demonstrated in comparable settings (Chagnet 2025). Table 3: Classification of forecasting methods, based on Hyndman et al. (2026). ARIMA denotes the autoregressive integrated moving average model, and ETS abbreviates error, trend, seasonal, the state-space form of exponential smoothing. The last row adds the three forecasters evaluated in this paper: the recursive spotoptim-lgbm forecaster and the pretrained models Chronos-2 and MacL2L. Category Members Time series regression models linear model, predictor selection, nonlinear regression Exponential smoothing simple exponential smoothing, trend and seasonal methods, ETS state-space models ARIMA models autoregressive models, moving average models, seasonal and non-seasonal ARIMA models Dynamic regression models regression with ARIMA errors, dynamic harmonic regression, lagged predictors Forecasting hierarchical and grouped time series bottom-up and top-down approaches, forecast reconciliation Advanced forecasting methods complex seasonality, Prophet, vector autoregressions, bootstrapping and bagging Neural networks multilayer perceptron, modern neural network architectures Foundation forecasting models transfer learning, pretrained foundation models This paper spotoptim-lgbm, Chronos-2, MacL2L 
+
+> Being inferred from several reported series, it is revised as those series are corrected, which is what the re-scoring window of Section 2.7 accommodates.
+
+8A PREPRINT - 2026-08-05 
+
+Figure 3: Mean bias per leaderboard entry, in MW, computed from the committed snapshot of the finalized challenge leaderboard data (https://bartzbeielstein.github.io/challenge-leaderboard/, snapshot of 21 July 2026, completed live phase of 41 scored days). The leaderboard defines the bias as the mean of forecast minus actual, which is the convention of Equation 4, so a negative value marks a systematic under-forecast. The ENTSO-E baseline reaches −38.42 MW. 
+
+2.6 Reference pipeline provided to the teams 
+
+The three subsections that follow describe the reference pipeline handed to every team at the start of the challenge: the anomaly-aware preparation of the raw ENTSO-E series, the covariates derived from it, and the resulting data-set. Together with the recursive forecaster of Section 3 they constitute the spotoptim-lgbm configuration, which is at once the organizer-operated entry evaluated in Section 6 and the starting point the teams were free to modify. 
+
+2.6.1 Outlier detection and data preparation 
+
+Because the forecasting system operates in a safety-critical setting governed by the EU AI Act (European Parliament and Council of the European Union 2024), gaps and corruptions in the input series are annotated (flagged or marked) and specially treated (“healed”) explicitly rather than silently imputed. This gap-aware design choice follows the data-governance principles of Bartz-Beielstein and Bartz (2026). Data preparation proceeds in three stages, implemented by the spotforecast2-safe utilities. A hands-on walkthrough of the code implementing these three stages, executable on a bundled demonstration data-set, is given in Section A. 
+
+2.6.1.1 Stage 1: Unsupervised anomaly flagging First, unsupervised anomaly flagging applies an Isolation Forest (Liu et al. 2008) independently to each column, governed by a contamination parameter that sets the expected fraction of anomalies. Points flagged as anomalous are set to missing rather than altered in place, so that the subsequent stages handle them on the same footing as native gaps. The whole preparation pipeline, and the recursive forecaster of Section 3 that consumes its output, is deterministic and reproducible: a fixed random seed makes both the Isolation-Forest flagging and the model fit repeatable across runs. 
+
+2.6.1.2 Stage 2: Target-corruption flagging Second, a target-corruption module applies domain-specific rules tailored to the characteristic dropouts of the ENTSO-E Actual Load series. An intra-hour range check verifies that the 9A PREPRINT - 2026-08-05 four fifteen-minute slots making up an hour are mutually consistent. An adjacent-step check rejects implausible jumps between consecutive fifteen-minute slots, and a deviation check flags excessive shortfalls below a reference series, namely the ENTSO-E baseline. The deviation check scans the native fifteen-minute target series inside a rolling three-day window ending at the last observed value and flags a slot when the actual load falls more than 11,000 MW below the ENTSO-E baseline. In the production configuration a single fifteen-minute slot suffices. The rule is one-sided by design: the characteristic reporting dropouts can stay within the intra-hour range (8,000 MW) and adjacent-step (6,000 MW) thresholds while the level sits several gigawatts below the ENTSO-E baseline, so a level-versus-reference comparison is the only discriminator that sees them. The check runs twice, first as a non-raising preview during the coverage guard and then authoritatively inside data preparation. There, a flagged slot is healed by time interpolation of the target’s own neighbouring values and receives sample weight zero in the fit. A healing budget of six hours and a 48-hour anchor zone before the forecast origin bound the repair, and an episode that exceeds them triggers a fallback that truncates the corrupted tail instead. Note that the ENTSO-E baseline is not used as a model input by the standard algorithms. By leaderboard convention, only submission identities carrying an entsoe suffix in their name may consume it as a covariate. For the standard algorithms of this paper, the exclusion is enforced by an assert_no_leakage guard, which aborts the run if the raw baseline column reaches the target, the exogenous features, or the fitted model. The ENTSO-E baseline still serves three non-predictive roles: • the target-corruption deviation quality control (QC), • a warn-only forecast-shape plausibility check, and • a post-hoc diagnostic plot that overlays the ENTSO-E baseline on the submitted forecast. Three independent layers keep the ENTSO-E baseline away from the model. First, the information flow of the check itself: the baseline enters only a boolean comparison, and its entire influence on the training data is one flag per slot, because the healed values are interpolated from the target series itself, never copied from the baseline. Second, after training, the assert_no_leakage guard verifies three surfaces independently, namely the columns of the training frame, the selected exogenous feature names, and the feature list recorded by the fitted estimator, and aborts the run before a submission is written if the raw baseline column appears in any of them. Third, standard submission identities outside this guard exclude the baseline structurally: it is absent from their covariate sets, so no code path could carry it into the model. 
+
+2.6.1.3 Stage 3: Gap imputation In the third data-preparation step, the gaps produced by the first two stages are filled by a linear-interpolation imputer, with a fail-safe default that raises an error rather than fabricate values whenever a gap cannot be filled safely. 
+
+2.6.2 Covariates 
+
+The exogenous feature vector x𝑡 collects the drivers available alongside the load history. It comprises three groups. The first is a set of deterministic calendar features: the periodic components month, week of year, day of week, and hour of day, which enter the model through a cyclical sine/cosine encoding so that the encoded coordinates wrap around the period. Hour 23, for instance, lies adjacent to hour 0 rather than far from it. The second group holds the holiday-derived integer indicators, all computed from the German holiday calendar (nation-wide holidays plus those of the state of North Rhine-Westphalia): a public-holiday flag, three adjacency flags marking the day before a holiday, the day after a holiday, and bridging working days ( Brückentage ), and a day-type pair consisting of a working-day flag and a four-class day-type code that distinguishes working days, Saturdays, Sundays, and public holidays, with holidays taking precedence. Weekend information therefore enters through the day-type classes rather than through a separate weekend flag, and the integer coding is unproblematic for a tree-based learner, which splits it by thresholding. The third group consists of weather covariates, such as air temperature from a numerical weather service (Open-Meteo). A key constraint of recursive multi-step forecasting shapes which covariates are admissible: every exogenous covariate must be known, or itself forecast, over the entire prediction horizon, because the value x𝑇+ℎ is required at every step 
+
+ℎ = 1, … , 𝐻 of the recursion described in Section 3. The calendar and holiday features satisfy this requirement trivially, since they are deterministic functions of the timestamp and the published holiday calendar and can be evaluated for any future hour. Weather and other measured drivers do not, and must therefore be supplied by a forecast of their own that spans the target day before they can enter x𝑇 +ℎ .
+
+2.6.3 The complete data-set 
+
+Table 4 assembles the complete data-set of the recursive forecaster: the endogenous target series, the exogenous co-variate groups that form x𝑡 , and the one reference series that is deliberately withheld from the model. The endogenous information consists of the ENTSO-E Actual Total Load alone. After the preparation of Section 2.6.1 the native fifteen-minute series is aggregated to hourly means on the UTC axis, and the most recent three years of it form the training window. From this single series the forecaster derives all autoregressive inputs, namely the lags ℒ of Table 2 and a rolling mean over the preceding 72 hours that summarises the recent load level. 10 A PREPRINT - 2026-08-05 Table 4: The complete data-set of the recursive LightGBM forecaster. The first row lists the endogenous target, the middle rows the exogenous covariate groups of x𝑡 , and the last row the reference series that the leakage guard of Section 2.6.1 keeps out of the model. Group Series Source Cadence Enters the model as Endogenous Actual Total Load 𝑦 𝑡 of the DE market zone ENTSO-E Transparency Platform (code 6.1.A) 15 min, aggregated to hourly means prediction target; autoregressive lags ℒ and a 72-hour rolling mean Exogenous, calendar hour of day, day of week, week of year, month deterministic function of the UTC timestamp hourly one sine/cosine pair per feature (eight columns) Exogenous, solar sunrise hour, sunset hour astronomical computation for the reference location hourly one sine/cosine pair per feature (four columns) Exogenous, holiday and day-type public-holiday flag, day before/after holiday, 
+
+Brückentag , working-day flag, four-class day type deterministic function of the timestamp and the German holiday calendar (DE, state NW) hourly six integer columns, used as delivered Exogenous, weather air temperature (2 m), relative humidity (2 m), precipitation, rain, snowfall, weather code, mean-sea-level pressure, surface pressure, and total, low, mid, and high cloud cover Open-Meteo: archive for the history, weather forecast over the horizon hourly twelve columns, used as delivered Reference, non-predictive day-ahead load forecast of the DE market zone ENTSO-E Transparency Platform (code 6.1.B) 15 min never a covariate; deviation QC, shape check, and diagnostic plots only All exogenous covariates satisfy the admissibility constraint of Section 2.6.2. The calendar, solar, and holiday features are deterministic functions of the timestamp and the published holiday calendar and are therefore known exactly over the horizon. The periodic ones among them enter the model only through their sine/cosine encodings, twelve columns in total. The solar and weather series refer to a single reference location, Dortmund (51.51° N, 7.47° E). Historical weather values come from the Open-Meteo archive, while the values spanning the target day are taken from the Open-Meteo weather forecast, so over the horizon they are covariate forecasts rather than measurements. The three wind variables offered by the service (speed, direction, and gusts at 10 m) are deliberately absent. Their archive coverage proved unreliable during the challenge, and once coverage recovered, restoring them raised the cross-validated MAE by 1.6% against the wind-free configuration over eight paired seeds on the production tuning configuration. Their exclusion is therefore a benchmarked configuration choice rather than a workaround for missing data. In total the model sees thirty exogenous columns alongside the lagged target. The covariate configuration described here is the one active from 19 July 2026 onward. The 39 leaderboard days scored before that date were produced with a reduced set of twenty-four exogenous columns. 
+
+2.7 Challenge design 
+
+The challenge ran as a public leaderboard repository on GitHub, whose archived final state remains available (https: //bartzbeielstein.github.io/challenge-leaderboard/). Eleven student teams from two course cohorts at TH Köln competed alongside eight organizer-operated models, the ENTSO-E baseline, and two seasonal-naive benchmarks computed from the ground truth. For a target day 𝐷 the twenty-four hourly forecasts were due by 23:59 UTC on day 
+
+𝐷−1 and entered the repository through a validated fork-and-pull-request pipeline that enforced the submission contract of Section 2.4 and the deadline before an automated merge. Each day was scored once ENTSO-E published the final actual load, and already-scored days were re-scored automatically whenever ENTSO-E revised the actuals within a 21-day look-back window, so the final board reflects the last revision of the ground truth. 11 A PREPRINT - 2026-08-05 Two scoring rules governed missing and corrected submissions: a team that missed a day had its most recent submission carried forward and scored in its place, and every team held a single joker with which it could replace one already-scored day by a fresh forecast, re-scored against the committed actuals. After a preliminary warm-up phase, scoring restarted cleanly on 10 June 2026, and the scored live phase closed with its 41st target day on 20 July 2026. Finally, each team’s result had to be reproduced by a different team from its published software artifact, and this peer reproduction was certified for all eleven teams. 
+
+2.8 Evaluation metrics 
+
+All metrics are computed over the 𝐻 = 24 hourly forecasts of one target day, each forecast ̂ 𝑦 𝑇+ℎ∣𝑇 being compared with the realised load 𝑦 𝑇+ℎ in the notation of Table 2. The primary ranking metric is the MAE, MAE = 1𝐻 
+
+> 𝐻
+
+∑
+
+> ℎ=1
+
+∣𝑦 𝑇+ℎ −̂ 𝑦 𝑇+ℎ∣𝑇 ∣ , (1) the average over the day of the absolute hourly forecast errors 𝑒 𝑇+ℎ = 𝑦 𝑇+ℎ −̂ 𝑦 𝑇+ℎ∣𝑇 . The public leaderboard ranks teams by the MAE of Equation 1 averaged across all scored days, with lower values indicating better forecasts. The RMSE, RMSE = √ 1𝐻 
+
+> 𝐻
+
+∑
+
+> ℎ=1
+
+(𝑦 𝑇+ℎ −̂ 𝑦 𝑇+ℎ∣𝑇 )2, (2) squares the hourly errors before averaging and therefore weights large deviations more heavily than Equation 1 does. The mean absolute percentage error (MAPE), MAPE = 100% 𝐻 
+
+> 𝐻
+
+∑
+
+> ℎ=1
+
+∣ 𝑦 𝑇+ℎ −̂ 𝑦 𝑇+ℎ∣𝑇 
+
+𝑦 𝑇+ℎ 
+
+∣ , (3) expresses the same absolute errors relative to the actual load, which makes accuracy comparable across days of differing demand level. The mean bias is the signed counterpart of Equation 1, Bias = 1𝐻 
+
+> 𝐻
+
+∑
+
+> ℎ=1
+
+(̂𝑦 𝑇+ℎ∣𝑇 − 𝑦 𝑇+ℎ ) , (4) defined as forecast minus actual, so that a negative value signals a systematic under-forecast and a positive value a systematic over-forecast. The UPR reports the share of hours in the day on which the forecast falls below the actual load, UPR = 1𝐻 
+
+> 𝐻
+
+∑
+
+> ℎ=1
+
+𝟙[̂𝑦 𝑇 +ℎ∣𝑇 < 𝑦 𝑇+ℎ ] , (5) with 𝟙[⋅] the indicator function, equal to one when its argument is true and zero otherwise. For comparability across series of different scale we additionally report the mean absolute scaled error (MASE), which divides the MAE by the average one-step naive forecast error of the in-sample series, MASE = MAE / 1𝑇 − 1 
+
+> 𝑇
+
+∑
+
+> 𝑡=2
+
+∣𝑦 𝑡 − 𝑦 𝑡−1 ∣ , (6) so that a value below one identifies a forecaster that beats the naive one-step benchmark (Hyndman and Athanasopoulos 2021). 12 A PREPRINT - 2026-08-05 Of these, MAE alone determines the ranking. RMSE, MAPE, mean bias, and UPR are reported as secondary diag-nostics, with RMSE penalising large hourly errors and the mean bias and UPR exposing systematic over- or under-forecasting. 
+
+# 3 The recursive LightGBM forecaster 
+
+The forecaster converts a scikit-learn-style regressor into a recursive autoregressive multi-step predictor. The regressor employed here is a LightGBM gradient-boosted decision-tree (GBDT) ensemble (Ke et al. 2017; Friedman 2001), and the recursive wrapping strategy is ported from skforecast (Amat Rodrigo and Escobar Ortiz 2024) into the deterministic engine of spotforecast2-safe (Bartz-Beielstein and Bartz 2026). At the level of a single hour the model is an ordinary regression map. Writing 𝑔(⋅; 𝜃) for the fitted LightGBM function with hyperparameters 𝜃 , the default lag set 
+
+ℒ = {1, 2, 24} together with the exogenous covariate vector x𝑡 defines the one-step-ahead forecast ̂𝑦 𝑡 = 𝑔(𝑦 𝑡−1 , 𝑦 𝑡−2 , 𝑦 𝑡−24 , x𝑡 ; 𝜃) . (7) The three lags in Equation 7 couple the previous hour, the hour before it, and the same hour on the previous day (the seasonal period 𝑚 = 24 ), so that both short-range dynamics and the daily load cycle enter the feature vector. The lag set itself is a tuned quantity: the hyperparameter search of Section 4 selects it from a small pool of candidate sets (Table 5), and Equation 7, like the recursion below, is written out for the default set. The regression function itself is an additive ensemble of 𝐾 regression trees. Collecting the inputs of Equation 7 into a single feature vector z, the LightGBM model reads 
+
+𝑔( z) = 
+
+> 𝐾
+
+∑
+
+> 𝑘=1
+
+𝑓 𝑘 (z), (8) where 𝑓 𝑘 denotes the 𝑘 -th tree. The additive form of Equation 8 is the classical gradient-boosting expansion of Friedman (2001). The ensemble is fitted stage-wise, each new tree being chosen to reduce the regularised objective 
+
+∑𝑖 ℓ(𝑦 𝑖 ,̂ 𝑦 𝑖 )+∑ 𝑘 Ω(𝑓 𝑘 ) in the tree-ensemble formulation introduced for XGBoost (Chen and Guestrin 2016), in which ℓ
+
+is the (squared-error) training loss summed over the training rows and Ω penalises tree complexity. LightGBM realises this scheme as a histogram-based, leaf-wise GBDT implementation: continuous features are bucketed into histogram bins, and each tree is grown best-first (Shi 2007), by repeatedly splitting the leaf that promises the largest loss reduction rather than expanding level by level, which keeps training on long hourly series efficient. The function 𝑔 is fitted to a lagged design matrix obtained by sliding a window of 𝑤 hours (Table 2) over the observed series. Every in-sample hour 𝑡 for which all required history exists contributes one row, whose features are the lags 
+
+(𝑦 𝑡−1 , 𝑦 𝑡−2 , 𝑦 𝑡−24 ), the 72-hour rolling mean of the target described in Section 2.6.3, and the covariates x𝑡 , and whose target is the realised load 𝑦 𝑡 . Stacking these rows over the training sample of size 𝑇 yields the supervised problem to which Equation 8 is fitted. Forecasting the full day requires lags that reach past the origin 𝑇 , where the true load is not yet known. The recursive strategy resolves this by substituting earlier forecasts for the missing actuals. Define the substituted series ̃𝑦 𝑠 = ⎧{⎨{⎩𝑦 𝑠 , 𝑠 ≤ 𝑇 ,̂ 𝑦 𝑠∣𝑇 , 𝑠 > 𝑇 , (9) which equals the observed load up to the origin and the running forecast thereafter. For each lead time ℎ = 1, … , 𝐻 
+
+with 𝐻 = 24 the forecast made at origin 𝑇 is then ̂𝑦 𝑇+ℎ∣𝑇 = 𝑔(̃𝑦 𝑇+ℎ−1 ,̃ 𝑦 𝑇+ℎ−2 ,̃ 𝑦 𝑇+ℎ−24 , x𝑇+ℎ ; 𝜃) , (10) evaluated in increasing order of ℎ. The substitution in Equation 9 makes the recursion explicit: as soon as a value ̂𝑦 𝑇+ℎ∣𝑇 is produced it re-enters Equation 10 as an input lag for later steps, which is exactly what makes the strategy recursive and what allows a forecast error at one hour to propagate along the horizon. Throughout the first day ( ℎ ≤ 24 )the lag-24 term ̃ 𝑦 𝑇+ℎ−24 still points at an observed load, whereas the lag-1 and lag-2 terms turn from observed values into previously generated forecasts as ℎ grows. At ℎ = 1 all three lags are observed, while at ℎ = 2 the lag-1 term is already the prior forecast ̂ 𝑦 𝑇+1∣𝑇 .Because Equation 10 evaluates 𝑔 at future covariate vectors, every covariate x𝑇+ℎ must be available over the entire horizon at prediction time. Calendar features such as hour of day, day of week, and holiday flags are deterministic 13 A PREPRINT - 2026-08-05 functions of the timestamp and are therefore known exactly, whereas weather-derived covariates are not observed in advance and must themselves be supplied by a forecast. In the configuration evaluated here the forecaster operates on a single aggregated DE Actual Total Load series with a daily seasonal encoding, a lag set selected by the tuner from the pool of Table 5 (default ℒ = {1, 2, 24} ), a horizon of 
+
+𝐻 = 24 hours, a three-year training window, and a fixed random seed that renders the fit deterministic. 
+
+3.1 Choice of the GBDT implementation 
+
+The challenge forecaster is built on LightGBM, one of the three most widely used GBDT implementations alongside XGBoost (Chen and Guestrin 2016) and CatBoost (Prokhorenkova et al. 2018). The three differ in two respects that matter for this application: how each tree is grown and how categorical columns are handled. Tree growth separates the implementations most visibly. XGBoost expands its trees level by level, which keeps model growth predictable and comparatively robust against overfitting, at the price of slower training. LightGBM grows the most promising leaf first, the best-first strategy described above, which is by far the fastest of the three but prone to overfitting on small data sets. CatBoost builds oblivious trees that split on a single feature per level, a rigid structure that in turn makes prediction very fast. The treatment of categorical columns differs just as much. XGBoost splits natively on sets of category values but applies no smoothing, so rare categories invite overfitting. LightGBM splits on integer codes when a column is declared categorical and silently treats an undeclared column as numeric. CatBoost derives its category encoding from preceding rows only, so the encoding cannot leak the target and no declaration is required. These differences yield simple selection guidance. When the features are mostly numeric and the tuning budget is large, XGBoost is the first choice, with the widest ecosystem and the safest production defaults. When the data run to millions of rows, or iteration speed matters, LightGBM is preferable, provided the number of leaves is capped to prevent memorisation. When many categorical columns are present, especially of high cardinality, CatBoost offers the strongest defaults and needs the least tuning. The task of this paper, a long hourly series with numeric and integer-coded covariates and a daily refit, therefore falls to LightGBM, and the leaf cap that the guidance calls for is part of the tuned search space ( num_leaves in Table 5). However, since spotforecast2-safe is a modular engine, the forecaster can be swapped for any other scikit-learn-style regressor, including XGBoost and CatBoost, without changing the recursive wrapping strategy or the tuning procedure. Therefore, the two LightGBM siblings are also evaluated in this paper. 
+
+# 4 Hyperparameter optimization 
+
+The hyperparameters 𝜃 of Equation 7 are not set by hand but selected by minimising an out-of-sample error estimate. Formally, tuning searches the space Θ for 
+
+𝜃 ∗ = arg min  
+
+> 𝜃∈Θ
+
+CV-MAE (𝜃), (11) where CV-MAE (𝜃) is the MAE of Section 2.8 for the forecaster, estimated by time-series cross-validation (CV) at the candidate configuration 𝜃 . The minimiser 𝜃 ∗ is then refitted on the full training window before evaluation. Table 5 lists the nine dimensions of the search space Θ: eight LightGBM hyperparameters and, as a ninth, categorical dimension, the choice of the autoregressive lag set. Table 5: The hyperparameter search space Θ handed to SpotOptim and, identically, to Optuna. The upper bounds of learning_rate and n_estimators are raised from the package defaults of 0.1 and 1000; every other dimension keeps its default bounds. Hyperparameter Meaning Range Type and scale 
+
+num_leaves maximum number of leaves per tree [8, 256] integer, linear 
+
+max_depth maximum depth of a tree [3, 16] integer, linear 
+
+learning_rate shrinkage of each tree’s contribution 
+
+[10 −4 , 0.3] continuous, log 10 
+
+n_estimators number of trees 𝐾 in Equation 8 [10, 4000] integer, log 10 
+
+bagging_fraction fraction of training rows drawn per boosting iteration 
+
+[0.5, 1] continuous, linear 14 A PREPRINT - 2026-08-05 Hyperparameter Meaning Range Type and scale 
+
+feature_fraction fraction of features considered per tree 
+
+[0.5, 1] continuous, linear 
+
+reg_alpha 𝐿 1 regularisation weight [0.01, 100] continuous, linear 
+
+reg_lambda 𝐿 2 regularisation weight [0.01, 100] continuous, linear lag set ℒ autoregressive lags of Equation 7 six candidate sets, see text categorical The six candidate lag sets are {1, … , 24} , {1, … , 48} , {1, 2, 24, 48} , {1, 2, 23, 24, 47, 48} , {1, 2, 11, 12, 23, 24, 167, 168} ,and {1, 2, 3, 11, 12, 22, 23, 24, 47, 48, 167, 168} : they range from dense short-memory windows over sparse day-and-two-day patterns to sets that reach back one full week (lag 168). The search space Θ is the package-default LightGBM hyperparameter space of spotforecast2-safe , with two of its upper bounds raised. The learning rate is searched over [10 −4 , 0.3] on a log 10 scale, and the number of boosting iterations, that is the number of trees 𝐾 in Equation 8, over [10, 4000] , likewise on a log 10 scale. Sampling both quan-tities logarithmically reflects their multiplicative effect on model capacity. A small discrete pool of lag configurations is included alongside the tree hyperparameters, so that the effective feature set is tuned jointly with the regressor. Two optimizers explore this identical space. The primary one is SpotOptim, a surrogate-model sequential optimizer that fits a cheap surrogate to the configurations evaluated so far and proposes each next configuration by optimising an acquisition criterion over that surrogate, thereby concentrating evaluations in promising regions of Θ (Bartz-Beielstein 2026b). SpotOptim is a recent Python implementation of the sequential parameter optimization methodology that Bartz et al. (2022) document for R, a volume that has become a widely used practical reference for hyperparameter tuning in machine and deep learning. The optimizer is run with an initial design of 50 configurations, followed by further evaluations up to a total budget of 200, with active restarts: the surrogate search restarts every 50 evaluations, re-seeded with the incumbent best configuration, and terminates early after three consecutive restarts that fail to improve the objective. As a reference optimizer the same problem is handed to the Optuna Tree-structured Parzen Estimator (TPE) sampler (Akiba et al. 2019). Because both optimizers receive the identical space Θ and the identical evaluation budget, any difference in the resulting forecasts isolates the effect of the optimizer rather than of the search problem. The inner objective CV-MAE in Equation 11 is computed by rolling-origin CV on the three-year training window. Each fold advances the forecast origin forward in time, predicts a block of 24 hours, and refits the model every 7 days, for 10 folds in total. Since every origin uses only data strictly preceding it, no future observation is ever used to predict the past. The orchestration of these studies (data loading, study bookkeeping, and the parallel execution of the SpotOptim and Optuna tasks) is handled by the multi-task driver spotforecast2 , while the deterministic forecasting engine and the data-preparation routines it calls reside in spotforecast2-safe .
+
+# 5 Team forecasters 
+
+Every team started from the reference pipeline of Section 2.6 together with the recursive forecaster of Section 3, that is, from the spotoptim-lgbm configuration built on spotforecast2-safe . From there a team could submit that con-figuration unchanged, extend it with further covariates, a different regressor, or a different tuning strategy, or replace it entirely with a forecaster of its own design. Whichever route a team took, the four code-development rules CR-1 to CR-4 of Section 2.2 were mandatory, because they are what makes a submission deterministic and reproducible enough for another team to re-run it. The process rules PR-1 to PR-4 govern how a package is developed and shipped. The teams’ own accounts of what they built will be added in a revised version of this paper. 
+
+# 6 Results 
+
+This section reports the final outcome of the challenge. Every number, table, and figure is computed at render time from the open data bundle committed with the manuscript and documented in data/DATA.md (reproduced in Section C): an hourly matrix holding every submitted forecast alongside the realised load and the ENTSO-E baseline, and one row of metadata per entry. The snapshot is the finalized state of 21 July 2026, after the last day was scored and the final ENTSO-E data revisions were applied. Every daily score reported below is recomputed from that matrix rather than read from the leaderboard. The computation reproduces the mean MAE and the rank of every entry on the published leaderboard (https://bartzbeielstein.github.io/challenge-leaderboard/) exactly, and the render aborts if it does not. The live phase comprises the 41 target days from 10 June to 20 July 2026. The challenge formally closed on 22 July 2026 with no further days scored, so 20 July is its last scored target day and the snapshot is the final, archived state of the 15 A PREPRINT - 2026-08-05 leaderboard. All metrics are those of Section 2.8, aggregated as means over each entry’s scored days, and the ranking follows the challenge rule: ascending mean MAE, with the number of scored days breaking ties. 
+
+6.1 Leaderboard 
+
+Table 6 lists the 20 leaderboard entries of the live phase: 11 student teams, eight organizer-operated reference models, and the ENTSO-E baseline, together with two seasonal-naive benchmarks computed from the committed ground truth. The scoring rules from Section 2.7 influence these numbers. Team Weather Report had 10 of its 41 days carried forward, so its last place partly reflects missed submissions rather than model quality, while three further teams had one carried-forward day each. In addition, seven teams spent their one-time joker to replace a single already-scored day (Das A Team, Team Fabinalii, Syntaxerror, Team Neura, DDKAST, Voltrion, and Team Weather Report, whose joker substituted a fresh submission for its carried-forward final day). The reference models joined the live phase on different dates, which is why their day counts differ. Three observations frame the field: • First, every entry achieved a lower mean MAE than the weekly seasonal naive on its own scored days, and the daily naive trails the entire field by a wide margin, so the challenge separated genuine forecasting skill from trivial persistence. • Second, the most accurate full-coverage entry was the student team Hot Rod with a mean MAE of 1227.8 MW, 43.0% below the ENTSO-E baseline’s 2155.6 MW, while the two reference models ranked above Hot Rod cover only 26 to 29 of the 41 days. • Third, the spotoptim-lgbm forecaster described in this paper, which appears on the board under its entry name spotoptim lgbm, reached rank 6 with a mean MAE of 1369.1 MW over 35 days. It entered the live phase on 16 June, six days after the restart. Table 6: Final live-phase leaderboard (41 target days, 10 June to 20 July 2026), ranked by mean MAE with the number of scored days breaking ties. Entries marked with an asterisk are organizer-operated reference models; the remaining ranked entries are student teams. Days counts scored target days, with carried-forward days in parentheses. The two seasonal-naive rows are benchmarks computed from the committed ground truth over all 41 days. They are shown unranked here and appear as trailing pseudo-entries on the public leaderboard. Rank Entry MAE (MW) RMSE (MW) MAPE (%) Bias (MW) UPR (%) MASE Days 1 MACL2L (ENTSO-E)* 1137.1 1403.7 2.20 54.2 48.9 0.75 29 2 MACL2L* 1156.0 1399.7 2.26 339.3 41.7 0.76 26 3 Hot Rod 1227.8 1452.4 2.42 −90.1 51.6 0.81 41 4 chronos* 1345.8 1606.8 2.61 −482.6 62.0 0.89 39 5 optuna lgbm* 1361.1 1615.5 2.67 −253.1 55.6 0.90 39 6 spotoptim lgbm* 1369.1 1626.0 2.70 −175.8 56.0 0.91 35 7 Team Neura 1404.8 1631.3 2.79 −378.5 60.5 0.93 41 8 spotoptim catboost* 1417.3 1690.1 2.77 −166.2 54.3 0.93 27 9 spotoptim causal* 1453.5 1745.7 2.95 −34.1 57.3 0.96 16 10 Das A Team 1459.8 1723.0 2.86 −207.3 57.6 0.96 35 11 spotoptim xgb* 1526.3 1793.7 3.03 230.1 47.5 1.01 27 12 Team Gladiators 1639.1 1882.9 3.28 −151.8 55.9 1.09 41 13 Team Fabinalii 1672.7 1957.2 3.33 −387.5 60.8 1.11 41 14 Eigen-Squad 1742.5 2009.2 3.49 584.6 42.6 1.16 41 (1) 15 DDKAST 1745.2 2018.2 3.44 −103.8 52.3 1.16 41 16 Syntaxerror 1779.5 2096.6 3.53 347.7 49.2 1.18 41 (1) 17 Voltrion 1897.6 2185.6 3.78 591.1 35.9 1.26 41 18 Team ImmerZuSpaet 1962.4 2362.3 3.84 −373.8 55.6 1.31 41 (1) 19 ENTSO-E baseline 2155.6 2434.8 4.34 −38.4 51.4 1.43 41 20 Team Weather Report 2271.5 2613.4 4.52 4.8 54.2 1.51 41 (10) – Seasonal naive, s = 168 h 2501.7 2823.5 4.94 −503.4 58.6 1.66 41 – Seasonal naive, s = 24 h3994.8 4502.7 7.95 58.4 45.6 2.65 41 16 A PREPRINT - 2026-08-05 Because the mean MAE is averaged over each entry’s own scored days, entries with different coverage are not directly comparable (Hewamalage et al. 2023). Paired comparisons on shared days give a sharper picture. 
+
+6.2 Paired comparisons on shared days 
+
+Whether the observed differences are statistically meaningful was tested with a repeated-measures analysis of variance (ANOVA) on the daily MAE matrix, blocked by target day, followed by pairwise two-sided paired t-tests with Holm correction, the parametric branch of the comparison protocol of Hewamalage et al. (2023). Throughout this section, such differences are assessed with two-sided paired t-tests on the daily MAE values of the shared days. The normality this requires is unproblematic here, because each daily MAE is itself a mean of 24 hourly errors and the paired samples span 26 to 41 days, the mean-based regime that Hewamalage et al. (2023) consider safe for parametric testing. • On the 35 days scored for both, the spotoptim-lgbm forecaster and its Optuna-tuned sibling were statistically indistinguishable, with mean MAE 1369.1 versus 1371.6 MW ( 𝑝 = 0.98 ). Over the live phase, the choice of tuner did not measurably affect accuracy. • Against the ENTSO-E baseline the margin is unambiguous: the spotoptim-lgbm forecaster was more accurate on 26/35 shared days, with mean MAE 1369.1 versus 2097.9 MW, a reduction of 34.7% ( 𝑝 = 0.0001 ). • Hot Rod’s nominal advantage over the the spotoptim-lgbm forecaster on the shared days (1217.1 versus 1369.1 MW) does not reach the 5% level ( 𝑝 = 0.13 ), so the final ranking gap between the two is not statistically resolved at this sample size. 
+
+6.3 Statistical significance of the differences 
+
+The panel comprises all eleven student teams together with the ENTSO-E baseline and the two seasonal naives. Because the blocked design requires a complete matrix, the panel is restricted to the 35 target days scored for every one of its entries: Das A Team submitted its first forecast on 16 June, which drops the six opening days of the live phase. The organizer-operated reference models are excluded, so the panel compares the student field with the ENTSO-E baseline and the naive benchmarks. The ANOVA rejects equality of the fourteen entries decisively ( 𝐹(13, 442) = 9.21 ,
+
+𝑝 < 10 −16 ). Figure 4, which reports 91 Holm-adjusted p-values, reveals three findings: Hot Rod, Team Neura, and Das A Team are significantly more accurate than the ENTSO-E baseline (Holm-adjusted 𝑝 < 10 −4 , 𝑝 = 0.0017 , and 𝑝 = 0.016 ), and no other student team separates from it after correction (adjusted 𝑝 ≥ 0.76 ). The ENTSO-E baseline itself is statistically indistinguishable from the weekly seasonal naive at the day level over this period ( 𝑝 = 0.07 before correction, 𝑝 = 1.0 
+
+after), and even from the daily naive (adjusted 𝑝 = 0.62 ), whose mean daily MAE lies 1, 741 MW higher: the daily naive’s error swings between 678 and 11, 501 MW across the panel days, and 35 paired days cannot resolve a gap that volatile once the correction spans 91 pairs. Only the four leading student teams separate from the daily naive (adjusted 𝑝 ≤ 0.04 ). And the leading student teams are largely mutually indistinguishable: adjusted 𝑝 ≥ 0.15 between Hot Rod and the five teams that follow it, while Hot Rod does separate from the mid-field trio of DDKAST, Voltrion, and Team ImmerZuSpaet (adjusted 𝑝 ≤ 0.016 ) but not from last-placed Team Weather Report ( 𝑝 = 0.13 ), whose ten carried-forward days inflate its day-to-day variance. Thirty-five shared days separate the ends of the field but not its neighbours, the sample-size effect Hewamalage et al. (2023) describe. 17 A PREPRINT - 2026-08-05 1 2 3 4 5 6 7 8 9 10 11 12 13 
+
+position in the panel                                                                                    
+
+> 1. Hot Rod (1217)
+> 2. Team Neura (1397)
+> 3. Das A Team (1460)
+> 4. Eigen-Squad (1556)
+> 5. Team Fabinalii (1685)
+> 6. Team Gladiators (1713)
+> 7. DDKAST (1741)
+> 8. Voltrion (1749)
+> 9. Syntaxerror (1778)
+> 10. Team ImmerZuSpaet (1802)
+> 11. ENTSO-E baseline (2098)
+> 12. Team Weather Report (2270)
+> 13. Seasonal naive (168 h) (2453)
+> 14. Seasonal naive (24 h) (3839)
+> 1
+> .952 1
+> .151 11
+> 1111
+> .556 1111
+> .002 .052 .340 111
+> .014 .619 11111
+> .368 1111111
+> .016 .619 .825 111111
+> <.001 .002 .016 .764 111111
+> .134 .566 .764 11111111
+> <.001 <.001 <.001 .001 .270 .295 <.001 .004 .624 .267 11
+> .010 .027 .018 .041 .065 .151 .088 .100 .126 .110 .619 .782 1
+> p< 0.001
+> p< 0.01
+> p< 0.05
+> p≥0.05
+
+Figure 4: Holm-adjusted p-values of all 91 pairwise two-sided paired t-tests behind Figure 5, over the same 35 target days. Entries are ordered by mean daily MAE and numbered accordingly, so each cell compares the entry naming its row with the entry whose number labels its column. Darker cells indicate stronger evidence of a difference. Values below 0.001 are shown as <.001. 
+
+6.4 Sensitivity of the panel to the coverage requirement 
+
+There is a trade-off between i) how many entries the panel compares and ii) how many days it compares them over. The same set of entries as in Figure 4 is used to generate a critical-difference diagram in Figure 5, which visualises the pairwise comparisons of the 35-day panel. The crossbars mark maximal sets of mutually indistinguishable entries under Holm-corrected two-sided paired t-tests at the 5% level. The topmost bar spans Hot Rod to Team Weather Report, which are mutually indistinguishable ( 𝑝 = 0.13 ), but it also passes over the ENTSO-E baseline, from which Hot Rod does separate ( 𝑝 < 10 −4 ). 18 A PREPRINT - 2026-08-05 1500 2000 2500 3000 3500 
+
+> Hot Rod (1217)
+> Team Neura (1397)
+> Das A Team (1460)
+> Eigen-Squad (1556)
+> Team Fabinalii (1685)
+> Team Gladiators (1713)
+> DDKAST (1741)
+> (3839) Seasonal naive (24 h)
+> (2453) Seasonal naive (168 h)
+> (2270) Team Weather Report
+> (2098) ENTSO-E baseline
+> (1802) Team ImmerZuSpaet
+> (1778) Syntaxerror
+> (1749) Voltrion
+
+Figure 5: Mean daily MAE (MW) of the fourteen panel entries – the eleven student teams, the ENTSO-E baseline, and the two seasonal naives – over the 35 live days scored for all of them, in the diagram layout of Demšar (2006). Lower is better. A crossbar marks a maximal set of entries that are mutually indistinguishable under two-sided paired t-tests with Holm correction at the 5% level. Because each bar is drawn as a plain span between its two outermost members, it may also cover entries that are not part of the set. Figure 4 resolves those cases. Admitting only entries scored on at least 40 of the 41 target days as done in Figure 6 drops Das A Team, whose first submission was on 16 June, and restores the full 41-day window for the remaining 13 entries ( 𝐹(12, 480) = 10.26 ,
+
+𝑝 < 10 −17 ). 1500 2000 2500 3000 3500 4000 
+
+> Hot Rod (1228)
+> Team Neura (1405)
+> Team Gladiators (1639)
+> Team Fabinalii (1673)
+> Eigen-Squad (1742)
+> DDKAST (1745)
+> (3995) Seasonal naive (24 h)
+> (2502) Seasonal naive (168 h)
+> (2272) Team Weather Report
+> (2156) ENTSO-E baseline
+> (1962) Team ImmerZuSpaet
+> (1898) Voltrion
+> (1780) Syntaxerror
+
+Figure 6: Critical-difference diagram over the entries scored on at least 40 of the 41 target days, which admits thirteen entries over the full 41-day window. Das A Team is absent because its first submission was on 16 June. Layout and crossbar semantics follow Figure 5. Only Hot Rod and Team Neura separate from the ENTSO-E baseline over the full 41-day window (adjusted 𝑝 < 10 −4 
+
+and 𝑝 = 0.0026 ), because Das A Team, the third team that separates from it in Figure 5, is no longer in the panel. More telling is what happens to the comparisons the two panels (Figure 5 and Figure 6) share. Of their 78 common pairs, 9 cross the 5% threshold, and they cross it in both directions: Hot Rod and Team Weather Report separate over 41 days ( 𝑝 = 0.034 ) but not over 35 ( 𝑝 = 0.13 ), whereas Eigen-Squad and the weekly naive separate over 35 days (𝑝 = 0.0012 ) but not over 41 ( 𝑝 = 0.30 ). Five of the 9 crossings involve the daily naive, whose volatile day-level comparisons sit near the threshold throughout. The borderline comparisons thus track which days the panel happens to retain, and only the widest gaps in the field survive either choice. The crossbars must also be read with their drawing convention in mind, independently of which panel they summarise. A bar marks a maximal set of mutually indistinguishable entries, but it is drawn as a plain span from its leftmost to its rightmost member, so it also passes over entries that the set excludes. The topmost bar of Figure 5 is the clearest case, spanning Hot Rod and Team Weather Report while passing over the ENTSO-E baseline. Reading membership off the span alone therefore inverts the first of the three findings of Section 6.3, that Hot Rod is significantly more accurate than the ENTSO-E baseline. Figure 4 avoids the ambiguity by giving each comparison its own cell. 19 A PREPRINT - 2026-08-05 
+
+6.5 Rank stability across the metrics 
+
+MAE alone determines the official ranking. Figure 7 re-ranks all entries by mean RMSE, MAPE, and MASE. Kendall’s 
+
+𝜏 between the MAE ranking and the three alternatives is 0.979, 0.968, and 1.000, and every movement in the figure is a swap of adjacent or near-adjacent entries. Under RMSE, which penalises large hourly errors, MACL2L overtakes its ENTSO-E-informed variant by a 3 MW margin, and Das A Team edges past spotoptim causal. MAPE re-weights each day by the inverse of its demand level, which penalises entries whose errors fall on low-demand days, and Team Neura drops from rank 7 to 8. The MASE of Equation 6 is an almost affine copy of the MAE, because its in-sample scaling factor varies little across target days (1451 to 1530 MW): 10 of the 20 entries stay below one and thus beat the average one-step naive error. The ranking is therefore robust to the choice of metric. This speaks to the caution of Hewamalage et al. (2023) that no single error measure suits all settings: for a single hourly series far from zero, the scale-dependent MAE is an appropriate primary metric, and the alternatives change little. MAE RMSE MAPE MASE                                                             
+
+> MACL2L (ENTSO-E) 11MACL2L (ENTSO-E)
+> MACL2L 22MACL2L
+> Hot Rod 33Hot Rod
+> chronos 44chronos
+> optuna lgbm 55optuna lgbm
+> spotoptim lgbm 66spotoptim lgbm
+> Team Neura 77Team Neura
+> spotoptim catboost 88spotoptim catboost
+> spotoptim causal 99spotoptim causal
+> Das A Team 10 10 Das A Team
+> spotoptim xgb 11 11 spotoptim xgb
+> Team Gladiators 12 12 Team Gladiators
+> Team Fabinalii 13 13 Team Fabinalii
+> Eigen-Squad 14 14 Eigen-Squad
+> DDKAST 15 15 DDKAST
+> Syntaxerror 16 16 Syntaxerror
+> Voltrion 17 17 Voltrion
+> Team ImmerZuSpaet 18 18 Team ImmerZuSpaet
+> ENTSO-E baseline 19 19 ENTSO-E baseline
+> Team Weather Report 20 20 Team Weather Report
+
+Figure 7: Leaderboard rank of every entry under the four error metrics, each aggregated as the mean of daily values. Grey lines are entries whose rank changes by at most one position. The highlighted entries are the spotoptim-lgbm forecaster (blue), the ENTSO-E baseline (green), and Team Neura (magenta). 
+
+6.6 Pretrained in-context models 
+
+Three reference entries in Table 6 are in-context models: they perform no gradient training at submission time, in contrast to the daily-refit recursive gradient-boosting pipelines of Section 3. The two MACL2L identities share one submitter and one model family. At submission time the model conditions in-context on the most recent 540 to 600 day-rows without updating its weights. The identities differ in exactly one input: 20 A PREPRINT - 2026-08-05 (i) MACL2L (ENTSO-E) receives the ENTSO-E baseline as a fifth covariate, and this single channel enters three ways: as a feature column of the in-context forecaster, through the same feature rows into a ridge regression whose output is averaged with the model output, and as the third voter of a median safety guard. (ii) Plain MACL2L excludes that channel everywhere, retaining the renewable-generation forecasts and the day-ahead price. Both identities blend, clip, and spike-repair the raw model output. The chronos entry is the time-series foundation model Chronos-2, applied zero-shot and univariate (Ansari et al. 2024, 2025): the actual load series is its only input, with no covariates, no calendar features, and no training or tuning. From a context of the trailing 180 days it emits the 0.1, 0.5, and 0.9 quantiles of the next 24 hours in one direct multi-step pass, and the submission is the 0.5 quantile, the MAE-optimal point summary under the challenge’s ranking metric. The ENTSO-E baseline serves only a warn-only plausibility check and is never a model input. Table 7 compares these entries on shared scored days, the protocol of Section 6.1. They are absent from the complete-panel test of Section 6.3 because they joined the live phase late. Two results stand out. • First, the two MACL2L identities are statistically indistinguishable on their 26 shared days (mean MAE 1156.0 versus 1171.3 MW, 𝑝 = 0.80 ), with the plain variant nominally ahead: the ENTSO-E channel bought no mea-surable accuracy, and the first place of MACL2L (ENTSO-E) over its sibling in Table 6 is a coverage artifact of three additional scored days, the same pattern as the SpotOptim and Optuna comparison of Section 6.1. • Second, the in-context entries match or beat the locally trained recursive forecasters: MACL2L (ENTSO-E) is significantly more accurate than spotoptim lgbm on 29 shared days ( 𝑝 = 0.019 ), plain MACL2L than spotoptim xgb ( 𝑝 = 0.025 ), and no other pairing in the table reaches the 5% level. In particular, zero-shot chronos is statistically tied with the daily-retuned optuna lgbm over 39 shared days (1345.8 versus 1361.1 MW, 𝑝 = 0.90 ), a notable result for a univariate model without tuning. Between the two in-context families, MACL2L leads chronos on their 26 shared days (1156.0 versus 1283.1 MW, 𝑝 = 0.22 ), a nominal but not significant margin at this sample size. Whether pretrained in-context models displace tuned gradient-boosting pipelines in this setting is taken up in Section 7. Table 7: Paired comparisons of the pretrained in-context entries on shared scored days: mean MAE of each side over exactly those days, the number of days on which entry A was more accurate, and the two-sided paired t-test p-value. Entries are compared only on days scored for both. Comparison (A vs B) Days MAE A (MW) MAE B (MW) A better 𝑝 
+
+MACL2L vs MACL2L (ENTSO-E) 26 1156.0 1171.3 13/26 0.804 MACL2L vs chronos 26 1156.0 1283.1 15/26 0.218 MACL2L (ENTSO-E) vs spotoptim lgbm 29 1137.1 1391.9 19/29 0.019 MACL2L vs spotoptim lgbm 26 1156.0 1377.3 17/26 0.066 chronos vs spotoptim lgbm 35 1250.4 1369.1 17/35 0.238 chronos vs optuna lgbm 39 1345.8 1361.1 20/39 0.901 MACL2L vs spotoptim xgb 26 1156.0 1539.5 18/26 0.025 
+
+6.7 Error diagnostics 
+
+Figure 8 traces the daily MAE of the spotoptim-lgbm forecaster and the ENTSO-E baseline across the live phase, against the band spanned by the ten full-coverage student teams. The ENTSO-E baseline’s opening week stands out: from 10 to 15 June it over-forecast the load by 2264 MW on average, with a peak daily mean bias of +4, 728 MW on 14 June and a mean daily MAE of 2492 MW over those six days. The spotoptim-lgbm forecaster’s trace begins on 16 June, so this episode lies outside its scored period, which is precisely why the paired comparisons of Section 6.1 are restricted to shared days. 21 A PREPRINT - 2026-08-05 2026-06-08 2026-06-15 2026-06-22 2026-07-01 2026-07-08 2026-07-15 2026-07-22   
+
+> 0
+> 2000
+> 4000
+> 6000
+> 8000
+> 10000
+> daily MAE (MW)
+> student-team range ENTSO-E baseline spotoptim lgbm
+
+Figure 8: Daily MAE over the live phase. The grey band spans the minimum and maximum daily MAE of the ten student teams with complete coverage. The spotoptim-lgbm forecaster entered the live phase on 16 June. Following the presentation of Möbius et al. (2025), Table 8 and Figure 9 summarise the distribution of the hourly errors of four entries over the 696 hours of the 29 target days scored for all of them: MACL2L (ENTSO-E) as the most accurate entry overall, Hot Rod as the most accurate student team, the spotoptim-lgbm forecaster, and the ENTSO-E baseline. The window is shorter than the 840-hour sample used below, because MACL2L (ENTSO-E) entered the live phase on 22 June. Three features stand out. • The dispersion orders the four entries exactly as the mean MAE does, and the gap is dominated by the ENTSO-E baseline, whose standard deviation of 2503 MW is 70% above the 1476 MW of MACL2L (ENTSO-E) and whose central 90% range spans 8307 MW against 5142 MW. • The three model entries are moreover close to unbiased on this window, with mean errors between −286 and 54 MW, whereas the ENTSO-E baseline sits at −377 MW with a median of −493 MW, so it under-forecasts in the majority of hours once the opening week is excluded. • The third feature is a caution rather than a result. The two leading entries change places depending on which part of the distribution is read: Hot Rod has the narrower central 90% range (4886 against 5142 MW), while MACL2L (ENTSO-E) has the tighter interquartile box (1785 against 2309 MW) and the shorter lower tail (−4452 against −5178 MW). A ranking read off a single dispersion statistic would therefore invert with the statistic chosen, which is the distributional counterpart of the metric-robustness check of Section 6.5. The bias deserves a caveat on sample dependence. Over the full 41 days the ENTSO-E baseline’s mean bias is −38.4 
+
+MW, the near-zero value discussed in Section 2.4, but over the 35 days it shares with the spotoptim-lgbm forecaster it is −433 MW. The difference is the opening-week over-forecast episode, so the near-zero full-phase value averages over sign-flipping episodes rather than indicating an unbiased forecast. Table 8: Descriptive statistics of the hourly forecast errors (forecast minus actual, in MW) over the 696 hours of the 29 target days scored for all four entries. Negative values are under-forecasts. Columns run from the lowest to the highest mean absolute error on this window. Statistic MACL2L (ENTSO-E) Hot Rod spotoptim lgbm ENTSO-E baseline Mean 54.2 −64.5 −286.5 −376.9 Median 37.3 −19.0 −358.6 −493.4 5% quantile −2462.8 −2477.6 −3171.1 −4442.7 95% quantile 2679.1 2408.7 2619.9 3864.3 Standard deviation 1475.5 1537.4 1729.5 2503.2 Minimum −4451.7 −5177.7 −6828.3 −6562.5 22 A PREPRINT - 2026-08-05 Statistic MACL2L (ENTSO-E) Hot Rod spotoptim lgbm ENTSO-E baseline Maximum 4216.6 3949.3 3876.5 6572.2 −4000 −2000 0 2000 4000 
+
+> hourly forecast error (MW)
+> ENTSO-E baseline
+> spotoptim lgbm
+> Hot Rod
+> MACL2L (ENTSO-E)
+
+Figure 9: Distribution of the hourly forecast errors (forecast minus actual) of the four entries of Table 8, over the 696 hours scored for all of them. The box spans the interquartile range with the median as a solid rule, the whiskers reach the 5% and 95% quantiles reported in the table, and the open diamond marks the mean. Points beyond the whiskers are omitted; the table gives the extremes. The dashed line marks a zero error, so a box lying left of it indicates an under-forecast. The hour-of-day structure in Figure 10 mirrors the pattern Möbius et al. (2025) report for 2016 to 2019: the ENTSO-E baseline under-forecasts the night hours by 0.8 to 1.8 GW and over-forecasts the morning ramp by up to 0.9 GW, while the spotoptim-lgbm forecaster’s mean error stays between −812 and +393 MW at every hour. The night-time under-prediction is the component a load-serving operator cares most about, and it is where the margin of the spotoptim-lgbm forecaster over the ENTSO-E baseline is widest. 0 3 6 9 12 15 18 21  
+
+> hour of day (UTC)
+> −1500
+> −1000
+> −500
+> 0
+> 500
+> 1000
+> mean error (MW)
+> ENTSO-E baseline spotoptim lgbm
+
+Figure 10: Mean hourly forecast error by hour of day (UTC) over the 35-day joint sample. Negative values are under-forecasts. Figure 11 shows one complete day-ahead forecast against the realised load. To avoid judging by a favourable case (Hewamalage et al. 2023), the day is chosen by a fixed rule: the target day whose daily MAE lies closest to the spotoptim-lgbm forecaster’s median daily MAE of 1292 MW. That rule selects Friday 10 July 2026, with an MAE of 23 A PREPRINT - 2026-08-05 1292 MW. The forecast tracks the night hours and the morning ramp closely, overestimates the midday dip like the ENTSO-E baseline but by a smaller margin, and re-converges on the actual load over the evening decline, where the ENTSO-E baseline under-forecasts. 0 3 6 9 12 15 18 21   
+
+> hour of day (UTC)
+> 40000
+> 42500
+> 45000
+> 47500
+> 50000
+> 52500
+> 55000
+> 57500
+> 60000
+> load (MW)
+> actual load spotoptim lgbm ENTSO-E baseline
+
+Figure 11: Day-ahead forecasts and realised load on the example day, selected as the day whose daily MAE is closest to the spotoptim-lgbm forecaster’s median. Timestamps in UTC. 
+
+# 7 Discussion 
+
+7.1 Reference pipieline 
+
+The spotoptim-lgbm forecaster reduced the mean MAE against the ENTSO-E baseline by 34.7% on shared scored days. Where this margin comes from is the first question the error diagnostics answer. It does not come from correcting a constant offset: over the completed live phase the ENTSO-E baseline’s mean bias of −38.4 MW is nearly two orders of magnitude below its mean absolute error, so subtracting the average error would change little. The margin comes instead from the shape of the error. The ENTSO-E baseline’s mean error swings from a night-time under-forecast of up to 1.8 GW to a morning over-forecast of 0.9 GW (Figure 10), while the spotoptim-lgbm forecaster holds every hour of the day inside the band from 
+
+−812 to +393 MW, and it narrows the overall error distribution by roughly a third (Table 8). The night-time under-prediction that Möbius et al. (2025) document for 2016 to 2019 is therefore still present in the 2026 ENTSO-E baseline, in the same direction but with a far smaller systematic component, and the spotoptim-lgbm forecaster corrects most of the remaining structure rather than inheriting it. The sign of the spotoptim-lgbm forecaster’s own residual bias deserves attention in an operational reading. Its full-phase mean bias is −176 MW with an under-prediction rate of 56.0%, a mild but persistent under-forecast. For a transmission system operator, under-forecast load surfaces as missing scheduled generation that upward balancing reserves must cover, so the asymmetry matters for reserve provisioning even when the MAE is low. The hour-of-day profile shows this residual under-forecast concentrated in the night hours rather than at the morning and evening ramps, which limits its operational cost. A forecaster tuned purely on MAE has no incentive to trade this asymmetry away, which points directly at the probabilistic extensions discussed in Section 8. 
+
+7.2 Hyperparameter tuning 
+
+The live phase gave a clear answer about the tuners: neither was better. The spotoptim-lgbm forecaster and its Optuna-tuned sibling were statistically indistinguishable on their 35 shared days ( 𝑝 = 0.98 ), and their final ranks differ only through unequal coverage. The parallel finding for the two MACL2L identities ( 𝑝 = 0.80 ) suggests a common explanation: within a daily tuning budget on a well-conditioned search space, both the surrogate-model search and the tree-structured Parzen estimator of Akiba et al. (2019) reach the same accuracy plateau, and the remaining day-to-day variance is dominated by the data rather than by the configuration. How much of the accuracy rests on the covariate set and the tuning budget, cannot be isolated under live conditions and remains an open question. 24 A PREPRINT - 2026-08-05 
+
+7.3 Data engineering 
+
+The value of the data-engineering layers is documented more indirectly. The enriched calendar set entered production only after a paired-seed benchmark showed a consistent cross-validated improvement (Section 2.6.3), the wind covari-ates were dropped when their archive coverage proved unreliable and then kept out once a second paired-seed bench-mark showed that restoring them after coverage recovered was worse than the wind-free configuration (Section 2.6.3), and the leakage guard of Section 2.6.1 kept the ENTSO-E baseline out of the model throughout. 
+
+7.4 In-context models 
+
+The final board is topped by in-context models, and Section 6.6 shows that this is not only a coverage artifact: • MACL2L (ENTSO-E) beat the recursive LightGBM significantly on shared days ( 𝑝 = 0.019 ). • Zero-shot Chronos-2 matched the daily-retuned Optuna variant ( 𝑝 = 0.90 )Together with the evidence in Hollmann et al. (2025) and Ansari et al. (2025), these results mark in-context regression as a genuine challenger to daily-refit gradient boosting on this task. Two qualifications temper the conclusion. The MACL2L scores measure a full pipeline with ridge blending, clipping, and a median guard. 
+
+7.5 Auditability and regulatory framing 
+
+From the audit perspective of Section 1 the two families are not interchangeable: the recursive forecaster is trained from scratch each day from committed data by a reviewed deterministic engine, whereas chronos-2 imports weights whose training data and procedure lie outside the operator’s audit boundary. In a setting where auditability is a requirement rather than a preference, that provenance gap is part of the model choice. For the regulatory framing of Section 1, the challenge functioned as a rehearsal of the record-keeping obligations the EU AI Act (European Parliament and Council of the European Union 2024) attaches to high-risk systems, applied voluntarily to a system that sits outside the safety perimeter. Determinism and reproducibility were engineering con-straints from the start, enforced by the reviewed subset of the recursive engine (Section 3) and the explicit annotation of every healed gap (Section 2.6.1). Auditability extends to this paper itself: the results are computed at render time from a committed snapshot, and the build aborts if they stop reproducing the published leaderboard. An external reviewer can re-run the pipeline, re-score any day, and re-derive every number in Section 6 from versioned artifacts, which is the operational meaning of record-keeping in this context. The cybersecurity side of the same regulatory package has an equally concrete reading. The NIS-2 Directive (European Parliament and Council of the European Union 2022a) regulates entities rather than systems: it makes no demand of a forecasting model as such, but a transmission system operator above the threshold of Section B.2.2 is an operator of crit-ical installations, and § 30 Abs. 1 BSIG (Section B.3.4), the German transposition of the directive’s risk-management catalogue in its Article 21, obliges it to protect every information-technology system, component, and process it uses to deliver its service. A deployed day-ahead forecaster is such a system, and one that is material to the functioning of a critical installation falls additionally under the attack-detection duty of § 31 Abs. 2 (Section B.3.5). The duties therefore attach to the operator, and they reach the forecaster’s supplier through the supply-chain security that the same article folds into the operator’s risk management. In that reading, the artefacts required by the process rules of Sec-tion 2.2 are the supplier-side evidence such an operator would ask for: a software bill of materials (PR-3), a documented threat model (PR-2), and a structured audit log (PR-4). No challenge participant was a NIS-2 entity, and none of these duties applied during the live phase, so this reading is anticipatory in the same sense as the CRA and Product Liability Directive readings of Section 1. The peer reproduction of Section 2.7 nonetheless rehearsed the third-party scrutiny of a published software artifact on which such supply-chain assurance rests, which is the one supplier-side duty the challenge exercised in practice rather than in prospect. 
+
+7.6 Weaknesses and threats to validity 
+
+Several threats to validity bound these findings. • The evaluation covers 41 summer days in a single bidding zone, with three public holidays and no winter peaks, cold spells, or other stress regimes, so the results say nothing about the seasons in which load forecasting is hardest. • Entries joined on different dates, and although all cross-entry claims rest on shared-day paired tests, the partial-coverage means on the board remain sample-dependent in the sense of Hewamalage et al. (2023). • The carried-forward rule conflates submission discipline with model quality, visible in Team Weather Report’s last place. • Within each day the recursive strategy feeds predicted lags into later horizon steps, so the final hour of the horizon rests on 23 predicted values, and the error profile of Figure 10 averages over this accumulation. Across 25 A PREPRINT - 2026-08-05 days, however, each forecast re-anchors on observed history, which prevents error propagation beyond the horizon. Finally, the deviation-based quality gate and the mid-phase covariate change are documented interventions into a run-ning system, and their timing is recorded so that a reader can separate the phases. 
+
+# 8 Conclusions 
+
+This paper documented a complete day-ahead load-forecasting system for the aggregated German transmission-grid load and evaluated it in a live, finalized 41-day challenge. The system combines gap-aware data preparation with explicit anomaly annotation, a leakage-clean set of thirty exogenous covariates, a recursive multi-step LightGBM forecaster implemented in the safety-scoped package spotforecast2-safe , and daily surrogate-model hyperparameter tuning with SpotOptim benchmarked against Optuna. Every design choice was made under the determinism, reproducibility, and auditability constraints motivated in Section 1, and every result in this paper reproduces at render time from a committed snapshot of the finalized leaderboard data. The headline results are as follows. 1. The EU-AI act compliant pipeline beats the ENTSO-E baseline : The reference pipeline using 
+
+spotforecast2-safe ’s (the spotoptim-lgbm forecaster) beats the ENTSO-E baseline on shared days by 34.7% ( 𝑝 = 0.0001 ). 2. In-context models show competitve performance : The final board was topped by in-context models on partial coverage. Note, this is only a primary observation based on a limited number of shared days, and the prove-nance and audit questions raised in Section 7 must be answered before these models can be considered for safety-critical deployment. 3. Low-cost, energy-efficient, and auditable local models (MACL2L) are competitive with large pre-trained foun-dation models (chronos-2). This is a strong argument for the use of transparent, low-cost, and auditable local models in safety-critical settings. 4. No difference between spotoptim and optuna : The choice of tuner did not matter within the daily budget, since the SpotOptim and Optuna variants were statistically tied ( 𝑝 = 0.98 ). Important directions follow: 1. Multi-season evaluation spanning winter load regimes, which the 41 summer days reported here cannot supply. The challenge continues beyond the phase evaluated in this paper, and its ongoing results are published at https://advm1.gm.fh-koeln.de/~bartz/sf2-forecast, so the missing seasons accumulate under live conditions rather than in a retrospective study. 2. Specification of legal requirements for safety-critical machine learning: the EU AI Act and the NIS-2 Directive are in force, but their operational meaning for day-ahead load forecasting is still under discussion. The next step is to further formalize the set of requirements for safety-critical AI. Discussion with experts, e.g., in the “AK Explainability, Transparency, and Safety (ExTraSafe)” (Fachbereich Künstliche Intelligenz der Gesellschaft für Informatik 2026), as well as with regulators and operators is needed to clarify the operational meaning of the EU AI Act and related legal frameworks for load forecasting. 3. In-context and time-series foundation models: their shared-day performance in this challenge (Section 6.6) makes them the natural next benchmark, provided the provenance and audit questions raised in Section 7 are answered for the safety-critical setting. 4. Richer covariates: the wind features stay out on benchmark evidence rather than on availability grounds, so reopening that question calls for a daily-error-level comparison rather than the aggregate cross-validated margin that closed it, and weather-ensemble inputs would let the model see forecast uncertainty rather than a single trajectory. 5. Probabilistic output: the persistent mild under-forecast and its reserve-provisioning cost argue for quantile or interval forecasts in place of a pure MAE point forecast, so that the operational asymmetry becomes a tunable parameter rather than a side effect. 
+
+Data and code availability 
+
+Every number, table, and figure in this paper is computed at render time from the committed snapshot of the finalized challenge data (daily scores, ground truth, team registry, and the daily submissions of the spotoptim-lgbm forecaster), which ships with the manuscript source. The challenge infrastructure, the complete submission history of all teams, and the frozen final leaderboard are publicly available at https://bartzbeielstein.github.io/challenge-leaderboar 26 A PREPRINT - 2026-08-05 d/. The challenge has continued past the phase evaluated here, and its ongoing results are published at https://ad vm1.gm.fh-koeln.de/~bartz/sf2-forecast. Every number reported in this paper derives from the frozen snapshot alone, so the ongoing board diverges from it as further days are scored. The forecasting engine and the tuner are open source: spotforecast2-safe (Bartz-Beielstein 2026d; Bartz-Beielstein and Bartz 2026) and SpotOptim (Bartz-Beielstein 2026b), both released under the AGPL-3.0-or-later license. Load and day-ahead-forecast data originate from the ENTSO-E Transparency Platform (ENTSO-E 2024), and the weather covariates from Open-Meteo. 
+
+Competing interests 
+
+The first author of this paper develops the open-source packages spotforecast2-safe , spotforecast2 and 
+
+spotoptim that are evaluated in this paper. No financial competing interests are declared. 
+
+References 
+
+Akiba, Takuya, Shotaro Sano, Toshihiko Yanase, Takeru Ohta, and Masanori Koyama. 2019. “Optuna: A Next-Generation Hyperparameter Optimization Framework.” Proceedings of the 25th ACM SIGKDD International Con-ference on Knowledge Discovery and Data Mining , 2623–31. https://doi.org/10.1145/3292500.3330701. Amat Rodrigo, Joaquín, and Javier Escobar Ortiz. 2024. Skforecast . V. 0.20.0. Released. https://doi.org/10.5281/ze nodo.8382788. Ansari, Abdul Fatir, Oleksandr Shchur, Jaris Küken, et al. 2025. Chronos-2: From Univariate to Universal Forecasting .arXiv. https://doi.org/10.48550/arXiv.2510.15821. Ansari, Abdul Fatir, Lorenzo Stella, Caner Turkmen, et al. 2024. Chronos: Learning the Language of Time Series .arXiv. https://doi.org/10.48550/arXiv.2403.07815. Bartz, Eva, Thomas Bartz-Beielstein, Martin Zaefferer, and Olaf Mersmann. 2022. Hyperparameter Tuning for Ma-chine and Deep Learning with R: A Practical Guide . Springer. https://doi.org/10.1007/978-981-19-5170-1. Bartz-Beielstein, Thomas. 2026a. Challenge-Leaderboard . https://github.com/bartzbeielstein/challenge-leaderboard. Bartz-Beielstein, Thomas. 2026b. “Optimization with SpotOptim.” arXiv e-Prints , April, arXiv:2604.13672. https: //doi.org/10.48550/arXiv.2604.13672. Bartz-Beielstein, Thomas. 2026c. spotforecast2: Time-Series Forecasting with Sequential Parameter Optimization .Https://github.com/sequential-parameter-optimization/spotforecast2. Bartz-Beielstein, Thomas. 2026d. spotforecast2-safe: Safety-Critical Subset of spotforecast2 . https://github.com/seq uential-parameter-optimization/spotforecast2-safe. Bartz-Beielstein, Thomas, and Eva Bartz. 2026. Time-Series Forecasting in Safety-Critical Environments: An EU-AI-Act-Compliant Open-Source Package / Zeitreihenprognose in sicherheitskritischen Umgebungen: Ein KI-VO-konformes Open-Source-Paket . https://doi.org/10.48550/arXiv.2604.23859. Bundesministerium des Innern. 2026. Verordnung zur Bestimmung kritischer Anlagen nach dem KRITIS-Dachgesetz (Kritisverordnung – KritisV) . Referentenentwurf, Bearbeitungsstand 26.05.2026. https://ag.kritis.info/wp-content/ uploads/2026/05/260526_Entwurf-Kritisverordnung.pdf. Chagnet, Nicolas. 2025. Energy Demand Forecaster for France . Open-source repository, released. Chen, Tianqi, and Carlos Guestrin. 2016. “XGBoost: A Scalable Tree Boosting System.” Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining , 785–94. https://doi.org/10.1 145/2939672.2939785. Demšar, Janez. 2006. “Statistical Comparisons of Classifiers over Multiple Data Sets.” Journal of Machine Learning Research 7: 1–30. Deutscher Bundestag. 2025. Gesetz über das Bundesamt für Sicherheit in der Informationstechnik und über die Sicher-heit in der Informationstechnik von Einrichtungen (BSI-Gesetz – BSIG) . BGBl. 2025 I Nr. 301, ausgefertigt am 2. Dezember 2025. https://www.recht.bund.de/bgbl/1/2025/301/VO.html. 27 A PREPRINT - 2026-08-05 Deutscher Bundestag. 2026. Entwurf Eines Gesetzes Zur Modernisierung Des Produkthaftungsrechts (Gesetzentwurf Der Bundesregierung) . Bundestags-Drucksache 21/4297, 21. Wahlperiode. https://dserver.bundestag.de/btd/21/ 042/2104297.pdf. ENTSO-E. 2024. ENTSO-E Transparency Platform . European Network of Transmission System Operators for Elec-tricity. https://transparency.entsoe.eu. European Commission. 2013. Commission Regulation (EU) No 543/2013 of 14 June 2013 on Submission and Publi-cation of Data in Electricity Markets . Official Journal of the European Union, L 163. https://eur-lex.europa.eu/el i/reg/2013/543/oj. European Commission. 2025. Commission Implementing Decision C(2025) 618 Final of 3 February 2025 on a Stan-dardisation Request to CEN, CENELEC and ETSI as Regards Products with Digital Elements in Support of Regu-lation (EU) 2024/2847 (Cyber Resilience Act) . Standardisation request M/606. https://eur-lex.europa.eu/eli/C/20 25/618/oj/eng. European Parliament and Council. 2024a. Directive (EU) 2024/2853 of the European Parliament and of the Council of 23 October 2024 on Liability for Defective Products and Repealing Council Directive 85/374/EEC . Official Journal of the European Union, L series, 18 November 2024. https://eur-lex.europa.eu/eli/dir/2024/2853/oj. European Parliament and Council. 2024b. Regulation (EU) 2024/2847 of 23 October 2024 on Horizontal Cybersecurity Requirements for Products with Digital Elements (Cyber Resilience Act) . Official Journal of the European Union L 2024/2847. https://eur-lex.europa.eu/eli/reg/2024/2847/oj. European Parliament and Council of the European Union. 2022a. Directive (EU) 2022/2555 of the European Parlia-ment and of the Council on Measures for a High Common Level of Cybersecurity Across the Union (NIS 2 Directive) .Official Journal of the European Union. https://eur-lex.europa.eu/eli/dir/2022/2555/oj. European Parliament and Council of the European Union. 2022b. Directive (EU) 2022/2557 of the European Parlia-ment and of the Council on the Resilience of Critical Entities (CER Directive) . Official Journal of the European Union. https://eur-lex.europa.eu/eli/dir/2022/2557/oj. European Parliament and Council of the European Union. 2024. Regulation (EU) 2024/1689 of the European Par-liament and of the Council Laying down Harmonised Rules on Artificial Intelligence (Artificial Intelligence Act) .Official Journal of the European Union. https://eur-lex.europa.eu/eli/reg/2024/1689/oj. Fachbereich Künstliche Intelligenz der Gesellschaft für Informatik. 2026. Arbeitskreis Explainability, Transparency, and Safety (ExTraSafe) . https://fb-ki.gi.de/extrasafe. Friedman, Jerome H. 2001. “Greedy Function Approximation: A Gradient Boosting Machine.” The Annals of Statistics 
+
+29 (5): 1189–232. https://doi.org/10.1214/aos/1013203451. Hewamalage, Hansika, Klaus Ackermann, and Christoph Bergmeir. 2023. “Forecast Evaluation for Data Scientists: Common Pitfalls and Best Practices.” Data Mining and Knowledge Discovery 37 (2): 788–832. https://doi.org/10 .1007/s10618-022-00894-5. Hollmann, Noah, Samuel Müller, Lennart Purucker, et al. 2025. “Accurate Predictions on Small Data with a Tabular Foundation Model.” Nature 637 (8045): 319–26. https://doi.org/10.1038/s41586-024-08328-6. Hong, Tao, and Shu Fan. 2016. “Probabilistic Electric Load Forecasting: A Tutorial Review.” International Journal of Forecasting 32 (3): 914–38. https://doi.org/https://doi.org/10.1016/j.ijforecast.2015.11.011. Hyndman, Rob J., and George Athanasopoulos. 2021. Forecasting: Principles and Practice . 3rd ed. OTexts. https: //OTexts.com/fpp3. Hyndman, Rob J., George Athanasopoulos, Azul Garza, Cristian Challu, Max Mergenthaler, and Kin G. Olivares. 2026. 
+
+Forecasting: Principles and Practice, the Pythonic Way . OTexts. https://OTexts.com/fpppy. 28 A PREPRINT - 2026-08-05 Ke, Guolin, Qi Meng, Thomas Finley, et al. 2017. “LightGBM: A Highly Efficient Gradient Boosting Decision Tree.” 
+
+Advances in Neural Information Processing Systems 30: 3146–54. Liu, Fei Tony, Kai Ming Ting, and Zhi-Hua Zhou. 2008. “Isolation Forest.” 2008 Eighth IEEE International Confer-ence on Data Mining , 413–22. https://doi.org/10.1109/ICDM.2008.17. Möbius, Thomas, Mira Watermeyer, Oliver Grothe, and Felix Müsgens. 2025. “Enhancing Energy System Models Using Better Load Forecasts.” Energy Systems 16 (2): 573–602. https://doi.org/10.1007/s12667-023-00590-3. Open Source Security Foundation. 2026. OpenSSF Scorecard . Linux Foundation. https://scorecard.dev. Prokhorenkova, Liudmila, Gleb Gusev, Aleksandr Vorobev, Anna Veronika Dorogush, and Andrey Gulin. 2018. “Cat-Boost: Unbiased Boosting with Categorical Features.” Advances in Neural Information Processing Systems 31: 6638–48. Shi, Haijian. 2007. “Best-First Decision Tree Learning.” Master’s thesis, The University of Waikato. https://hdl.hand le.net/10289/2317. Ullah, K., M. Ahsan, S. M. Hasanat, et al. 2024. “Short-Term Load Forecasting: A Comprehensive Review and Simulation Study with CNN-LSTM Hybrids Approach.” IEEE Access 12: 111858–81. https://doi.org/10.1109/ ACCESS.2024.3440631. 
+
+# A Software: Implementation Details 
+
+The three data-preparation stages of Section 2.6.1 are implemented in the open-source package spotforecast2-safe .This appendix shows where each stage lives in the package and how to call it, using a demonstration data-set that ships with the package, so that every example runs offline and reproduces exactly. Each of the following sections pairs a minimal executable code example with a figure that isolates the effect of one stage. The appendix is written as an introductory tutorial, and the reader is referred to Section 2.6.1 for the rationale behind each stage. 
+
+Ĺ Software versions All code in this appendix was executed with spotforecast2-safe version 25.3.0 (Bartz-Beielstein 2026d), which implements the three data-preparation stages, and with spotforecast2 version 10.5.0 (Bartz-Beielstein 2026c), which supplies the plotting style for the figures. Both version numbers are read from the installed pack-ages at render time, so they identify exactly the code that produced the outputs shown in this appendix. 
+
+A.1 Where the code lives 
+
+Table 9 maps each stage to its entry-point function, the module in which it lives, and the place where the production pipeline calls it. The stages are coupled through missing values alone: the first two stages set suspect slots to NaN 
+
+instead of altering them, and only the third stage fills values in. In particular, the heal policy of Stage 2 leaves nothing but NaN slots behind, so that the Stage-3 machinery interpolates and zero-weights them like any native gap. Table 9: Where the three data-preparation stages of Section 2.6.1 are implemented. Module paths are relative to the installed spotforecast2_safe package, and the last column names the modules that invoke the functions on live data. Stage of Section 2.6.1 Entry point Production call site 1. anomaly flagging mark_outliers in 
+
+preprocessing.outlier 
+
+step 2 of 10 in 
+
+processing.n2n_predict_with_covariates 
+
+2. target-corruption flagging 
+
+apply_target_corruption_policy 
+
+in 
+
+preprocessing.target_corruption ,with the detector 
+
+detect_target_corruption 
+
+authoritative in 
+
+multitask.base.prepare_data ,non-raising preview in the coverage guard of 
+
+preprocessing.coverage 
+
+29 A PREPRINT - 2026-08-05 Stage of Section 2.6.1 Entry point Production call site 3. gap imputation get_missing_weights in 
+
+preprocessing.imputation 
+
+step 3 of 10 in 
+
+processing.n2n_predict_with_covariates ,with the weights wrapped in a picklable 
+
+WeightFunction 
+
+A.2 Where the demo data lives 
+
+All examples used in this section run on a bundled demonstration series, which is part of the spotforecast2-safe 
+
+package and is installed in the package data directory. The series is a slice of the production data, so it has the same fifteen-minute cadence, the same timezone awareness, and the same column names, but its values are scaled rather than in MW. The demonstration series is clean, so each example first injects a small, clearly marked artifact for its stage to find. The series is read with fetch_data , which returns a pandas.DataFrame with a tz-aware UTC index and two columns named “Actual Load” and “Forecasted Load”. The function reads from the package data directory. No external data source, platform access, or API key is required. 
+
+import logging import numpy as np import pandas as pd from spotforecast2_safe.data.fetch_data import fetch_data, get_package_data_home # Bundled demonstration series: 15-minute cadence, tz-aware UTC index, # production column names "Actual Load" and "Forecasted Load". sw_df = fetch_data(filename=get_package_data_home() / "demo01.csv") 
+
+Three weeks suffice to demonstrate every stage and keep execution fast. 
+
+2112 slots from 2025-01-06 00:00:00+00:00 to 2025-01-27 23:45:00+00:00 
+
+The demonstration series mimics the production data at the native fifteen-minute cadence and carries the production column names, but its values are given in scaled units rather than in MW. One unit corresponds to roughly 5 GW of German load, and the thresholds in the examples below are scaled analogues of the production values that Section 2.6.1 reports in MW. The bundled series is also far smoother than real load data, which is immaterial here because the three stages respond to spikes, level deviations, and gaps rather than to the daily waveform. Because the series is clean, each example first injects a small, clearly marked artifact for its stage to find. 
+
+A.3 Stage 1: Anomaly flagging with mark_outliers 
+
+Stage 1 of Section 2.6.1 flags anomalous points with an Isolation Forest, fitted independently per column. The function 
+
+mark_outliers fits the forest and sets every flagged slot to NaN . Two properties of the function shape the example. It loops over every column it is given, which is why the frame is restricted to the single target column, and it modifies the frame it receives in place, which is why the spiked series sw_stage1 is kept as the before state and a copy is handed to the function. 
+
+from spotforecast2_safe.preprocessing.outlier import mark_outliers # The demonstration series is clean, so inject three artificial spikes # of +5 units at fixed positions. sw_stage1 = sw_demo[["Actual Load"]].copy() sw_spikes = pd.to_datetime( ["2025-01-10 06:00", "2025-01-15 12:30", "2025-01-21 18:45"] ).tz_localize("UTC") sw_stage1.loc[sw_spikes, "Actual Load"] += 5.0 # mark_outliers mutates its input, so keep sw_stage1 as the "before" # series and hand a copy to the function. sw_flagged, sw_labels = mark_outliers( sw_stage1.copy(), contamination=0.005, random_state=1234 )
+
+30 A PREPRINT - 2026-08-05 
+
+sw_nan_idx = sw_flagged.index[sw_flagged["Actual Load"].isna()] print(f"Slots flagged and set to NaN: {len(sw_nan_idx)}") Slots flagged and set to NaN: 10 2025-01-05 
+
+> 2025-01-09
+> 2025-01-13
+> 2025-01-17
+> 2025-01-21
+> 2025-01-25
+> 2025-01-29
+> 11
+> 12
+> 13
+> 14
+> 15
+> 16
+> load (scaled units)
+> raw series with injected spikes
+> fl agged slots
+
+Figure 12: Stage 1 on the demonstration slice. The blue line shows the raw series with the three injected spikes, and the brick markers show the slots that the Isolation Forest flags and sets to missing. With a contamination of 0.005 the forest flags the three spikes together with a handful of genuine extremes of the series. The contamination parameter is a flag budget rather than a threshold. The forest flags approximately that fraction of the points regardless of how extreme they are, which is why the run above marks a handful of genuine extremes in addition to the three injected spikes, and why the production value of 0.1 is a deliberate, tunable choice rather than a universal constant. The flagged slots become NaN instead of being corrected, so Stage 3 treats them exactly like native gaps. The fixed random_state matches the production call and makes the flags repeatable across runs. 
+
+A.4 Stage 2: Target-corruption flagging and healing 
+
+Stage 2 of Section 2.6.1 targets the corruption class that a generic detector cannot see, namely sustained reporting dropouts of the target series. Its single entry point is apply_target_corruption_policy , which runs the detector 
+
+detect_target_corruption and then dispatches one of the policies noop, abort, heal, or truncate. The example reconstructs the characteristic geometry of such a dropout: the corrupted stretch ramps in so gently that neither the intra-hour range rule nor the adjacent-step rule fires, yet it sits far below the reference series, so only the one-sided deviation rule can discover it. 
+
+# Inject a sustained dropout below the reference: ramp down over two # hours, hold three units below "Forecasted Load" for two hours, and # ramp back over two hours. The gentle ramp keeps every 15-minute step # below step_mw and every intra-hour range below range_mw, so only the # deviation rule can see the episode. sw_stage2 = sw_demo.copy() sw_ref = sw_stage2["Forecasted Load"] sw_ramp_in = pd.date_range("2025-01-25 04:00", periods=8, freq="15min", tz="UTC") sw_hold = pd.date_range("2025-01-25 06:00", periods=8, freq="15min", tz="UTC") sw_ramp_out = pd.date_range("2025-01-25 08:00", periods=8, freq="15min", tz="UTC") sw_stage2.loc[sw_ramp_in, "Actual Load"] = ( sw_ref.loc[sw_ramp_in] - np.linspace(0.375, 3.0, 8) )sw_stage2.loc[sw_hold, "Actual Load"] = sw_ref.loc[sw_hold] - 3.0 sw_stage2.loc[sw_ramp_out, "Actual Load"] = ( sw_ref.loc[sw_ramp_out] - np.linspace(3.0, 0.375, 8) )
+
+31 A PREPRINT - 2026-08-05 With the dropout in place, a single call runs the detector and dispatches the heal policy. 
+
+from spotforecast2_safe.preprocessing.target_corruption import ( apply_target_corruption_policy, )# Thresholds are the scaled analogues of the production values given # in the corresponding section of the paper. sw_healed, sw_report = apply_target_corruption_policy( sw_stage2, targets=["Actual Load"], policy="heal", range_mw=2.0, step_mw=1.0, window_days=3, max_heal_hours=6, anchor_zone_hours=48, cutoff=sw_stage2.index[-1], logger=logging.getLogger("software-demo"), deviation_mw=2.2, deviation_ref="Forecasted Load", deviation_slots=2, )print(sw_report.action, sw_report.n_flagged_hours, sw_report.spans) heal 4 [('2025-01-25T05:00:00+00:00', '2025-01-25T08:00:00+00:00')] 8
+
+> 9
+> 10
+> load (scaled units)
+> corrupted series
+> reference series
+> 01-24 12
+> 01-24 16
+> 01-24 20
+> 01-25 00
+> 01-25 04
+> 01-25 08
+> 01-25 12
+> 01-25 16
+> 01-25 20
+> 01-26 00
+> 9.5
+> 10.0
+> 10.5
+> load (scaled units)
+> healed series
+
+Figure 13: Stage 2 on the demonstration slice, zoomed to the injected episode. Top: the corrupted series (blue) drops below the reference series (ochre) gently enough to evade the range and step rules, and the deviation rule flags the shaded hours. Bottom: the heal policy sets all slots of the flagged hours to missing. Closing the hole is the job of Stage 3, not of this stage. The returned TargetCorruptionReport is the audit artifact of the stage. It records whether the detector fired, how many hours were flagged, the contiguous spans, and the action taken, which is what a reviewer needs to reconstruct the decision. In production the same call runs twice, first as a non-raising preview inside the coverage guard and then authoritatively inside data preparation, where the healed hours reach Stage 3 as ordinary gaps. Had the episode exceeded the healing budget of max_heal_hours or touched the 48-hour anchor zone before the forecast origin, the policy would 32 A PREPRINT - 2026-08-05 have refused to heal, following the flag-and-refuse principle of the data-governance rules of Bartz-Beielstein and Bartz (2026). 
+
+A.5 Stage 3: Gap imputation and sample weights 
+
+Stage 3 closes every gap that the first two stages left behind. The function get_missing_weights fills missing slots by forward and backward filling and returns, next to the filled frame, a weight series that is zero inside a gap and for a trailing window after it and one everywhere else. The example injects a six-hour gap into the demonstration slice. 
+
+from spotforecast2_safe.preprocessing.imputation import get_missing_weights # Inject a six-hour gap (24 slots at the 15-minute cadence). sw_stage3 = sw_demo.copy() sw_gap = pd.date_range( "2025-01-17 10:00", "2025-01-17 16:00", freq="15min", tz="UTC", inclusive="left", )sw_stage3.loc[sw_gap, "Actual Load"] = np.nan # window_size counts rows: 96 slots of 15 minutes give a 24-hour # zero-weight zone after the gap. sw_filled, sw_weights = get_missing_weights(sw_stage3, window_size=96) print(f"NaN slots remaining: {sw_filled.isna().sum().sum()}") print(f"Zero-weight slots: {int((sw_weights == 0).sum())} of {len(sw_weights)}") NaN slots remaining: 0 Zero-weight slots: 120 of 2112 10.98 
+
+> 11.00
+> 11.02
+> 11.04
+> load (scaled units)
+> series with gap
+> fi lled values
+> 01-16 12
+> 01-16 18
+> 01-17 00
+> 01-17 06
+> 01-17 12
+> 01-17 18
+> 01-18 00
+> 01-18 06
+> 01-18 12
+> 01-18 18
+> 01-19 00
+> 0.0
+> 0.5
+> 1.0
+> weight
+> sample weight
+
+Figure 14: Stage 3 on the demonstration slice, zoomed to the injected six-hour gap. Top: the series with the gap (blue) and the values that the fill inserts to bridge it (green). Bottom: the companion weight series (violet) drops to zero inside the gap and stays there for a further 24 hours, so the fit ignores both the filled values and the samples whose lag features would ingest them. The filled values keep the frame gap-free, which the feature construction of Section 2.6.2 requires, while the zero weights remove them from the fit. The zero-weight zone extends one window_size beyond the gap because the lag features of those samples would otherwise ingest filled values. In production, step 3 of 10 of the numbered pipeline wraps the weight series in a picklable WeightFunction and hands it to the recursive forecaster of Section 3, so a healed or filled slot never carries training signal. The forward fill freezes the last value before the gap, and Figure 14 33 A PREPRINT - 2026-08-05 shows the resulting step where the fill rejoins the series. That artifact is what the linear-interpolation path referenced in Section 2.6.1 avoids: apply_imputation with the strategy weighted_interp bridges healed dropouts smoothly through the transformer LinearlyInterpolateTS and raises rather than fabricate values when a gap cannot be brack-eted safely. 
+
+# B Appendix: Original wording of the legal provisions cited 
+
+The regulatory argument of Section 1 rests on a small number of legal provisions. This appendix reproduces them verbatim from the versions cited in the references, so that the paper’s characterisation can be checked without opening the sources: the three Union instruments are quoted from the English version of the Official Journal (European Par-liament and Council of the European Union 2024; European Parliament and Council 2024b, 2024a), the two German texts in their official German wording (Bundesministerium des Innern 2026; Deutscher Bundestag 2025). Quotations reproduce the source including its internal numbering, and page numbers refer to the cited documents. 
+
+B.1 EU AI Act, Regulation (EU) 2024/1689 B.1.1 Recital 55 
+
+The recital (p. 15) carries the safety-component notion for critical infrastructure on which the perimeter argument of Section 1 rests: (55) As regards the management and operation of critical infrastructure, it is appropriate to classify as high-risk the AI systems intended to be used as safety components in the management and operation of critical digital infrastructure as listed in point (8) of the Annex to Directive (EU) 2022/2557, road traffic and the supply of water, gas, heating and electricity, since their failure or malfunctioning may put at risk the life and health of persons at large scale and lead to appreciable disruptions in the ordinary conduct of social and economic activities. Safety components of crit-ical infrastructure, including critical digital infrastructure, are systems used to directly protect the physical integrity of critical infrastructure or the health and safety of persons and property but which are not necessary in order for the system to function. The failure or malfunctioning of such components might directly lead to risks to the physical integrity of critical infrastructure and thus to risks to health and safety of persons and property. Components intended to be used solely for cybersecurity purposes should not qualify as safety components. Examples of safety components of such critical infrastructure may include systems for monitoring water pressure or fire alarm controlling systems in cloud computing centres. 
+
+B.1.2 Article 6(2) and Annex III, point 2 
+
+Together the two provisions (pp. 53 and 127) form the classification rule behind the statement that the Act classifies an AI system used as a safety component in the supply of electricity as high-risk: 2. In addition to the high-risk AI systems referred to in paragraph 1, AI systems referred to in Annex III shall be considered to be high-risk. 2. Critical infrastructure: AI systems intended to be used as safety components in the management and operation of critical digital infrastructure, road traffic, or in the supply of water, gas, heating or electricity. 
+
+B.1.3 Article 15(1) 
+
+The paragraph (p. 61) states the accuracy, robustness, and cybersecurity requirement: 1. High-risk AI systems shall be designed and developed in such a way that they achieve an appro-priate level of accuracy, robustness, and cybersecurity, and that they perform consistently in those respects throughout their lifecycle. 
+
+B.1.4 Article 12(1) 
+
+The paragraph (p. 59) states the record-keeping requirement: 1. High-risk AI systems shall technically allow for the automatic recording of events (logs) over the lifetime of the system. 34 A PREPRINT - 2026-08-05 
+
+B.1.5 Article 11(1), first sentence 
+
+The sentence (p. 58) concerns the technical documentation: 1. The technical documentation of a high-risk AI system shall be drawn up before that system is placed on the market or put into service and shall be kept up-to date. 
+
+B.1.6 Article 10(1) 
+
+The paragraph (p. 57) frames data and data governance, the context of the gap-aware preparation of Section 2.6.1: 1. High-risk AI systems which make use of techniques involving the training of AI models with data shall be developed on the basis of training, validation and testing data sets that meet the quality criteria referred to in paragraphs 2 to 5 whenever such data sets are used. 
+
+B.2 Kritisverordnung, Referentenentwurf of 26 May 2026 B.2.1 § 2 Abs. 1 and 2 
+
+The provision (p. 5) designates the supply of electricity as a critical service and enumerates the areas it comprises, namely generation, transmission, distribution, and trading: § 2 Kritische Dienstleistungen und kritische Anlagen im Sektor Energie (1) Im Sektor Energie (§ 4 Absatz 1 Nummer 1 des KRITIS-Dachgesetzes) sind kritische Dienstleistungen die Versorgung der Allgemeinheit 1. mit Elektrizität (Stromversorgung); 2. mit Gas (Gasversorgung); 3. mit Kraftstoff und Heizöl (Kraftstoff- und Heizölversorgung); 4. mit Fernwärme und Fernkälte (Fernwärme und -kälteversorgung). (2) Die Stromversorgung umfasst die folgenden Bereiche 1. Stromerzeugung, 2. Stromübertragung, 3. Stromverteilung und 4. Stromhandel. 
+
+B.2.2 Anhang 1 Teil 3 Nummer 1.2.1 and Nummer 2.5 
+
+The annex row (p. 19) sets the transmission-network threshold, listing the Anlagenkategorie, the Bemessungskriterium, and the Schwellenwert: 1.2. Stromübertragung 1.2.1 Übertragungsnetz Durch Letztverbraucher und Weiterverteiler ent-nommene Jahresarbeit in GWh/Jahr 3 700 The installation category is defined in Anhang 1 Nummer 2.5 (p. 13): 2.5 Übertragungsnetz ein Netz zur Übertragung im Sinne des § 3 Nummer 100 des En-ergiewirtschaftsgesetzes. 
+
+B.3 BSI-Gesetz (BSIG), BGBl. 2025 I Nr. 301 B.3.1 Title of the statute 
+
+The title (p. 1) announces an information-security statute: Gesetz über das Bundesamt für Sicherheit in der Informationstechnik und über die Sicherheit in der Informationstechnik von Einrichtungen (BSI-Gesetz – BSIG) 
+
+B.3.2 § 2 Nr. 22, 24, and 39 
+
+The three definitions (p. 6) fix the notions of critical installation, critical service, and security in information technology: 22. „kritische Anlage“ eine Anlage, die für die Erbringung einer kritischen Dienstleistung erheblich ist; die kritischen Anlagen im Sinne dieses Gesetzes werden durch die Rechtsverordnung nach § 56 Absatz 4 näher bestimmt; 24. „kritische Dienstleistung“ eine Dienstleistung zur Versorgung der Allgemeinheit in den Sek-toren Energie, Transport und Verkehr, Finanzwesen, Leistungen der Sozialversicherung sowie der Grundsicherung für Arbeitsuchende, Gesundheitswesen, Wasser, Ernährung, Informationstechnik und Telekommunikation, Weltraum oder Siedlungsabfallentsorgung, deren Ausfall oder Beeinträchti-gung zu erheblichen Versorgungsengpässen oder zu Gefährdungen der öffentlichen Sicherheit führen würde; 35 A PREPRINT - 2026-08-05 39. „Sicherheit in der Informationstechnik“ die Einhaltung bestimmter Sicherheitsstandards, die die Verfügbarkeit, Integrität oder Vertraulichkeit von Informationen betreffen, durch Sicher-heitsvorkehrungen a) in informationstechnischen Systemen, Komponenten oder Prozessen oder b) bei der Anwendung informationstechnischer Systeme, Komponenten oder Prozesse; 
+
+B.3.3 § 28 Abs. 8 
+
+The provision (p. 21) defines the operator of critical installations: (8) Ein Betreiber kritischer Anlagen ist eine natürliche oder juristische Person oder eine rechtlich un-selbstständige Organisationseinheit einer Gebietskörperschaft, die unter Berücksichtigung der rechtlichen, wirtschaftlichen und tatsächlichen Umstände bestimmenden Einfluss auf eine oder mehrere kritische Anlagen ausübt. Abweichend von Satz 1 hat im Sektor Finanzwesen bestim-menden Einfluss auf eine Anlage, wer die tatsächliche Sachherrschaft ausübt. Die rechtlichen und wirtschaftlichen Umstände bleiben insoweit unberücksichtigt. 
+
+B.3.4 § 30 Abs. 1 
+
+The provision (p. 22) states the core risk-management obligation: (1) Besonders wichtige Einrichtungen und wichtige Einrichtungen sind verpflichtet, geeignete, verhältnismäßige und wirksame technische und organisatorische Maßnahmen, die in Absatz 2 konkretisiert werden, zu ergreifen, um Störungen der Verfügbarkeit, Integrität und Ver-traulichkeit der informationstechnischen Systeme, Komponenten und Prozesse, die sie für die Erbringung ihrer Dienste nutzen, zu vermeiden und Auswirkungen von Sicherheitsvorfällen möglichst gering zu halten. Bei der Bewertung der Verhältnismäßigkeit der Maßnahmen nach Satz 1 sind das Ausmaß der Risikoexposition, die Größe der Einrichtung, die Umset-zungskosten und die Eintrittswahrscheinlichkeit und Schwere von Sicherheitsvorfällen sowie ihre gesellschaftlichen und wirtschaftlichen Auswirkungen zu berücksichtigen. Die Einhaltung der Verpflichtung nach Satz 1 ist durch die Einrichtungen zu dokumentieren. 
+
+B.3.5 § 31 Abs. 2 
+
+The provision (p. 23) adds the attack-detection duty for operators of critical installations: (2) Betreiber kritischer Anlagen sind verpflichtet, für die informationstechnischen Systeme, Kom-ponenten und Prozesse, die für die Funktionsfähigkeit der von ihnen betriebenen kritischen Anlagen maßgeblich sind, Systeme zur Angriffserkennung einzusetzen. Die eingesetzten Sys-teme zur Angriffserkennung müssen geeignete Parameter und Merkmale aus dem laufenden Be-trieb kontinuierlich und automatisch erfassen und auswerten. Sie sollten dazu in der Lage sein, fortwährend Bedrohungen zu identifizieren und zu vermeiden sowie für eingetretene Störungen geeignete Beseitigungsmaßnahmen vorzusehen. Dabei soll der Stand der Technik eingehalten werden. Der hierfür erforderliche Aufwand soll nicht außer Verhältnis zu den Folgen eines Aus-falls oder einer Beeinträchtigung der betroffenen kritischen Anlage stehen. 
+
+B.4 Cyber Resilience Act, Regulation (EU) 2024/2847 B.4.1 Article 12(1) 
+
+The paragraph (p. 34) joins the two Union regulations, so that conformity under the Cyber Resilience Act discharges the cybersecurity requirement of the EU AI Act: 1. Without prejudice to the requirements relating to accuracy and robustness set out in Article 15 of Regulation (EU) 2024/1689, products with digital elements which fall within the scope of this Regu-lation and which are classified as high-risk AI systems pursuant to Article 6 of that Regulation shall be deemed to comply with the cybersecurity requirements set out in Article 15 of that Regulation where: (a) those products fulfil the essential cybersecurity requirements set out in Part I of Annex I; (b) the processes put in place by the manufacturer comply with the essential cybersecurity require-ments set out in Part II of Annex I; and (c) the achievement of the level of cybersecurity protection required under Article 15 of Regulation (EU) 2024/1689 is demonstrated in the EU declaration of conformity issued under this Regulation. 
+
+B.4.2 Article 3, points (22) and (48), and Recital 18 
+
+The obligations of the Regulation attach to making a product available on the market, and the definition (p. 30) confines that notion to supply in the course of a commercial activity: 36 A PREPRINT - 2026-08-05 (22) ‘making available on the market’ means the supply of a product with digital elements for distri-bution or use on the Union market in the course of a commercial activity, whether in return for payment or free of charge; The companion definition (p. 31) fixes the notion of free and open-source software: (48) ‘free and open-source software’ means software the source code of which is openly shared and which is made available under a free and open-source licence which provides for all rights to make it freely accessible, usable, modifiable and redistributable; Recital 18 (pp. 4 and 5) draws the consequence for software that is not monetised, and states the condition under which a component supplied for integration nonetheless counts. The two sentences are quoted in the order in which they appear: In relation to economic operators that fall within the scope of this Regulation, only free and open-source software made available on the market, and therefore supplied for distribution or use in the course of a commercial activity, should fall within the scope of this Regulation. Furthermore, the supply of products with digital elements qualifying as free and open-source soft-ware components intended for integration by other manufacturers into their own products with digital elements should be considered to be making available on the market only if the component is mone-tised by its original manufacturer. 
+
+B.4.3 Article 71(2) 
+
+The paragraph (p. 67) sets the dates from which the Regulation applies: This Regulation shall apply from 11 December 2027. However, Article 14 shall apply from 11 September 2026 and Chapter IV (Articles 35 to 51) shall apply from 11 June 2026. 
+
+B.5 Product Liability Directive, Directive (EU) 2024/2853 B.5.1 Article 2(1) and (2) 
+
+The two paragraphs (p. 11) fix the temporal scope of the Directive and exclude free and open-source software supplied outside a commercial activity: 1. This Directive shall apply to products placed on the market or put into service after 9 December 2026. 2. This Directive does not apply to free and open-source software that is developed or supplied outside the course of a commercial activity. 
+
+B.5.2 Article 4, point (1) 
+
+The definition (p. 12) makes software a product in its own right, which is what brings a forecasting system inside a strict-liability regime: (1) ‘product’ means all movables, even if integrated into, or inter-connected with, another movable or an immovable; it includes electricity, digital manufacturing files, raw materials and software; 
+
+B.5.3 Article 7(2), points (c) and (f) 
+
+Article 7(1) defines a defective product as one that does not provide the safety a person is entitled to expect. Two of the circumstances that Article 7(2) requires the assessment to take into account (p. 14) reach a machine-learning system directly: (c) the effect on the product of any ability to continue to learn or acquire new features after it is placed on the market or put into service; (f) relevant product safety requirements, including safety-relevant cybersecurity requirements; 37 A PREPRINT - 2026-08-05 
+
+# C Appendix: The challenge data bundle 
+
+The results of Section 6 are computed from a frozen data bundle that ships with the manuscript source in its data/ 
+
+directory and that this appendix documents. The bundle is the final state of the challenge, as scored on 21 July 2026 after the last ENTSO-E data revisions, and consists of two files: an hourly forecast matrix and an entry register. Every number, table, and figure of Section 6 is recomputed from these two files at render time, and the public leaderboard they reproduce is available at https://bartzbeielstein.github.io/challenge-leaderboard/. 
+
+C.1 The forecast matrix results_plain.parquet 
+
+The matrix holds 1344 hourly rows on a UTC axis, from 2026-05-26 00:00 to 2026-07-20 23:00, and 21 columns (Table 10). Table 10: Columns of the forecast matrix results_plain.parquet .Column Meaning index timestamp_utc hour beginning, UTC, no gaps 
+
+actual_load realised load in MW, the ground truth 
+
+entsoe official ENTSO-E day-ahead forecast in MW, the ENTSO-E baseline 19 further columns one per scored identity, in MW Forecast cells hold each submission exactly as the leaderboard scored it. A day that a participant missed was scored by carrying their last submission forward, and the carried value is what appears here. Hours outside an identity’s scored days are missing. The 41 target days of the live phase run from 10 June to 20 July 2026. The fifteen preceding days carry the actual load and the ENTSO-E baseline but no forecasts. They are present because the MASE scaling factor of Section 2.8 and the 168-hour seasonal-naive benchmark both reach back before the first target day. Coverage per identity is derivable from the matrix and is deliberately not duplicated in the entry register. 
+
+C.2 The entry register entries.csv 
+
+The register holds one row per scored identity, 22 rows in total (Table 11). Table 11: Columns of the entry register entries.csv .Column Meaning 
+
+team_id matches a column of the matrix, or names a derived benchmark 
+
+display_name name as printed in this paper 
+
+kind student , reference , baseline , or benchmark group cohort of a student team, ING or AIT , otherwise empty 
+
+joker date of the one-time joker substitution, if the team used it 
+
+n_locf number of carried-forward days among the scored days The benchmark rows are the two seasonal-naive comparators. They have no column in the matrix because they are computed from the actual load at render time. 
+
+C.3 Rebuilding the bundle 
+
+The bundle is rebuilt from the frozen leaderboard repository by 
+
+cd bart26o && uv run python data/make_results_plain.py 
+
+The builder writes nothing unless five checks pass: the hourly coverage matches the scored-day counts; the rows preced-ing the live phase carry no forecasts; every scored team-day reproduces its frozen per-day value on all of MAE, RMSE, MAPE, bias, and UPR; every column’s mean MAE reproduces the published board scores in site_scores.json ;and the entry metadata covers exactly the matrix. The file site_scores.json is retained beside the bundle purely as that verification gate. It is a copy of the published board and is not read by the manuscript for any value it reports. 
+
+C.4 Provenance and licence 
+
+The series actual_load and entsoe originate from the ENTSO-E Transparency Platform (ENTSO-E 2024) and are subject to its terms of use. The forecast columns are the participants’ own submissions, contributed for this challenge. 38

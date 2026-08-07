@@ -1,0 +1,445 @@
+Title: POEM: Phase-Aware SO(2) Feature Rotation for Time Series Forecasting Under Periodicity Drift
+
+URL Source: https://arxiv.org/pdf/2608.03630v1
+
+Published Time: Wed, 05 Aug 2026 01:04:36 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# POEM: Phase-Aware SO(2) Feature Rotation for Time Series Forecasting Under Periodicity Drift 
+
+# Jiawen Zhu 1, Shuhan Liu 2, Shengxuan Li 2, Qiming Shi 2, Di Weng 1∗
+
+> 1
+
+School of Software Technology, Zhejiang University 
+
+> 2
+
+State Key Lab of CAD&CG, Zhejiang University 
+
+Abstract 
+
+Deep learning has advanced time series forecasting, but peri-odicity drift, in which cycle timing and phase vary over time, remains a challenging problem. Existing methods predomi-nantly model these sequences on fixed time grids, suffering from a limited ability to accommodate phase-related variation. To address this limitation, we propose POEM , a phase-aware forecasting framework based on latent feature rotation using the special orthogonal group in two dimensions, denoted by 
+
+SO(2) . POEM aims to reduce the phase-related variability by learning a phase-correction coordinate and applying an in-vertible SO(2) -based rotation to paired latent features. To ex-trapolate this correction coordinate, Directional Phase Incre-ment Attention (DPIA) retrieves historical phase increments from similar temporal contexts and integrates them into fu-ture phase corrections. Experiments demonstrate that POEM achieves competitive performance, while qualitative visual-izations suggest that the learned phase-aware transformation makes latent trajectories more regular. 
+
+# Introduction 
+
+Time series forecasting is essential for applications, ranging from intelligent traffic management (Lv et al. 2025; Shao et al. 2026) and weather forecasting (Tian et al. 2026; Huang et al. 2026) to financial (Koa et al. 2026) and energy plan-ning (Tian and Gai 2025). In recent years, a growing number of deep learning methods (Wu et al. 2023; Fan et al. 2022; Zhang et al. 2025) have pushed the boundaries of forecasting performance by extracting complex temporal dependencies from massive historical observations. Much of this success comes from their ability to identify cyclic regularities and extrapolate them forward. Yet this strategy rests on an ide-alized assumption that is rarely stated: that such regularities recur at the same rate and with the same timing as in the past. Real-world time series, however, rarely repeat themselves so faithfully. Cycles stretch and compress as operating con-ditions change, and recurrent events arrive earlier or later than before. A cardiac cycle of roughly one second at rest compresses under exertion and lengthens during deep sleep, changing the rate at which the cycle advances; likewise, the timing and width of daily traffic peaks can vary systemati-cally across seasons, with the evening peak occurring slightly later in summer (Figure 1). We refer to these time-varying deviations as periodicity drift , and describe them as non-uniform phase progression 
+
+> ∗
+
+Corresponding author. 
+
+Figure 1: Two examples of periodicity drift. Cyclic patterns deviate from strict periodicity in real-world data. (A) Heart-rate cycles compress under exertion and lengthen in deep sleep. (B) The timing and width of a city’s daily traffic peaks vary across seasons, with the evening peak occurring slightly later in summer. relative to the uniformly sampled observation clock: a local phase velocity governs how fast the cycle advances, and a phase offset governs where it is anchored. Such drift can weaken the correspondence between historical and future cycles, making forecasting more challenging. Existing methods that model periodicity explicitly fall into two families. Template-based approaches (Kou et al. 2025; Lin et al. 2024a,b), which model recurrent temporal pat-terns as forecasting templates, provide a useful inductive bias when cycles are relatively stable, but are less flexible when progression rates and timing vary locally. Phase-aware methods, such as AlignTime (Wang, Wang, and Zhang 2026) and PhaseFormer (Niu, Deng, and Tong 2026), relax this assumption through dominant period alignment or discrete phase windows. These approaches account for phase vari-ability, but their global or discretized alignment mechanisms do not explicitly construct a channel-wise phase trajectory from local evidence. This leaves room for a method that learns phase progression along the observed sequence and extends it coherently into forecast horizon. To this end, we propose POEM , a phase-aware forecast-ing framework designed to mitigate the effect of periodicity drift. Our key insight is that rotating paired features accord-arXiv:2608.03630v1 [cs.LG] 4 Aug 2026 ing to the estimated phase-correction trajectory can compen-sate for phase shifts, yielding more regular temporal patterns and simplifying the subsequent forecasting task. Concretely, POEM first estimates a phase offset and phase velocity for each channel and local window, forming a phase-correction coordinate. Second, it applies a rotation from the special orthogonal group in two dimensions, denoted by SO(2) , to reduce phase-related temporal variation, projecting the phys-ical latent states onto a more regular periodic orbit where a lightweight MLP can effectively forecast future states. Third, Directional Phase Increment Attention (DPIA) retrieves his-torical phase increments observed under similar timestamp contexts to construct the future phase-correction trajectory. Finally, the predicted trajectory is applied with the opposite rotation to restore the future phase variation. Our main contributions are summarized as follows: 
+
+• We formulate periodicity drift , identifying it as a cou-pling between a system’s intrinsic dynamics and a time-varying phase that distorts the observed time axis. 
+
+• We propose POEM , which constructs a continuous phase correction trajectory and applies SO(2) transformations to features affected by phase shifts, producing a more reg-ular representation for a lightweight temporal predictor. 
+
+• Extensive experiments on real-world benchmarks demon-strate that POEM achieves competitive forecasting perfor-mance, while ablation studies and visualization support the effectiveness of POEM. 
+
+# Related Work 
+
+Periodic and Phase-Aware Modeling 
+
+Recent forecasting methods increasingly exploit explicit pe-riodic structure to improve performance. TimesNet (Wu et al. 2023) constructs representations in two dimensions based on the fixed period, while PDF (Dai et al. 2024) separates the sequence using multiple period lengths to capture variations over short and long temporal ranges. Lightweight architec-tures such as SparseTSF (Lin et al. 2024b) and CycleNet (Lin et al. 2024a) also explicitly model recurrent cycles with fixed length. However, these methods typically rely on fixed-length templates and cannot deform continuously over time. More recent studies model phase variability more directly. AlignTime (Wang, Wang, and Zhang 2026) computes a glob-ally dominant period and aggregates subsequences aligned by phase, while PhaseFormer (Niu, Deng, and Tong 2026) performs predictions by phase using compact phase em-beddings. PHAT (Ma et al. 2026) organizes variables into periodic buckets, and TimeAPN (Hu et al. 2026b) models phase discrepancies in the frequency domain. Although these methods account for phase variability, they mainly model it through alignment based on stable global periods, without explicitly representing its evolution along the observed time-line. In contrast, POEM treats periodicity drift as a tempo-rally evolving phase process and incorporates it into feature learning through a unified geometric framework. 
+
+Latent Dynamics Forecasting and Geometric Canonicalization 
+
+Several forecasting methods view time series as observations of an underlying dynamical process and seek to model how its state evolves. Koopa (Liu et al. 2023) learns Koopman em-beddings to separate time-variant and time-invariant dynam-ics. Neural Lad (Li, Li, and Zhu 2023) models latent evolu-tion with an ODE-based framework enhanced by seasonality-trend characterization, and Attraos (Hu et al. 2024) recon-structs phase space and memorizes attractor structures from a chaos perspective. DeepEDM (Majeedi et al. 2025) and LatentTSF (Yang et al. 2026) further learn structured latent states instead of regressing in observation space. These works focus on learning general state evolution or structured representations of temporal dynamics. POEM shares this dynamical systems perspective but addresses a more specific problem: the nonuniform phase progression associated with periodicity drift. Rather than aiming to re-cover the complete underlying dynamics, POEM models the effect of this phase process through structured SO(2) trans-formations in feature space. 
+
+# Methods 
+
+Problem Formulation 
+
+Time Series Forecasting Let X = {x1, x2, . . . , xL} ∈ 
+
+RL×C be a multivariate time series observation over a look-back window L, where C denotes the number of vari-ables. The standard time series forecasting task aims to learn a mapping function F to predict the future sequence 
+
+Y = {xL+1 , . . . , xL+H } ∈ RH×C over a horizon H, for-mulated as Y = F(X ). From the perspective of non-linear dynamical systems, the discrete observation xt can be viewed as a uniform sampling of an observation map from a con-tinuous underlying state z(t) residing in a phase space, i.e., 
+
+xt = h(z(t)) |t=tk , with tk = k∆t (Takens 1981). 
+
+Periodicity Drift Many forecasting models effectively rely on relatively stable recurrent patterns, i.e., the system evolves at a constant base frequency ω0. Under this idealization, the phase grows linearly with time: θideal (t) = ω0t. In practice, environmental perturbations in real world cause the instan-taneous frequency to fluctuate around the base frequency: 
+
+ω(t) = ω0 + δω (t), where δω (t) denotes a small time-varying perturbation. Consequently, the true instantaneous phase φ(t) exhibits a non-linear accumulation: 
+
+φ(t) = 
+
+Z t
+
+> 0
+
+ω(τ )dτ = ω0t + ∆Φ( t) (1) where ∆Φ( t) = R t 
+
+> 0
+
+δω (τ ) dτ denotes the phase drift. 
+
+Overview 
+
+POEM addresses periodicity drift by estimating variable-specific phase correction trajectories and using them to re-duce phase-related variation before forecasting. The overall framework consists of the following five modules (Figure 2): Local Phase-Correction Estimator (LPCE) first extracts local phase offsets and velocities for Figure 2: Overview of the POEM framework. The framework comprises five modules: the Local Phase-Correction Estimator, Phase-Guided SO(2) Feature Rotation, Phase-Corrected Temporal Predictor, Directional Phase Increment Attention, and Phase Restoration and Decoding. each variable and integrates the overlapping window esti-mates into a continuous phase correction trajectory. Guided by this trajectory, Phase-Guided SO(2) Feature Rotation 
+
+transforms the paired features into a more regular representa-tion, after which the Phase-Corrected Temporal Predictor 
+
+forecasts future evolution with a lightweight MLP. Because phase variation continues into the forecast horizon, Direc-tional Phase Increment Attention retrieves historical phase increments from similar timestamp contexts and uses them to construct the future phase correction trajectory. Finally, 
+
+Phase Restoration and Decoding restores the predicted phase variation and produces the final forecast bY.
+
+Local Phase-Correction Estimator 
+
+To capture local variations in phase progression, we estimate two complementary quantities for each window w and vari-able c: (1) a phase offset θw,c , which serves as a window-level angular anchor for the local phase correction; and (2) a pos-itive phase velocity vw,c , which describes how quickly the sequence moves through its cycle in the window. We leverage them together in constructing a phase correction trajectory 
+
+Φc(t) for each variable. 
+
+Local Dynamics Encoder We divide the normalized look-back sequence per variable into W = ⌊(L−ℓ)/s ⌋+1 overlap-ping windows of length ℓ and stride s, where Xw,c ∈ Rℓ×1
+
+denotes the w-th window of variable c. Each window is processed by an encoder with convolutional mixing, self-attention, and temporal aggregation: 
+
+zw,c = Encoder( Xw,c ) ∈ RD . (2) This resulting window representation zw,c provides local information for the subsequent phase estimation. 
+
+Local Phase Field Parameterization Given the represen-tation zw,c , we parameterize two quantities that jointly de-termine the local phase behavior. 
+
+(i) Phase Offset We predict a local phase offset to construct the window-wise correction: 
+
+θw,c = π · tanh  MLP θ (zw,c ), θw,c ∈ (−π, π ). (3) Constraining θw,c within [−π, π ] respects the 2π-periodicity of the underlying cyclic state and stabilizes optimization. 
+
+(ii) Phase Velocity We parameterize a positive local phase velocity for each channel and window, ensuring that the window-local intrinsic clock advances forward. We enforce this by predicting its logarithm via a clipped MLP and expo-nentiating: 
+
+ρw,c = Clip  MLP v (zw,c ), [−γ, γ ] (4) 
+
+vw,c = exp( ρw,c ) (5) where the clipping threshold γ bounds the admissible range of temporal distortion. Integrating the dense velocity field over the stride s yields the accumulated phase time τw,c at the starting position of window w:
+
+τ1,c = 0 , τw,c =
+
+> w−1
+
+X
+
+> j=1
+
+vj,c s, w = 2 , . . . , W. (6) which represents how much intrinsic phase progress has elapsed by that physical step. 
+
+Global Continuous Phase Integrator The window-level estimation is integrated into a coherent phase trajectory. Let 
+
+tw = ( w − 1) s denote the starting index of window w. For channel c, we propagate the local phase anchor θw,c within each window according to its phase velocity: 
+
+ψw,c (t) = θw,c + 2πlp
+
+[τw,c + vw,c (t − tw) − t] . (7) Here, τw,c is the accumulated intrinsic phase time at the window start, lp denotes the global dominant period which is predefined at the dataset level, and 2π/l p converts the deviation from the physical clock into an angular correction. We then aggregate them by a circular mean and temporally unwrap the result: 
+
+eΦc(t) = atan2 
+
+ X
+
+> w∈W (t)
+
+sin ψw,c (t), X
+
+> w∈W (t)
+
+cos ψw,c (t)
+
+ ,
+
+Φc(t) = 
+
+(eΦc(1) , t = 1 ,
+
+Φc(t − 1) + δc(t), 2 ≤ t ≤ L. 
+
+(8) Figure 3: Phase-guided SO(2) feature rotation. Here, δc(t) = wrap π (eΦc(t)− eΦc(t−1)) , where wrap π (a) = atan2(sin a, cos a) ∈ [−π, π ]. This produces a continuous, channel-wise phase correction trajectory Φc(t), which de-rives the subsequent SO(2) latent rotation. 
+
+Phase-Guided SO(2) Feature Rotation 
+
+We represent phase transformations using the planar rotation group SO(2) , as shown in Figure 3. For an angle ϕ, its action on a two-dimensional latent feature pair u ∈ R2 is given by 
+
+R(ϕ) = 
+
+cos ϕ − sin ϕ
+
+sin ϕ cos ϕ
+
+
+
+. (9) This transformation is invertible since R(ϕ)⊤R(ϕ) = I and 
+
+R(ϕ)−1 = R(−ϕ).
+
+Temporal Feature Encoding Before the phase-guided ro-tation, we encode the normalized observations ¯X into a D-dimensional feature per variable and time step. A linear pro-jection first maps each observation to D-dimensional vector, after which a temporal convolution and a token-mixing MLP model local patterns and dependencies over the look-back sequence. Collecting the encoded features gives 
+
+S = FeatureEncoder( ¯X ) ∈ RL×C×D . (10) 
+
+st,c = St,c, : ∈ RD is the feature of variable c at time step t.
+
+SO(2) Rotation on Paired Features The encoded features still retain the phase shifts. We reduce this effect by rotating the feature vector by the negative phase-correction angle 
+
+−Φc(t). Let D = 2 d, and split each feature vector into two blocks s(re)  
+
+> t,c
+
+, s(im)  
+
+> t,c
+
+∈ Rd whose corresponding coordinates form d two-dimensional feature pairs. The variable-specific phase correction Φc(t) is applied to every pair through 
+
+"es(re) 
+
+> t,c,k
+
+es(im) 
+
+> t,c,k
+
+#
+
+= R(−Φc(t)) 
+
+"
+
+s(re) 
+
+> t,c,k
+
+s(im) 
+
+> t,c,k
+
+#
+
+, k = 1 , . . . , d. (11) Rotating by −Φc(t) can compensate for the estimated phase shift, making the transformed features more regular and eas-ier for the subsequent predictor to forecast. Concatenating the rotated blocks gives est,c =[es(re)  
+
+> t,c
+
+; es(im)  
+
+> t,c
+
+] ∈ RD , and collecting them over time and vari-ables yields eS ∈ RL×C×D .
+
+Phase-Corrected Temporal Predictor 
+
+The SO(2) rotation reduces phase-induced variation in eS,allowing a lightweight predictor to focus on the remaining temporal dependencies. We apply MLP blocks along the look-back dimension while keeping the variable and fea-ture dimensions unchanged. A linear horizon projection then maps the temporal dimension from L to H, producing the future phase-corrected features bSpc ∈ RH×C×D .
+
+Directional Phase Increment Attention 
+
+Although the predictor operates on phase-corrected features, the future observations are still expected to exhibit period-icity drift. We therefore forecast a future phase-correction trajectory and use it to rotate the predicted features back. We construct this trajectory by retrieving historical phase increments observed under similar temporal contexts. We implement this with Directional Phase Increment Attention (DPIA), which compares normalized temporal-context embeddings via a learnable scaled cosine kernel. 
+
+Directional Queries and Keys Let Menc ∈ RL×dm and 
+
+Mdec ∈ RH×dm denote the timestamp encodings associ-ated with the historical and future horizons, respectively. The future timestamp encodings serve as queries, while historical timestamp encodings at j = 2 , . . . , L serve as keys so that each key is aligned with the phase increment ending at the same time step. Using learnable projections 
+
+WQ, W K ∈ Rdm×dm , we define 
+
+qh = mdec  
+
+> h
+
+WQ
+
+∥mdec  
+
+> h
+
+WQ∥2
+
+, h = 1 , . . . , H, 
+
+kj = menc  
+
+> j
+
+WK
+
+∥menc  
+
+> j
+
+WK ∥2
+
+, j = 2 , . . . , L. 
+
+(12) Stacking these vectors gives Q ∈ RH×dm and K ∈
+
+R(L−1) ×dm .
+
+Channel-wise Phase Increments as Values An absolute phase coordinate depends on its angular origin, whereas first differences are invariant to a constant phase offset and di-rectly describe local phase changes. For each historical time step j = 2 , . . . , L , we therefore define 
+
+vj = [Φ c(j) − Φc(j − 1)] Cc=1 ∈ RC , j = 2 , . . . , L, 
+
+V = v⊤ 
+
+> 2
+
+· · · v⊤
+
+> L
+
+⊤ ∈ R(L−1) ×C .
+
+(13) 
+
+Scaled Cosine Attention Because the queries and keys are 
+
+ℓ2-normalized, their inner products measure cosine similar-ity between the projected future and historical timestamp encodings. The attention weights are 
+
+A = Softmax  κQK ⊤ ∈ RH×(L−1) , (14) where the softmax is applied over historical time steps. We parameterize the positive scale as 
+
+κ = Softplus( κraw ) + ϵ. (15) Here, κraw ∈ R is a learnable scalar, and ϵ > 0 is a small constant for numerical stability. A larger κ concentrates the weights on the most similar historical timestamps, whereas a smaller value produces smoother aggregation. Dataset POEM (Ours)                                                                                                                                                                                            
+
+> PMDformer (2026) Phaseformer (2026) SRSNet (2025) TQNet (2025) TimeBridge (2025) CycleNet (2024) TimeMixer (2024) DLinear (2023) MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE MSE MAE Weather 0.240 0.271 0.240 0.267 0.262 0.282 0.260 0.282 0.242 0.269 0.254 0.270 0.254 0.279 0.246 0.275 0.268 0.318 Exchange 0.349 0.396 0.583 0.474 0.363 0.409 0.361 0.403 0.369 0.407 0.395 0.426 0.373 0.407 0.395 0.418 0.336 0.402 ETTh1 0.422 0.431 0.442 0.436 0.434 0.430 0.442 0.434 0.447 0.440 0.446 0.440 0.434 0.428 0.455 0.443 0.459 0.452 ETTh2 0.375 0.401 0.382 0.401 0.382 0.410 0.376 0.400 0.378 0.402 0.379 0.399 0.385 0.404 0.378 0.405 0.498 0.479 ETTm1 0.371 0.393 0.403 0.395 0.399 0.401 0.390 0.398 0.386 0.399 0.380 0.389 0.387 0.395 0.384 0.398 0.407 0.410 ETTm2 0.274 0.322 0.280 0.319 0.290 0.334 0.284 0.330 0.278 0.322 0.282 0.322 0.275 0.316 0.279 0.325 0.310 0.367 NN5 0.741 0.602 0.823 0.654 0.971 0.732 0.808 0.648 0.765 0.619 0.731 0.592 0.763 0.620 0.787 0.634 1.184 0.828 US Birth 0.301 0.386 0.580 0.598 0.574 0.545 0.370 0.452 0.336 0.418 0.358 0.424 0.369 0.450 0.233 0.344 0.502 0.540 ZafNoo 0.537 0.452 0.499 0.426 0.583 0.465 0.593 0.479 0.563 0.465 0.558 0.446 0.593 0.480 0.556 0.461 0.518 0.466 Top-2 count 12 52226423
+
+Table 1: Time series forecasting performance. Results are averaged across four prediction horizons: {24 , 36 , 48 , 60 } for the NN5 benchmark and {96 , 192 , 336 , 720 } for the remaining datasets. The look-back window length is set to 36 for NN5 and 96 for the other datasets. Lower MSE and MAE values indicate better forecasting accuracy. The best and second-best results are shown in 
+
+bold and underlined, respectively. Detailed results are provided in Appendix. 
+
+Future Phase Integration The predicted phase incre-ments are obtained by aggregating historical increments with the attention weights: 
+
+δ = AV ∈ RH×C . (16) We recover the future phase-correction trajectory by cumu-lative summation: 
+
+bΦc(L + h) = Φ c(L) + 
+
+> h
+
+X 
+
+> τ=1
+
+δτ,c , h = 1 , . . . , H. (17) The trajectory is used by the subsequent phase restoration rotation to reintroduce the forecast phase variation. 
+
+Phase Restoration and Decoding 
+
+The temporal predictor produces future features in the phase-corrected representation, whereas the final forecasts should reflect the phase evolution over the prediction horizon. We thus rotate each predicted feature pair by its corresponding future phase-correction angle. For h = 1 , . . . , H , variable c,and feature pair k = 1 , . . . , d , we compute 
+
+"bs(re) 
+
+> h,c,k
+
+bs(im) 
+
+> h,c,k
+
+#
+
+= R
+
+bΦc(L + h)
+
+ "bs(re) pc ,h,c,k 
+
+bs(im) pc ,h,c,k 
+
+#
+
+. (18) thereby restoring the phase variation in the predicted fea-tures. Collecting the restored feature vectors gives bSrest ∈
+
+RH×C×D . Then, a linear decoder gdec maps the restored features to the forecast: 
+
+bY = gdec 
+
+bSrest 
+
+
+
+∈ RH×C . (19) The forecast is finally returned to the original data scale by reversing the input normalization. 
+
+# Experiments 
+
+Experiment Settings 
+
+Datasets We evaluate POEM on nine real-world bench-marks: ETT (four subsets) (Zhou et al. 2021), Exchange (Lai et al. 2018), Weather (Wu et al. 2021), NN5 (Crone 2008), ZafNoo (Poyatos et al. 2019), and US Birth (Godahewa et al. 2020). These datasets span diverse domains, including en-ergy, finance, and climatology. The details of each dataset are summarized in Appendix. 
+
+Implementation Details All experiments are imple-mented in PyTorch (Paszke et al. 2019) and conducted on a single NVIDIA A100 80 GB GPU. We use 2026 as the ran-dom seed for all experiments. POEM is optimized with Adam using mean squared error (MSE) as the training objective, and the initial learning rate is selected between 1 × 10 −3 and 
+
+5 × 10 −3. The look-back length is fixed to L = 96 and the forecasting horizons to H ∈ { 96 , 192 , 336 , 720 }, except for NN5, where L = 36 and H ∈ { 24 , 36 , 48 , 60 }. Models are trained for at most 50 epochs with early stopping based on validation loss, using a patience of 5 epochs for Weather and 10 epochs for the remaining datasets. We report MSE and mean absolute error (MAE) as the evaluation metrics. The hyperparameters for each dataset and forecasting horizon are provided in Appendix. 
+
+Main Results 
+
+Baselines We compare POEM with eight representative baselines: PMDformer (Hu et al. 2026a), Phaseformer (Niu, Deng, and Tong 2026), SRSNet (Wu et al. 2026), TQNet (Lin et al. 2025), TimeBridge (Liu et al. 2025), CycleNet (Lin et al. 2024a), TimeMixer (Wang et al. 2024), and Dlinear (Zeng et al. 2023). 
+
+Results Analysis Table 1 summarizes the MSE and MAE averaged over four prediction horizons for each dataset. Across the nine datasets and two evaluation metrics, POEM achieves either the best or second-best result in 12 of the 18 
+
+comparisons, the highest count among all models. Compared with leading baseline PMDformer, POEM reduces the aver-age MSE by 11.9% , surpassing it on 7 out of 9 datasets. The performance suggests that our method has a significant effect Variant ETTh1 ETTm1 US Birth     
+
+> MSE MAE MSE MAE MSE MAE
+> POEM 0.422 0.431 0.371 0.393 0.301 0.386
+> w/o SO(2) Rotation 0.451 0.444 0.380 0.399 0.399 0.449 w/o LPCE 0.710 0.575 0.422 0.416 1.499 1.057 w/o DPIA (Linear) 0.457 0.445 0.378 0.397 0.435 0.483 w/o DPIA (Standard Attn) 0.460 0.448 0.376 0.396 0.320 0.398
+
+Table 2: Ablation results averaged over four horizons on three datasets. Detailed results are provided in Appendix. in addressing the inherent challenges of periodicity drift in time series forecasting. 
+
+Ablation Study 
+
+We evaluate four ablated variants on eight datasets (three shown here, full results in Appendix) to examine the contri-bution of each component in POEM, with the results reported in Table 2. We also separately replace the SO(2) rotation with three alternative phase transformations and report this com-parison in Table 3. Full results are provided in the Appendix. 
+
+Effect of Phase-Guided SO(2) Feature Rotation In w/o 
+
+SO(2) Rotation , the encoded features are passed directly to the temporal predictor and decoder without the phase correc-tion and restoration rotations. Removing these rotations in-creases the MSE on every evaluated dataset, including from 
+
+0.301 to 0.399 on US Birth, and from 0.422 to 0.451 on ETTh1. These results suggest that adjusting the encoded fea-tures with SO(2) feature rotation is beneficial to the subse-quent forecasting task. 
+
+Effect of Local Phase-Correction Estimator In w/o Lo-cal Phase-Correction Estimator (LPCE) , we remove the lo-cal window-based estimation of phase offset and phase ve-locities, together with the subsequent integration. Instead, a linear head directly predicts a phase increment from the en-coded feature at each time step, and cumulative summation forms the historical phase trajectory. This variant produces the largest degradation among the four ablations, with the MSE increasing from 0.422 to 0.710 on ETTh1 and 0.371 
+
+to 0.422 on ETTm1. The consistent degradation across all datasets supports the structured construction of the phase cor-rection trajectory from local offsets and velocities, compared with directly learning per-step increments. 
+
+Effect of Directional Phase Increment Attention We consider two alternatives to Directional Phase Increment At-tention (DPIA). The w/o DPIA (Linear Projection) variant discards the timestamp encodings and maps the complete historical phase-increment sequence directly to future incre-ments through a learned linear projection, while w/o DPIA (Standard Attention) replaces the scaled cosine attention with standard scaled dot-product attention. Both alternatives yield higher MSE and MAE than the complete model on all eight datasets. For example, the MSE on US Birth increases from 
+
+0.301 to 0.435 with linear projection and to 0.320 with stan-dard attention, while its values on ETTh1 increase from 0.422     
+
+> Variant ETTh1 ETTm1 US Birth
+> MSE MAE MSE MAE MSE MAE
+> POEM ( SO(2) )0.422 0.431 0.371 0.393 0.301 0.386
+> Frequency-Domain Phase 0.564 0.505 0.440 0.430 0.659 0.606 Phase-Conditioned FiLM 0.435 0.440 0.381 0.398 0.460 0.500 Phase-Conditioned Shear 0.456 0.443 0.377 0.398 0.349 0.417
+
+Table 3: Comparison with alternative transformations replac-ing the SO(2) rotation, averaged over four prediction hori-zons on three datasets. Detailed results are in Appendix. to 0.457 and 0.460 . These comparisons support retrieving historical phase increments from similar timestamp contexts using the scaled cosine attention in DPIA. 
+
+Alternative Transformations to SO(2) Rotation We replace the SO(2) rotation with three alternative phase transformations while keeping the remaining components unchanged: Frequency-Domain Phase Correction , Phase-Conditioned FiLM , and Phase-Conditioned Shear . As shown in Table 3, the SO(2) rotation achieves lower MSE and MAE than all three alternatives. Compared with the strongest alternative, it reduces the MSE from 0.435 with Phase-Conditioned FiLM to 0.422 on ETTh1 and from 0.349 with 
+
+Phase-Conditioned Shear to 0.301 on US Birth. These re-sults suggest that norm-preserving SO(2) rotation of paired latent features is more effective than the evaluated frequency-domain, feature-wise affine, and shear transformations. In all, the ablations support the contribution of the three components to the forecasting performance of POEM, while the comparisons with alternative transformations further sup-port the use of SO(2) rotation for phase correction. 
+
+Hyperparameter Sensitivity 
+
+We examine the sensitivity of POEM to two hyperparameters on ETTh1, ETTm1 and US Birth: the local window length 
+
+ℓ ∈ { 12 , 24 , 48 } and the number of temporal MLP layers 
+
+K ∈ { 1, 2, 3}. The results are summarized in Figure 4. 
+
+Effect of Window Length ℓ The window length deter-mines the amount of local temporal context used by the Local Phase-Correction Estimator. Among the tested val-ues, ℓ = 24 achieves the lowest MSE and MAE on all three datasets. The sensitivity is relatively small on ETTm1, where the MSE ranges from 0.371 to 0.379 , but is more pronounced on US Birth, where the MSE increases from 0.302 at ℓ = 24 
+
+to 0.346 at ℓ = 12 and 0.393 at ℓ = 48 . These results favor a moderate local window in the evaluated settings, although the magnitude of its effect varies across datasets. 
+
+Effect of Temporal MLP Depth K To examine the re-quired predictor capacity, we vary the depth of the tempo-ral MLP predictor from one to three layers. A single layer achieves the lowest MSE and MAE on ETTh1 and ETTm1, whereas two layers perform best on US Birth. Increasing the depth to three layers does not improve upon the best shal-lower configuration on any of the three datasets. Thus, POEM Figure 4: Hyperparameter sensitivity of POEM to the local window length ℓ and temporal MLP depth K on ETTh1, ETTm1, and US Birth. 
+
+Dataset POEM (ms) PMDformer (ms) SRSNet (ms) 
+
+Weather 0.441 0.268 1.102 ETTh2 0.242 0.169 0.878 ETTm1 0.246 0.225 1.009 ETTm2 0.201 0.150 0.870 US Birth 0.249 0.240 0.999 Table 4: Average inference time per sample of POEM, PMD-former, and SRSNet across different datasets. Detailed results are reported in the Appendix. achieves its best performance with only one or two predic-tor layers in the evaluated settings. This finding is consistent with our motivation that phase-guided feature rotation makes temporal patterns more regular and allows the subsequent forecasting task to be handled by a lightweight predictor. 
+
+Efficiency Analysis 
+
+We compare the inference efficiency of POEM with PMD-former and SRSNet on datasets Weather, ETTh2, ETTm1, ETTm2 and US Birth. Table 4 reports the average inference time per sample over four prediction horizons. POEM requires 0.201 –0.441 ms per sample across the five datasets. Its average latency is 0.009 –0.173 ms higher than that of PMDformer, but it is approximately 2.5–4.3 times faster than SRSNet. The latency gap to PMDformer is largest on the 21-variable Weather dataset and smallest on the uni-variate US Birth dataset, consistent with channel-dependent overhead from the variable-wise phase correction and feature rotation. Overall, although POEM introduces additional phase cor-rection and feature rotation operations, its measured infer-ence latency remains close to PMDformer and substantially lower than SRSNet. 
+
+Figure 5: Two-dimensional PCA projections of feature tra-jectories before and after the phase-guided SO(2) rotation on Weather (up) and ETTh1 (down). 
+
+Visualization of SO(2) Feature Rotation 
+
+To qualitatively examine the effect of the phase-guided SO(2) 
+
+feature rotation, we project the latent feature trajectories im-mediately before and after the learned rotation into two di-mensions using PCA. We jointly fitted a PCA basis to all the features before and after rotation. As shown in Figure 5, we present two cases from ETTh1 and Weather. In the selected cases, the post-rotation trajectories are smoother and form more coherent cycles than the corresponding pre-rotation trajectories, consistent with the intended reduction of phase-related variability, qualitatively demonstrating the effective-ness of POEM in addressing periodicity drift. 
+
+# Conclusion 
+
+In this paper, we present POEM, a phase-aware forecast-ing framework designed to mitigate periodicity drift. POEM constructs a phase correction trajectory for each variable from local phase offsets and velocities, and applies phase-guided SO(2) rotations to produce more regular feature rep-resentations for a lightweight temporal predictor. Directional Phase Increment Attention further extends the phase correc-tion into the forecast horizon by retrieving historical phase increments observed under similar timestamp contexts. Ex-periments on nine benchmarks show competitive forecasting accuracy, while ablation results support each component and PCA visualizations show that the rotation produces more regular feature trajectories. Efficiency analysis indicates that POEM keeps its average per-sample inference time below 
+
+0.5 ms while substantially outperforming SRSNet. Future work will explore cross-variable phase modeling and extend the framework to more complex periodic structures. References 
+
+Crone, S. F. 2008. NN5 Dataset. http://www.neural-forecasting-competition.com/NN5/. Dai, T.; Wu, B.; Liu, P.; Li, N.; Bao, J.; Jiang, Y.; and Xia, S.-T. 2024. Periodicity Decoupling Framework for Long-term Series Forecasting. In The Twelfth International Conference on Learning Representations .Fan, W.; Zheng, S.; Yi, X.; Cao, W.; Fu, Y.; Bian, J.; and Liu, T.-Y. 2022. DEPTS: Deep Expansion Learning for Periodic Time Series Forecasting. In International Conference on Learning Representations .Godahewa, R.; Bergmeir, C.; Webb, G.; Hyndman, R.; and Montero-Manso, P. 2020. US Births Dataset. https://zenodo. org/records/4656049. Hu, A.; Wen, L.; Duan, J.; Dai, Y.; HE, Y.; Wang, D.; Wang, J.; Zhang, Y.; Jiang, R.; and Xu, Z. 2026a. PMDformer: Patch-Mean Decoupling Information Transformer for Long-term Forecasting. In The Fourteenth International Confer-ence on Learning Representations .Hu, J.; HU, Y.; Chen, W.; Jin, M.; Pan, S.; Wen, Q.; and Liang, Y. 2024. Attractor Memory for Long-Term Time Series Forecasting: A Chaos Perspective. In The Thirty-eighth Annual Conference on Neural Information Processing Systems .Hu, Y.; Tang, J.; Yu, S.; Yu, B.; Zhang, J.; and Tao, D. 2026b. TimeAPN: Adaptive Amplitude-Phase Non-Stationarity Normalization for Time Series Forecasting. arXiv:2603.17436. Huang, Q.; Zhou, Z.; Li, Y.; Ma, J.; Yang, K.; Wang, B.; Wang, X.; and Wang, Y. 2026. STORM: Synergistic Cross-Scale Spatio-Temporal Modeling for Weather Forecasting. In 
+
+The Fourteenth International Conference on Learning Rep-resentations .Koa, K. J.; Chen, J.; Ma, Y.; Huanhuan, Z.; and Chua, T.-S. 2026. Reasoning on Time-Series for Financial Technical Analysis. In The Fourteenth International Conference on Learning Representations .Kou, F.; Wang, J.; Shi, L.; Yao, Y.; Li, Y.; Zhu, S.; Zhang, Z.; and Du, J. 2025. CFPT: Empowering Time Series Fore-casting through Cross-Frequency Interaction and Periodic-Aware Timestamp Modeling. In Forty-second International Conference on Machine Learning .Lai, G.; Chang, W.-C.; Yang, Y.; and Liu, H. 2018. Modeling Long- and Short-Term Temporal Patterns with Deep Neural Networks. In Proceedings of the International ACM SIGIR Conference on Research & Development in Information Re-trieval , 95–104. Li, T.; Li, J.; and Zhu, Z. 2023. Neural Lad: A Neural La-tent Dynamics Framework for Times Series Modeling. In 
+
+Thirty-seventh Conference on Neural Information Process-ing Systems .Lin, S.; Chen, H.; Wu, H.; Qiu, C.; and Lin, W. 2025. Tem-poral Query Network for Efficient Multivariate Time Series Forecasting. In Forty-second International Conference on Machine Learning .Lin, S.; Lin, W.; HU, X.; Wu, W.; Mo, R.; and Zhong, H. 2024a. CycleNet: Enhancing Time Series Forecasting through Modeling Periodic Patterns. In The Thirty-eighth Annual Conference on Neural Information Processing Sys-tems .Lin, S.; Lin, W.; Wu, W.; Chen, H.; and Yang, J. 2024b. SparseTSF: Modeling Long-term Time Series Forecasting with *1k* Parameters. In Forty-first International Confer-ence on Machine Learning .Liu, P.; Wu, B.; Hu, Y.; Li, N.; Dai, T.; Bao, J.; and Xia, S.-T. 2025. TimeBridge: Non-Stationarity Matters for Long-term Time Series Forecasting. In Forty-second International Conference on Machine Learning .Liu, Y.; Li, C.; Wang, J.; and Long, M. 2023. Koopa: Learn-ing Non-stationary Time Series Dynamics with Koopman Predictors. In Thirty-seventh Conference on Neural Infor-mation Processing Systems .Lv, H.; Lin, Y.; Guo, S.; Mao, X.; Nie, H.; Gong, L.; Lin, Y.; and Wan, H. 2025. RIPCN: A Road Impedance Principal Component Network for Probabilistic Traffic Flow Forecast-ing. arXiv:2512.21685. Ma, J.; Huang, Q.; Wang, G.; Ma, H.; Huang, S.; Zhou, Z.; Wang, P.; Wang, X.; Wang, B.; and Wang, Y. 2026. PHAT: Modeling Period Heterogeneity for Multivariate Time Series Forecasting. In The Fourteenth International Conference on Learning Representations .Majeedi, A.; Gajjala, V. R.; GNVV, S. S. S. N.; Elkordi, N. M.; and Li, Y. 2025. LETS Forecast: Learning Embedol-ogy for Time Series Forecasting. In Forty-second Interna-tional Conference on Machine Learning .Niu, Y.; Deng, J.; and Tong, Y. 2026. PhaseFormer: From Patches to Phases for Efficient and Effective Time Series Forecasting. In The Fourteenth International Conference on Learning Representations .Paszke, A.; Gross, S.; Massa, F.; Lerer, A.; Bradbury, J.; Chanan, G.; Killeen, T.; Lin, Z.; Gimelshein, N.; Antiga, L.; Desmaison, A.; Kopf, A.; Yang, E.; DeVito, Z.; Raison, M.; Tejani, A.; Chilamkurthy, S.; Steiner, B.; Fang, L.; Bai, J.; and Chintala, S. 2019. PyTorch: An Imperative Style, High-Performance Deep Learning Library. In Advances in Neural Information Processing Systems , volume 32. Poyatos, R.; Granda, V.; Flo, V.; Molowny-Horas, R.; Steppe, K.; Mencuccini, M.; and Martínez-Vilalta, J. 2019. SAPFLUXNET: A global database of sap flow measure-ments. https://zenodo.org/records/2530798. Shao, M.; Zhang, Z.; Wang, Y.; Dai, Y.; Shen, X.; and Wang, X. 2026. HyperD: Hybrid Periodicity Decoupling Frame-work for Traffic Forecasting. Proceedings of the AAAI Con-ference on Artificial Intelligence , 40(18): 15689–15697. Takens, F. 1981. Detecting strange attractors in turbulence. In Dynamical Systems and Turbulence, Warwick 1980 , 366– 381. Berlin, Heidelberg: Springer Berlin Heidelberg. Tian, J.; Ding, Y.; Xu, R.; Miao, H.; Guo, C.; and Yang, B. 2026. ARROW: An Adaptive Rollout and Routing Method for Global Weather Forecasting. In The Fourteenth Interna-tional Conference on Learning Representations .Tian, Z.; and Gai, M. 2025. A new paradigm based on Wasserstein Generative Adversarial Network and time-series graph for integrated energy system forecasting. Energy Con-version and Management , 326: 119484. Wang, M.; Wang, H.; and Zhang, F. 2026. AlignTime: Inter-periodic phase alignment sampling for time-series forecast-ing. Information Processing & Management , 63(1): 104296. Wang, S.; Wu, H.; Shi, X.; Hu, T.; Luo, H.; Ma, L.; Zhang, J. Y.; and ZHOU, J. 2024. TimeMixer: Decomposable Mul-tiscale Mixing for Time Series Forecasting. In The Twelfth International Conference on Learning Representations .Wu, H.; Hu, T.; Liu, Y.; Zhou, H.; Wang, J.; and Long, M. 2023. TimesNet: Temporal 2D-Variation Modeling for General Time Series Analysis. In The Eleventh International Conference on Learning Representations .Wu, H.; Xu, J.; Wang, J.; and Long, M. 2021. Auto-former: Decomposition Transformers with Auto-Correlation for Long-Term Series Forecasting. In Advances in Neural Information Processing Systems .Wu, X.; Qiu, X.; Cheng, H.; Li, Z.; Hu, J.; Guo, C.; and Yang, B. 2026. Enhancing Time Series Forecasting through Selective Representation Spaces: A Patch Perspective. In 
+
+The Thirty-ninth Annual Conference on Neural Information Processing Systems .Yang, J.; Hu, Y.; Li, Y.; Zhang, K.; Ding, K.; and Yu, P. S. 2026. From Observations to States: Latent Time Series Fore-casting. arXiv:2602.00297. Zeng, A.; Chen, M.; Zhang, L.; and Xu, Q. 2023. Are Trans-formers Effective for Time Series Forecasting? Proceed-ings of the AAAI Conference on Artificial Intelligence , 37(9): 11121–11128. Zhang, X.; Huang, Z.; Wu, Y.; Lu, X.; Qi, E.; Chen, Y.; Xue, Z.; Wang, Q.; Wang, P.; and Wang, W. 2025. Multi-period Learning for Financial Time Series Forecasting. In Proceed-ings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V.1 , 2848–2859. Zhou, H.; Zhang, S.; Peng, J.; Zhang, S.; Li, J.; Xiong, H.; and Zhang, W. 2021. Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting. Proceedings of the AAAI Conference on Artificial Intelligence , 35(12): 11106– 11115.
