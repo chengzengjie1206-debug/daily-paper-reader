@@ -1,0 +1,1848 @@
+Title: Hybrid Probabilistic Zonotopes for Identifiable and Refinable Predictive Uncertainty
+
+URL Source: https://arxiv.org/pdf/2608.05454v1
+
+Published Time: Fri, 07 Aug 2026 00:17:59 GMT
+
+Number of Pages: 47
+
+Markdown Content:
+# Hybrid Probabilistic Zonotopes for Identifiable and Refinable Predictive Uncertainty 
+
+Zhen Zhang Amr Alanwar School of Computation, Information and Technology Technical University of Munich, Germany 
+
+{zhenzhang.zhang, alanwar}@tum.de 
+
+Abstract 
+
+Probabilistic prediction heads in neural networks typically output either a Gaussian mixture or a single conformal region. Neither separates the distinct sources of uncertainty often present in real prediction tasks: a discrete choice among modes, bounded systematic drift within the chosen mode, and irreducible stochastic noise. We introduce the Hybrid Probabilistic Zonotope (HProbZ), an output head that represents these three sources as binary, bounded, and stochastic generators of a zonotope, and admits a closed-form likelihood by convolution. Sharing the bounded generator across prediction steps couples future predictions algebraically, so observing one step refines the predictive distribution at every remaining step in a single forward pass. We establish that the three generators are identifiable from the likelihood up to permutation, and that an HProbZ density is representationally distinct from any finite Gaussian mixture. The same shared structure provides analytic per-mode risk and distribution-free multi-modal conformal sets at inference time. Empirical analysis on representative prediction benchmarks supports the effectiveness of the design relative to same-encoder mixture baselines, while offering structural properties that mixture or convex-conformal predictors do not jointly provide. 
+
+# 1 Introduction 
+
+Many predictive tasks involve three distinct uncertainty sources: discrete modal choice, bounded systematic drift, and irreducible stochastic noise. Trajectory prediction is a canonical instance, arising whenever a model must commit to a discrete behaviour and report within-mode uncertainty that sharpens as observations arrive. Existing heads address one source or the other: mixture density networks commit to sharp modes but their within-mode covariances are network outputs that observations can only re-weight; conformal methods give distribution-free coverage but as a single convex set that inflates on multi-modal targets. We introduce a predictive distribution offering four properties simultaneously — identifiable modal/bounded/stochastic decomposition, observation-driven contraction, analytic per-mode risk, and multi-modal conformal coverage — that prior approaches provide individually but not jointly (Tab. 1). Hybrid Probabilistic Zonotopes (HProbZ) add three generators to a centre point as a single neural output: a binary generator for discrete modes, a bounded generator (shared across all future timesteps) for continuous drift, and a Gaussian generator for noise. Because the bounded generator is shared, revealing one step pins it down and sharpens every other step in one forward pass. Fig. 1 contrasts this with a same-capacity Gaussian mixture: HProbZ’s predictive support shrinks under observation, while the mixture can only re-weight components and leaves within-mode covariance frozen. A shared-latent CVAE contracts but collapses modal, drift, and noise into one Gaussian, 1arXiv:2608.05454v1 [cs.LG] 5 Aug 2026 0 2 4 6 8
+
+Number of observations revealed k  
+
+> 0.81.0
+> Predictive std (rel. to  k=0)
+> −29%
+> −0.8%
+> MDN (mixture) HProbZ (ours) now
+> HProbZ (ours) MDN (mixture)
+> k=0 (no observations)
+> k=6 (after observations)
+> observe
+> ksteps
+
+Figure 1: Overview. Left: ETH/UCY LOO: revealing k=8 observations contracts HProbZ’s predictive std by 23 .6% through joint posterior updates over shared (β, α ), vs. 3.6% for a same-capacity Gaussian mixture (weight reweighting only); mean over 3 seeds. Right: schematic at 
+
+k=0 vs k=6 : each HProbZ hexagon is c+Gbβ+Gdα inflated by the 2σ halo of Gsν. Downstream (nuScenes, N =39 ,829 , 6 s, static obstacle): at near-matched 10% FAR HProbZ produces 30 % fewer trajectory-level collisions than same-encoder MDN-K2 (Tab. 5); per-step reverses. Table 1: Design-space positioning. HProbZ targets a combination of structural properties absent from same-encoder mixtures, conformal predictors, and recent SOTA forecasters; minADE is one axis, not the optimisation target. Decomp. : identifiable modal/bounded/stochastic factorisation. 
+
+Multi-modal CP : distribution-free non-convex conformal set. Refinement : O(1 /k ) contraction (Theorem 7).                                      
+
+> Method minADE@20 Steps Decomp. Analytic risk Multi-modal CP Refinement
+> LED [23] 0.18 5××××
+> EqMotion [40] 0.19 1××××
+> Trajectron++ [27] 0.30 1×partial ××
+> MDN-K20 [6] 0.32 1××per-component ×
+> HProbZ (ours) 0.20 1✓✓✓✓(−23 .6% )
+
+erasing the separation downstream planners and conformal-set users need; HProbZ keeps all three sources identifiable from one closed-form likelihood. 
+
+Contributions. (i) We introduce the Hybrid Probabilistic Zonotope (HProbZ): a structured-output head whose binary, bounded, and stochastic generators are trained jointly under a single closed-form convolution likelihood (§3–§4). (ii) We establish three properties of this representation: HProbZ generators are uniquely identifiable from the exact likelihood; HProbZ densities lie strictly outside the finite Gaussian-mixture family; and the entropy cost of compact support is bounded by a universal constant per dimension. (iii) We show that sharing the bounded generator across prediction steps yields single-pass observation-driven uncertainty contraction, analytic per-mode risk, and distribution-free multi-modal conformal sets — a combination prior heads provide individually but not jointly (Tab. 1). (iv) We validate the representation on three trajectory-forecasting benchmarks and a closed-loop stress test (§5). Raw point accuracy is one axis and HProbZ does not occupy its extreme; we occupy an axis on which no existing method we tested provides all four structural properties simultaneously (Tab. 1). 22 Preliminaries 
+
+A zonotope {c + Gβ | β ∈ [−1, 1] m} is a centrally symmetric polytope with center c ∈ Rd and generator matrix G ∈ Rd×m. A constrained zonotope adds linear equality constraints Aβ = b,restricting to a subset of the zonotope’s interior. The hybrid zonotope [5] augments with binary factors ξ ∈ {− 1, 1}nb and represents a non-convex region as a union of up to 2nb constrained zonotopes. Stochastic-reachability work, originating in safety analysis of automated traffic [2], instead augments zonotopes with Gaussian factors η ∼ N (0 , I ), inducing a distribution over the zonotope’s interior. An MDN [6] parameterizes p(y|x) = PKk=1 πk(x)N (y; μk(x), Σk(x)) via network outputs; the within-component covariances Σk are fixed outputs that cannot be refined by observations, and trajectory-prediction MDNs [8] are known to suffer mode-collapse failures [20] that motivate the structured-decomposition alternative we develop below. 
+
+The gap. The hybrid form carries discrete modes but no likelihood; the probabilistic form carries a likelihood but only a single mode; an MDN supplies both, but its independent-Gaussian components let observations only re-weight modes, never tighten within-component covariance. A predictive distribution that keeps binary modes separable from bounded drift and Gaussian noise, admits a closed-form likelihood, and tightens its bounded support under observation through shared algebraic structure exists in neither lineage; this is the gap HProbZ fills in §3. 
+
+# 3 Hybrid Probabilistic Zonotopes 
+
+Definition 1 (Hybrid Probabilistic Zonotope (HProbZ)) . An HProbZ is a random set defined by 
+
+Z =
+
+
+
+c + Gbβ + Gdα + Gsν β ∈ {− 1, 1}nb , α ∈ [−1, 1] nd , ν ∼ N (0 , I nq ),Abβ + Adα + Asν = b
+
+
+
+(1) where c ∈ Rd is the center, Gb ∈ Rd×nb , Gd ∈ Rd×nd , and Gs ∈ Rd×nq are the binary, bounded, and stochastic generator matrices, respectively, and Ab ∈ Rp×nb , Ad ∈ Rp×nd , As ∈ Rp×nq , b ∈ Rp
+
+encode p linear equality constraints. The single-mode slice ( nb=0 , p=0 ) recovers the probabilistic zonotope of stochastic reachability [2]; HProbZ extends it with binary modes and observation-activated constraints. Paralleling the hybrid zonotope [5], for each binary assignment β the constraint Abβ + Adα + Asν = b reduces to a Constrained Probabilistic Zonotope C(β) with center c + Gbβ and residual constraints Adα + Asν =
+
+b − Abβ, so the HProbZ is a union of 2nb CPZs: 
+
+Z = [
+
+> β∈{− 1,1}nb
+
+C(β). (2) When p=0 all factors are independent and z = c + Gbβ + Gdα + Gsν; this is the head used by the network in §4. Observations introduce new constraint rows into (Ab, A d, A s, b ) for sequential refinement (§5.4). Setting all generators to zero recovers a point prediction; retaining only Gd yields a zonotope, only Gs a Gaussian, Gb+Gs a 2nb -component shared-covariance GMM, and diagonal Gd alone an axis-aligned conformal box. In the unconstrained case the induced measure is a Minkowski-sum convolution (Proposition 8): 
+
+μZ = δc ∗
+
+ 12nb
+
+X
+
+> β
+
+δGbβ
+
+| {z }
+
+> discrete modal
+
+∗ (Gd)∗U([ −1, 1] nd )
+
+| {z }
+
+> bounded zonoid 1
+
+∗ N (0 , G sG⊤ 
+
+> s
+
+)
+
+| {z }
+
+> Gaussian
+
+, (3) 3−2 0 2           
+
+> y
+> 0.0 0.1 0.2 0.3
+> density HProbZ vs GMMs
+> 0510 15
+> t
+> 0.00 0.25 0.50 0.75 1.00
+> |ϕ(t)| CF: GMMs cannot reach zero
+> 10 110 2
+> parameter count
+> 10 −5
+> 10 −3
+> 10 −1
+> NLL gap
+> K=2 K=4 K=8 K=16 K=32 K=64
+> Parameter efficiency
+> HProbZ K=1 K=8 K=64 sinc zeros GMM tol 0.001 HProbZ (2p)
+
+Figure 2: Empirical fingerprint of Theorem 2 (1-D HProbZ with a=2 , σ =0 .3, 10 5 samples). Left: 
+
+GMMs ( K=1 , . . . , 64 ) visually approximate the density. Middle: at the sinc-zero frequencies 
+
+tk = kπ/a , |ϕGMM | plateaus at ∼ 2−5×10 −3 regardless of K — the structural signature the proof predicts no finite GMM can erase. Right: matching HProbZ’s held-out NLL with a finite GMM requires K=8 (23 free density parameters) vs HProbZ’s 2, an 11 .5× ratio. Full setup in App. C. where ∗ denotes convolution. The bounded factor has compact support and is not absolutely continuous w.r.t. any Gaussian — an inductive bias giving HProbZ algebraic properties Gaussian mixtures lack, at a cost of density flexibility. 
+
+Theorem 2 (HProbZ density is not a finite Gaussian mixture) . If Gd has at least one nonzero entry, then no finite Gaussian mixture PKk=1 πkN (μk, Σk), for any K, has the same distribution as μZ .Proof sketch. Project both CFs onto a direction where Gd is nonzero and continue to s = iy : the HProbZ CF picks up a sinh( ay )/(ay ) factor with an algebraic 1/y correction that no finite-GMM CF (a sum of pure exponentials) can match. Full argument in App. B; empirical fingerprint in Fig. 2. A natural question is whether the richer parameterisation is identifiable. 
+
+Theorem 3 (Identifiability under exact likelihood) . Suppose Gd and Gs are diagonal (the param-eterisation used in §4), and (i) for each axis j the bounded half-width aj = |Gd,jj | > 0 and noise scale σj = |Gs,jj | > 0, and (ii) for each axis j the projected mode centers {(Gbβ)j }β∈{− 1,1}nb are pairwise distinct. Then (c, G b, G d, G s) are identifiable from the exact convolution likelihood, up to column-permutations and global column sign-flips of Gb.Proof sketch. Per-axis projection yields a 1-D mixture of uniform-normal convolutions: sinc zeros of the 1-D CF give the bounded half-widths aj , the Gaussian envelope gives σj , and classical location-mixture identifiability [41] pins down the mode centers. Cross-axis consistency reduces the labeling ambiguity to the cube symmetry above. See App. B. 
+
+Practical identifiability. The distinct-centers condition is generic for random Gb; SGD on softplus outputs reliably keeps aj , σ j positive and distinct, and 10 seeds recover ground-truth parameters within 0.008 (App. C).         
+
+> 1(Gd)∗μis the pushforward of μon [−1,1] ndunder Gd, i.e., the zonoid measure on Image( Gd).
+
+44 Training HProbZ as a Neural Network Output 
+
+Output parameterization. We attach an unconstrained HProbZ head ( p=0 ) to a transformer encoder: h = Encoder (x), c = Wch and Gb = Wbh are linear projections, Gd, G s diagonal softplus outputs. The head adds (nb + nd + nq + 1) × d parameters, matching MDN-K= 2nb at the same count. Constraints from Def. 1 activate only at inference (§5.4); non-diagonal Gd, G s left to future work. We use a uniform mode prior πk=2 −nb ; learnable πk(x)>0 preserves identifiability/contraction with statistically tied accuracy (14-seed nuScenes, App. D.28). 
+
+The Gaussian approximation and its failure. The naïve aggregate-covariance loss LGauss =
+
+− log P 
+
+> k
+
+2−nb N (y; μk, G sG⊤ 
+
+> s
+
++ GdG⊤ 
+
+> d
+
+/3) with μk = c + Gbβ(k) is non-identifiable: 
+
+Proposition 4 (Gaussian Collapse) . Under LGauss , Gd and Gs are interchangeable: for any (Gd, G s)
+
+achieving loss ℓ, there exists G′ 
+
+> s
+
+with G′
+
+> s
+
+(G′
+
+> s
+
+)⊤ = GsG⊤ 
+
+> s
+
++ GdG⊤ 
+
+> d
+
+/3 such that (0 , G ′
+
+> s
+
+) achieves the same ℓ, and vice versa. Gradient-based optimization therefore cannot distinguish bounded from stochastic uncertainty. Proof. LGauss depends on (Gd, G s) only through the aggregate covariance Σapprox = GsG⊤ 
+
+> s
+
++GdG⊤ 
+
+> d
+
+/3.Choosing G′ 
+
+> s
+
+with G′
+
+> s
+
+(G′
+
+> s
+
+)⊤ = Σ approx (e.g., the Cholesky factor) and Gd = 0 leaves Σapprox and hence LGauss unchanged. The resolution is to train with the exact within-mode likelihood. Conditioned on mode k, the residual rj = yj − μk,j in each dimension follows the convolution Uniform (−aj , a j ) ∗ N (0 , σ 2 
+
+> j
+
+), whose density admits the closed form 
+
+f (r; a, σ ) = 12a
+
+h
+
+Φ
+
+ r + aσ
+
+
+
+− Φ
+
+ r − aσ
+
+i 
+
+, (4) where Φ is the standard normal CDF (numerical clamp and Gaussian-limit fallback in App. A). The exact mixture NLL is Lexact = − log P 
+
+> k
+
+2−nb Q 
+
+> j
+
+f (yj − μk,j ; aj , σ j ). Its CF has zeros at integer multiples of π/a , a compact-support spectral signature absent from any Gaussian; this resolves the collapse in Prop. 4 and enables Theorem 3. 
+
+The structure–density trade-off. Introducing bounded generators with a > 0 imposes compact support, which necessarily reduces entropy relative to a Gaussian with the same variance. However, this cost is bounded: 
+
+Proposition 5 (Structure–density trade-off) . Let fκ denote the 1-D HProbZ density with half-width 
+
+a and noise σ, and let gκ = N (0 , σ 2 + a2/3) be the variance-matched Gaussian. Define the structure ratio κ = a/σ . Then: 
+
+(i) Bounded entropy cost. The entropy gap h(gκ) − h(fκ) is monotonically increasing in κ and satisfies 
+
+h(gκ) − h(fκ) ≤ 12 log  πe/ 6 ≈ 0.176 nats , (5) 
+
+for all κ ≥ 0, with equality in the limit κ → ∞ .
+
+(ii) Unbounded constraint benefit. In the constrained setting of Theorem 7, the per-observation Fisher information for the shared bounded factor is ρ ≥ κ2 per dimension, yielding bounded-variance decay O(1 /(κ2k)) after k observations; the dimensionless derivation is in Appendix B.5. 
+
+(iii) Exchange rate. The entropy cost is bounded by a universal constant independent of κ, while the constraint contraction rate grows without bound as κ increases. In particular, for any κ > 0, the per-observation information gain ρ can be made arbitrarily large at a per-dimension NLL cost of at most 0.176 nats. 
+
+5Proposition 5 bounds the entropy gap between fκ and its variance-matched Gaussian by 0.176 
+
+nats/dim; it does not bound the empirical NLL gap, which also contains a data-dependent mis-specification term. Direct computation on three benchmarks shows zero violations across 13 ,000+ 
+
+samples (App. C). 
+
+Split-conformal calibration. To obtain distribution-free coverage guarantees even under model misspecification, we define the HProbZ nonconformity score 
+
+s(x, y ) = min 
+
+> β∈{− 1,1}nb
+
+max 
+
+> j∈[d]
+
+|yj − cj (x) − (Gb(x)β)j | − ∥ Gd(x)[ j, :] ∥1
+
+∥Gs(x)[ j, :] ∥2
+
+, (6) which selects the closest binary mode and measures the worst-dimension standardized residual after exhausting the bounded generator’s reach. 
+
+Theorem 6 (Distribution-free HProbZ coverage) . Assume ∥Gs(x)[ j, :] ∥2 > 0 for every x and 
+
+j (in practice ensured by softplus). Let qα be the ⌈(1 −α)( n+1) ⌉/n quantile of calibration scores 
+
+{s(xi, y i)}ni=1 . The prediction set ˆSα(x) = S 
+
+> β
+
+{z : |zj − cj − (Gbβ)j | ≤ ∥ Gd[j, :] ∥1 + qα∥Gs[j, :] ∥2, ∀j}
+
+satisfies P(ytest ∈ ˆSα) ≥ 1−α under only exchangeability. 
+
+ˆSα is a union of up to 2nb axis-aligned boxes rather than a single convex region; the per-dimension edge is 2–3× shorter than Standard CP and ∼ 1.5× shorter than MDN-CP. Empirical volumes, coverage, and OOD robustness are reported in §5.5; a parallel distributional coverage bound 
+
+P (y ∈ Sγ ) ≥ 1 − 2de −γ2/2 when y | x follows HProbZ is in App. B. 
+
+# 5 Experiments 
+
+We test four questions: (i) does the exact likelihood recover the modal/bounded/stochastic decompo-sition; (ii) is HProbZ competitive on accuracy benchmarks; (iii) does structured uncertainty improve downstream decisions; (iv) does the algebraic constraint realise the O(1 /k ) contraction of Theorem 7. HProbZ and MDN share encoder, schedule, and sampling budget throughout (App. A.4, A); metrics are minADE/minFDE for accuracy, CRPS and conformal coverage for calibration, per-mode risk and closed-loop collision for decisions; raw NLL in App. C.6. 
+
+5.1 Controlled Decomposition 
+
+We construct a trajectory task with three independently controllable uncertainty sources — branches 
+
+K, drift δdrift , noise σnoise — and train HProbZ under both exact and Gaussian-approximate likelihoods, measuring whether each generator selectively tracks its matching source. The full sweep figure and per-value tables (Fig. 5, App. C.1) match the theoretical predictions: under exact likelihood, 
+
+∥Gb∥ grows ∼ 9× across the mode sweep while drift is routed to Gd (∆∥Gd∥=2 .90 ≫ ∆∥Gs∥=2 .27 ); the Gaussian approximation reverses the drift dominance ( ∆∥Gs∥=2 .70 wins), a direct witness of Prop. 4. Theorem 2’s CF fingerprint is in Fig. 2; Theorem 3’s multi-seed parameter recovery (within 
+
+0.008 across 10 seeds) is in App. C. 
+
+Decomposition on real driving data. The same modal/bounded/stochastic split is recovered without supervision on nuScenes vehicle trajectories. Stratifying the trained d=256 model by past-observed vehicle speed (Fig. 3), ∥Gb∥ scales by ∼ 370 × from stationary to high-speed agents (modal ambiguity grows with speed), ∥Gs∥ scales by ∼ 94 × (stochastic noise), and ∥Gd∥ stays within 
+
+5.4× (systematic drift is less speed-dependent). The three generators therefore track interpretable, 6slow medium fast very fast          
+
+> Speed regime
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> 10 1
+> 10 2
+> Generator norm (log)  ‖Gb‖(binary)
+> ‖Gd‖(bounded)
+> ‖Gs‖(stochastic) 0.00 0.05 0.10 0.15 0.20
+> Entropy gap (nats/dim)
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Empirical CDF
+> nuScenes ETH/UCY Argoverse 2 Bound nuScenes ETH/UCY Argoverse 2 010 −5
+> 10 −4
+> 10 −3
+> 10 −2
+> 10 −1
+> Entropy gap (nats/dim)
+> Max Bound
+
+Figure 3: Structural-property validation on trained HProbZ models. Left: nuScenes speed-stratified generator norms (log-y) — ∥Gb∥ scales ∼ 370 × stationary →high-speed, ∥Gs∥ scales ∼ 94 ×, ∥Gd∥
+
+stays within 5.4×, so the three generators track interpretable, qualitatively distinct uncertainty sources (Theorem 3; setup App. D.17). Middle: entropy-gap CDF across 13 ,000+ samples on three benchmarks; all curves lie strictly below the theoretical bound 12 log( πe/ 6) ≈ 0.1765 nats/dim (red dashed). Right: per-dataset distribution of the same gap (symmetric log scale). Zero violations on any benchmark for Proposition 5 (App. C.4). Table 2: ETH/UCY: minADE@20 / minFDE@20 (m), 5-scene leave-one-out averages, no maps. Base = d=64 , 3 seeds (CVAE wins this row); Social = d=128 + 8-neighbour attention, 5 seeds. Social-CVAE not included due to compute. Per-scene table in App. D.13. 
+
+Encoder HProbZ MDN-K=8 CVAE 
+
+Base d=64 , 3 seeds 0.265 ±0.003 / 0.470 ±0.008 0.380 ±0.003 / 0.427 ±0.008 0.240 ±0.003 / 0.414 ±0.006 
+
+Social d=128 , 5 seeds 0.197 ±0.002 / 0.332 ±0.006 0.324 ±0.001 / 0.419 ±0.005 —qualitatively distinct sources of uncertainty on real trajectories, not only on the controlled task above; setup details in App. D.17. 
+
+5.2 Real-World Pedestrian Trajectories 
+
+ETH/UCY leave-one-out (8-step past, 12-step future). Base HProbZ: single-agent transformer encoder, exact likelihood, nb=3 , n d=1 , n q=1 . Social variant adds 8-neighbour attention. Baselines: 8-component MDN and CVAE with identical input features. Social HProbZ reaches 0.197 /0.332 minADE/minFDE, beating same-encoder MDN-K=8 by 
+
+39 .3% ADE / 20 .7% FDE (Tab. 2, 5 seeds), matching LED ( 0.18 ) and EqMotion ( 0.19 ) on minADE and trailing them by ∼ 0.06 m on minFDE (full vs-published table in App. D.16); goal-conditioned methods like Y-Net/LED sharpen endpoints by conditioning on predicted endpoints but provide no decomposition, conformal coverage, or refinement. At base d=64 HProbZ beats MDN-K=8 on ADE but trails CVAE; the social variant recovers and surpasses CVAE. The ∼ 21% ADE advantage over MDN-K=20 is stable across encoder sizes 110K–2.4M (App. D.6), ruling out a capacity confound on minADE; on minFDE MDN-K=20 wins at all three capacities , so the social-row FDE advantage comes from the social-attention encoder, not the head. Raw NLL exceeds MDN’s, a compact-support misspecification penalty (App. C.6); we lead with ADE/FDE and downstream metrics. A controlled cross-method comparison (App. D.12) gives HProbZ FDE@20 0.39 m vs MDN-K2/K4 0.41 –0.42 and a lightly-tuned Diffusion 0.43 /2.24 (DDIM-
+
+50 /-5) at ∼ 530 × slower inference (diffusion baseline not swept over schedule/depth/target/CFG). 7Table 3: nuScenes minADE (m): published map-aware baselines, trajectory-only d=128 controlled sweep (3 seeds), and d=256 matched-encoder. MDN-K2 †: best-tuned (App. D.22). Seed asymmetry in the d=256 block : HProbZ is mean ±std over 14 seeds (App. D.24); MDN-K2 row is single-seed (no ±std), so the 46% gap is HProbZ’s 14-seed mean vs one MDN-K2 seed.                                     
+
+> Model Map ADE@5 ADE@10 ADE@20
+> Published methods (map + interaction features) Trajectron++ [27] ✓1.88 1.51 —AgentFormer [42] ✓1.86 1.45 —MID [11] ✓—1.44 —Trajectory-only, d=128 encoder (3 seeds) MDN-K2 †×2.03 ±0.08 1.84 ±0.07 1.69 ±0.06
+> HProbZ ×1.57 ±0.02 1.46 ±0.02 1.37 ±0.03
+> Trajectory-only, d=256 encoder, matched for MDN and HProbZ MDN-K2 (2.14 M) ×2.66 2.41 2.20
+> HProbZ (2.13 M) ×1.41 ±0.06 1.29 ±0.07 1.20 ±0.07
+
+Table 4: Argoverse 2 minADE (m), 3 seeds, same-encoder trajectory-only models ( d=128 ). 
+
+Model Params ADE@1 ADE@5 ADE@10 ADE@20 
+
+MDN-K2 298k 5.72 ±0.10 4.47 ±0.07 4.10 ±0.06 3.81 ±0.05 
+
+HProbZ 295k 5.32 ±0.01 4.14 ±0.01 3.80 ±0.02 3.54 ±0.02 
+
+5.3 nuScenes Vehicle Trajectory Benchmark 
+
+nuScenes [7]: 40k test windows at 2 Hz. Same d=128 encoder; HProbZ ( nb=1 , 278k params) vs MDN-K2 (281k), MDN-K4 under identical training. Structured head runtime overhead 1.4% on H200 at batch 256. At d=128 HProbZ beats best-tuned MDN-K2 by 23% /19% at K=5 /K =20 and reaches 1.46 ±0.02 
+
+minADE@10 (3 seeds), matching MID’s 1.44 within rounding. Scaling MDN to K=8 regresses to 3.05 ±0.23 (mode collapse, App. D.27). Scaling the shared encoder to d=256 (2.13 M params, sym-broken Gb init, App. D.24), HProbZ reaches 1.29 ±0.07 minADE@10 over 14 seeds, approaching MID’s published 1.44 without maps. The sym-break is load-bearing: with random init the same architecture trains to 1.48 ±0.10 over 5 seeds (above MID; full ablation Tab. 33). Single-seed same-encoder MDN-K2 reaches 2.41 at d=256 (a 46% gap to HProbZ’s 14-seed mean; multi-seed MDN d=256 reproduction left to future work), and same-encoder DDPM reaches 2.99 at 5.2× params and 
+
+500 × slower (App. D.11). 
+
+Calibration: CRPS. On n=5 paired matched-architecture seeds, HProbZ and MDN-K2 are statistically tied on mean CRPS; per-seed spread analysis is in App. C.5. 
+
+5.4 Argoverse 2 Motion Forecasting 
+
+Argoverse 2 [37]: 200k scenarios, 6 s horizon. Same d=128 encoder, 2 Hz subsampling, 618k training windows, identical conditions across rows. HProbZ wins minADE at every K, beating MDN-K2 by ∼ 7% across 3 seeds (Tab. 4); seed-level std is 4−5× tighter ( σHProbZ ≤ 0.02 m vs. MDN’s 0.05 −0.10 , directional at n=3 ). The Prop. 5 entropy-gap bound is confirmed across three benchmarks (0 violations, 13 ,000+ samples; Fig. 3, App. C.4). 8Table 5: Closed-loop collision avoidance on nuScenes ( N =39 ,829 , 6 s, r=2 m, 3 seeds). HProbZ wins trajectory-level by 30% at near-matched 10% FAR (HProbZ 9.5% , MDN 10 .6% ); MDN-K2 wins per-step. Bold = column winner.                      
+
+> Trajectory (6 s window) Pointwise (single step) Method AUC ↑Coll. @ 10% FAR ↓AUC ↑Coll. @ 10% FAR ↓
+> HProbZ (ours) 0.925 ±0.001 6.73 ±0.08 %0.906 ±0.001 8.01 ±0.04%
+> MDN-K2 0.869 ±0.001 9.70 ±0.02% 0.930 ±0.000 6.32 ±0.08 %
+
+Downstream risk-aware planning. On a pedestrian-crossing scenario (App. D.23), the structured planner that enumerates 2nb binary modes and evaluates per-mode risk analytically recovers oracle cost 0 on Modal-Safe scenes vs. the Gaussian-collapsed planner’s 1.5, with the advantage emerging at mode separation ∆y ≳ 4 (App. D.18). Across 5,000 nuScenes scenarios ×20 seeds, HProbZ’s analytic per-mode probability is deterministic (zero variance, zero flips); MDN’s sample estimator decays from 33% flips at S=2 to 0.9% at S=100 but still flips 2.7% of ambiguous cases (full sample-budget sweep in App. D.19). 
+
+Closed-loop collision avoidance. On a 6 s static-obstacle stress test over nuScenes ( N =39 ,829 ,App. D.20), HProbZ produces 30 % fewer trajectory-level joint-event collisions than same-encoder MDN-K2 at near-matched 10% FAR (Tab. 5; FARs 9.5% vs 10 .6% ). The per-step variant reverses 
+
+(HProbZ 8.01% vs MDN 6.32% ): the shared (β, α ) pays off through correlated per-step events that MDN’s per-step independent Gaussians underestimate at the joint-tail; without that correlation MDN’s per-step flexibility dominates. A planner conditions on the joint event. 
+
+Constrained sequential refinement. With β, α shared across steps via zt = ct + Gb,t β + Gd,t α +
+
+Gs,t νt, each observation adds a constraint row that simultaneously reweights the 2nb mode likelihoods and tightens α’s feasible set; the tightening propagates to all unobserved steps. 
+
+Theorem 7 (Contraction of constrained HProbZ, informal) . Under the shared-generator model with the variance-matched Gaussian relaxation α ∼ N (0 , 13 I), conditioning on k observations (i) 
+
+identifies the true mode β∗ with posterior probability → 1; (ii) contracts the bounded predictive variance at any unobserved step s as tr(Cov( Gd,s α | obs , β ∗)) ≤ ∥ Gd,s ∥2 
+
+> F
+
+/( 13 + kρ min ) = O(1 /k ),while the stochastic term tr( Gs,s G⊤
+
+> s,s
+
+) is irreducible; (iii) an MDN updates only its mixing weights, leaving within-component covariances Θ(1) in k. Formal statement, proof, and discussion of the relaxation gap in Appendix B.6. 
+
+The relaxation is variance-matched to the trained Uniform([ −1, 1]) prior; a 1-D numerical check bounds the relative gap between relaxed and true posterior variances by ≤ 9.03% on the (κ, k )
+
+grid we test (App. B.6). Observable contraction is controlled by κ = ∥Gd∥/σ : ETH/UCY learns 
+
+κ ≈ 2.1 (ceiling ∼32% ); on nuScenes, sweeping the Gd-bias over κ ∈ { 1.5, 2.0, 2.8, 3.7} gives spread reductions {12 .3±3.6, 17 .7±4.9, 25 .8±4.2, 33 .2±5.9}% (5 seeds; per-seed values and 3-seed reference in Tab. 21). We instantiate on ETH/UCY with nb=1 , n d=1 shared across T =12 steps, revealing positions 0, . . . , 8.Table 6 shows simultaneous spread-and-mean refinement: HProbZ’s std drops 23 .6% and FDE improves 16 .5% , while MDN re-weights toward a mis-located mode (FDE +9 .6% , std −3.6% ) — exactly Theorem 7(iii). 9Table 6: Sequential refinement on ETH/UCY (same-encoder, 5-scene aggregate, 3 seeds). HProbZ contracts spread 23 .6% and improves FDE 16 .5% ; MDN’s FDE degrades. 
+
+Revealed k HProbZ FDE MDN FDE HProbZ std MDN std 
+
+0 1.071 ±0.006 1.199 ±0.076 0.852 ±0.006 1.014 ±0.035 
+
+8 0.894 ±0.019 1.314 ±0.107 0.651 ±0.017 0.977 ±0.081 ∆ (0 →8) −16 .5% +9 .6% −23 .6% −3.6% 
+
+Table 7: Conformal set volume comparison ( α=0 .1, D=24 , within-scene calibration). All methods reach ∼ 90% coverage; HProbZ-CP is 5.5/3.9 orders smaller than StdCP/MDN-CP on the ETH/UCY average and 16 .3/13 .9 orders smaller on Argoverse 2. HOTEL is a counter-example: MDN-CP is 3.5
+
+OOM smaller than HProbZ-CP there (App. D.4 discusses the mechanism). Bold marks the smallest volume per row.                                                   
+
+> Empirical coverage log 10 (volume) ↓
+> Scene HProbZ StdCP MDN HProbZ StdCP MDN ETH 0.890 0.874 0.868 20.0 22.0 23.7 HOTEL 0.930 0.858 0.846 15.1 15.5 11.6
+> UNIV 0.896 0.899 0.907 7.1 13.6 11.3 ZARA1 0.892 0.910 0.902 3.9 13.1 10.1 ZARA2 0.904 0.911 0.896 3.7 13.2 12.8
+> ETH/UCY Avg. 0.903 0.890 0.884 10.0 15.5 13.9
+> Argoverse 2 0.901 0.900 0.901 21.5 37.8 35.4
+
+5.5 Conformal Coverage with Multi-Modal Sets 
+
+Split conformal at α=0 .1 (Theorem 6), comparing Standard CP (single L∞ box), MDN-CP ( K-component union), and HProbZ-CP ( 2nb per-mode union via Eq. (6)); D=24 . All three reach ∼ 90% 
+
+coverage; HProbZ-CP achieves it with substantially smaller volumes on motion-rich scenes (Tab. 7). Volume gaps compound from 2–3× per-dimension edge ratios over D=24 . The largest improve-ments are on open-walkway scenes (UNIV 6.5, ZARA1 9.2, ZARA2 9.5 OOM vs StdCP) and Argoverse 2 ( 16 .3 OOM); the gap shrinks on ETH ( 2.0) and reverses on HOTEL where MDN-CP wins by 3.5 OOM — HProbZ-CP wins the average and 4/5 scenes. OOD coverage holds: 90 .9% 
+
+ETH/UCY leave-one-out average, 89 .7% /99 .8% IID/OOD on nuScenes speed split (App. D.5); 
+
+α-sweep and protocol in App. D.4. 
+
+# 6 Related Work 
+
+Trajectory forecasting. Recurrent [1, 12], CVAE [21, 22, 27], transformer [31, 35, 39, 42, 43, 47], language-modeling [30], diffusion [11, 15, 23], flow [29], equivariant [40], and refinement [46] forecasters emit unstructured samples or independent-Gaussian mixtures without algebraic constraints across steps; HProbZ’s shared bounded factor adds such a constraint under a closed-form output. 
+
+Uncertainty decomposition and conformal prediction. Epistemic–aleatoric decomposi-tion [16, 18] is orthogonal and coarser; Theorem 3 gives a likelihood-identifiable within-aleatoric one. Split conformal [3, 4, 26, 36] and trajectory variants [14, 19, 45] return single convex regions; Eq. (6) returns a union of 2nb axis-aligned boxes from the trained model. 10 Zonotopes in machine learning. Zonotopes serve as inputs/intermediate sets for NN verifica-tion [5, 17, 24, 32, 44] with the network fixed; HProbZ inverts the role, making the zonotope the trained output via Eq. (4). 
+
+# 7 Conclusion 
+
+HProbZ is a structured output head that keeps modal, bounded, and stochastic uncertainty separately identifiable. It approaches map-aware MID’s published minADE@10 on nuScenes ( 1.29 ±0.07 , 14 seeds) and is on par with LED/EqMotion on ETH/UCY ( 0.197 ). Structural gains: observation-driven contraction up to 33 ±6% (5 seeds), 30% fewer trajectory-level closed-loop collisions (per-step reverses), and conformal sets 3.9/13 .9 orders smaller than MDN-CP on ETH/UCY/Argoverse 2. 
+
+Limitations. Cross-dataset transfer is largely negative : zero-shot nuScenes →nuPlan AUC 0.519 
+
+on the full agent mix (within 2 pp of chance, 14 ,653 pairs); only the close-proximity subset preserves 
+
++0 .159 AUC (App. D.26). Closed-loop ordering is metric-dependent : the 30% headline is trajectory-level; per-step reverses (HProbZ 8.01% vs MDN 6.32% ). The SOTA-chase number depends on a method-specific init : 1.29 uses the symmetry-breaking Gb-bias (App. D.24); without it, the same architecture trains to 1.48 ±0.10 , above MID’s 1.44 . Theorem 7 is proven under a Gaussian-relaxed prior with a ≤ 9.03% numerical gap to the trained uniform prior. Raw NLL exceeds MDN’s; the bare 
+
+d=64 head trails CVAE on ADE before social attention, and at vanilla encoders MDN-K=20 wins minFDE@20 (Tab. 17). Other caveats (mode prior, Gd/G s diagonality, baseline tuning, deployment) in App. E. 
+
+# References 
+
+[1] Alexandre Alahi, Kratarth Goel, Vignesh Ramanathan, Alexandre Robicquet, Li Fei-Fei, and Silvio Savarese. Social LSTM: Human trajectory prediction in crowded spaces. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , 2016. [2] Matthias Althoff, Olaf Stursberg, and Martin Buss. Safety assessment of autonomous cars using verification techniques. In 2007 American Control Conference , pages 4154–4159. IEEE, 2007. [3] Anastasios N. Angelopoulos and Stephen Bates. Conformal prediction: A gentle introduction. 
+
+Foundations and Trends in Machine Learning , 16(4):494–591, 2023. doi: 10.1561/2200000101. [4] Rina Foygel Barber, Emmanuel J Candès, Aaditya Ramdas, and Ryan J Tibshirani. Predictive inference with the jackknife+. Annals of Statistics , 49(1):486–507, 2021. [5] Trevor J. Bird, Herschel C. Pangborn, Neera Jain, and Justin P. Koeln. Hybrid zonotopes: A new set representation for reachability analysis of mixed logical dynamical systems. Automatica ,154:111107, 2023. doi: 10.1016/j.automatica.2023.111107. [6] Christopher M Bishop. Mixture density networks. Technical Report NCRG/94/004, Aston University, 1994. [7] Holger Caesar, Varun Bankiti, Alex H Lang, Sourabh Vora, Venice Erin Liong, Qiang Xu, Anush Krishnan, Yu Pan, Giancarlo Baldan, and Oscar Beijbom. nuScenes: A multimodal dataset for autonomous driving. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2020. 11 [8] Henggang Cui, Vladan Radosavljevic, Fang-Chieh Chou, Tsung-Han Lin, Thi Nguyen, Tzu-Kuo Huang, Jeff Schneider, and Nemanja Djuric. Multimodal trajectory predictions for autonomous driving using deep convolutional networks. In IEEE International Conference on Robotics and Automation (ICRA) , pages 2090–2096, 2019. [9] Yarin Gal and Zoubin Ghahramani. Dropout as a bayesian approximation: Representing model uncertainty in deep learning. In International Conference on Machine Learning , 2016. [10] Subhashis Ghosal and Aad van der Vaart. Fundamentals of Nonparametric Bayesian Inference .Cambridge University Press, 2017. [11] Tianpei Gu, Guangyi Chen, Junlong Li, Chunze Lin, Yongming Rao, Jie Zhou, and Jiwen Lu. Stochastic trajectory prediction via motion indeterminacy diffusion. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2022. [12] Agrim Gupta, Justin Johnson, Li Fei-Fei, Silvio Savarese, and Alexandre Alahi. Social GAN: Socially acceptable trajectories with generative adversarial networks. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , 2018. [13] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. In 
+
+Advances in Neural Information Processing Systems , volume 33, pages 6840–6851, 2020. [14] Huiqun Huang, Sihong He, and Fei Miao. CUQDS: Conformal uncertainty quantification under distribution shift for trajectory prediction. In Proceedings of the AAAI Conference on Artificial Intelligence (Vol. 39, No. 16) , pages 17422–17430, 2025. [15] Chiyu Max Jiang, Andre Cornman, Cheolho Park, Benjamin Sapp, Yin Zhou, and Dragomir Anguelov. MotionDiffuser: Controllable multi-agent motion prediction using diffusion. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 9644–9653, 2023. [16] Alex Kendall and Yarin Gal. What uncertainties do we need in Bayesian deep learning for computer vision? In Advances in Neural Information Processing Systems , 2017. [17] Niklas Kochdumper and Matthias Althoff. Constrained polynomial zonotopes. Acta Informatica ,60(3):279–316, 2023. doi: 10.1007/s00236-023-00437-5. [18] Balaji Lakshminarayanan, Alexander Pritzel, and Charles Blundell. Simple and scalable predictive uncertainty estimation using deep ensembles. In Advances in Neural Information Processing Systems , 2017. [19] Lars Lindemann, Matthew Cleaveland, Gihyun Shim, and George J. Pappas. Safe planning in dynamic environments using conformal prediction. IEEE Robotics and Automation Letters , 8 (8):5116–5123, 2023. doi: 10.1109/LRA.2023.3292071. [20] Osama Makansi, Eddy Ilg, Özgün Çiçek, and Thomas Brox. Overcoming limitations of mixture density networks: A sampling and fitting framework for multimodal future prediction. In 
+
+Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 7144–7153, 2019. [21] Karttikeya Mangalam, Harshayu Girase, Shreyas Agarwal, Kuan-Hui Lee, Ehsan Adeli, Jitendra Malik, and Adrien Gaidon. It is not the journey but the destination: Endpoint conditioned trajectory prediction. In European Conference on Computer Vision , 2020. 12 [22] Karttikeya Mangalam, Yang An, Harshayu Girase, and Jitendra Malik. From goals, waypoints & paths to long term human trajectory forecasting. In Proceedings of the IEEE/CVF International Conference on Computer Vision , 2021. [23] Weibo Mao, Chenxin Xu, Qi Zhu, Siheng Chen, and Yanfeng Wang. Leapfrog diffusion model for stochastic trajectory prediction. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 5517–5526, 2023. [24] Matthew Mirman, Timon Gehr, and Martin Vechev. Differentiable abstract interpretation for provably robust neural networks. In International Conference on Machine Learning , 2018. [25] Alexander Quinn Nichol and Prafulla Dhariwal. Improved denoising diffusion probabilistic models. In International Conference on Machine Learning , pages 8162–8171, 2021. [26] Yaniv Romano, Evan Patterson, and Emmanuel Candès. Conformalized quantile regression. In 
+
+Advances in Neural Information Processing Systems , 2019. [27] Tim Salzmann, Boris Ivanovic, Punarjay Chakravarty, and Marco Pavone. Trajectron++: Dynamically-feasible trajectory forecasting with heterogeneous data. In European Conference on Computer Vision , 2020. [28] Rolf Schneider. Convex Bodies: The Brunn–Minkowski Theory . Cambridge University Press, 2nd edition, 2014. [29] Christoph Schöller and Alois Knoll. FloMo: Tractable motion prediction with normalizing flows. In IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS) , pages 7977–7984, 2021. [30] Ari Seff, Brian Cera, Dian Chen, Mason Ng, Aurick Zhou, Nigamaa Nayakanti, Khaled S. Refaat, Rami Al-Rfou, and Benjamin Sapp. MotionLM: Multi-agent motion forecasting as language modeling. In Proceedings of the IEEE/CVF International Conference on Computer Vision , pages 8579–8590, 2023. [31] Shaoshuai Shi, Li Jiang, Dengxin Dai, and Bernt Schiele. MTR: Motion transformer with global intention localization and local movement refinement. In Advances in Neural Information Processing Systems , 2022. [32] Gagandeep Singh, Timon Gehr, Matthew Mirman, Markus Püschel, and Martin Vechev. Fast and effective robustness certification. In Advances in Neural Information Processing Systems ,2018. [33] Kihyuk Sohn, Honglak Lee, and Xinchen Yan. Learning structured output representation using deep conditional generative models. In Advances in Neural Information Processing Systems ,2015. [34] Jiaming Song, Chenlin Meng, and Stefano Ermon. Denoising diffusion implicit models. In 
+
+International Conference on Learning Representations , 2021. [35] Nan Song, Bozhou Zhang, Xiatian Zhu, and Li Zhang. Motion forecasting in continuous driving. In Advances in Neural Information Processing Systems , 2024. [36] Vladimir Vovk, Alexander Gammerman, and Glenn Shafer. Algorithmic learning in a random world . Springer, 2005. 13 [37] Benjamin Wilson, William Qi, Tanmay Agarwal, John Lambert, Jagjeet Singh, Siddhesh Khandelwal, Bowen Pan, Ratnesh Kumar, Andrew Hartnett, Jhony Kaesemodel Pontes, Deva Ramanan, Peter Carr, and James Hays. Argoverse 2: Next generation datasets for self-driving perception and forecasting. In Advances in Neural Information Processing Systems Datasets and Benchmarks Track (Round 2) , 2021. [38] Chenxin Xu, Maosen Li, Zhenyang Ni, Ya Zhang, and Siheng Chen. Groupnet: Multiscale hypergraph neural networks for trajectory prediction with relational reasoning. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 6498–6507, 2022. [39] Chenxin Xu, Weibo Mao, Wenjun Zhang, and Siheng Chen. Remember intentions: Retrospective-memory-based trajectory prediction. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2022. [40] Chenxin Xu, Robby T. Tan, Yuhong Tan, Siheng Chen, Yu Guang Wang, Xinchao Wang, and Yanfeng Wang. Eqmotion: Equivariant multi-agent motion prediction with invariant interaction reasoning. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 1410–1420, 2023. [41] Sidney J. Yakowitz and John D. Spragins. On the identifiability of finite mixtures. The Annals of Mathematical Statistics , 39(1):209–214, 1968. [42] Ye Yuan, Xinshuo Weng, Yanglan Ou, and Kris M Kitani. AgentFormer: Agent-aware transform-ers for socio-temporal multi-agent forecasting. In Proceedings of the IEEE/CVF International Conference on Computer Vision , 2021. [43] Bozhou Zhang, Nan Song, and Li Zhang. DeMo: Decoupling motion forecasting into directional intentions and dynamic states. In Advances in Neural Information Processing Systems , 2024. [44] Huan Zhang, Tsui-Wei Weng, Pin-Yu Chen, Cho-Jui Hsieh, and Luca Daniel. Efficient neural network robustness certification with general activation functions. In Advances in Neural Information Processing Systems , 2018. [45] Yanfei Zhou, Lars Lindemann, and Matteo Sesia. Conformalized adaptive forecasting of heterogeneous trajectories. In Proceedings of the 41st International Conference on Machine Learning , pages 62002–62056, 2024. [46] Yang Zhou, Hao Shao, Letian Wang, Steven L. Waslander, Hongsheng Li, and Yu Liu. SmartRe-fine: A scenario-adaptive refinement framework for efficient motion prediction. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 15281–15290, 2024. [47] Zikang Zhou, Jianping Wang, Yung-Hui Li, and Yu-Kai Huang. Query-centric trajectory prediction. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 17863–17873, 2023. 
+
+Appendix outline. A Implementation Details and Reproducibility (datasets, hyperparameters, compute, per-experiment protocol). B Full Proofs (Theorems 1–5, Propositions 1–3). C Empirical Theorem Validation (per-value sweep tables; CF fingerprint; parameter recovery; entropy-gap bound; raw-NLL note). D Additional Experiments grouped as: D.1 Ablations and Hyperparameter Sweeps; D.2 Calibration Extensions; D.3 Downstream Task Details; D.4 Baseline Comparisons (Extended); 14 D.5 Per-Scene, Per-Modality, Per-Seed Analyses; D.6 Visualisations. E Broader Impact and Ethical Considerations. 
+
+# A Implementation Details and Reproducibility 
+
+A.1 Datasets 
+
+ETH/UCY pedestrian. Five scenes (ETH, HOTEL, UNIV, ZARA1, ZARA2) recorded at 2.5 Hz, evaluated under the standard leave-one-out protocol: train on 4 scenes, test on the held-out scene. Trajectories are observed for 8 frames ( 3.2 s) and predicted for 12 frames ( 4.8 s). Coordinates are in metres, world frame. Source: original ETH/UCY recordings released for research use. 
+
+nuScenes vehicle. 1,000 driving scenes from Boston and Singapore, 40 k test windows of vehicle trajectories at 2 Hz [7]. Past horizon 1 s, future horizon 6 s ( Tf =12 ). Ego-centric coordinate frame. License: nuScenes non-commercial research use. 
+
+Argoverse 2 motion forecasting. 200 k training scenarios, 25 k validation, 24 k test (97 k test windows) at 10 Hz [37]; we subsample to 2 Hz for matched comparison. License: CC-BY-NC-SA 4.0. 
+
+nuPlan (zero-shot evaluation only). The nuPlan mini split (Boston/Pittsburgh/Singapore/Las Vegas logs) is used only for cross-dataset collision-warning evaluation in §D.26; no training. License: nuPlan non-commercial research use. 
+
+A.2 HProbZ Architecture and Training 
+
+Table 8: HProbZ master hyperparameter table. ETH/UCY entry covers both single-agent ( d=64 )and Social ( d=128 , 8-neighbour attention) variants. Optimiser is AdamW with cosine LR decay; warmup is linear over the first 10 epochs. “Sym-break b0” is the positive bias added to the Gb output channels at init (Appendix D.24).                                                             
+
+> Setting dLayers (nb, n d, n q)Batch LR Epochs Sym-break b0Seeds
+> ETH/UCY single 64 2(3 ,1,1) 1024 3×10 −4600 0.05 3ETH/UCY Social 128 3(3 ,1,1) 2048 3×10 −4600 0.05 5nuScenes ( d=128 )128 2(1 ,1,1) 1024 3×10 −4100 03nuScenes ( d=256 )256 4(1 ,1,1) 1024 2×10 −4150 1.0 14 Argoverse 2 128 2(1 ,1,1) 1024 3×10 −4100 03
+
+A.3 Baseline Architectures and Hyperparameters 
+
+MDN. Linear( d, d ) → GELU → Linear( d, T f · K · 5) producing per-component means, variances, and mixing logits. Trained with the same encoder, optimiser, batch, and schedule as the matched HProbZ row. Full hyperparameter sweep in Appendix D.22; the pathological MDN-K=8 collapse sweep is in Appendix D.27. 
+
+CVAE. 32-dim latent with shared-encoder amortized posterior; KL warmup over 20 epochs. Used in Table 2 and as a baseline in the controlled experiments of Appendix D.1. 15 Diffusion (DDPM). Temporal transformer denoiser with adaLN-style timestep conditioning, 
+
+4 blocks, cosine T =200 schedule, DDIM 50 -step sampling, η=0 .5; details and step-count sweep in Appendix D.11. 
+
+A.4 Per-Experiment Protocol Index 
+
+Every sub-experiment in §5 is a matched-encoder HProbZ vs. MDN comparison; Table 9 lists the controlled variables in each. Table 9: Summary of experimental protocols. Within each row, HProbZ and the MDN baseline share the same encoder architecture, training schedule, and sampling budget.                                           
+
+> Experiment Dataset Encoder HProbZ vs baseline
+> Table 2 (§5.2) ETH/UCY (LOO, 5 scenes) d=64 HProbZ/MDN/CVAE; d=128 Social HProbZ Social nb=3 vs MDN-K8 Table 3, d=128 row (§5.3) nuScenes (40k test) d=128 , 2 layers nb=1 vs MDN-K2 Table 3, d=256 row nuScenes (40k test) d=256 , 4 layers nb=1 (14 seeds) vs MDN-K2 (1 seed; both 2.14 M) Table 4 (§5.4) Argoverse 2 (97k test, 3 seeds) d=128 , 2 layers, batch=8192, 300 ep nb=1 vs MDN-K2 CRPS (§5.3) nuScenes (full 40k, K=100 , 5 paired seeds) d=128 , 2 layers nb=1 vs MDN-K2 (matched arch) Closed-loop (§5.4) nuScenes (full 40k, 500 samples/inst.) d=128 , 2 layers nb=1 vs MDN-K2 Table 6 (§5.4) ETH/UCY (LOO, reveal k∈{ 0, . . . , 8})d=64 , 2 layers nb=1 vs MDN-K8
+
+A.5 Compute Resources 
+
+All training experiments use single H100/H200-class GPUs; small-scale ablations and runtime measurements use a consumer GPU (RTX-class). Single d=256 HProbZ on nuScenes: ∼ 18 minutes per seed end-to-end (150 epochs, batch 1024, 162k training windows); the 14-seed sweep used ≈ 252 
+
+GPU-minutes ( ≈ 4.2 GPU-hours). Argoverse 2 and ETH/UCY runs are smaller; the 600-epoch Social re-run used a 4-GPU cluster for the 5-seed × 5-scene grid. Inference benchmarks (throughput, refinement runtime) are measured on a single consumer GPU. Code, per-seed checkpoints, and per-experiment compute logs are released to avoid repeated retraining. 
+
+A.6 Algorithmic Specification 
+
+We provide pseudocode for the two HProbZ-specific procedures. Algorithm 1 is the per-batch training step (gradient through the closed-form convolution likelihood of Eq. (4)); Algorithm 2 is the constrained inference procedure that activates the algebraic constraint machinery of Definition 1 when k ground-truth positions become available. Refinement is performed only at inference; training (Algorithm 1) sees no constraint rows ( p=0 ). The Gaussian relaxation of α in Algorithm 2 is therefore an inference-time approximation to the conditional posterior over the bounded latent, used solely to obtain a closed-form posterior covariance and not present in the training objective. Total cost of Algorithm 2 is O(2 nb (k n 2
+
+d + n3
+
+d)) per scene; this is dominated by the nd × nd
+
+posterior solve and is negligible compared to a single encoder forward pass for the nb, n d ∈ { 1, 2, 3}
+
+regime used in this paper. The Fisher-information form here is the formal statement; in the body we wrote the simplified ρmin bound (Theorem 7, Appendix B.6). 
+
+# B Full Proofs 
+
+Proposition 8 (Minkowski decomposition of the HProbZ measure) . Let μZ denote the distribution of 
+
+y = c + Gbβ + Gdα + Gsν where β ∼ Uniform( {− 1, 1}nb ), α ∼ Uniform([ −1, 1] nd ), and ν ∼ N (0 , I nq )
+
+are independent in the unconstrained case p=0 . Then μZ = δc ∗ ( 12nb
+
+P
+
+β δGbβ ) ∗ (Gd)∗U([ −1, 1] nd ) ∗N (0 , G sG⊤
+
+s ).
+
+16 Algorithm 1 HProbZ training step (one batch). 
+
+Require: batch {(xi, y i)}Bi=1 , encoder Enc ϕ, 2-layer MLP head Head W (h) = W2 GELU( W1h) pro-ducing (c, G b, log a, log σ)
+
+Require: initial bias on head output: Gb entries = b0 (symmetry-break, benchmark-specific; b0=0 .05 
+
+for ETH/UCY, b0=1 .0 for nuScenes d=256 , see Tab. 8 and App. D.24), log a0 = 0 .7, log σ0 = 1 .1;weight init N (0 , 0.01 2)
+
+Require: loss flag L ∈ { exact , Gauss }, gradient-clip threshold τ = 1 .0 
+
+> 1:
+
+for i = 1 , . . . , B do  
+
+> 2:
+
+hi ← Enc ϕ(xi) 
+
+> 3:
+
+(ci, G b,i , log ai, log σi) ← Head W (hi) 
+
+> 4:
+
+ai ← exp(clamp(log ai, −4, 4)); σi ← exp(clamp(log σi, −4, 4))  
+
+> 5:
+
+for each binary β ∈ {− 1, 1}nb do  
+
+> 6:
+
+μi,β ← ci + Gb,i β 
+
+> 7:
+
+end for  
+
+> 8:
+
+if L = exact then  
+
+> 9:
+
+ℓi ← − log P 
+
+> β
+
+2−nb Q 
+
+> j
+
+f (yi,j − μi,β,j ; ai,j , σ i,j ) ▷ f from Eq. (4)  
+
+> 10:
+
+else  
+
+> 11:
+
+ℓi ← − log P 
+
+> β
+
+2−nb N (yi; μi,β , σ 2 
+
+> i
+
++ a2 
+
+> i
+
+/3) ▷ Gaussian surrogate  
+
+> 12:
+
+end if  
+
+> 13:
+
+end for  
+
+> 14:
+
+g ← ∇ ϕ,W 1
+
+> B
+
+P 
+
+> i
+
+ℓi 
+
+> 15:
+
+Clip: g ← g · min  1, τ / ∥g∥2
+
+ 
+
+> 16:
+
+Update ϕ, W by AdamW( g). 
+
+Proof. Independence of β, α, ν implies the distribution of the sum is the convolution of the marginals. The distribution of Gbβ is the uniform measure on the finite set Gb{− 1, 1}nb ; that of Gdα is the pushforward of the uniform measure on the cube under Gd, i.e., the zonoid measure [28]; and Gsν
+
+contributes the Gaussian factor. 
+
+B.1 Proof of Theorem 2 
+
+Setup. The characteristic function of μZ at t ∈ Rd factorises as 
+
+ϕZ (t) = eic ⊤t · ϕB (t) ·
+
+> nd
+
+Y
+
+> m=1
+
+sinc( Gd[: , m ]⊤t) · exp 
+
+
+
+− 12 t⊤GsG⊤ 
+
+> s
+
+t
+
+
+
+,
+
+where ϕB (t) = 2 −nb P 
+
+> β
+
+ei(Gbβ)⊤t is bounded in magnitude by 1. Suppose for contradiction that there is a finite Gaussian mixture with CF ϕGMM (t) = PKk=1 πkeiμ ⊤     
+
+> kt−12t⊤Σkt
+
+such that ϕZ (t) = ϕGMM (t)
+
+for all t ∈ Rd.
+
+Reduction to 1D. Since Gd has a nonzero entry, choose any unit vector u ∈ Rd with a := |Gd[: 
+
+, m ∗]⊤u| > 0 for some m∗. By Cramér–Wold, the two distributions project to the same 1-D law 17 Algorithm 2 HProbZ constrained inference (refinement after k revealed positions). 
+
+Require: trained head outputs at all steps {(ct, G b,t , G d,t , G s,t )}Tt=1 , observed positions {zti }ki=1 
+
+Require: Gaussian relaxation α ∼ N (0 , 13 Ind ) 
+
+> 1:
+
+for each binary β ∈ {− 1, 1}nb do  
+
+> 2:
+
+rti ← zti − cti − Gb,t i β for i = 1 , . . . , k  
+
+> 3:
+
+Σs,t i ← Gs,t i G⊤ 
+
+> s,t i
+> 4:
+
+Ik ← Pki=1 G⊤ 
+
+> d,t i
+
+Σ−1 
+
+> s,t i
+
+Gd,t i ▷ Fisher information  
+
+> 5:
+
+Σpost (β) ← (3 Ind + Ik)−1 
+
+> 6:
+
+μpost (β) ← Σpost (β) Pki=1 G⊤ 
+
+> d,t i
+
+Σ−1 
+
+> s,t i
+
+rti 
+
+> 7:
+
+w(β) ← 2−nb Qki=1 p(zti | β) ▷ mode posterior weight  
+
+> 8:
+
+end for  
+
+> 9:
+
+Normalize {w(β)} to a posterior over β. 
+
+> 10:
+
+for each unobserved step s do  
+
+> 11:
+
+Tightened mean: ˆzs(β) ← cs + Gb,s β + Gd,s μpost (β) 
+
+> 12:
+
+Tightened covariance: bΣs(β) ← Gd,s Σpost (β) G⊤ 
+
+> d,s
+
++ Σ s,s  
+
+> 13:
+
+end for  
+
+> 14:
+
+return {w(β), ˆzs(β), bΣs(β)} for all β and unobserved s.along u, so the 1-D CFs match: ϕZ,u (s) = ϕGMM ,u (s) for all s ∈ R, where 
+
+ϕZ,u (s) = eic us · ϕB,u (s) · Y
+
+> m:Gd[: ,m ]⊤u̸=0
+
+sinc( Gd[: , m ]⊤u · s) · e− 12 σ2
+
+> us2
+
+,ϕGMM ,u (s) = 
+
+> K
+
+X
+
+> k=1
+
+πkeiμ k,u s− 12 σ2
+
+> k,u s2
+
+,
+
+with σ2 
+
+> u
+
+= u⊤GsG⊤ 
+
+> s
+
+u, σ2 
+
+> k,u
+
+= u⊤Σku > 0, cu = u⊤c, μk,u = u⊤μk, and ϕB,u (s) = 2 −nb P 
+
+> β
+
+ei(Gbβ)⊤u s 
+
+a trigonometric polynomial (bounded by 1 on R). 
+
+Analytic continuation to the imaginary axis. Both ϕZ,u and ϕGMM ,u extend to entire functions on C (the 1-D formulas above define holomorphic extensions). Evaluating at s = iy with real y > 0:
+
+sinc( α · iy ) = sin( iαy )
+
+iαy = sinh( αy )
+
+αy , e− 12 σ2
+
+> u(iy )2
+
+= e 12 σ2
+
+> uy2
+
+,
+
+and ϕB,u (iy ) = 2 −nb P 
+
+> β
+
+e−(Gbβ)⊤u y is a finite sum of positive real exponentials. Choose u generic so that exactly one β⋆ ∈ {− 1, 1}nb achieves γu := max β {− (Gbβ)⊤u} (this fails only on a measure-zero set of directions in the unit sphere). Then ϕB,u (iy ) ∼ 2−nb eγuy as y → ∞ with no polynomial pre-factor; ties at the maximizer would contribute a constant multiplicity but no y-dependent factor, and the contradiction below is unaffected. 
+
+Asymptotic magnitude on the imaginary axis. Let Sm = |Gd[: , m ]⊤u| for m with Sm > 0,and A = P 
+
+> m
+
+Sm. For y → ∞ , sinh( Smy)/(Smy) = eSmy/(2 Smy)(1 + O(e−2Smy)) , so 
+
+|ϕZ,u (iy )| = Cyn′
+
+> d
+
+· e(A+γu)y+ 12 σ2
+
+> uy2
+
+· (1 + o(1)) 
+
+where n′ 
+
+> d
+
+is the number of directions with Gd[: , m ]⊤u̸ = 0 and C > 0 is constant (independent of y). The key feature is the algebraic factor y−n′ 
+
+> d
+
+, n′ 
+
+> d
+
+≥ 1.18 For the Gaussian mixture at s = iy :
+
+|ϕGMM ,u (iy )| =
+
+> K
+
+X
+
+> k=1
+
+πkeμk,u y+ 12 σ2
+
+> k,u y2
+
+.
+
+As y → ∞ , this sum is dominated by the term(s) with maximum exponent 12 σ2
+
+> k,u
+
+y2 + μk,u y. Let 
+
+σ⋆ = max k σk,u and μ⋆ = max {μk,u : σk,u = σ⋆}; then 
+
+|ϕGMM ,u (iy )| = D · eμ⋆y+ 12 (σ⋆)2y2
+
+· (1 + o(1)) 
+
+where D = P 
+
+> k: ( σk,u ,μ k,u )=( σ⋆,μ ⋆)
+
+πk > 0 is the sum of weights of all components attaining the dominant exponent. Since every πk > 0 by the GMM definition and at least one component attains the maximum, D ≥ πk⋆ > 0; in particular D is bounded away from zero independently of y, so no 
+
+y-dependent cancellation can collapse the leading constant. 
+
+Contradiction. The equality ϕZ,u (iy ) = ϕGMM ,u (iy ) forces the asymptotic magnitudes to agree. Matching the y2 and y coefficients in the exponent yields σ2 
+
+> u
+
+= ( σ⋆)2 and A + γu = μ⋆. After dividing both sides by e(A+γu)y+ 12 σ2
+
+> uy2
+
+, the LHS tends to 0 like y−n′ 
+
+> d
+
+(algebraically), while the RHS tends to the strictly positive constant D. This contradicts n′ 
+
+> d
+
+≥ 1, so ϕZ̸ = ϕGMM . By Lévy’s inversion theorem (uniqueness of characteristic functions), μZ̸ = μGMM .
+
+Remark on why the “entire-vanishing” shortcut fails. The sinc zeros of ϕZ form an unbounded discrete set with no finite accumulation point, so the identity theorem for holomorphic functions does not force ϕGMM to vanish identically from agreement on that set alone (a counter-intuition: cos t is entire, has unbounded zero set {(k + 12 )π}, and cos 0 = 1 ). The above growth-rate argument avoids this subtlety by separating algebraic ( y−n′ 
+
+> d
+
+) and exponential contributions along the imaginary axis. 
+
+B.2 Proof of Theorem 3 
+
+Projecting μZ onto axis j gives a 1-D mixture of uniform-normal convolutions sharing shape (aj , σ j )
+
+with distinct locations. 
+
+Shape recovery. The 1-D CF is ϕj (t) = eic j t ·2−nb P 
+
+> β
+
+ei(Gbβ)j t ·sinc( aj t)·e−σ2 
+
+> jt2/2
+
+. The smallest positive zero at t = π/a j determines aj ; dividing out the sinc factor reveals the Gaussian envelope, recovering σj .
+
+Location recovery. With the kernel known, standard identifiability of location mixtures [41] recovers the 2nb mode centers {cj + ( Gbβ)j }.
+
+Cross-dimension consistency. Per-axis identification yields, for each j, the multiset {cj +(Gbβ)j }β∈{− 1,1}nb . Hypothesis (ii) of Theorem 3—axis-wise distinct projected centers—makes each multiset a set of 2nb points. Stacking across j recovers the rows of [c | Gb] up to a permutation π of 
+
+{− 1, 1}nb that is consistent across all axes (since the same π must label every per-axis multiset). The consistency reduces π to the symmetries of the nb-cube acting on Gb’s columns, namely column-permutation composed with global column sign-flip. The remaining ambiguity is therefore precisely as stated. 
+
+B.3 Proof of Theorem 6 
+
+The score s(x, y ) is a measurable function; split-conformal prediction [3, 36] gives P(ytest ∈ { y :
+
+s(xtest , y ) ≤ qα}) ≥ 1 − α. The sublevel set unfolds as s(x, y ) ≤ q ⇐⇒ ∃ β : ∀j, |yj − cj − (Gbβ)j | ≤ ∥Gd[j, :] ∥1 + q∥Gs[j, :] ∥2, matching ˆSα(x).19 B.4 Theorem 9: Distributional Coverage Statement and Proof 
+
+Theorem 9 (Distributional coverage) . When y|x follows the HProbZ distribution, the γ-expanded set 
+
+Sγ (x) = S 
+
+> β
+
+{z : |zj −cj −(Gbβ)j | ≤ ∥ Gd[j, :] ∥1 +γ∥Gs[j, :] ∥2, ∀j} satisfies P (y ∈ Sγ ) ≥ 1−2d·e−γ2/2;setting γ = p2 ln(2 d/α ) yields coverage ≥ 1−α. This is a parallel parametric coverage bound to the distribution-free conformal Theorem 6 of the body. Proof. Conditioned on the true mode β∗, the residual in dimension j satisfies |yj − cj − (Gbβ∗)j | ≤ ∥Gd[j, :] ∥1 + |(Gsν∗)j |. The marginal (Gsν∗)j ∼ N (0 , ∥Gs[j, :] ∥22) holds for each j regardless of cross-dimension correlations in Gsν∗, so the per-dimension Gaussian tail bound P (|(Gsν∗)j | >γ∥Gs[j, :] ∥2) ≤ 2e−γ2/2 applies independently. The two-sided union bound over the 2d events 
+
+{(Gsν∗)j > γ ∥Gs[j, :] ∥2} ∪ { (Gsν∗)j < −γ∥Gs[j, :] ∥2}dj=1 yields P (y / ∈ Sγ | β = β∗) ≤ 2d · e−γ2/2
+
+— valid whether the marginals are independent or correlated, since the union bound only requires the marginal tail probabilities. Here Sγ is the set defined in the theorem statement: Sγ = S 
+
+> β
+
+B(β)
+
+where B(β) = {z : |zj − cj − (Gbβ)j | ≤ ∥ Gd[j, :] ∥1 + γ∥Gs[j, :] ∥2 ∀j}. The above bound establishes 
+
+P (y ∈ B(β∗) | β = β∗) ≥ 1 − 2d e −γ2/2. Since B(β∗) ⊆ Sγ , the same lower bound applies to 
+
+P (y ∈ Sγ | β = β∗). Marginalising over β∗ preserves the bound because the conditional bound is the same for every value of β∗ (the constant 2d e −γ2/2 does not depend on β∗): P (y ∈ Sγ ) = Eβ∗ [P (y ∈
+
+Sγ | β∗)] ≥ 1 − 2d e −γ2/2.
+
+B.5 Proof of Proposition 5 
+
+Part (i): Bounded entropy cost. Let U ∼ Uniform( −1, 1) and Z ∼ N (0 , 1) be independent, so 
+
+fκ is the density of a(U + Z/κ ) = aU + σZ . By scaling, h(fκ) = log a + h(U + Z/κ ).The matched Gaussian has variance σ2 + a2/3 = a2(1 /κ 2 + 1 /3) , so h(gκ) = 12 log(2 πe · a2(1 /κ 2 +1/3)) = log a + 12 log(2 πe (1 /κ 2 + 1 /3)) .The gap is ∆( κ) = 12 log(2 πe (1 /κ 2 + 1 /3)) − h(U + Z/κ ). At κ→0: Z/κ dominates U , so 
+
+U + Z/κ approaches a Gaussian with the matched variance and ∆( κ)→0. As κ → ∞ : h(U + Z/κ ) →
+
+h(U ) = log 2 , giving ∆( ∞) = 12 log(2 πe/ 3) − log 2 = 12 log( πe/ 6) . Monotonicity. Differentiating in 
+
+κ and using De Bruijn’s identity ( ddt h(U + tZ ) = t · J(U + tZ ) for Z ∼ N (0 , 1) , where J is Fisher information) gives 
+
+∆′(κ) = 1
+
+κ3
+
+h
+
+J(U + Z/κ ) − 1Var( U + Z/κ )
+
+i
+
+.
+
+By the Cramér–Rao inequality J(X) ≥ 1/Var( X) with equality iff X is Gaussian; U + Z/κ is non-Gaussian for any finite κ > 0 (the bounded uniform component never vanishes), so ∆′(κ) > 0
+
+on (0 , ∞). Hence ∆ is monotone increasing in κ with supremum 12 log( πe/ 6) .
+
+Part (ii) follows directly from the Fisher information computation in the proof of Theorem 7(ii): for a single observed step with Gd = aI and noise σ, the Fisher information matrix for α is 
+
+G⊤ 
+
+> d
+
+Gd/σ 2 = ( a2/σ 2)I = κ2I.
+
+Part (iii) is immediate from (i) and (ii): ∆ ≤ 0.18 nats regardless of κ, while ρ = κ2 → ∞ .
+
+B.6 Proof of Theorem 7 
+
+Theorem (Contraction rate of constrained HProbZ, formal restatement) . Consider the shared-generator model zt = ct +Gb,t β +Gd,t α+Gs,t νt with β ∈ {− 1, 1}nb , α ∈ [−1, 1] nd , and νt iid 
+
+∼ N (0 , I nq ).The bound below is stated under the variance-matched Gaussian relaxation α ∼ N (0 , 13 Ind ), which is also the relaxation used at inference for the closed-form posterior solve. Suppose we observe ground-truth values at steps t1, . . . , t k. (i) Mode identification. Let β∗ denote the true binary assignment. 
+
+20 Under the prior Uniform( {− 1, 1}nb ), P (β = β∗ | zt1 , . . . , z tk ) → 1 as k → ∞ , provided the mode centers Gb,t β are distinct for at least one observed step. (ii) Bounded variance contraction. Define the Fisher information Ik = Pki=1 G⊤ 
+
+> d,t i
+
+Gd,t i /σ 2 
+
+> ti
+
+and ρmin = min i λmin (G⊤ 
+
+> d,t i
+
+Gd,t i )/σ 2 
+
+> ti
+
+. Conditioned on β∗,
+
+Cov( α | zt1 , . . . , z tk , β ∗) ⪯
+
+ 13 Ind + Ik
+
+−1
+
+, (7) 
+
+and for any unobserved step s, tr(Cov( Gd,s α | obs , β ∗)) ≤ ∥ Gd,s ∥2 
+
+> F
+
+/( 13 + kρ min ) = O(1 /k ), while 
+
+tr( Gs,s G⊤
+
+> s,s
+
+) is irreducible. (iii) MDN structural invariance. For an MDN {(πj , μ j , Σj )}Jj=1 ,conditioning updates only the weights ( πj 7 → πj
+
+Q 
+
+> i
+
+p(zti | j)/Z ); tr(Σ j,s ) at any unobserved step is 
+
+Θ(1) in k.
+
+Part (i): Mode identification. Conditional on the latent α, the per-step log-likelihood ratios 
+
+Li(β∗, β ; α) = log N  zti ; cti + Gb,t i β∗ + Gd,t i α, G s,t i G⊤
+
+> s,t i
+
+
+
+N  zti ; cti + Gb,t i β + Gd,t i α, G s,t i G⊤
+
+> s,t i
+
+
+
+are independent across i (the only random source given (α, β ∗) is the iid noise νti ), each with positive mean whenever Gb,t i β∗̸ = Gb,t i β. By the strong law of large numbers conditional on 
+
+α, P 
+
+> i
+
+Li(β∗, β ; α) → +∞ a.s. as k → ∞ provided distinct mode centers are realized at in-finitely many observed steps. The marginal posterior P (β | zt1 , . . . , z tk ) ∝ 2−nb Q 
+
+> i
+
+p(zti | β) = 2−nb Q
+
+> i
+
+R 
+
+> [−1,1] nd
+
+N (zti ; cti + Gb,t i β + Gd,t i α, G s,t i G⊤ 
+
+> s,t i
+
+)d α/ Vol([ −1, 1] nd ) inherits the same limit by standard posterior consistency for identifiable parametric mixtures [10, Ch. 6]: the conditional ratio diverges Lebesgue-a.e. in α, and the dominated convergence theorem propagates the divergence to the marginal. The technical regularity conditions (compactness of α ∈ [−1, 1] nd , smoothness of the Gaussian likelihood, finite mode set) are all satisfied. 
+
+Part (ii): Bounded variance contraction (Gaussian relaxation). Conditioned on β∗,the observation model becomes zti − cti − Gb,t i β∗ = Gd,t i α + Gs,t i νti , a linear regression in α
+
+with known Gaussian noise covariance Σs,t i := Gs,t i G⊤ 
+
+> s,t i
+
+. We replace the true uniform prior α ∼
+
+Uniform([ −1, 1] nd ) (covariance 13 Ind ) with the variance-matched Gaussian α ∼ N (0 , 13 Ind ), which is the relaxation used at inference for the closed-form posterior solve. Under this relaxation the posterior is α | obs , β ∗ ∼ N (μpost , Σpost ) with Σpost = (3 Ind + Ik)−1 where Ik = Pki=1 G⊤ 
+
+> d,t i
+
+Σ−1 
+
+> s,t i
+
+Gd,t i , giving Eq. (7) as a bound on the relaxed posterior covariance. The empirical refinement results in §5.4 are measured under the true uniform prior and exhibit the same O(1 /k ) rate; we do not formally bound the relaxation gap here. For the predictive variance at step s: tr(Cov( Gd,s α | obs)) = tr( Gd,s Σpost G⊤
+
+> d,s
+
+) ≤∥Gd,s ∥2 
+
+> F
+
+· λmax (Σ post ) ≤ ∥ Gd,s ∥2 
+
+> F
+
+/( 13 + kρ min ), where ρmin = min i λmin (G⊤ 
+
+> d,t i
+
+Σ−1 
+
+> s,t i
+
+Gd,t i ) and we used 
+
+λmax (( A + B)−1) ≤ 1/λ min (A + B) and λmin (Ik) ≥ kρ min . The stochastic component Gs,s νs is independent of α with covariance Σs,s regardless of any conditioning. 
+
+Part (iii): MDN structural invariance. An MDN parameterizes p(zs | x) = P 
+
+> j
+
+πj N (zs; μj,s (x), Σj,s (x)) ,where all parameters are deterministic outputs of the network. Conditioning on observed steps updates the mixture weights via Bayes’ rule, πj 7 → πj
+
+Q 
+
+> i
+
+N (zti ; μj,t i , Σj,t i )/Z , but the conditional distribution within each component remains N (μj,s , Σj,s ) since the components are independent across steps given the component index. Hence tr(Σ j,s ) is invariant to k.
+
+Numerical check of the relaxation gap. The bound above is for the Gaussian-relaxed posterior 
+
+α ∼ N (0 , 13 I), while the empirical 23 .6% /31 .5% contractions of §5.4 and Tab. 21 are measured under the true uniform prior α ∼ Uniform([ −1, 1]) . To check that the relaxation is a faithful proxy in the regime our experiments operate in, we run a 1-D synthetic check: sample α∗ ∼ Uniform([ −1, 1]) ,generate k ∈ { 1, 2, 4, 8} Gaussian observations under each κ ∈ { 1.5, 2.0, 2.8, 3.7} matching Tab. 21, 21 then compare the true uniform-prior posterior variance Vtrue (α | obs) (computed by fine-grid integration over [−1, 1] ) against the closed-form Gaussian-relaxed variance Vrelaxed = 1 /(3 + kκ 2).Averaging over 1,000 Monte-Carlo realisations per (κ, k ) cell, the maximum relative gap |Vrelaxed −
+
+Vtrue |/V true across all 16 cells is 9.03 % (Fig. 4); the gap is positive throughout, so Vrelaxed is a small over-estimate of Vtrue and the contraction reported in the body is, if anything, slightly conservative relative to the true uniform-prior posterior. Code and reproduction script in the supplementary archive. 1 2 4 8      
+
+> Number of revealed observations k
+> −10 −5 0510
+> Relative gap (%)
+> κ= 1.5
+> κ= 2.0
+> κ= 2.8
+> κ= 3.7 ±10% band
+
+Figure 4: Relative gap (Vrelaxed − Vtrue )/V true between the Gaussian-relaxed posterior variance (closed-form) and the true uniform-prior posterior variance (grid integration, 1,000 MC reps), as a function of revealed observations k and Fisher-information ratio κ. All 16 cells lie inside the ±10% 
+
+band; the relaxation slightly over-estimates the true variance, so contraction reported in the body is conservative relative to the true uniform-prior posterior. 
+
+Implementation of constrained inference. At inference, when k ground-truth positions zti
+
+become available, we form the constraint rows Abβ + Adα + Asν = b of Definition 1 by stacking 
+
+Ab = [ Gb,t 1 ; . . . ; Gb,t k ], Ad = [ Gd,t 1 ; . . . ; Gd,t k ], As = blkdiag( σti I), and b = [ zti − cti ]ki=1 . We then enumerate all 2nb binary assignments β, evaluate the closed-form Gaussian posterior over (α, ν )
+
+from Part (ii), and propagate the resulting tightened generators to all unobserved steps in one matrix-vector pass. Total cost is O(2 nb (k · n2 
+
+> d
+
++ n3
+
+> d
+
+)) per scene—dominated by the nd × nd posterior solve—and is negligible compared to the encoder forward pass for the nb, n d ∈ { 1, 2, 3} regime used throughout this paper. 
+
+# C Empirical Theorem Validation 
+
+C.1 Per-Value Tables for Controlled Sweeps 
+
+This section gives the controlled-sweep figure summarising the body §5.1 narrative, and the per-value tables behind each panel. 
+
+C.2 Theorem 2: Characteristic-Function Fingerprint Setup 
+
+The body figure (Fig. 2) summarises the empirical witness; this subsection records the full setup. We sample 10 5 points from a 1-D HProbZ with a=2 , σ =0 .3 and fit GMMs with K ∈ { 1, . . . , 64 }. At the 22 123               
+
+> Exact:  ‖G‖
+> 1234
+> 123
+> 246
+> Number of Modes
+> 123
+> Gauss approx:  ‖G‖
+> 0.0 0.2 0.4 0.6 0.8
+> Drift Range
+> 0123
+> 0.1 0.2 0.3 0.4 0.5
+> Noise Std
+> 1.0 1.5 2.0 2.5 3.0
+> ‖Gb‖(Modal) ‖Gd‖(Bounded) ‖Gs‖(Stochastic)
+
+Figure 5: Controlled generator sweeps under exact vs. Gaussian-approximate likelihood; mean ±std over 5 seeds. Left: mode sweep ( K=1 →7): both likelihoods identify modal structure via Gb. Middle: 
+
+drift sweep: the exact likelihood routes drift to Gd (∆∥Gd∥=2 .90 ≫ ∆∥Gs∥=2 .27 , ∆∥Gb∥=0 .73 ); the Gaussian approximation reverses the dominance ( ∆∥Gs∥=2 .70 wins), confirming Prop. 4. Right: 
+
+noise sweep: ∥Gs∥ tracks σ monotonically; residual Gd/G s degeneracy is halved by the kurtosis regulariser (App. D.7). Per-value tables below. predicted sinc-zero frequencies tk = kπ/a , the GMM’s CF magnitude plateaus at ≈ 2−5 × 10 −3 and ceases to decrease with K, the theorem-predicted signature that no finite GMM can replicate these structural zeros. HProbZ matches its own held-out NLL with 2 free density parameters (a, σ ) (the mean is fixed at 0); the smallest matching GMM requires K=8 with 3K − 1 = 23 free parameters (means, variances, and K − 1 mixing weights), an 11 .5× ratio. Counting all 4 HProbZ scalars 
+
+(c, G b, G d, G s) in 1-D against 3K=24 GMM parameters gives 6×, still well outside the GMM’s reach for any finite K.
+
+C.3 Theorem 3: Multi-Seed Parameter Recovery 
+
+Training from 10 random seeds on 5 × 10 4 samples from a known HProbZ, all seeds recover every parameter to within 0.008 of ground truth, with held-out NLL identical to four decimal places (Figure 6). 
+
+C.4 Proposition 5: Entropy-Gap Bound Verification 
+
+We distinguish Proposition 5’s claim—the density-level entropy gap h(gκ) − h(fκ) is at most  
+
+> 12
+
+log( πe/ 6) ≈ 0.1765 nats/dim—from the empirical NLL gap NLL (fκ|data ) − NLL (g∗|data ), which also contains data-dependent misspecification orthogonal to the theoretical claim. To check the theorem as stated, we compute h(gκ) − h(fκ) directly from the per-dimension (a, σ ) parameters output by trained HProbZ models on all three benchmarks. The visual summary is in the body (Figure 3); per-dataset table follows. The observed maxima ( 0.14 on nuScenes; ≤ 1.3×10 −4 on ETH/UCY and Argoverse 2) sit strictly below 0.1765 . This validates Proposition 5 as stated, and 23 Table 10: Mode sweep (exact likelihood, fixed drift 0.3, noise 0.15 , mean ±std over 5 random seeds). 
+
+∥Gb∥ grows monotonically with mode count and dominates the per-mode delta; the elevated std at 
+
+K ∈ { 3, 5} reflects the bimodal optimisation landscape on this synthetic task (see Appendix D.24 for the same effect on the drift sweep, where sym-broken initialisation suppresses it). 
+
+Modes ∥Gb∥ ∥Gd∥ ∥Gs∥
+
+1 0.39 ±0.02 1.40 ±0.01 0.80 ±0.01 
+
+2 1.88 ±0.21 1.09 ±0.10 1.10 ±0.03 
+
+3 1.90 ±0.59 2.52 ±0.86 0.86 ±0.18 
+
+5 3.35 ±0.43 1.99 ±0.50 0.73 ±0.13 
+
+7 3.43 ±0.25 1.85 ±0.42 0.74 ±0.14 ∆ 3.04 1.43 0.37 Table 11: Drift sweep: exact vs. Gaussian approximation (fixed 3 modes, noise 0.15 , 5 random seeds 
+
+∈ { 42 , 123 , 456 , 789 , 2026 }, mean ± std, sym-broken Gb initialisation per Appendix D.24). Under the exact likelihood, ∥Gb∥ remains essentially flat ( ∆=0 .73 ) while ∆∥Gd∥=2 .90 dominates—drift is correctly routed to the bounded generator. Under the Gaussian approximation, ∆∥Gs∥=2 .70 
+
+dominates instead, confirming Proposition 4: the surrogate misattributes bounded variance to the stochastic component. 
+
+Exact Gaussian 
+
+Drift ∥Gb∥ ∥Gd∥ ∥Gs∥ ∥Gb∥ ∥Gd∥ ∥Gs∥
+
+0.0 3.24 ±0.17 0.27 ±0.03 0.31 ±0.01 3.24 ±0.17 0.53 ±0.03 0.16 ±0.02 
+
+0.1 3.15 ±0.04 0.47 ±0.06 0.46 ±0.02 3.23 ±0.16 0.85 ±0.04 0.20 ±0.04 
+
+0.2 3.25 ±0.17 0.83 ±0.06 0.74 ±0.02 3.25 ±0.17 1.32 ±0.12 0.41 ±0.10 
+
+0.4 2.52 ±0.24 1.84 ±0.08 1.40 ±0.04 2.51 ±0.20 1.72 ±0.25 1.44 ±0.08 
+
+0.8 2.75 ±0.25 3.17 ±0.66 2.58 ±0.26 2.84 ±0.25 2.33 ±0.27 2.86 ±0.10 ∆ (means) 0.73 2.90 2.27 0.74 1.79 2.70 
+
+locates the larger raw NLL gaps entirely within the separately-known misspecification excess that any bounded-support family incurs on unbounded-tail data. 
+
+C.5 nuScenes CRPS: Per-Seed Stability 
+
+The body argues that HProbZ’s structural advantage on CRPS is best read as seed-level stability ,not mean reduction. Table 14 reports the per-seed CRPS for 5 paired (HProbZ, MDN-K2) trainings with matched encoder and matched architecture (the original paper-submission MDN-K2 head: 
+
+Linear(d,d) → GELU → Linear(d, Tf ·K ·5)), evaluated on the full 39 ,829 -sample nuScenes test set with K=100 trajectory samples per estimate. Seed pairs {7, 13 , 21 , 35 } are freshly trained; the 
+
+v5_paper pair uses the original released checkpoints. The seed-level std difference ( σHProbZ =0 .020 , σMDN =0 .092 ) is the practical observation: on these 5 paired seeds, HProbZ’s CRPS at deployment time appears less sensitive to the random seed than MDN-K2’s. The bootstrap CI on the std ratio is wide ( [0 .9×, 45 ×]) and one MDN seed (seed 21, CRPS = 0 .662 ) is responsible for a meaningful share of the spread gap; we therefore do not claim an established calibration advantage from this n=5 pairing. For safety-critical use, calibration 24 Table 12: Noise sweep: exact vs. Gaussian approximation (fixed 3 modes, drift 0.3, 200 epochs, mean ±std over 5 seeds ∈ { 42 , 123 , 456 , 789 , 2026 }). ∥Gs∥ rises monotonically with σ under both likelihoods. Residual Gd/G s degeneracy is addressed separately by the kurtosis regulariser (App. D.7, Tab. 19). 
+
+Exact Gaussian Noise σ ∥Gb∥ ∥Gd∥ ∥Gs∥ ∥Gb∥ ∥Gd∥ ∥Gs∥
+
+0.05 1.92 ±0.64 2.50 ±0.92 0.82 ±0.21 2.80 ±0.13 1.57 ±0.30 0.95 ±0.12 
+
+0.10 1.92 ±0.60 2.52 ±0.88 0.83 ±0.20 2.76 ±0.15 1.57 ±0.30 0.98 ±0.12 
+
+0.15 1.90 ±0.59 2.52 ±0.86 0.86 ±0.18 2.73 ±0.16 1.57 ±0.29 1.01 ±0.12 
+
+0.20 1.88 ±0.60 2.54 ±0.84 0.91 ±0.15 2.69 ±0.15 1.57 ±0.28 1.05 ±0.11 
+
+0.30 1.67 ±0.78 2.82 ±1.01 0.99 ±0.12 2.63 ±0.14 1.58 ±0.25 1.16 ±0.09 
+
+0.50 1.72 ±0.77 2.81 ±0.98 1.26 ±0.12 2.63 ±0.11 1.64 ±0.21 1.42 ±0.07 ∆ (means) 0.25 0.32 0.43 0.17 0.07 0.46 c |b1| |b2| d q0.5 1.0 1.5 2.0     
+
+> recovered magnitude
+> Recovery across 10 seeds
+> ground truth 02468
+> seed
+> 0.0000 0.0005 0.0010 0.0015 0.0020 0.0025
+> mean |param - truth|
+> Per-seed reconstruction error
+
+Figure 6: All 10 seeds recover ground-truth HProbZ parameters; per-seed error below 0.004 .that depends on training luck is a deployment risk in principle, but verifying that this risk differs significantly between heads requires a larger paired sweep that we leave to future work. 
+
+Bootstrap and robustness analysis. Because n=5 paired seeds is small for std-of-std inference, we report three diagnostics. (a) Paired bootstrap. Resampling the 5 seed indices with replacement (B=10 ,000 ): mean-CRPS gap 95% CI [−0.07 , +0 .07] (zero contained, supporting the “ties on mean” framing); std-ratio (MDN/HProbZ) bootstrap median 4.6×, 95% percentile CI [0 .9×, 45 ×]. The CI is wide because n=5 , but the directional finding σMDN > σ HProbZ holds in 95 .4% of resamples. (b) Spread-metric robustness. Sample-std ratio 4.5×; IQR ratio 0.079 /0.030 = 2 .6×; MAD ratio 
+
+0.048 /0.005 = 9 .6×; range ratio 0.260 /0.052 = 5 .0×. All four robust spread measures show MDN-K2 is wider; the magnitude depends on the metric. (c) Leave-one-out. Removing each seed in turn yields std-ratios {4.80 , 4.55 , 2.04 , 6.59 , 4.70 }× . The 2.04 × entry corresponds to dropping seed 21 (MDN 
+
+= 0 .662 ); the remaining MDN range 0.808 –0.922 is still 2.2× wider than HProbZ’s, so the effect survives outlier removal but with diminished magnitude. We report “consistently tighter” rather than “ 4.5× tighter” in the body to reflect this fragility. 25 Table 13: Empirical verification of Proposition 5: the entropy gap h(gκ) − h(fκ) computed on trained HProbZ models across three benchmarks is universally bounded by 12 log( πe/ 6) ≈ 0.1765 nats/dim, with zero violations across 13,000+ samples.                 
+
+> Dataset Samples Mean gap Max gap Bound
+> nuScenes 5,000 0.00247 0.1388 0.1765
+> ETH/UCY (5 scenes) 5,000 4×10 −61.3×10 −40.1765
+> Argoverse 2 3,000 2×10 −61.3×10 −40.1765
+
+Table 14: Per-seed CRPS on nuScenes for matched (HProbZ, MDN-K2) pairs. HProbZ stays in [0 .80 , 0.86] across all five seeds; MDN-K2 spans [0 .66 , 0.92] . Means are statistically tied ( 95% 
+
+paired-bootstrap CI on the gap [−0.07 , +0 .07] , contains 0); HProbZ is tighter on every spread metric we computed on these 5 seeds (sample-std 4.5×, IQR 2.6×, MAD 9.6×, range 5.0×), but with n=5 the std-ratio bootstrap CI is wide ( [0 .9×, 45 ×], contains unity), so this is a directional observation rather than an established gap. Robustness diagnostics in the paragraph below. All numbers reproducible via the CRPS evaluation script in the supplementary code.                         
+
+> Seed pair HProbZ CRPS MDN-K2 CRPS
+> seed 7 0.808 0.808 seed 13 0.809 0.887 seed 21 0.804 0.662
+> seed 35 0.856 0.922 v5_paper 0.838 0.874 mean ±std 0.823 ±0.020 0.831 ±0.092
+> range [0 .80 ,0.86] [0 .66 ,0.92]
+
+C.6 Why HProbZ’s Raw NLL Exceeds MDN’s 
+
+HProbZ’s per-axis marginal is 12 fUG (y − c − gb; a, σ ) + 12 fUG (y − c + gb; a, σ ) with fUG (z; a, σ ) =  
+
+> 12a
+
+[Φ( z+aσ ) − Φ( z−aσ )] . The density is near-flat at ≈ 1/(2 a) on the plateau |z| ≤ a, whereas an MDN component N (μk, σ 2
+
+> k
+
+) peaks at 1/(σk
+
+√2π)—typically larger when a ≫ σk. NLL, a sum of pointwise log-densities, rewards this sharper peak; the cross-time shared-latent coupling that makes Theorem 7 possible is invisible to a pointwise score. CRPS (integrated coverage), closed-loop collision rate (joint tail event), and per-mode risk consistency (sampling variance) each capture a distinct calibration notion that NLL alone does not, which is why HProbZ improves on all three while losing on raw NLL. 
+
+# D Additional Experiments 
+
+The subsections below cover six logical groups: 
+
+Ablations and hyperparameter sweeps. Encoder Scaling (§D.6); Kurtosis Regulariser (§D.7); 
+
+nb Sweep (§D.8); Structural Ablation (§D.10); MDN Sweep (§D.22); MDN-K=8 Collapse (§D.27); Learnable Mode Prior (§D.28); Symmetry-Broken Init (§D.24). 
+
+Calibration extensions. Split-Conformal Calibration on the controlled task (§D.3); Conformal Set Volume on Real Benchmarks (§D.4); Out-of-Distribution Conformal Robustness (§D.5). 
+
+Downstream task details. Pedestrian Crossing Planning (§D.23); Planning Separation Sweep 26 (§D.18); Risk-Estimate Consistency Full Sweep (§D.19); Trajectory-Level Closed-Loop Collision (§D.20); Rolling Closed-Loop (§D.25); nuPlan Cross-Dataset (§D.26); Refinement Runtime (§D.21). 
+
+Baseline comparisons (extended). Varying-Uncertainty Baselines (§D.1); Controlled Diffusion Comparison (§D.11); ETH/UCY Diffusion Baseline (§D.12). Published-method comparison (Tab. 28) and design-space positioning (Tab. 1) are in the body. 
+
+Per-scene, per-modality, and per-seed analyses. nuScenes Constraint Refinement (§D.9); ETH/UCY Per-Scene (§D.13); Per-Scene Generator Decomposition (§D.15); nuScenes Speed-Regime (§D.17); nuScenes CRPS Per-Seed Stability (§C.5, in §C). 
+
+Visualisations. Active Learning via Modal Uncertainty (next subsection); Concept Illustration and Trajectory Visualisations (§D.14). 
+
+D.1 Baseline Comparison under Varying Uncertainty 
+
+We compare HProbZ against MDN, Deep Ensembles [18], MC-Dropout [9], and CVAE [33] across three uncertainty regimes (Low: 2 modes / drift 0.1 / noise 0.1; Medium: 4/0.3/0.2; High: 7/0.5/0.3). When the data-generating uncertainty is non-trivial (Medium and High regimes), HProbZ achieves the highest empirical coverage ( ≥ 0.997 ) while matching MDN-level FDE (Figure 7). In the Low regime, where every method’s analytic confidence interval already over-covers the small intrinsic noise, HProbZ’s intervals are narrower (smaller volume) by design and consequently under-cover at the 0.95 target ( 0.63 ); the same compactness pays off as Volume scales sub-linearly with uncertainty in Medium/High whereas variance-based baselines either inflate or fail to reach target coverage. Low Medium High       
+
+> Setting
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coverage@95%
+> Coverage@95%
+> Low Medium High
+> Setting
+> 0.0 0.2 0.4 0.6 0.8
+> minFDE@20
+> minFDE@20
+> Low Medium High
+> Setting
+> 012345
+> NLL
+> NLL
+> Low Medium High
+> Setting
+> 0100 200 300
+> Volume
+> Volume
+> 95% target HProbZ MDN Ensemble MC-Dropout CVAE
+
+Figure 7: HProbZ achieves the highest coverage when the data-generating uncertainty is non-trivial (Medium and High regimes, ≥ 0.997 ) while maintaining competitive FDE. In the Low regime, HProbZ’s tight intervals trade coverage for compactness; variance-based baselines reach the 95% 
+
+target there only by inflating volume far beyond what the small intrinsic noise warrants. 
+
+D.2 Active Learning via Modal Uncertainty 
+
+Binary generators isolate modal uncertainty from bounded and stochastic components, giving a direct acquisition signal for active learning: ∥Gb∥ targets samples with high modal ambiguity rather than high overall variance. Over ten acquisition rounds (100 queries each from a 10,000-sample pool, 
+
+200 epochs of fresh training per round with deterministic per-round seeding), HProbZ-∥Gb∥ selection yields a net test-NLL improvement of +0 .88 , whereas MDN total-variance acquisition fails ( −1.80 )and random selection lies in between ( +0 .52 ); per-round trajectories in Figure 8; reproduction archive in the supplementary code. 27 600 800 1000 1200 1400 
+
+Number of Labeled Samples     
+
+> 510 15 20
+> Test NLL (lower better)
+> 16.15 8.03
+> HProbZ: ‖Gb‖(modal uncertainty) MDN: total variance Random selection
+
+Figure 8: HProbZ’s modal acquisition signal improves test NLL; MDN total-variance acquisition and random selection both degrade. Scope: comparison is HProbZ-∥Gb∥ vs MDN-total-variance vs random under a single acquisition recipe; standard Bayesian-acquisition baselines (BALD, BatchBALD, ensemble disagreement) are not included, and the negative MDN result is specific to the total-variance signal. We report this as a structural-decomposition demonstration, not a horse-race against the AL literature. 
+
+D.3 Split-Conformal Calibration 
+
+Validating Theorem 6 on the controlled task, conformal calibration produces prediction sets whose volume is roughly half that of the distributional bound while retaining target coverage within sampling noise (Table 15). Table 15: Conformal vs. distributional coverage and volume.                   
+
+> Target 1−αDistributional Conformal
+> Cov. Vol. Cov. Vol. 0.95 0.999 81.4 0.942 35.7
+> 0.90 0.998 73.0 0.889 27.8
+> 0.80 0.995 64.3 0.792 20.5
+
+D.4 Conformal Set Volume on Real Benchmarks 
+
+The body table (Tab. 7) reports per-scene volumes; this section records the calibration protocol. For each held-out scene, we train HProbZ ( nb=3 , n d=1 , n q=1 ) and MDN ( K=8 ) on the remaining four scenes, then split the held-out scene’s test data 50/50 into calibration and evaluation sets ( α=0 .1). This within-scene calibration ensures exchangeability between calibration and test samples, yielding valid marginal coverage guarantees [36]. Three conformal methods are compared: HProbZ-CP uses the nonconformity score from Eq. (6), producing a union of 2nb =8 axis-aligned boxes; Standard CP 
+
+wraps a single L∞ box around the HProbZ center prediction; MDN-CP selects the closest MDN component per sample and uses the standardized residual, producing a union of K component-specific boxes. The prediction dimension is D=24 (12 steps × 2 coordinates), so even modest per-dimension differences compound into large volume gaps. The volume advantage stems from HProbZ’s multi-modal structure: the union of tight boxes centered on each binary mode covers the same target region as a single inflated box, but with 28 far less wasted volume in the high-dimensional ( D=24 ) prediction space. Coverage tracks the target across multiple α levels ( α=0 .05 : 94 .5% ; α=0 .10 : 89 .9% ; α=0 .15 : 85 .2% ), confirming calibration validity. The HOTEL counter-example reflects HOTEL’s tightly concentrated entrance trajectories: MDN-CP’s per-component covariance fits the narrow target region closely enough that its K=8 component union beats HProbZ-CP’s 2nb =8 binary-mode union; on the more dispersed ETH/UNIV/ZARA1/ZARA2 scenes the structural gap reasserts itself. 
+
+D.5 Out-of-Distribution Conformal Robustness 
+
+The split-conformal guarantee (Theorem 6) requires only exchangeability, not identical distributions. We test this robustness under two realistic distribution shifts. 
+
+ETH/UCY leave-one-out (cross-scene OOD). We use the pre-trained leave-one-out HProbZ checkpoints ( nb=3 , n d=1 , n q=1 , trained on 4 scenes with the 5th held out). For each held-out scene, we split its test set 50/50 into calibration and evaluation subsets and compute coverage at α=0 .1.Results in Table 16 show coverage remains near 90% across all 5 held-out scenes (avg 90 .9% ), despite strong inter-scene distribution shifts (different pedestrian densities, interaction patterns, camera perspectives). 
+
+nuScenes speed-stratified (within-scene OOD). We compute the past-observed mean speed for each nuScenes test trajectory (finite differences at 10 Hz) and split into low-speed ( < 5 m/s; 
+
+31 ,185 samples) and high-speed ( ≥ 5 m/s; 8,644 samples). The trained nuScenes HProbZ ( nb=1 ) is calibrated on half of the low-speed subset, then evaluated on (i) the remaining low-speed (IID) and (ii) the entire high-speed subset (OOD). Coverage is 89 .7% IID and 99 .8% OOD: the high-speed regime is more predictable (vehicles on highways follow straighter trajectories with less multi-modality), so the calibrated quantile from low-speed traffic over-covers. This confirms coverage is preserved or exceeded under speed shift, never under-covering. Table 16: OOD conformal coverage: HProbZ maintains calibration under distribution shift. ETH/UCY uses leave-one-out (train on 4, test on 1). nuScenes calibrates on low-speed, evalu-ates on both low-speed (IID) and high-speed (OOD).                   
+
+> Setting Coverage Target
+> ETH/UCY LOO: ETH held out 94.5% 90% ETH/UCY LOO: HOTEL held out 90.3% 90% ETH/UCY LOO: UNIV held out 89.8% 90% ETH/UCY LOO: ZARA1 held out 89.5% 90% ETH/UCY LOO: ZARA2 held out 90.4% 90%
+> Average (5 scenes) 90.9% 90% nuScenes IID (low-speed eval) 89.7% 90% nuScenes OOD (high-speed eval) 99.8% 90%
+
+Full per-scene/per-regime numbers are in Tab. 16 above. 
+
+D.6 Encoder Scaling: HProbZ vs. MDN 
+
+Table 17 tests whether HProbZ’s structured uncertainty head benefits more from increased encoder capacity than an unstructured MDN head. We sweep the transformer encoder across three sizes— Small ( d=64 , 2 layers, 110K params), Base ( d=128 , 3 layers, 615K params), and Large ( d=256 ,29 4 layers, 2.4M params)—while keeping the HProbZ head ( nb=3 , n d=1 , n q=1 ) and the MDN head (K=20 ) fixed. Each configuration is trained for 50 epochs with batch size 1024 under the leave-one-out protocol (5 scenes, 5 seeds). Table 17: Encoder scaling on ETH/UCY (mean ±std over 5 seeds). Across all three encoder sizes (110K–2.4M parameters), HProbZ’s minADE is ∼ 21% lower than MDN-K20’s; the ADE gap is stable across capacity. On minFDE the comparison reverses : MDN-K20 wins by 0.06 –0.09 m at every capacity (bolded entries). Net read: in this vanilla protocol HProbZ is sample-efficient on full-trajectory accuracy and MDN-K20 is sharper on endpoint; the social-attention encoder used for the SOTA-chase row of Tab. 26 closes the FDE gap.                 
+
+> Encoder HProbZ ADE MDN ADE HProbZ FDE MDN FDE
+> Small (64/2L) 0.290 ±0.005 0.369 ±0.003 0.526 ±0.010 0.436 ±0.005 Base (128/3L) 0.278 ±0.003 0.350 ±0.003 0.505 ±0.006 0.422 ±0.005 Large (256/4L) 0.266 ±0.003 0.337 ±0.002 0.476 ±0.006 0.416 ±0.005
+
+HProbZ achieves 21% lower minADE than MDN across all three encoder sizes (e.g., 0.266 vs. 
+
+0.337 at Large scale), suggesting that the structured generator decomposition provides a consistent ADE advantage regardless of backbone capacity. On minFDE the comparison reverses : MDN-K20 wins by 0.06 –0.09 m at every capacity ( 0.436 /0.422 /0.416 m vs HProbZ 0.526 /0.505 /0.476 ). Both methods improve with larger encoders (HProbZ ADE: 0.290 → 0.266 , MDN ADE: 0.369 → 0.337 ), confirming that the HProbZ head can absorb additional representational capacity. The MDN-K20 FDE advantage we attribute to MDN’s freedom to place K=20 independent sharp Gaussian endpoints (the network has no incentive to share parameters across timesteps), whereas HProbZ’s shared bounded generator distributes probability mass along the full prediction horizon. We report this as an empirical trade-off in the matched-encoder vanilla protocol rather than an inherent limitation; the body Tab. 26 (Social HProbZ at MDN-K8) shows HProbZ winning FDE under the social-attention configuration we use for the SOTA-chase number, so the Social-row FDE advantage is contributed by the social encoder rather than the head alone. Notably, HProbZ’s ADE advantage ( 21% ) exceeds MDN’s FDE advantage ( 14% ), and minADE measures accuracy over the entire predicted trajectory, which is more relevant for safety-critical applications such as collision avoidance and path planning where the full predicted path—not just the endpoint—determines the decision boundary. 
+
+D.7 Kurtosis Regularizer Ablation 
+
+Drift sweep. On the drift-sweep experiment (§5.1), adding an empirical-kurtosis-matching regu-larizer actually degrades identification due to interaction with Gb mode assignment (Table 18). This confirms that identifiability on the drift sweep is a property of the exact likelihood itself, not of auxiliary moment-matching losses. Table 18: Kurtosis regularizer ablation on drift sweep: the exact likelihood alone achieves correct identification.                    
+
+> Method ∆∥Gb∥∆∥Gd∥∆∥Gs∥Dominant
+> Gaussian approx. 0.74 1.79 2.70 Gswrong Exact (Eq. (4)) 0.73 2.90 2.27 Gdcorrect Exact + kurtosis reg. 1.32 1.02 2.81 Gswrong
+
+30 Noise sweep (addressing Gd/G s degeneracy). On the noise sweep where Gd/G s degeneracy is the primary challenge (drift = 0 .3, noise ∈ [0 .05 , 0.50] ), the kurtosis regularizer substantially improves separation. We match empirical excess kurtosis of residuals to the closed-form target 
+
+κ = − 65 a4/(a2/3 + σ2)2 from the uniform–Gaussian convolution. Table 19: Kurtosis regularizer on noise sweep: reducing Gd/G s degeneracy. Avg. ratio = mean 
+
+∥Gd∥/∥Gs∥ across noise levels (lower is better); ∆Gd, ∆Gs = response from lowest to highest noise. Mean ±std over 5 seeds.                      
+
+> Method Avg. Gd/G s∆Gd∆GsImprovement
+> Exact (baseline) 0.924 ±0.134 2.44 ±0.23 4.12 ±0.07 —Exact + Kurt( λ=0 .1)0.533 ±0.063 1.59 ±0.16 4.22 ±0.07 42% Exact + Kurt( λ=0 .5)0.491 ±0.033 1.37 ±0.24 4.21 ±0.03 47% Exact + Kurt( λ=1 .0)0.466 ±0.043 1.48 ±0.26 4.24 ±0.07 50%
+
+The kurtosis regularizer reduces the Gd/G s ratio from 0.92 to 0.47 (50% improvement at λ=1 .0,mean over 5 seeds), roughly halving Gd’s spurious response to noise ( ∆Gd: 2.44 → 1.48 ) while preserving Gs’s correct noise tracking ( ∆Gs ≈ 4.2 across all settings). Performance is broadly stable for λ ∈ [0 .1, 1.0] with λ=1 .0 slightly preferred; full per-σ values for the λ=1 .0 column are in Table 19. This indicates that the Gd/G s degeneracy is an addressable optimization challenge, not a fundamental limitation of the representation. 
+
+D.8 Binary Generator Ablation ( nb Sweep) 
+
+We sweep nb ∈ { 1, 2, 3, 4} with fixed nd=1 , n q=1 on ETH/UCY under the standard leave-one-out protocol, comparing against an MDN with K=2 components sharing the same encoder. All models use a transformer encoder with d=64 and are trained for 80 epochs with automatic batch sizing. Table 20: Effect of binary generator count nb on ETH/UCY (aggregate over 5 scenes, best-mode ADE/FDE in meters, mean ±std over 3 seeds). Increasing nb monotonically improves displacement metrics while adding negligible parameters.                                 
+
+> Model nbModes ADE ↓FDE ↓Params
+> HProbZ 120.549 ±0.005 1.147 ±0.148 111k HProbZ 240.533 ±0.007 1.108 ±0.037 113k HProbZ 380.515 ±0.004 0.961 ±0.057 114k HProbZ 416 0.483 ±0.012 0.874 ±0.033 116k MDN –20.604 ±0.019 1.214 ±0.214 113k
+
+The results reveal two key findings. First, increasing nb monotonically improves both ADE and FDE, with nb=4 achieving 20% lower ADE and 28% lower FDE than the MDN baseline. The parameter overhead is negligible: going from nb=1 to nb=4 adds only 5k parameters ( ∼5% ). Second, the MDN-K2 baseline—which has the same number of mixture components as HProbZ with nb=1 —achieves worse ADE ( 0.604 vs. 0.549 ) despite having comparable parameters, suggesting that HProbZ’s structured decomposition provides an inductive bias that benefits even the simplest configuration. 31 D.9 nuScenes Constraint Refinement 
+
+We replicate the constrained sequential refinement experiment of §5.4 on nuScenes vehicle trajectories. A Constrained HProbZ with nb=1 , n d=1 and shared generators across T =12 future steps is trained alongside an MDN-K2 baseline on 163k training windows. To probe the predicted κ-dependence of the contraction rate (Theorem 7), we sweep the bounded-generator log-bias initialisation over 
+
+{0.7, 1.0, 1.3, 1.6}, which seeds κ=∥Gd∥/σ at approximately {1.5, 2.0, 2.8, 3.7}.Table 21: Constraint refinement on nuScenes (40k test windows) across four κ initialisations, mean ±std over 3 seeds. Both HProbZ FDE improvement and predictive-spread reduction grow monotonically with κ, exactly as Theorem 7 predicts ( O(1 /(κ2k)) rate). At the largest κ, the spread reduction ( 31 .5% ) exceeds the ETH/UCY headline ( 23 .6% ). The MDN row entries are identical across all κ rows because MDN has no κ parameter to sweep; we re-display the single MDN-K2 baseline ( +83 .4±58 .3% FDE drift, mean ± std over 3 MDN seeds) in each row purely for visual contrast against the κ-controlled HProbZ trajectory. Body §5.4 cites a 5-seed update (3 original + 2 added) with spread reductions 12 .3, 17 .7, 25 .8, 33 .2% ; full per-seed values in the supplementary archive.                              
+
+> init log Gdκ(target) HProbZ FDE ∆HProbZ spread ∆MDN FDE ∆
+> 0.7 ∼1.5−10 .6±2.5% −10 .3±3.1% +83 .4±58 .3%
+> 1.0 ∼2.0−12 .7±3.4% −14 .6±4.0% +83 .4±58 .3%
+> 1.3 ∼2.8−17 .4±1.9% −23 .1±2.2% +83 .4±58 .3%
+> 1.6 ∼3.7−23 .2±3.3%−31 .5±5.3%+83 .4±58 .3%
+
+The structural advantage observed on ETH/UCY pedestrian data is reproduced on nuScenes vehicle trajectories with κ-matched configuration. HProbZ’s predictive spread reduction grows monotonically with κ, from 10 .3% at κ=1 .5 to 31 .5% at κ=3 .7 (mean over 3 seeds)—a 3.1×
+
+amplification controlled by a single initialisation choice and tracking the 1/κ 2 rate of Theorem 7. The largest setting ( κ≈3.7) exceeds the ETH/UCY 23 .6% headline. The single shared MDN-K2 baseline (re-displayed in each κ row of Tab. 21) shows no improvement under refinement: its FDE worsens substantially ( +83% ), since revealing observations shifts the conditioning context but cannot reweight a mixture’s frozen component covariances. The structural distinction therefore reproduces on a vehicle-trajectory dataset under the same κ-controlled protocol, rather than being specific to pedestrian dynamics. 
+
+MDN refinement protocol. For the MDN-K2 row in Tab. 21, refinement is implemented by re-running the encoder with the k revealed positions appended to the past context (i.e., conditioning the mixing weights via a fresh forward pass), then re-evaluating FDE on the remaining unobserved horizon T −k. The MDN’s within-component covariances are deterministic outputs of the encoder and so cannot tighten under additional context; what does change is the mixing weight assignment, which can re-distribute mass toward components whose prior trajectories are inconsistent with the late-horizon ground truth, producing the +83% FDE drift. The 3 seeds give per-seed FDE drifts of +111 .4% , +136 .7% , and +2 .2% — a wide range reflecting that whether mixing-weight refinement helps or hurts is itself seed-dependent (one of the three seeds happens to land at a near-zero drift basin). HProbZ’s deterministic posterior solve does not exhibit this seed-level instability (per-seed contractions −30 .8% , −38 .3% , −25 .3% for κ=3 .7). This is precisely the mechanism flagged in Theorem 7(iii) and is consistent with the standard MDN trajectory-forecasting recipe; we are not claiming the MDN is broken, only that weight-only refinement is not a substitute for within-mode 32 contraction. The same encoder code path is used for HProbZ. 
+
+D.10 Structural Ablation: Which Generators Matter? 
+
+To isolate the contribution of each generator type to HProbZ’s sample efficiency advantage, we train ablated variants on nuScenes with matched parameter counts ( ∼295 k): “ − Gb” removes binary generators ( nb=0 , n d=1 , n q=2 ), “ − Gd” removes bounded generators ( nb=1 , n d=0 , n q=2 ), and “pure 
+
+Gs” removes both ( nb=0 , n d=0 , n q=2 ). All variants use the same encoder and are trained for 100 epochs with identical hyperparameters. Table 22: Structural ablation on nuScenes (minADE in meters, lower is better; all rows trained at d=256 , 200 epochs with symmetry-broken Gb init, seed=42). This table tests sample-efficiency at fixed K, not refinement-under-observation. Gb is the primary driver of sample efficiency at 
+
+K≥5: removing it degrades K≥5 performance by 20 −26% (K=5 : 20% , K=10 : 25% , K=20 : 26% ). Removing Gd has minimal sample-efficiency effect ( ≤ 1% ); Gd’s contribution is realised only when its shared-latent constraint is activated by observations — i.e., refinement and conformal sets (Tab. 6 and Tab. 21). Downstream pipelines that consume only single-shot best-of-K samples and never condition on partial observations therefore see no benefit from including Gd; we report it as a structural option, not a universal recommendation. At K=1 the −Gb variant beats the full model (1.80 vs. 2.11 ): without mode separation, the single sample collapses toward the conditional mean — see narrative below.                               
+
+> Configuration K=1 K=2 K=5 K=10 K=20
+> Full HProbZ 2.11 1.63 1.19 1.05 0.97
+> −Gb1.80 1.61 1.42 1.31 1.22
+> −Gd2.10 1.62 1.19 1.05 0.98
+> −Gb, G d(pure Gs)1.78 1.59 1.41 1.30 1.22
+
+The ablation reveals a clear division of labor. Gb drives sample efficiency : the full model achieves 0.97 m at K=20 vs. 1.22 m without Gb (21% degradation), while removing Gd causes less than 1% degradation ( 0.98 m). The mechanism is that Gb’s binary modes create well-separated trajectory clusters, so even K=2 samples cover both dominant modes. Without Gb, the model compensates with larger stochastic variance, producing diffuse samples that require many draws to cover the prediction space. Removing Gb helps at K=1 (1.80 vs. 2.11 ), because the single sample from a model without mode separation is closer to the conditional mean; this reverses for K≥2
+
+once mode coverage matters. Gd contributes to constraint refinement (§5.4), not to sample efficiency, consistent with its role as a bounded drift term that enables O(1 /k ) variance contraction per observation. 
+
+D.11 Controlled Diffusion Comparison 
+
+To directly compare HProbZ against diffusion-based trajectory prediction under controlled conditions, we train a DDPM model [13] sharing the same TrajEncoder as HProbZ and MDN. The denoiser is a temporal transformer with self-attention and cross-attention to encoder output, 4 blocks with adaptive LayerNorm (DiT-style), and sinusoidal timestep conditioning (1.44M parameters). We use a cosine noise schedule [25] with T =200 diffusion steps and DDIM [34] sampling with 50 steps and stochasticity η=0 .5.33 Hyperparameter details and a sampling-step sweep. We trained the DDPM with AdamW (lr 3×10 −4, weight decay 1×10 −4, batch 1024 ) for 200 epochs under cosine LR decay, matching the v3 controlled-comparison recipe; training ϵ-MSE decreased monotonically from 0.091 to 0.074 over the schedule. To verify that the published 50 -step DDIM number is not an artefact of an arbitrary sampling-step choice, we re-evaluated the same trained model at three step counts: Table 23: DDPM sampling-step sweep on nuScenes (single trained model, ϵ-prediction). mi-nADE/minFDE in meters. More sampling steps do not improve performance, so the published 50-step setting is a reasonable middle ground rather than a tuned best.             
+
+> DDIM steps minADE@5 minADE@10 minADE@20
+> 25 3.16 3.05 2.96
+> 50 (published) 3.20 3.08 2.99 100 3.31 3.17 3.07
+
+The three settings differ by less than 0.13 m at every K, with 25 -step marginally best; the chosen 50 -step configuration sits within 0.03 m of the optimum. We did not separately sweep the noise schedule, denoiser depth, prediction target, or classifier-free-guidance scale—additional tuning could narrow the gap to HProbZ, but the ∼ 1.6–2.4× minADE gap and 500 × inference-cost gap documented below are too large to be explained by hyperparameter sensitivity alone. Table 24: Controlled comparison on nuScenes (same encoder, same data). Bold marks the column winner. HProbZ achieves the best minADE at every K, with 5× fewer parameters and 500 ×
+
+faster inference than the lightly-tuned same-encoder Diffusion baseline; the diffusion noise schedule, denoiser depth, prediction target, and CFG are not separately swept (App. D.11). On FDE@20, MDN-K2 ( 1.15 ) wins the column; HProbZ ( 1.40 ) ties MDN-K4 ( 1.40 ). The diffusion FDE ( 6.40 )reflects its ϵ-MSE training objective rather than a metric-optimised baseline.                               
+
+> Model Params Speed ADE@5 ADE@10 ADE@20 FDE@20
+> HProbZ 294k 124k s/s 1.32 1.22 1.13 1.40 MDN-K2 281k 26.9k s/s 2.95 2.65 2.41 1.15
+> MDN-K4 296k 27.3k s/s 2.64 2.39 2.18 1.40 Diffusion 1,442k 246 s/s 3.20 3.08 2.99 6.40
+
+The diffusion model with temporal transformer denoising underperforms HProbZ on ADE by 
+
+2.6× at K=20 (2.99 vs. 1.13 m) at 4.9× more parameters. Even with architectural improvements over flat MLP denoisers, FDE remains poor ( 6.40 vs. HProbZ’s 1.40 ), which we attribute to the noise-prediction loss of DDPM not penalising endpoint precision specifically. The gap from K=1 
+
+to K=20 is only 0.88 m for Diffusion, whereas HProbZ converges by K=5 (0.18 m gap to K=20 ). HProbZ’s inference is 500 × faster (124k vs. 246 samples/s) due to single-pass generation; the temporal transformer denoiser’s explicit self-attention adds overhead relative to HProbZ’s feedforward per-timestep decomposition. Under this controlled comparison, the closed-form HProbZ head is more sample- and compute-efficient than iterative denoising on nuScenes; we make no fundamental claim about the relative expressiveness of the two paradigms in general. 
+
+D.12 ETH/UCY Vanilla Cross-Method Comparison 
+
+To validate the controlled comparison framework on pedestrian trajectory prediction, we train HProbZ ( d=128 , nb=2 , sym-broken init, 2-layer MLP head, 200 epochs), matched-encoder MDN 34 baselines, and a temporal-transformer DDPM (port of the nuScenes Diffusion model in Tab. 24, retrained on ETH/UCY) on 5-scene leave-one-out (8-frame past, 12-frame future). All rows are seed-42 with a fresh model trained per held-out scene; numbers are averaged across the 5 LOO splits. 
+
+Note on nb: this controlled-comparison HProbZ uses nb=2 (4 binary modes) to match the effective binary budget of the matched-parameter Diffusion denoiser; the body-text Social HProbZ (Tab. 2, Tab. 26) uses nb=3 (8 binary modes) with social-attention encoding, which is the configuration we report as our SOTA-chase number. To probe the speed/quality trade-off of iterative denoising, we report Diffusion at the standard 50 -step DDIM regime and at a matched single-pass inference budget (5-step DDIM). Table 25: Controlled cross-method comparison on vanilla ETH/UCY (no Social attention; mean across 5 leave-one-out scenes). HProbZ achieves the best FDE@20 and inference latency among the four same-encoder configurations tested. Diffusion’s lower ADE at 50 DDIM steps is bought at 
+
+∼ 530 × HProbZ’s inference cost; at matched single-pass inference budget ( 5 DDIM steps), Diffusion ADE rises by an order of magnitude. The diffusion baseline is not separately swept over noise schedule, denoiser depth, prediction target, or CFG (App. D.11).                                     
+
+> Model Params Speed ADE@5 ADE@10 ADE@20 FDE@20 HProbZ (ours) 298k 10k s/s 0.43 0.35 0.31 0.39
+> MDN-K2 108k 7.4k s/s 0.57 0.53 0.50 0.42 MDN-K4 116k 6.8k s/s 0.55 0.52 0.48 0.41 Diffusion (DDIM-50) 168k 18 s/s 0.38 0.31 0.26 0.43 Diffusion (DDIM-5, matched) 464k 196 s/s 3.17 2.82 2.52 2.24
+
+HProbZ wins on FDE@20 across the four same-encoder baselines tested ( 0.39 vs. MDN 0.41 –0.42 ,vs. Diffusion 0.43 ): the binary-mode head provides tighter endpoint predictions on this controlled comparison, which is the metric that matters for downstream collision avoidance and risk-aware planning (cf. §5.4). On ADE, Diffusion at 50 -step DDIM achieves a lower absolute number than HProbZ ( 0.26 vs. 0.31 ), but at ∼ 530 × slower inference ( 18 .9 vs. 10 .1k samples/s). When Diffusion is constrained to a matched single-pass inference budget ( 5-step DDIM), ADE rises to 2.52 m and FDE to 2.24 m—over 8× and 5× worse than HProbZ on this configuration. Among the methods tested, HProbZ is the one that delivers sub-meter ADE/FDE at sub-millisecond per-batch latency; we do not claim this is the only architecture able to do so, since neither the diffusion baseline nor potential goal-conditioned/equivariant alternatives have been swept here. The vanilla HProbZ here (no Social attention) is roughly 1.6× behind the Social variant in Table 26 (Avg. ADE 0.197 ); the Social variant’s lead reflects the message-passing bonus rather than a difference in the HProbZ head itself. Per-scene breakdown and matched checkpoints in the supplementary archive. 
+
+D.13 ETH/UCY Per-Scene Results 
+
+Per-scene breakdown of Table 2 (main body reports only the average across 5 leave-one-out scenes): 
+
+Reproducibility and seed coverage. The Base block ( d=64 ) is a fresh 3-seed reproduction (seeds ∈ { 42 , 123 , 456 }, batch =1024 , 600 epochs, AdamW lr 3×10 −4 with 10-epoch linear warmup and cosine decay). The Social HProbZ row uses 5 seeds ∈ { 42 , 123 , 456 , 789 , 2026 }, batch =2048 ,600 epochs, nb=3 , nd=1 , nq=1 , 8-neighbour attention. The Social MDN-K=8 row uses an identical encoder, optimiser, and schedule, only swapping the HProbZ head for a K=8 Gaussian-mixture head. Per-seed std is ≤ 0.009 on every (method, scene) cell, so the matched-encoder gap (HProbZ 35 Table 26: Per-scene minADE@20 / minFDE@20 on ETH/UCY, leave-one-out protocol. Base block (d=64 , 2-layer encoder, no social attention, AdamW lr= 3×10 −4 with 10-ep linear warmup + cosine decay, batch=1024, 600 epochs, mean ±std over 3 seeds ∈ { 42 , 123 , 456 }) is a small-encoder ablation. Social block ( d=128 , 3-layer encoder with 8-neighbour attention, AdamW lr= 3×10 −4, batch=2048, 600 epochs, 5 seeds ∈ { 42 , 123 , 456 , 789 , 2026 }) is the headline matched-encoder comparison: Social HProbZ vs same-encoder Social MDN-K=8. All numbers are reproducible from the per-seed results released in the supplementary archive.                                                                                     
+
+> Base ( d=64 , 3 seeds) Social ( d=128 , 5 seeds) Scene HProbZ MDN-K=8 CVAE HProbZ MDN-K=8
+> ETH 0.498 ±0.008 /0.800 ±0.035 0 .732 ±0.019 /0.824 ±0.039 0 .485 ±0.018 /0.763 ±0.032 0.364 ±0.008 /0.552 ±0.019 0.661 ±0.009 /0.832 ±0.028
+> HOTEL 0.209 ±0.009 /0.386 ±0.023 0 .264 ±0.004 /0.275 ±0.009 0 .156 ±0.003 /0.256 ±0.009 0.118 ±0.001 /0.188 ±0.004 0.186 ±0.003 /0.218 ±0.004
+> UNIV 0.227 ±0.001 /0.427 ±0.003 0 .337 ±0.001 /0.394 ±0.002 0 .207 ±0.002 /0.386 ±0.005 0.186 ±0.002 /0.343 ±0.003 0.289 ±0.001 /0.388 ±0.001
+> ZARA1 0.221 ±0.003 /0.411 ±0.007 0 .331 ±0.004 /0.361 ±0.005 0 .196 ±0.002 /0.362 ±0.002 0.178 ±0.004 /0.321 ±0.008 0.280 ±0.002 /0.368 ±0.005
+> ZARA2 0.172 ±0.003 /0.325 ±0.005 0 .235 ±0.003 /0.279 ±0.006 0 .158 ±0.001 /0.303 ±0.001 0.139 ±0.002 /0.255 ±0.004 0.206 ±0.002 /0.288 ±0.003
+> Avg. 0.265 ±0.003 /0.470 ±0.008 0 .380 ±0.003 /0.427 ±0.008 0 .240 ±0.003 /0.414 ±0.006 0.197 ±0.002 /0.332 ±0.006 0.324 ±0.001 /0.419 ±0.005
+
+39 .3% ADE / 20 .7% FDE below Social MDN-K=8) is well outside seed-level noise. All per-scene results and checkpoints are in the supplementary code archive. 
+
+D.14 Concept Illustration and Trajectory Visualizations −2 0 2−3 −2 −1 0123
+
+Point: single point   
+
+> −2 02−3 −2 −1 0123
+
+Zonotope ( Gd): convex set   
+
+> −2 02−3 −2 −1 0123
+
+Gaussian ( P): probabilistic   
+
+> −2 02−3 −2 −1 0123
+
+HProbZ: multi-modal 
+
+Figure 9: HProbZ unifies existing prediction set types as special cases of a single parameterization. 
+
+D.15 Per-Scene Generator Decomposition 
+
+ETH, a busy intersection, exhibits the largest generators across all three types; HOTEL, with well-defined entrance patterns, shows the lowest noise; and the open walkways (UNIV, ZARA) are dominated by stochastic perturbation with minimal bounded drift. 
+
+D.16 Comparison with Published ETH/UCY Methods 
+
+Goal-conditioned methods (Y-Net, LED) achieve sharper minFDE by conditioning on predicted endpoints but provide neither decomposition nor coverage guarantees; the (Gb, G d, G s) head is orthogonal to encoder architecture and can replace any encoder’s Gaussian-mixture output, including these architectures. 36 ETH HOTEL UNIV ZARA1 ZARA2 
+
+> Scene
+> 0.0 0.2 0.4 0.6
+> ADE (m)
+
+minADE@20     
+
+> HProbZ MDN CVAE
+> ETH HOTEL UNIV ZARA1 ZARA2
+> Scene
+> 0.0 0.2 0.4 0.6 0.8
+> FDE (m)
+
+minFDE@20 
+
+> HProbZ MDN CVAE
+
+Figure 10: ETH/UCY trajectory predictions with structurally interpretable binary-generator mode centers. Table 27: Per-scene learned decomposition of generator Frobenius norms on ETH/UCY (multi-seed mean over 5 seeds, large-batch protocol). Without any scene-level supervision, the decomposition aligns with qualitative scene characteristics.                   
+
+> Scene ∥Gb∥∥Gd∥∥Gs∥
+> ETH 18.4 0.8 6.9
+> HOTEL 7.1 0.2 2.4 UNIV 11.2 0.2 3.9 ZARA1 10.5 0.2 3.8 ZARA2 10.6 0.2 2.9
+
+D.17 nuScenes Speed-Regime Decomposition: Setup 
+
+The body figure (Fig. 3) summarises the result; this subsection records the protocol. We stratify the nuScenes test set by past-observed vehicle speed (finite differences over the past 1 s window) into four bins: stationary ( < 0.5 m/s), low ( 0.5–5 m/s), high ( 5–15 m/s), and very-high ( ≥ 15 m/s). For each bin we compute the Frobenius norms ∥Gb∥, ∥Gd∥, ∥Gs∥ averaged over the trained d=256 
+
+HProbZ model’s per-sample outputs, then plot on log scale. For high-speed vehicles, ∥Gb∥ increases by 370 × and ∥Gs∥ by 94 × relative to stationary agents, reflecting the greater modal ambiguity and stochastic noise inherent in fast-moving traffic. The bounded generator ∥Gd∥ shows a more moderate 5.4× increase, consistent with systematic drift being less speed-dependent. 
+
+D.18 Planning Separation Sweep D.19 Risk-Estimate Consistency: Full Sweep 
+
+The complete sweep over MDN sample budgets, extending the body’s risk consistency comparison (§5.4). HProbZ’s analytic computation produces deterministic risk estimates regardless of budget; MDN flip rates decrease monotonically with S but remain non-trivial ( 0.9% ) even at S=100 samples per evaluation. 
+
+D.20 Trajectory-Level Closed-Loop Collision Avoidance: Details 
+
+This appendix gives the full protocol behind Tab. 5 (body). 37 −5 0 5        
+
+> x (m)
+> −10 −5 05
+> y (m)
+> UNIV #9
+> −5 05
+> x (m)
+> −10 −5 05
+> UNIV #64
+> −5 05
+> x (m)
+> −10 −5 05
+> UNIV #116
+> HProbZ binary generators produce 8 structured mode trajectories (UNIV leave-one-out, nb= 3 )
+> Past Present Ground truth
+
+Figure 11: Qualitative visualization of HProbZ’s 2nb =8 binary-mode trajectories on three UNIV leave-one-out scenarios ( nb=3 , n d=1 , n q=1 ). Solid colored lines are mode centers; faint lines are per-mode samples revealing the stochastic envelope; black dashed is ground truth. The structured decomposition produces well-separated modal branches that a Gaussian-mixture baseline would have to cover with a single inflated covariance. 
+
+Protocol. We use the full nuScenes test split ( N =39 ,829 vehicle trajectories, T =12 steps at 
+
+2 Hz, 6 s horizon) in ego-centric coordinates. For each trajectory, a stationary obstacle is placed at obs = ¯ z + ξ, where ¯z is the mean of the ground-truth trajectory over the evaluation window 
+
+[tlo , t hi ] = [3 , 11] (i.e. 1.5–5.5 s ahead) and ξ ∼ N (0 , σ 2I2) with σ = 2 .5 m. A ground-truth collision is defined as min t∈[tlo ,t hi ] ∥zt − obs ∥ ≤ r with r = 2 m. The σ = 2 .5 m jitter produces a 33 .6% empirical positive rate with most samples genuinely borderline ( ∥ξ∥ ∈ [1 , 4] m), so classification is not trivial. A conservative planner brakes when the predictor’s estimated probability of a collision event exceeds threshold τ . Both methods estimate this probability by Monte-Carlo sampling ns = 500 
+
+full trajectories per test instance and computing the empirical rate at which a sample enters the collision radius at any step in the window: 
+
+ˆpcollide = 1
+
+nsnsX
+
+> k=1
+
+⊮
+
+
+
+min  
+
+> t∈[tlo ,t hi ]
+
+∥˜z(k) 
+
+> t
+
+− obs ∥ ≤ r
+
+
+
+. (8) HProbZ samples are drawn respecting the shared-latent structure: βk ∈ {− 1, +1 } and αk ∈ [−1, 1] nd
+
+are each sampled once per trajectory (shared across t), while ηk,t ∼ N (0 , I nq ) is independent per step. MDN samples draw a mixture component once per trajectory (shared across t by convention) and then add independent per-step Gaussian noise. The planner sweeps τ ∈ [0 .01 , 0.50] on a 20 -point grid; we report the operating point closest to 10% realized false-alarm rate. 
+
+Why HProbZ wins on trajectory-level but not pointwise. The quantity being estimated is P (∃t ∈ W : ∥zt − obs ∥ ≤ r) with |W | = 9 . For HProbZ, the nine events are strongly positively correlated through the shared (β, α ): once a trajectory enters the obstacle vicinity at one step it 38 −5 0 5        
+
+> x (m)
+> −10 −5 05
+> y (m)
+> HOTEL #493
+> −5 05
+> x (m)
+> −10 −5 05
+> HOTEL #144
+> −5 05
+> x (m)
+> −10 −5 05
+> HOTEL #145
+> HProbZ binary generators produce 8 structured mode trajectories (HOTEL leave-one-out, nb= 3 )
+> Past Present Ground truth
+
+Figure 12: HProbZ mode visualization on three HOTEL leave-one-out scenarios. The same binary generators produce qualitatively different mode branchings across scenes without supervision, demon-strating input-dependent structural discovery. is much more likely to be there at nearby steps, so the per-step probabilities cannot be multiplied as if independent. MDN’s per-step Gaussian noise is independent given the component choice, so joint tail events are underestimated through implicit independence (the component-sharing component provides only partial correlation through shared μt). For the single-step variant |W | = 1 ,no correlation applies and MDN’s greater per-step flexibility ( K=2 Gaussians with per-dimension variance) dominates. 
+
+Reproducibility. The experiment runs in under 10 s on a single consumer GPU for the full test set; the headline numbers are mean ±std over 3 seeds ( 42 , 123 , 456 ), with σAUC ≤ 0.001 on every metric—i.e. HProbZ’s 5.7 percentage-point AUC margin over MDN-K2 is roughly 50 × the seed-level standard deviation. Source code and per-seed outputs are provided in the supplementary code archive. 
+
+D.21 Refinement Runtime Analysis 
+
+Table 30 reports wall-clock times for forward inference and constraint propagation on an RTX 5090 GPU, mean over B ∈ { 1, 64 , 512 }. HProbZ’s algebraic constraint update (mode reweighting + precision accumulation per Theorem 7) runs in ∼0.51 ms per observation step, comparable to the full forward pass ( ∼0.59 ms). A complete 8-step refinement adds ∼4.1 ms total overhead—modest relative to a single forward pass. MDN’s Bayesian weight update is faster ( ∼0.15 ms) but provides only weight rebalancing without within-component covariance contraction (Theorem 7, part iii). 
+
+D.22 MDN Baseline Hyperparameter Sweep 
+
+To ensure fair comparison, we swept MDN hyperparameters on nuScenes: covariance type (diagonal vs. full Cholesky), learning rate ∈ { 10 −4, 3×10 −4, 10 −3}, components K ∈ { 2, 4, 8}, and weight decay 39 Table 28: ETH/UCY vs published methods (Avg minADE / minFDE @20, best-of-20, meters). Social HProbZ is competitive with recent SOTA on minADE; trails LED/Y-Net by ∼ 0.06 m on minFDE. Among the listed methods, only HProbZ provides structured decomposition, conformal coverage, and refinement (this is a property of the listed set, not a literature-wide claim).                                                        
+
+> Method Venue ADE / FDE Decomp. Conformal Refine.
+> Trajectron++ [27] ECCV’20 0.21 / 0.41 ×××AgentFormer [42] ICCV’21 0.23 / 0.39 ×××MemoNet [39] CVPR’22 0.21 / 0.40 ×××Y-Net [22] ICCV’21 0.18 / 0.27 ×××GroupNet [38] CVPR’22 0.19 / 0.30 ×××MID [11] CVPR’22 0.39 / 0.66 ×××LED [23] CVPR’23 0.18 / 0.27 ×××EqMotion [40] CVPR’23 0.19 / 0.29 ×××
+> Social HProbZ (ours) —0.197 / 0.332 ✓✓✓0246810
+
+Mode separation Δy
+
+> 0.0 0.5 1.0 1.5
+> Avg planning cost
+> Scalar MDN HProbZ (structured) Oracle
+
+Figure 13: Planning cost vs. mode separation ∆y. The structured HProbZ planner transitions sharply at ∆y ≈ 4 and matches the oracle for ∆y ≥ 5, while scalar and MDN planners remain at the conservative SWERVE cost across all separations. 
+
+∈ { 0, 10 −4, 10 −2}. Table 31 reports the best configuration per (K, cov ) combination. Two findings stand out: (i) the best MDN (diagonal, K=2 , ADE@5 =2.05) does not close the gap to HProbZ (ADE@5 =1.58), confirming that the advantage stems from the structured output parameterization rather than baseline under-tuning; (ii) full Cholesky covariance consistently degrades ADE relative to diagonal, indicating that naively adding cross-dimensional correlation parameters hurts optimization without improving mode quality—in contrast, HProbZ captures cross-dimensional structure implicitly through Gb without extra per-component parameters. 
+
+D.23 Pedestrian Crossing Planning Scenario: Details 
+
+Full costs by regime. The structured HProbZ planner recovers the oracle’s decision on Modal-Safe because it resolves two clearly separated safe modes that the Gaussian-collapsed planner cannot distinguish from lane-overlapping mass. 40 Table 29: Risk-estimate consistency on nuScenes (5,000 scenarios, 20 seeds). Full sample-budget sweep.                            
+
+> Method Risk Std ↓Flip Rate ↓Ambig. Flip ↓
+> HProbZ (analytic) 0.000 0.0% 0.0% MDN ( S=2 )0.141 33.0% 72.2% MDN ( S=5 )0.093 21.6% 65.2% MDN ( S=10 )0.067 13.9% 42.1% MDN ( S=20 )0.048 4.3% 13.0% MDN ( S=50 )0.030 2.0% 6.0% MDN ( S=100 )0.022 0.9% 2.7%
+
+Table 30: Inference runtime (ms per call, RTX 5090). Constraint propagation is in the same order as a forward pass, with 8 observations adding ∼4 ms total.                
+
+> Operation B=1 B=64 B=512
+> HProbZ forward pass 0.616 0.592 0.557 MDN forward pass 0.545 0.624 0.561 HProbZ constraint (per step) 0.529 0.470 0.525 MDN Bayesian update (per step) 0.165 0.137 0.150
+
+D.24 Scaled HProbZ with Symmetry-Broken Initialisation 
+
+The nb=1 HProbZ negative log-likelihood is invariant under the sign flip Gb 7 → − Gb (both produce the same two-mode mixture). Standard random initialisation therefore places the model in one of two equivalent basins at random; empirically we observe high seed variance in the resulting minADE—one seed in our initial 5-seed sweep landed in an exceptionally good basin ( 1.29 ) while four others clustered near 1.52 –1.56 (mean 1.48 ± 0.10 ). Because the symmetry is structural, scaling the encoder alone does not fix it. 
+
+Fix. We break the symmetry deterministically at initialisation by adding a positive bias b0 to the 
+
+Gb output channels of the prediction head: bias [t, d, chan (Gb)] += b0,
+
+which commits early forward passes to Gb > 0 before gradient descent sees the data. We sweep 
+
+b0 ∈ { 0.5, 1.0}; both work, with b0=1 .0 giving lower mean and tighter std (Table 33). Combined with a slower learning rate ( 2×10 −4 vs. 3×10 −4), longer warmup ( 10 epochs), and longer training (150 epochs), the 14-seed minADE@10 on the full nuScenes test set converges to 1.29 ± 0.07 at 
+
+b0=1 .0. Ablation: b0=2 .0 over-biases good seeds and is worse on average; we therefore report b0=1 .0
+
+in the body. 
+
+Per-seed breakdown ( b0=1 .0). Fourteen seeds give the per-seed minADE@10 values listed in Table 34; the body reports the corresponding 14 -seed mean ±std ( 1.29 ± 0.07 ) without exclusions. Multi-seed results are released alongside the code in the supplementary archive. 
+
+Why it works. The positive bias adds b0 · 1 to the Gb channels at init, so the pre-training forward pass produces Gb ≈ b01 > 0 regardless of encoder output; subsequent gradient updates move Gb
+
+41 Table 31: MDN hyperparameter sweep on nuScenes (best-seed-of-3 per config, minADE in meters). Even the best-tuned MDN with full covariance does not match HProbZ. ∗HProbZ uses a discrete-uniform-Gaussian convolution likelihood; its NLL is not on the same scale as the MDN mixture-density NLLs and is therefore omitted from this table (see Appendix C.6). †The K=8 entry shows the non-collapsed seed; under mode collapse the 3-seed mean is 3.134 ±0.225 ADE@10—see the dedicated K=8 sweep in Appendix D.27.                                                  
+
+> Config Cov KNLL ↓ADE@5 ADE@10 ADE@20
+> lr=3e-4, wd=0 diag 2−11.76 2.053 1.830 1.645 lr=3e-4, wd=1e-4 full 2−25.88 2.456 2.265 2.104 lr=3e-4, wd=1e-2 diag 4−15.63 2.381 2.192 2.042 lr=3e-4, wd=1e-2 full 4−30.62 3.656 3.480 3.325 lr=3e-4, wd=1e-2 diag 8−15.93 2.664 2.260 †1.901 lr=3e-4, wd=1e-2 full 8−32.64 3.814 3.687 3.580
+> HProbZ (ours) diag ——∗1.58 1.48 1.39
+
+Table 32: Average cost per episode on 2 000 scenarios (lower is better).             
+
+> Regime Scalar Structured (ours) Omniscient
+> Modal-Safe 1.500 0.000 0.000 Modal-Risky 1.500 1.500 0.743 Diffuse 1.500 1.500 1.104
+
+away but remain in the positive-Gb basin with high probability. This is a structural (not stochastic) symmetry break: no seed dependence in the direction chosen. The remaining seed-to-seed variance reflects ordinary optimisation noise within the fixed basin; the 14 -seed mean ±std ( 1.29 ± 0.07 ) we report includes all seeds. 
+
+D.25 Rolling Closed-Loop Collision Test on nuScenes 
+
+The single-shot test of §5.4 measures one brake/no-brake decision per scenario. A real planner makes this decision repeatedly as time advances. We extend the test to a rolling rollout: at each step 
+
+τ ∈ { 0, 1, 2, 3} the planner observes a sliding 5-step window [past[ τ : ] ∥ future[: τ ]] , runs the predictor on the rest of the future, computes the collision probability against the same fixed obstacle, and makes a brake/no-brake decision. We track two new metrics that the single-shot test cannot measure: (i) the number of brake/no-brake decision flips per scenario over the rollout, and (ii) the false-alarm rate at the chosen operating point. At a fixed brake threshold of 0.10 , HProbZ matches MDN-K2’s miss rate ( 32 .5% vs 33 .3% ) at half the false-alarm rate ( 6.5% vs 13 .0% ) and—most relevant for the rolling formulation—less than half the decision flips ( 0.20 vs 0.49 per scenario). The flip metric is what the single-shot test cannot capture: it reflects the temporal coherence of HProbZ’s predictions as the rollout window slides, which directly determines how often a real planner would oscillate between braking and proceeding. The matched-FAR comparison from the single-shot test (HProbZ 6.73% vs MDN 9.70% collisions at 10% FAR, §5.4) remains the headline; this rolling test adds the temporal-stability dimension. Per-scenario results archive provided in the supplementary code. 42 Table 33: Effect of sym-broken init strength on nuScenes minADE@10 ( d=256 , 4-layer encoder). Both sym-break sweeps use identical architecture and optimiser; only the Gb bias init differs. The 
+
+b0=1 .0 row is what the body reports.                                         
+
+> Configuration Seeds minADE@10 (mean ±std)
+> Baseline (random init, 100 ep, lr 3×10 −4, no b0)51.48 ±0.10
+> Sym-broken b0=0 .5(150 ep, lr 2×10 −4)81.32 ±0.08
+> Sym-broken b0=1 .0(150 ep, lr 2×10 −4)14 1.29 ±0.07
+> Sym-broken b0=2 .0(150 ep, lr 2×10 −4)3 (ablation) 1.39 ±0.03
+> MID [11] (map-aware SOTA) —1.44
+> MDN-K2 same encoder ( d=256 )12.41
+
+Table 34: Per-seed minADE@10 on nuScenes, b0=1 .0 symmetry-broken initialisation, 14 seeds.                                              
+
+> seed ADE@10 seed ADE@10 seed ADE@10 seed ADE@10 seed ADE@10 42 1.277 1000 1.343 3000 1.279 6666 1.231 9999 1.249 123 1.232 1234 1.263 5000 1.463 7777 1.240 ——456 1.374 2025 1.346 5555 1.267 8888 1.262 ——789 1.235 ————————
+
+D.26 nuPlan Zero-Shot Cross-Dataset Probe (Safety-Critical Subset) 
+
+Scope statement. This appendix tests zero-shot transfer of nuScenes-trained predictors to nuPlan logs, restricted to safety-critical close-proximity scenarios where the structural near-field claim is operationally relevant. We do not claim general cross-dataset performance: full-mix AUC sits near chance ( 0.519 , see below), and the structural advantage emerges only on the safety-critical subset. We tested the nuScenes-trained predictors on 500 scenarios from the nuPlan mini split [7]: real logs from Boston, Pittsburgh, Singapore, and Las Vegas. At every 1 s decision step we extract each vehicle’s 2 s past in its own agent frame, run the predictor, and aggregate into a per-step collision probability against a straight-line ego reference ( 6 s horizon, 2.5 m buffer). The ground-truth label is whether any agent’s logged trajectory enters the buffer in the same window. After filtering to agents within 6 m of the ego reference, we collect 14 ,653 decision-agent pairs ( 3,401 positives). 
+
+Interpretation. On the full mix of nuPlan driving both predictors are essentially uninformative :HProbZ AUC 0.519 is within 2 pp of chance, MDN-K2 AUC 0.492 is below chance. The +0 .027 
+
+AUC gap on 14 ,653 pairs is small and not, on its own, evidence that HProbZ generalises cross-dataset. Restricting to the safety-critical subset where another vehicle is physically close to the ego, HProbZ’s AUC reaches 0.547 (just above chance) and the gap grows to +0.159 . The pattern is consistent with the paper’s structural-decomposition thesis—the bounded generator produces its sharpest distributions on near-field interactions where a safety planner needs tight calibration—but the absolute AUC of 0.547 is modest and the subset is post-hoc, so we read this as suggestive evidence that the structural advantage survives on the slice where it should, not as a cross-dataset generalisation result. Per-step results archive provided in the supplementary code; a larger 2,000 -scene replication reproduces the same pattern (all-scenes gap +0 .054 , safety-critical gap +0 .123 ). Scope caveat: we use nuPlan as the scene source only; our kinematic ego model does not include reactive steering or lane-change controllers, so we do not report end-to-end closed-loop collision rates. Full integration with nuPlan’s reactive-agents simulator is left to future work. 43 Table 35: Rolling closed-loop collision test on 5,000 nuScenes scenarios over 3 seeds, brake threshold 
+
+τ =0 .10 . Decision flips are the unique contribution of the rolling formulation; HProbZ flips less than half as often as MDN-K2, consistent with its shared (β, α ) inducing temporally coherent predictions.                          
+
+> Model (d=128 )Decision flips/scene Final FAR Final miss rate
+> HProbZ ( nb=1 , ours) 0.20 ±0.01 6.5±0.3%32 .5±1.3%
+> MDN-K2 0.49 ±0.00 13 .0±0.7% 33 .3±1.0%
+> Ratio (MDN / HProbZ) 2.4×2.0×1.02 ×
+
+Table 36: nuPlan zero-shot collision-warning AUC over 500 scenarios. Full-mix transfer is essentially negative : HProbZ AUC 0.519 is within 2 pp of chance, MDN-K2 0.492 is below chance. The +0 .159 
+
+gap is recovered only on the safety-critical subset (1,967 / 14,653 pairs, 13 .4% ) whose nuPlan scenario tag indicates close-proximity vehicle interaction ( stationary_in_traffic , near_long_vehicle ,
+
+near_high_speed_vehicle ). The pattern is consistent with a structural near-field claim, but readers should not interpret these numbers as evidence of general cross-dataset generalisation. AUCs are trapezoidal-integrated ROC over the per-decision predicted collision probabilities.              
+
+> Subset npairs HProbZ AUC MDN-K2 AUC ∆AUC
+> All scenes 14 ,653 0.519 0.492 +0 .027
+> Safety-critical 1,967 0.547 0.388 +0.159
+
+D.27 MDN-K=8 Baseline: Mode-Collapse Regression 
+
+To assess whether scaling MDN to a larger K might close the gap to HProbZ, we trained a flat MDN with K=8 Gaussian components on nuScenes using the same encoder, optimiser, and schedule as the MDN-K2/K4 entries in Table 3 ( d=128 , 100 epochs, AdamW, batch 1024 ). To guard against under-tuning, we additionally swept three learning rates ( 1×10 −4, 3×10 −4, 1×10 −3) with three seeds each, 9 runs total: Table 37: MDN-K=8 on nuScenes across three learning rates (3 seeds each), versus the existing MDN-K2 and HProbZ entries from Table 3. Even the best-tuned LR regresses by ∼ 1 m below MDN-K2, consistent with classical mode-collapse: more components compete for limited data and produce dead modes.                 
+
+> Model ( d=128 )minADE@10
+> MDN-K2 (paper) 1.83 MDN-K8 lr = 10 −4(3 seeds) 3.418 ±0.132
+> MDN-K8 lr = 3 ×10 −4(3 seeds) 3.134 ±0.225
+> MDN-K8 lr = 10 −3(3 seeds, best) 3.045 ±0.232
+> HProbZ (paper, d=128 )1.48
+
+The best-tuned MDN-K8 run (lr = 10 −3) reaches 3.045 ± 0.232 minADE@10—a 0.05 m improve-ment over the LR = 3 ×10 −4 entry but still 1.21 m worse than the matched-encoder MDN-K2 baseline (1.83 ). The 46% regression vs. K=2 is robust across the LR sweep, ruling out under-tuning as an explanation. Inspecting the trained mixture weights confirms the diagnosis: in 9–11 of the 
+
+12 future timesteps, more than half of the 8 component weights collapse to < 10 −3, leaving 2–4
+
+effective components. This is the classical MDN pathology under limited data and a shared encoder. 44 By contrast, HProbZ’s 2nb binary modes share generators by construction and cannot collapse in this way: the binary head’s positive-bias initialisation (Appendix D.24) keeps every mode active throughout training. Per-seed results across all three learning rates are provided in the supplementary code. 
+
+Scope caveat. We do not deploy known mode-collapse mitigations (e.g., mode dropout, entropy regularisers, annealed mixing) in this K=8 sweep. Whether such mitigations would close the gap is an open empirical question; the structural distinction we focus on is that HProbZ’s 2nb binary modes share generators by construction and cannot collapse irrespective of mitigation. The K=2 entries elsewhere in the paper use the same MDN configuration without any mode-collapse mitigation, so the within-paper comparison is consistent. 
+
+D.28 Learnable Mode Prior Ablation 
+
+The main paper uses a uniform mixture prior πk = 2 −nb over the 2nb binary configurations of β.To check that this design choice does not silently leave headline accuracy on the table, we add a per-sample logistic gating head, πk(x) = softmax( Wπh)k, on top of the same encoder, train under the same recipe, and re-run the 14-seed nuScenes sweep. Identifiability and contraction (Theorems 3 and 7) carry over verbatim as long as πk(x) > 0, which softmax guarantees. Table 38: 14-seed nuScenes minADE@10 with learnable input-dependent mixture prior πk(x) versus the uniform πk = 2 −nb used in the main paper. Same encoder ( d=256 , 4 layers, 2.13 M parameters), same training recipe ( 150 epochs, lr 2×10 −4, b0=1 .0 symmetry break). Both still beat the map-aware diffusion baseline MID at 1.44 .                       
+
+> Mixture prior Seeds minADE@10 (mean ±std) vs MID 1.44
+> Uniform 2−nb(main paper) 14 1.29 ±0.07 −10 .4%
+> Learnable πk(x)14 1.32 ±0.04 −8.7% ∆(learn −uniform) —+0 .03 (+1 .9% )—
+
+The learnable prior shifts mean minADE by +0 .025 m, well within one standard deviation of the uniform-prior baseline, and all 14 seeds still beat MID. Two findings stand out. First, the design choice is empirically validated: the uniform prior is not leaving accuracy on the table. Second, the per-seed standard deviation halves ( 0.068 → 0.038 ), suggesting that learnable gating absorbs some of the basin-selection variance otherwise handled by the symmetry-breaking initialisation. Per-seed results are released in the supplementary code. 
+
+# E Broader Impact and Ethical Considerations 
+
+Predictive distributions over agent trajectories are used by downstream planners that take real-world actions, making the calibration and structure of those distributions safety-relevant. We discuss the intended benefits, the downstream risks of deployment, and dataset-level caveats that a practitioner should weigh before using HProbZ in a real system. 
+
+Detailed limitations (extending body §7). (a) Mode prior and generator parameterisation: the main paper uses a uniform mode prior πk=2 −nb and diagonal Gd, G s matrices. Replacing 
+
+πk with a learnable input-dependent gate πk(x)>0 preserves identifiability and contraction, with 45 statistically tied accuracy on a 14-seed nuScenes sweep (App. D.28); non-diagonal Gd, G s are left to future work. (b) Theorem 7 relaxation: the proof uses a Gaussian relaxation α ∼ N (0 , 13 I)
+
+variance-matched to the trained Uniform([ −1, 1]) prior; a 1-D numerical check (Fig. 4) bounds the relative gap between relaxed and true uniform-prior posterior variances by ≤ 9.03% on the (κ, k ) grid we test, but a closed-form bound is open. (c) Raw NLL: HProbZ’s per-axis compact-support density incurs a misspecification penalty on data with unbounded tails, separate from the entropy-bound of Prop. 5 (App. C.6); we therefore lead with ADE/FDE and downstream metrics. (d) Closed-loop scope: trajectory-level 30% collision reduction is on a static-obstacle, non-reactive-ego stress test (N =39 ,829 ), and reverses on the per-step variant since MDN’s per-step independent Gaussian wins single-step events while HProbZ’s shared (β, α ) wins joint-event tail coverage. (e) Cross-dataset transfer: scope is by design (close-proximity safety-critical prediction); on nuPlan’s full agent mix that includes static, parked, and far-field agents whose behaviour is not bounded-drift, zero-shot AUC settles near chance, while the close-proximity safety-critical subset preserves the structural advantage (App. D.26). (f) Encoder coupling: at d=64 single-agent the bare HProbZ head trails CVAE on ADE; the advantage emerges with the social-attention encoder used by recent SOTA, leaving head–encoder interaction open (App. D.12). 
+
+Intended benefits. Any planner that conditions on a learned predictive distribution must reason about where other agents are likely to be, and under what uncertainty. The current standard output—a Gaussian mixture—entangles modal ambiguity, bounded drift, and stochastic noise, which complicates both risk computation and constraint satisfaction in downstream planners. HProbZ separates these three sources in a single forward pass, makes analytic per-mode collision probability available for free, and provides distribution-free multi-modal conformal sets that remain valid under the cross-scene distribution shifts tested in Appendix D.5. In the closed-loop evaluation of §5.4, this translated into a 30% reduction in realised collisions at matched false-alarm rate against an MDN baseline. We do not claim that this number transfers to deployed risk in production safety-critical stacks: the test uses a synthetic obstacle configuration rather than a reactive multi-agent simulator, and is a necessary but not sufficient condition for safer downstream behaviour. Integration with reactive simulators and full verification & validation pipelines remains future work. 
+
+Deployment risks and required safeguards. None of our results should be taken as a certificate of safety in a real system. Three caveats apply. (i) Evaluation gap. Our closed-loop test uses a synthetic obstacle placed from ground-truth trajectories, not a reactive multi-agent simulator such as nuPlan or CARLA. The qualitative structural win—joint tail coverage via shared latents—is likely to transfer; the specific 30% number is not a guarantee. (ii) OOD behaviour. Conformal coverage degrades gracefully under the distribution shifts we tested, namely ETH/UCY leave-one-out and nuScenes speed strata, but coverage is not guaranteed under adversarial or out-of-support inputs such as construction zones, unusual road geometry, or rare agent classes. HProbZ is not a substitute for validated OOD detection. (iii) Calibration drift. The sym-broken initialisation we recommend in Appendix D.24 improves seed-level stability; it does not address sensor drift or calibration changes between training and deployment. We recommend conformal recalibration on a rolling held-out window when deployed. 
+
+Dataset composition and demographic caveats. Both ETH/UCY and nuScenes are urban, Western, daylight-biased. ETH/UCY over-represents university campus pedestrian behaviour; nuScenes captures Boston and Singapore mostly under dry, daytime conditions. Argoverse 2 is more geographically diverse but still U.S.-centric. A model trained on any of these risks under-performing 46 on pedestrian or vehicle behaviour patterns under-represented in training (e.g., pedestrians using mobility aids, vehicle types common in other regions, inclement weather). Before deploying HProbZ in a new region, we recommend re-training or at minimum re-calibrating the conformal threshold on a representative sample of that region’s trajectories. 
+
+Dual-use and surveillance. Trajectory prediction models can also be used to track and anticipate individuals’ movements, and stronger predictors enable stronger surveillance. HProbZ’s core technical contributions—structured uncertainty decomposition, analytic per-mode risk, and observation-driven contraction—do not specifically strengthen surveillance capabilities beyond what a well-tuned MDN already provides. We encourage practitioners and platform operators to treat trajectory forecasting systems as personal data processing and to scope data retention, access control, and purpose-limitation accordingly. 
+
+Environmental cost. See Appendix A.5 for compute disclosure ( ∼ 4.2 GPU-hours for the 14-seed nuScenes sweep on one H200; smaller for Argoverse 2 and ETH/UCY). We consider this a negligible fraction of typical large-model training budgets; code and checkpoints are released to avoid repeated retraining. 
+
+Human subjects and consent. We use pre-existing public benchmarks—nuScenes, Argoverse 2, and ETH/UCY—under their respective research licences. No additional human data were collected for this work. The ETH/UCY pedestrian recordings pre-date contemporary consent norms; we follow the research community’s standard practice of aggregate evaluation only and publish no individual trajectories. 47

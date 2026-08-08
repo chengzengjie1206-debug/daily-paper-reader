@@ -6,71 +6,57 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-07
-- 运行时间：2026-08-07 21:13:44 UTC
+- 最新运行日期：2026-08-08
+- 运行时间：2026-08-08 20:42:59 UTC
 - 运行状态：成功
-- 本次总论文数：17
-- 精读区：6
-- 速读区：11
+- 本次总论文数：11
+- 精读区：5
+- 速读区：6
 
 ### 今日简报（AI）
-今日共处理17篇论文，精读6篇、速读11篇，核心聚焦时间序列预测领域。最值得关注的是两篇9分精读：周期漂移下的SO(2)特征旋转方法，以及神经双线性动态模型。下一步可优先浏览周期感知多尺度补丁混合器与跨变量损失的研究。
-- 详情：[/202608/07/README](/202608/07/README)
+今日完成11篇论文筛选，精读5篇、速读6篇，重点聚焦干旱概率预测与回声状态网络优化。
+
+最值得关注的两篇8分精读：一篇揭示内部气候变率对干旱预报的关键影响，另一篇从动力学视角重构水库剪枝策略。
+
+建议普通读者优先了解概率深度学习如何量化干旱预测的不确定性，或关注Echo State Networks的轻量化剪枝方法。
+- 详情：[/202608/08/README](/202608/08/README)
 
 ### 精读区论文标签
-1. [POEM: Phase-Aware $\mathrm{SO}(2)$ Feature Rotation for Time Series Forecasting Under Periodicity Drift](/202608/07/2608.03630v1-poem-phase-aware-mathrmso2-feature-rotation-for-time-series-forecasting-under-periodicity-drift)  
-   标签：评分：9.0/10、query:aq-forecast
-   evidence：直接针对时间序列预测，提出相位感知SO(2)特征旋转处理周期性漂移
-2. [Beyond Linear Dynamics: Neural Bilinear Dynamical Models for Time Series Forecasting](/202608/07/2608.04471v1-beyond-linear-dynamics-neural-bilinear-dynamical-models-for-time-series-forecasting)  
-   标签：评分：9.0/10、query:aq-forecast
-   evidence：面向通用时间序列预测的神经双线性动态模型
-3. [Align-RAG: Alignment Is All You Need for TSFM In-Context Learning](/202608/07/2608.05571v1-align-rag-alignment-is-all-you-need-for-tsfm-in-context-learning)  
-   标签：评分：9.0/10、query:aq-forecast
-   evidence：针对冻结时序基础模型的检索增强预测方法
-4. [Schedule-Informed Temporal Fusion Forecasting of Hourly Airport Security-Checkpoint Throughput](/202608/07/2608.02950v1-schedule-informed-temporal-fusion-forecasting-of-hourly-airport-security-checkpoint-throughput)  
+1. [Probabilistic Deep Learning for Drought Forecasting: Role of Internal Climate Variability](/202608/08/2608.01864v1-probabilistic-deep-learning-for-drought-forecasting-role-of-internal-climate-variability)  
    标签：评分：8.0/10、query:aq-forecast
-   evidence：基于时序融合变换器的小时吞吐量预测
-5. [CastFSR: A Fast--Slow--Reflect Agentic Reasoning Framework for Context-Aware Time Series Forecasting](/202608/07/2608.03031v1-castfsr-a-fast--slow--reflect-agentic-reasoning-framework-for-context-aware-time-series-forecasting)  
+   evidence：基于概率深度学习的干旱时序预测
+2. [Rethinking Reservoir Pruning: A Dynamical Perspective for Echo State Networks](/202608/08/2608.04593v1-rethinking-reservoir-pruning-a-dynamical-perspective-for-echo-state-networks)  
    标签：评分：8.0/10、query:aq-forecast
-   evidence：基于大语言模型智能体的上下文感知时间序列预测
-6. [Prithvi-Precip: Integrating Satellite Observations into an Atmospheric AI Foundation Model for Precipitation Forecasting](/202608/07/2608.03959v1-prithvi-precip-integrating-satellite-observations-into-an-atmospheric-ai-foundation-model-for-precipitation-forecasting)  
+   evidence：面向回声状态网络时间序列预测的储层剪枝方法
+3. [Personalized Federated Sparse Adaptation of Time-Series Foundation Models](/202608/08/2608.04695v1-personalized-federated-sparse-adaptation-of-time-series-foundation-models)  
    标签：评分：8.0/10、query:aq-forecast
-   evidence：用于降水预报的大气AI基础模型，与空气污染预报方法直接相关
+   evidence：时间序列基础模型的联邦适配用于能源预测
+4. [Timestep-Conditioned Transformers for Global Weather Forecasting](/202608/08/2608.06241v1-timestep-conditioned-transformers-for-global-weather-forecasting)  
+   标签：评分：8.0/10、query:aq-forecast
+   evidence：多时间步推理用于天气预报，可迁移到空气污染多步预测
+5. [Scalable estimation of VARMA models](/202608/08/2608.06340v1-scalable-estimation-of-varma-models)  
+   标签：评分：8.0/10、query:aq-forecast
+   evidence：VARMA时间序列模型的可扩展估计方法
 
 ### 速读区论文标签
-1. [CAMP: A Cycle-Aware Multi-Scale Patch Mixer for Time Series Forecasting](/202608/07/2608.04051v1-camp-a-cycle-aware-multi-scale-patch-mixer-for-time-series-forecasting)  
-   标签：评分：8.0/10、query:aq-forecast
-   evidence：面向时间序列预测的周期感知多尺度分块混合器
-2. [Spatiotemporal Graph Transformer for Traffic Intelligence in Edge Computing](/202608/07/2608.04075v1-spatiotemporal-graph-transformer-for-traffic-intelligence-in-edge-computing)  
-   标签：评分：8.0/10、query:aq-forecast
-   evidence：用于交通预测的时空图Transformer，其方法可迁移到空气污染预测
-3. [Multivariate Time Series Forecasting needs Cross Variable Loss](/202608/07/2608.05742v1-multivariate-time-series-forecasting-needs-cross-variable-loss)  
-   标签：评分：8.0/10、query:aq-forecast
-   evidence：提出CvLoss插件式结构正则化器，改善多变量多步预测，可应用于空气质量多步预测
-4. [TS-RAG: Retrieval Augmented Generation for Time Series Forecasting](/202608/07/2608.06223v1-ts-rag-retrieval-augmented-generation-for-time-series-forecasting)  
-   标签：评分：8.0/10、query:aq-forecast
-   evidence：面向时间序列预测的检索增强生成
-5. [A Machine-Learning-Based Global Thermospheric Density Forecasting Model](/202608/07/2608.00352v1-a-machine-learning-based-global-thermospheric-density-forecasting-model)  
+1. [Signed Matrix Thinning and Projection Estimation for Integer-Valued Autoregressive Models](/202608/08/2608.00609v1-signed-matrix-thinning-and-projection-estimation-for-integer-valued-autoregressive-models)  
    标签：评分：7.0/10、query:aq-forecast
-   evidence：面向热层密度的多步序列到序列预报模型，与多步空气污染预报类似
-6. [A Sequence-to-Sequence ConvLSTM Approach for Leaf Area Index Forecasting over the South-Central United States](/202608/07/2608.00879v1-a-sequence-to-sequence-convlstm-approach-for-leaf-area-index-forecasting-over-the-south-central-united-states)  
+   evidence：提出面向整数时间序列的矩阵自回归模型，扩展了时序建模与预测的方法库
+2. [Fast covariance-free spatiotemporal modeling via coarse-to-fine learning](/202608/08/2608.03449v1-fast-covariance-free-spatiotemporal-modeling-via-coarse-to-fine-learning)  
    标签：评分：7.0/10、query:aq-forecast
-   evidence：用于叶面积指数多步时间序列预测的序列到序列卷积LSTM
-7. [Interpretable Machine Learning for Traffic Congestion Prediction: Unveiling the Impact of Different COVID-19 Periods](/202608/07/2608.01180v1-interpretable-machine-learning-for-traffic-congestion-prediction-unveiling-the-impact-of-different-covid-19-periods)  
+   evidence：时空建模与时间状态空间模型直接适用于时序预测
+3. [Structured Differentiable Optimization for Efficient Decision-focused Learning in Power Systems](/202608/08/2608.04189v1-structured-differentiable-optimization-for-efficient-decision-focused-learning-in-power-systems)  
    标签：评分：7.0/10、query:aq-forecast
-   evidence：使用SVR和LSTM进行交通拥堵的时间序列预测
-8. [QWRF-Net: A Quantum-Wavelet Framework with Rectified Flow for Short-Term Precipitation Nowcasting](/202608/07/2608.01626v1-qwrf-net-a-quantum-wavelet-framework-with-rectified-flow-for-short-term-precipitation-nowcasting)  
+   evidence：面向高效预测模型训练的决策聚焦学习
+4. [Hybrid Probabilistic Zonotopes for Identifiable and Refinable Predictive Uncertainty](/202608/08/2608.05454v1-hybrid-probabilistic-zonotopes-for-identifiable-and-refinable-predictive-uncertainty)  
    标签：评分：7.0/10、query:aq-forecast
-   evidence：面向短临预报的深度学习方法，处理多尺度结构与后期时效退化，适用于短期空气污染预报
-9. [Short-term load forecasting under EU-AI Act Requirements in Safety-Critical Environments: Results from a 41-day live challenge on the aggregated German transmission-grid load](/202608/07/2608.05018v1-short-term-load-forecasting-under-eu-ai-act-requirements-in-safety-critical-environments-results-from-a-41-day-live-challenge-on-the-aggregated-german-transmission-grid-load)  
+   evidence：面向多步时序预测的联合不确定性输出头
+5. [A Regression-Based Framework for the ACF, PACF, Durbin-Levinson Recursion, and One-Step-Ahead Prediction](/202608/08/2608.06334v1-a-regression-based-framework-for-the-acf-pacf-durbin-levinson-recursion-and-one-step-ahead-prediction)  
+   标签：评分：7.0/10、query:aq-forecast
+   evidence：基于回归的统一框架解释ACF、PACF与单步预测
+6. [Dense-Cast: A lightweight ensemble of deep learning architectures for precipitation nowcasting](/202608/08/2608.06082v1-dense-cast-a-lightweight-ensemble-of-deep-learning-architectures-for-precipitation-nowcasting)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：面向安全关键环境的短期负荷预测流水线，可复现的时序预测
-10. [MarsCast: Transfer Learning of AI Weather Foundation Models to Planetary Atmospheres](/202608/07/2608.05054v1-marscast-transfer-learning-of-ai-weather-foundation-models-to-planetary-atmospheres)  
-   标签：评分：6.0/10、query:aq-forecast
-   evidence：将图神经网络气象预测模型迁移到火星，展示跨大气领域的时间序列预测迁移能力。
-11. [Multimodal Spatiotemporal Atmospheric Data Assimilation with Latent Flow-matching](/202608/07/2608.05103v1-multimodal-spatiotemporal-atmospheric-data-assimilation-with-latent-flow-matching)  
-   标签：评分：6.0/10、query:aq-forecast
-   evidence：基于潜在流匹配的大气数据同化，与空气质量数据相关
+   evidence：用于短期降水临近预报的深度学习集成方法
 
 
 <div class="dpr-home-promo-card">

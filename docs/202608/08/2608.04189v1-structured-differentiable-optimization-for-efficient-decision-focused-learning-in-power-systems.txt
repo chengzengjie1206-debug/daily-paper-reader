@@ -1,0 +1,2127 @@
+Title: Structured Differentiable Optimization for Efficient Decision-focused Learning in Power Systems
+
+URL Source: https://arxiv.org/pdf/2608.04189v1
+
+Published Time: Thu, 06 Aug 2026 00:08:56 GMT
+
+Number of Pages: 28
+
+Markdown Content:
+> SUBMITTED TO IEEE 1
+
+# Structured Differentiable Optimization for Efficient Decision-focused Learning in Power Systems 
+
+Wangkun Xu, Member, IEEE , and Fei Teng, Senior Member, IEEE 
+
+Abstract —Decision-focused learning (DfL) trains forecasting models to align downstream decision consequences, such as power-system operating costs. However, its application to realistic power networks is limited by the need to repeatedly solve and differentiate large optimization problems during training. This paper presents DiffAPQP, a solver-flexible framework and open-source Python package for scalable DfL with affine-parametric quadratic programs. To accelerate the forward pass, DiffAPQP automatically canonicalizes quadratic power-system models writ-ten in CVXPY into a differentiation-ready representation and takes advantage of the repetitive solving structure through solver warm-start and solver-data update during training. For the backward pass acceleration, we establish the equivalence between differentiation through the full KKT system and a reduced system obtained by eliminating inactive inequality constraints. For training losses depending solely on the optimal value, we further derive an envelope-theorem-based gradient that avoids solving an adjoint KKT system, resulting in eligible backward time. To our knowledge, this work presents the first solver-based end-to-end DfL demonstration on the IEEE 118-bus system with a 24-hour coupled economic-dispatch and redispatch horizon. Under matched SCS and Clarabel backends on a Linux machine, DiffAPQP achieves 2.27 ×–3.58 × closed-loop and 3.62 ×–4.38 ×
+
+counterfactual end-to-end DfL training speedups over Cvxpy-Layers. The best solver configurations increase these speedups to 3.91 × (from 38.65 to 9.55 min/epoch) and 6.39 × (from 10.73 to 1.68 min/epoch), respectively. Additionally, DiffAPQP reduces peak memory usage by approximately 50% , while keeping similar operating costs as CvxpyLayers 1.
+
+Index Terms —Power system operation, decision-focused learn-ing, differentiable optimization, end-to-end learning. 
+
+I. I NTRODUCTION 
+
+A. Background 
+
+Forecasts of renewable generation, load demand, and elec-tricity prices are fundamental inputs to power system opera-tional decision making. However, recent studies have shown that higher statistical forecasting accuracy does not necessarily translate into better operational decisions. For instance, in re-newable generation forecasting, models trained using standard statistical metrics such as mean squared error (MSE) may fail to capture the asymmetric operational consequences of over- and under-forecasting. Moreover, due to the presence of physical and operational constraints in power system op-timization, the relationship between forecast errors and oper-ating costs is typically nonlinear and context-dependent, and 
+
+> 1
+
+DiffAPQP is available at https://github.com/xuwkk/diffapqp and can be installed by pip install diffapqp . The paper has an online companion with theoretical proofs, package design&usage, and extra results at ; all experiments of this paper can be found at https://github.com/xuwkk/diffapqp_ power_systems. 
+
+Table I: Review on DfL learning in power systems with neural forecaster + optimization(s) structures. 
+
+Ref. Test system Forecast Operation (optimization class) [7] Grid aggregator (No network) Load Redispatch (Stochastic LP) [8] IEEE 14-Bus Load Redispatch (Stochastic LP) [9] IEEE 6-Bus Wind & Solar Dispatch / Redispatch (LPs) [10] VPP (No net-work) Wind Dispatch / Redispatch (LPs) [11] IEEE 6-Bus Wind Dispatch (LP) [12] IEEE 14-Bus Load Dispatch / redispatch (LP) [13] IEEE 14-Bus Load Dispatch / redispatch (QP) [14] Grid aggregator (No network) Wind Redispatch (Stochastic LP) [15] BESS (no net-work) Price, etc Reserve market clearing / real-time correction (LPs) 
+
+therefore cannot be adequately represented by simple error-to-cost mapping [1]. Similar observations have also emerged in practice. In the California ISO system, system operators may deliberately adjust load forecasts to improve downstream operational feasibility, such as increasing available ramping capacity [2]. 
+
+B. Decision-focused Learning in Power Systems 
+
+To better align forecasting with downstream operational outcomes, decision-focused learning (DfL) has recently been introduced into power system applications. In DfL, the down-stream optimization problem is explicitly incorporated into the training process of the forecaster [3]. Depending on the structure of the forecaster and the downstream optimization problem, DfL can be implemented through mathematical-programming-based or gradient-based approaches [4]. The former typically casts DfL as a bilevel optimization problem, whose exact solution often requires restrictive assumptions, such as convex operational optimization and simple forecast-ing models, leading to computationally demanding mixed-integer reformulations [5], [6]. This paper instead considers neural network (NN)-based forecasters trained on large-scale datasets using stochastic gradient descent (SGD), for which scalable gradient-based DfL training algorithms are needed. As summarized in Table I, a standard DfL pipeline in power systems consists of three key components: a neural forecaster for renewable generation, load, and/or market price prediction; one or more optimization problems representing operational decision-making tasks, such as dispatch and re-dispatch; and a task-oriented loss function that evaluates the quality of the resulting decisions. Compared with conventional NN training, DfL introduces an optimization problem into arXiv:2608.04189v1 [eess.SY] 4 Aug 2026 SUBMITTED TO IEEE 2
+
+the computational graph. Therefore, the forward pass requires solving the downstream optimization problem(s), typically through an iterative numerical algorithm, while the backward pass requires differentiating through the solution mapping of this optimization problem. The differentiable optimization (DiffOpt) can be achieved either by backpropagating through the unrolled solver iterations, known as unrolled differentiation 
+
+[16], or by differentiating the optimality conditions around the solution, referred to as implicit differentiation [17]. Most existing DfL studies in power systems implement this pipeline using open-source DiffOpt packages, particularly CvxpyLayers [18]. CvxpyLayers builds on the high-level op-timization modeling framework CVXPY [19], allowing prac-titioners to formulate power system optimization problems in a descriptive and engineering-friendly syntax. The resulting problem is then canonicalized and solved in the forward pass as a standard conic program using solvers such as SCS [20] and Clarabel [21]. Gradients for the backward pass are obtained through implicit differentiation of the associated Karush–Kuhn–Tucker (KKT) optimality conditions [22]. Because both forward optimization and backward differen-tiation are computationally demanding, existing CvxpyLayers-based DfL studies in power systems have predominantly con-sidered aggregated or small-scale systems, shortened schedul-ing horizons, or simplified network constraints (Table I). Therefore, evidence of end-to-end DfL performance at real-istic operational scales remains limited. Moreover, when the operational model is formulated as a linear program (LP), the singular KKT system can result in non-unique gradient, hindering stable convergence of DfL training [15], [23]. 
+
+C. Review on Existing Efficient DfL Training Strategies 
+
+To improve training efficiency, one research line focuses on first learning a surrogate NN model for the optimization layer, including direct link forecast error to operational error [1], [24] or link the forecasted parameters with the optimal decisions [25]. Although this can significantly improve the DfL training efficiency as the trained model can be treated as a regular NN layer and no iterative solution or implicit differentiation is required, training such surrogate requires collecting extra dataset and the generality on out-of-distribution operational scenarios cannot be easily guaranteed. Therefore, this paper focuses on DfL training where the exact optimization is embedded as a layer. Another line of work focuses on reducing the KKT sys-tem used for differentiating the solution map of quadratic programs. For example, BPQP [26] and dQP [27] exploit the active set at the optimum so that the backward pass only involves a reduced equality-constrained KKT system, and dQP further decouples this differentiation step from the forward solver, allowing the use of black-box QP solvers. However, these methods operate on QPs already expressed in standard matrix form. Therefore, the obtained gradients are with respect to canonical QP data, such as the objective and constraint matrices/vectors, rather than directly with respect to application-level parameters such as renewable generation forecasts. Recovering such gradients still requires an additional Table II: Functionality overview of the proposed DiffAPQP, compared to CvxpyLayers.                    
+
+> DiffAPQP CvxpyLayers Class of Program APQP Disciplined CP
+> Canonicalization ✓✓
+> Solver Backend All QP-compatible solvers in CVXPY Limited to Clarabel, SCS, and ECOS
+> Warm Start ⋆✓✗
+> Solver Update ⋆✓✗
+> Parallel Forw. Solution ✓✓
+> Reduced Backw. Diff. ✓✗
+> “Free” Backw. Diff. ✓⋄✗
+> ⋆Currently supports OSQP, SCS, and QPALM, which have native warm-start and update APIs. The remaining solvers apply the CVXPY default warm-start settings.
+> ⋄Only for value function-based training loss.
+
+differentiable mapping from the original modeling parameters to the canonical QP data. 
+
+D. Contributions 
+
+We identify two underexploited structures in existing DfL pipelines: forecast parameters enter the operational model through fixed affine mappings, and training process repeatedly solves the same optimization template with different parameter values. To explore the structure, We restrict the scope into quadratic program (QP)-based power system optimizations, and propose differentiable affine parametric quadratic program (DiffAPQP) layer. Compared to CvxpyLayers, this framework has the following properties or advantages (Table II): Methodologically, I). in the forward pass, a dedicated automatic canonicalization is implemented so that no manual transformation to standard QP is needed and explicit gradients with respect to power system forecast parameters are avail-able after backward propagation. II). As the power system optimization template is fixed during training across the entire dataset and epochs, we design solver-agnostic warm-start and solver-data update strategy on work space/factorization cache of previous solve, which significantly improve the forward pass efficiency. Theoretically, III). in the backward pass, we prove the equivalence of the implicit differentiation between full and a reduced equality-constrained QP KKT equilibrium for both QP and LP settings. This allows to solve a much smaller linear symmetric system. IV). We then derive a new backpropagation strategy without differentiation for a value-function-induced training loss. Practically, V). the proposed method disentangles forward and backward passes, meaning that it supports compatible continuous solver backends independently of the selected backward method. VI). At last, a Python package is open-sourced, which can automatically convert any APQP power system optimization compiled by CVXPY, into differentiable optimization layer, that can be integrated with PyTorch with all the above features supported by APIs. II. P RELIMINARIES ON THE DECISION -FOCUSED 
+
+LEARNING IN POWER SYSTEMS 
+
+A. Sequential Chain of Forecast and Optimization 
+
+This paper considers a power-system decision chain consist-ing of a forecasting task followed by a power-system operation SUBMITTED TO IEEE 3
+
+(PSO) problem [28]. The forecaster is denoted as f (x, θ )
+
+which takes contextual information x such as weather, calen-dar information, and previous profile as input. In a supervised setting, the forecaster is trained to minimize the mean squared error (MSE) loss to the true label y and the training can be denoted as min θ ℓAbL (θ) := 12ND
+
+P 
+
+> (x,y )∈D
+
+∥y − f (x, θ )∥2
+
+where D is the training dataset with ND samples. In addition, 
+
+f (·, θ ) is considered as a neural network (NN) and stochastic gradient descent method (SGD) or its variant is used to update the parameter θ batch-wisely [29]. Because the training objective is to minimize the forecaster error (or equivalently maximize the forecast accuracy), it is referred to as accuracy-based learning (AbL). When multiple profiles are forecast, such as load, renewable generation, reserve requirements, and market prices, the fore-casts are collected in ˆy1: Np . Then the forecasts are fed into a power system operational model, which can be denoted as the following parametric program [12], 
+
+min 
+
+> z1: Nd
+
+f0(z1: Nd , ˆy1: Np )
+
+s.t. hk(z1: Nd , ˆy1: Np ) = 0 , ∀k = 1 , · · · , N eq 
+
+fj (z1: Nd , ˆy1: Np ) ≤ 0, ∀j = 1 , · · · , N in 
+
+(1) where Nd, N p, N eq and Nin are the numbers of decision variables, parameters, equality constraints, and inequality con-straints, respectively. For example, it can represent economic dispatch (ED) where ˆy represents the forecasted load and renewable while z represents dispatch and reserve plans. Moreover, in the energy market setting, it represents a bidding problem where ˆy can include the day-ahead or balancing market prices. As each element is individually denoted by indices, (1) represents the optimization followed by its natural 
+
+physical meanings, which is referred to as domain specific language . A crucial step before invoking the optimization solver backend on (1) is canonicalization , in which (1) is reformulated into the standard form required by the chosen solver. Some modeling software, such as CVXPY, can do this compilation automatically [19]. In the following discussion, the decision variables and parameters will be compactly denoted as z and ˆy, respectively, and the optimum is denoted as ˆz⋆. Moreover, (1) can be denoted as an implicit function ˆz⋆ = O(ˆ y) and the value function of (1) is represented as α(ˆ y) := f0(ˆ z⋆, ˆy).
+
+B. Decision-focused Learning 
+
+To align the forecaster with the outcome of downstream power system optimizations, decision-focused learning (DfL) is proposed to train the forecaster with optimizations in a closed-loop [3]. From a mathematical program point of view, DfL is formulated as bi-level optimization problem [4], 
+
+min 
+
+> θ
+> 1
+> ND
+
+P 
+
+> (x,y )∈D
+
+ℓ(ˆ z1,⋆ , . . . , ˆzn,⋆ , y, ˆy)
+
+s.t. 
+
+
+
+ˆzn,⋆ = On(ˆ zn−1,⋆ )
+
+...
+
+ˆz1,⋆ = O1(ˆ y), ˆy = f (x, θ )
+
+
+
+, ∀(x, y ) ∈ D (2) Optimization One ...  
+
+> optimizations
+> (a) General DfL framework. ED RD
+> (b) Closed-loop DfL for forecast-ED-RD decision mak-ings. ED ED
+> (c) Counterfactual DfL for forecast-ED decision mak-ings.
+> Fig. 1. Illustration on DfL framework. Only the forward passes are shown.
+
+The lower-level optimizations consist of a chain of forecasting and solution maps Oi(·), which take the previous decision as input. Similar to the machine learning task, each sample 
+
+(x, y ) ∈ D constructs an independent decision chain, whose outputs are eventually evaluated by the upper-level objective 
+
+ℓ(·).Fig. 1a views (2) as neural forecaster with optimization layers. During training, the outcome of each block, including both trainable forecaster and unlearnable optimization layers, is passed as the input to the subsequent layer(s). The training loss function ℓ(·), which may take the outcomes of all layers, must reflect the quality of the entire chain of decision-making. Notably, depending on the specific decision-making process [12], the number of forecasters and optimization models, as well as their types of interconnections can vary. 
+
+C. DfL for Economic Dispatch and Redispatch Problems 
+
+Although this paper presents a general efficient DfL frame-work as (2), we simulate its performance based on the chain of renewable/load forecast, economic dispatch (ED), and redis-patch (RD). When the end-to-end decision chain is considered as in Fig. 1b, a closed-loop DfL [4] is defined from (2): 
+
+min 
+
+> θ
+> 1
+> ND
+
+P 
+
+> (x,y )∈D
+
+ℓ(ˆ zed,⋆ , ˆzrd,⋆ )
+
+s.t. 
+
+(ˆzrd,⋆ = Ord (ˆ zed,⋆ , y )ˆzed,⋆ = Oed (ˆ y), ˆy = f (x, θ )
+
+)
+
+, ∀(x, y ) ∈ D (3) where Oed (·) and Ord (·) represent the ED and RD opti-mizations, respectively. The training loss takes the decisions from both ED and RD stages to compute the system-wise operational cost [4]. In short, a closed-loop DfL setting trains the energy forecaster to minimize the expected end-to-end operational cost over the training dataset. In contrast, it is possible to formulate DfL without end-to-end cost. Instead, an oracle label such as the optimal SUBMITTED TO IEEE 4
+
+Listing 1: DfL Training Loop in Power Systems 
+
+1 for epoch in range (N_epoch): 
+
+2 for (X,Y) in batch_list: 
+
+3 Forward NN: Y_hat = nn(X) 
+
+4 Solve parallel: Z = O(Y_hat) 
+
+5 loss = loss_func(Z,Y) 
+
+6 loss. backward () Other Layers Other Layers DiffOpt Layer(s) 
+
+Fig. 2. DiffOpt as part of NN. The forward and backward passes are in black and purple, respectively. 
+
+value of ED f ed  
+
+> 0
+
+(zed,⋆ (y)) is computed from the true load and renewable y. As in real-time, the true energy forecast is unavailable at the ED stage, it is therefore referred to as 
+
+counterfactual DfL [4]. 
+
+min 
+
+> θ
+> 1
+> ND
+
+P 
+
+> (x,y )∈D
+
+(f ed  
+
+> 0
+
+(ˆ zed,⋆ ) − f ed  
+
+> 0
+
+(zed,⋆ )) 2
+
+s.t. 
+
+(zed,⋆ = Oed (y)ˆzed,⋆ = Oed (ˆ y), ˆy = f (x, θ )
+
+)
+
+, ∀(x, y ) ∈ D (4) The oracle decisions zed,⋆ (y) and their corresponding objec-tive values can be computed and cached before training. The counterfactual DfL is illustrated in Fig. 1c. III. E FFICIENT FORWARD PASS 
+
+A pseudo DfL training loop on Fig. 1a is illustrated in Listing 1. To align with the SGD-based method in modern deep learning, the differentiation must be defined through the optimization layers O(ˆ y), which is referred to as differentiable optimization (DiffOpt). Similar to CvxpyLayers, DiffAPQP designs DiffOpt functions with canonicalization , solution , and 
+
+retrieval steps (Fig. 2). The canonicalization transforms (1) into a standard problem format; the solution procedure calls a solver backend to solve the standard form problem; at last, the retrieval projects the optimal solution of standard problem into the original structure. Note that along the three steps, differentiation rules must be defined accordingly. This section considers designing efficient forward pass, which is highlighted by the black arrows in Fig. 2. 
+
+A. Affine Parametric Quadratic Program 
+
+Due to the computational efficiency and the guaranteed global optimum, many optimization problem in operation and market are formulated as quadratic program (QP). This includes direct current optimal power flow (OPF), ED, RD, market bidding, or even model predictive control (MPC), etc. The QP (or LP) formulation also dominates the DfL in power systems, whose scalability is challenging for training (see Table I). This section starts by defining a class of structured QP parameterized by parameter ˆy.
+
+Definition 1. The QP QP (ˆ y) is affine-parametric if the linear objective term and right-hand-side (RHS) constraints depend affinely on parameters. 
+
+Mathematically, APQP is denoted as, 
+
+min  
+
+> ˜z
+
+f0(˜ z) := 12 ˜zT P ˜z + q(ˆ y)T ˜z + c(ˆ y)
+
+s.t. A˜z = b(ˆ y) (˜ ν)
+
+G˜z ≤ h(ˆ y) (˜λ)
+
+(5) In (5), q(ˆ y) := ˜q + PNp 
+
+> i=1
+
+Qi ˆyi, b(ˆ y) := ˜b + PNp 
+
+> i=1
+
+Bi ˆyi,
+
+h(ˆ y) := ˜h + PNp 
+
+> i=1
+
+Hi ˆyi, and c(ˆ y) = ˜ c + PNp 
+
+> i=1
+
+dTi ˆyi; ˜z ∈ Rnd ,
+
+A ∈ Rneq ×nd , and G ∈ Rnin ×nd ; P ⪰ 0; ˜ν ∈ Rneq and 
+
+˜λ ∈ Rnin are the dual variables for the equality and inequality constraints. In addition, ˆyi retains the same definition as (1) while nd, neq , and nin denote the dimensions of the decision variable, equality constraints, and inequality constraints in APQP form. 
+
+B. Canonicalization 
+
+In (5), (P, q, c, A, b, G, h ) is considered as the data of the QP while ˆy is regarded as the problem parameter as in (1). Many of the aforementioned operations can be reformulated to APQP. In the renewable forecast followed by the ED example, the forecast load and renewable will appear on the RHS of the constraints after rearrangement. Similarly, for the price forecast followed by the bidding example, the linear objective coefficient q is an affine function of the parameter. An example of a simple PSO problem is illustrated as follows. Consider 
+
+min 
+
+> Pg
+
+cTg Pg
+
+s.t. Pbus = Cg Pg − CdPd
+
+− P max f ≤ M P bus ≤ P max f
+
+eT Pbus = 0 , P min g ≤ Pg ≤ P max g ,
+
+(6) where the decision variable is generator output Pg and the parameter is the demand Pd. The data includes generator first-order cost cg , incidence matrix Cg and Cd, power transfer distribution factor M , transmission line thermal limit P max f ,generator limit P min g and P max g ; e is a vector whose entries are ones. As (6) is defined by the physical meaning of each component, it is an example of (1), whose standard APQP form (5) after canonicalization becomes, 
+
+˜z = Pg , ˆy1 = Pd, P = 0 , q = cg , ˜c = 0 , d1 = 0 ,G =
+
+
+
+M C g
+
+−M C g
+
+I
+
+−I
+
+ , h =
+
+
+
+P max f
+
+P max f
+
+P max g
+
+−P min g
+
+ , H 1 =
+
+
+
+M C d
+
+−M C d
+
+00
+
+ ,A = eT Cg , b = 0 , B1 = eT Cd.
+
+As stated in Section II-A, it is essential to canonicalize (1) into standard form before calling a particular solver. Obviously, when the PSO becomes complex, the man-ual canonicalization becomes time-consuming and prone to errors. We implement the automatic canonicalization step 
+
+(P, q (ˆ y), c (ˆ y), A, b (ˆ y), G, h (ˆ y)) = C(ˆ y) for (1), by track-ing the relationships among parameters, data, and decision variables to avoid case-by-case manual derivation. Later in Section IV, the benefit of this specific canonicalization is SUBMITTED TO IEEE 5
+
+demonstrated when accelerating the backward pass differenti-ation. 
+
+C. Solution of APQP 
+
+The optimal primal and dual pairs of APQP (5) can be denoted as a solution map (˜ z⋆, ˜λ⋆, ˜ν⋆) = S(P, q, c, A, b, G, h ).As S(·) is an implicit representation, an iterative algorithm is required by calling a solver backend in the forward pass. Com-pared to CvxpyLayers, this paper investigates three solver-independent and broadly applicable strategies for accelerating iterative algorithms in the context of DfL for power system optimizations. 
+
+1) Disentangled Forward and Backward Passes: To start, in default setting, CvxpyLayers is built on top of DiffCP [18], a Python package for differentiating conic programs. Although conic program covers the quadratic program, this setting results in several limitations. First, conic program solvers can be inefficient to solve QPs, compared to dedicated QP solvers. Second, DiffCP integrates the forward and backward passes into a more compound algorithm where the solver backend is limited to SCS [20], ECOS [30], and Clarabel [21]. Although the original SCS and Clarabel solvers support quadratic objectives, DiffCP requires an epigraphical reformulation into a linear objective. Consequently, slack variable t is introduced so that the ob-jective of (5) becomes min ˜z t + qT ˜z, with slack constraints 
+
+˜zT P ˜z ≤ 2t. Now assume P is positive definite, the Cholesky factorization of P is P = F T F where F ∈ Rnd×nd . Then the quadratic constraints can be replaced by a rotated cone, i.e., (t, 1, F ˜z) ∈ Q nd+2  
+
+> r
+
+. The F ˜z term in the cone introduces 
+
+nd extra constraints and extra rotated cone of size nd + 2 .These additional elements significantly increase problem size and computation time in the forward pass. In contrast, the forward and backward passes in DiffAPQP is disentangled, meaning that the QPs can be solved by any suitable solver backends (Table II). This also suggests that DiffAPQP implements the original SCS and Clarabel which natively support quadratic objective without epigraphical re-formulation [20], [21]. 
+
+2) Factorization Caching and Solver-data Update: Typi-cally, solution algorithms for (5) consist of a two-step proce-dure per iteration,  
+
+> •
+
+Step One . Formulate and solve a KKT system.  
+
+> •
+
+Step Two . Apply the solution as an update to the primal and dual pairs. and the main computational burden is dominated by Step One where a linear system is solved. Introduce slack variable ζ = Gz and scaled dual variable u.Using Alternating Direction Method of Multipliers (ADMM) [31] as an example, at iteration k, the following linear system needs to be solved for Step One: 
+
+P + ρG T G AT
+
+A 0
+
+!| {z }
+
+> K∈Rnd+neq
+
+zk+1 
+
+wk+1 
+
+!
+
+= ρG T (ζk − uk) − qb
+
+!
+
+,
+
+(7) where w is the slack variable in equality-constrained z-step subproblem and ρ is the step size [31]. Now consider the DfL training loop in Listing 1. Although the training samples are distinct, the same APQP template is repeatedly solved a total of Nepoch × ND times. As shown in (5), the affine structure guarantees that the KKT matrix 
+
+K of (7) remains unchanged throughout the entire training process, given fixed ρ. Consequently, it is possible to factorize 
+
+K upon its first appearance for the first sample and reuse it for 
+
+every subsequent solves across all samples and epochs. As the cubic flop factorization dominates the computational burden in solving the linear system, factorization caching and reuse can offer significant speedup. Other solvers follows similar solution steps and Step One structure (7) so that the above factorization caching mechanism is generally applicable. 
+
+3) Warm-Starting: The effectiveness of warm-start strategy for repeated solves on similar problems has been demon-strated in many optimization algorithms such as OSQP [32], SCS [20], and QPALM [33], etc. Similarly, when the DfL training approaches to convergence, the forecast variation for a given sample becomes small between epochs and warm-start strategies become effective. In detail, given one training sample (x, y ) ∈ D, let the sequence of same forecasts across all epochs be denoted by Y = {ˆy1, . . . , ˆyNepoch }. The initialization at epoch j + 1 can reuse the solution from the previous run, S(ˆ yj ), including the solver-native primal and dual variables as well as adapted parameters. To sum up, the DiffAPQP accelerates the forward pass against CvxpyLayers from three aspects: (i). the “disentangled forward and backward passes” represent a universal property of DiffAPQP for different applications and solver choices; (ii). “solver-data update” is a training sample independent acceleration; while (iii). “warm-starting” is sample dependent acceleration. 
+
+D. Retrieval from APQP 
+
+When the optimal solution ˜z⋆ of (5) is available from solution step, a retrieval step is designed to obtain the solution of the original problem (1), e.g., ˆz⋆ = R(˜ z⋆). Based on (1) and the affine structure of (5), R(·) is a linear map which consists of block permutation matrix, depending on the sequence of 
+
+ˆzi, ∀i in ˜z during canonicalization. Let ˆz⋆i be the i-th optimal decision variable, then 
+
+ˆz⋆i = R(˜ z⋆) =  0 · · · I · · · 0 ˜z⋆. (8) For DfL, ˆz⋆ is fed into a scalar loss function l = ℓ(ˆ z⋆)
+
+in (2), to evaluate the quality of the decision-making process. To sum up, the forward pass for DiffOpt can be denoted as a function composition (9) (see Fig. 2). Note that ℓ(·) can contain multiple layers of neural networks or other DiffOpt layers to represent a complex decision-making chain (see Fig. 1). However, since the final training loss is always scalar, we omit the complex dependence for simplicity purposes. 
+
+l = ℓ ◦ O ◦ f = ℓ ◦ R ◦ S ◦ C ◦ f. (9) SUBMITTED TO IEEE 6
+
+IV. E FFICIENT BACKWARD PASS 
+
+A. Differentiation on Full KKT System of Solution Map 1) Derivation: In the previous section, the optimal primal and dual variables are solved via the efficient forward pass. In the backward pass, it is necessary to differentiate through the solver O(·) = R ◦ S ◦ C ,
+
+Dθ ℓ = D ℓ(ˆ z⋆) · DO(ˆ y) · Dθ f (x, θ ), with (10a) 
+
+DO(ˆ y) = D R(˜ z⋆) · DS(P, q, c, A, b, G, h ) · DC(ˆ y). (10b) In (10a), Dℓ(ˆ z⋆) and Dθ f (x, θ ) can be obtained by automatic differentiation (AD) such as PyTorch [34]. The main compu-tational difficulty remains in differentiating the optimization problem. The differentiation starts from left to right in the reverse mode automatic differentiation (RMAD) [17], meaning that the outputs of all layers, including both NNs and DiffOpts, are stored in memory, and their relationship must be recorded on the computational graph in the forward pass. First, it is not difficult to see from (8) that DR(˜ z) is a linear block permutation matrix. Second, instead of differentiating through the unrolled solver S(·) such as [16], the implicit function theorem [17] can be used to differentiate the equality-constrained part of the KKT condition (21), which is com-pactly denoted as K(˜ z⋆, ˜λ⋆, ˜ν⋆, ˆy) = 0 . Considering the affine structure of b, h, and q on ˆyis in (5), the full differentiation of K(·) with respect to the i-th parameter ˆyi is derived as, 
+
+Ka · Dˆyi (˜ z⋆, ˜ν⋆, ˜λ⋆) = Da,i , with (11a) 
+
+Ka =
+
+
+
+P AT GT
+
+A 0 0dg ( ˜λ⋆)G 0 dg ( G˜z⋆ − h)
+
+ , (11b) 
+
+Dˆyi (˜ z⋆, ˜ν⋆, ˜λ⋆) = 
+
+
+
+Dˆyi ˜z⋆
+
+Dˆyi ˜ν⋆
+
+Dˆyi
+
+˜λ⋆
+
+ , D a,i =
+
+
+
+−Qi
+
+Bi
+
+dg ( ˜λ⋆)Hi
+
+ . (11c) where dg ( ·) is the diagonal operator. Note that Ka is not symmetric and (11) already obtains the differentiation with respect to the original parameter ˆyi. In addition, thanks to the canonicalization of APQP (5), (11) is analytical and no AD is needed. Consequently, the affine canonicalization maps are evaluated analytically through Da,i and (10) becomes, 
+
+Dθ ℓ = D ℓ(ˆ z⋆) · DR(˜ z⋆) · K†
+
+> a
+
+| {z }  
+
+> =sTa∈R1×(nd+nin +neq )
+
+· PNp 
+
+> i=1
+
+(Da,i · Dθ fi(x, θ )) ,
+
+(12) where fi(x, θ ) represents the forecaster output corresponding to the i-th forecast parameter. The pseudo-inverse is used in case Ka is not invertible. When RMAD is applied, it is not necessary to explicitly take the pseudo-inverse. Considering (12), the row vector sTa can be viewed as the adjoint of ˜z⋆
+
+and the following least-square problem is solved, 
+
+s⋆a = arg min 
+
+> sa
+
+∥KTa · sa − DT R(˜ z⋆) · DT ℓ(ˆ z⋆)∥2. (13) Since Ka is asymmetric and likely sparse, the LSQR [35] is used to iteratively solve (13) as in CvxpyLayers. Plugging s⋆a
+
+into (12), the full differentiation on (10) becomes 
+
+Dθ ℓ = s⋆,T a · PNp 
+
+> i=1
+
+(Da,i · Dθ fi(x, θ )) . (14) Taking the transpose of (14), the computation of the gradi-ent only involves matrix-vector products, which avoids com-putationally complex matrix-by-matrix products and explicit matrix inversion in (12). 
+
+2) Discussion: For the APQP (5), the dimension of the linear system (11) is (nd + neq + nin ) which is as large as the optimization itself so that the differentiation method is referred to as full-KKT differentiation. Recall the worst computational complexity is up to cubic of the system size; differentiation can account significant training time. Moreover, when the optimal solution violates the regularity conditions such as linear independence constraint qualification (LICQ), the KKT system becomes singular [36] so that the solution-map derivative may be non-unique or numerically unstable. 
+
+B. Differentiation on Reduced-order KKT System of Solution Map 
+
+Since the optimal primal and dual pair are available after the forward pass, it is possible to use this information to reduce the size of Ka in (11). To start, let A = {j ∈{1, · · · , n in }| Gj ˜z⋆ = hj } be the index set of active inequality constraints. Moreover, let (·)A be the rows indexed by A
+
+of a matrix or vector. Similar definitions are made on the inactive inequality constraint set I and (·)I . After the active inequality constraints are identified, (5) is reduced into an equality-constrained QP [37]: 
+
+min  
+
+> ˜z
+
+f0(˜ z) := 12 ˜zT P ˜z + q(ˆ y)T ˜z
+
+s.t. A˜z = ˜b + PNp 
+
+> i=1
+
+Bi ˆyi (˜ ν)
+
+GA ˜z = ˜hA + PNp 
+
+> i=1
+
+Hi, A ˆyi (˜λA)
+
+(15) The differentiation on the KKT system of (15) becomes, 
+
+Ks · Dˆyi (˜ z⋆, ˜ν⋆, ˜λA) = Ds,i , with (16a) 
+
+Ks =
+
+
+
+P AT GT
+
+> A
+
+A 0 0
+
+GA 0 0
+
+ , Ds,i =
+
+
+
+−Qi
+
+Bi
+
+Hi, A
+
+ . (16b) Notably Ks is symmetric such that (13) becomes, 
+
+s⋆s = arg min 
+
+> ss
+
+∥Ks · ss − DT R(˜ z⋆) · DT ℓ(ˆ z⋆)∥2, (17) and the full differentiation in (14) becomes 
+
+Dθ ℓ = s⋆,T s · PNp 
+
+> i=1
+
+(Ds,i · Dθ fi(x, θ )) . (18) The advantages of canonicalizing (1) into APQP (5) become evident as both Ks and Ds depend solely on the problem data, rather than on the primal and dual variables. The full and reduced dimension are nd + neq + nin and nd + neq + |A| ,respectively; the benefit of reduced system (16) grows when 
+
+|A| ≪ nin . The power system optimizations likely follow this condition due to the redundant constraints on the generator capacities and transmission line thermal limits, etc. More importantly, as Ks is symmetric, more efficient minimum residual iteration (MINRES) [38] can be used to solve the least SUBMITTED TO IEEE 7
+
+squares system (17), compared to LSQR for the asymmetric case in CvxpyLayers and full-KKT case. Moreover, the full KKT matrix Ka in (11) can become ill-conditioned because its complementarity blocks contain inequality slacks and dual multipliers close to zero. Conse-quently, solving the adjoint system in (13) becomes numer-ically unstable. The reduced-KKT formulation can improve the robustness of the adjoint computation by retaining only the numerically active inequalities. Specifically, the active set is identified as A = {j ∈ { 1, · · · , n in } | | Gj ˜z⋆ − hj | ≤ 
+
+max {ϵabs , ϵ rel (1 + |hj |)}. In practice, εabs should be suf-ficiently larger than the feasibility tolerance of the forward pass optimization solver to avoid excluding constraints that are binding up to numerical error. However, an excessively large tolerance may include nearly active or linearly dependent constraints, making the reduced KKT system singular or poorly conditioned. Thus, improved robustness is obtained only when the active set is identified reliably and satisfies the required regularity conditions. 
+
+C. Adjoint-free Value-function Differentiation 
+
+Consider the APQP (5) with value function α(ˆ y). The counterfactual DfL training in Fig. 1c directly takes the value function as input to the loss function ℓ(α(ˆ y)) . As an optimal primal and dual pair (˜ z⋆, ˜λ⋆, ˜ν⋆) is obtained during the forward pass and based on the perturbation analysis [37], the differentiation of the value function with respect to the parameter can be derived as 
+
+Dˆyi α(ˆ y) = D q α(ˆ y) · Dˆyi q + D cα(ˆ y) · Dˆyi c
+
++ D bα(ˆ y) · Dˆyi b + D hα(ˆ y) · Dˆyi h
+
+= ˜ z⋆,T Qi + dTi − ˜ν⋆,T Bi − ˜λ⋆,T Hi.
+
+(19) Consequently, the full differentiation (10) is derived from chain rule, 
+
+Dθ ℓ = D αℓ(α(ˆ y)) · PNp 
+
+> i=1
+
+(D ˆyi α(ˆ y) · Dθ fi(x, θ )) . (20) Compared to differentiation on the solution map, all the items in (20) are available during the forward pass. I.e., no extra implicit differentiation step or solving linear system is needed as in full-KKT (13) or reduced-KKT (17) cases. Therefore, the value function map avoids the singularity difficulty. However, it does not indicate the direct differentiation on the optimal value function results in unique gradient. 
+
+D. Theoretical Results 
+
+In this section, we demonstrate the theoretical results for the efficient differentiation method presented in Section IV. For certain irregular cases, it is possible to have singular 
+
+Ka and Ks such that the outcomes of (13) and (17) are sub-gradients. We therefore prove a sufficient condition to have non-singular Ka and Ks, based on which, the equivalence between full KKT system (11) and reduced KKT system (16) are proved. To start, consider the following assumptions,  
+
+> •
+
+(A1-KKT Condition). The forward pass solution (˜ z⋆, ˜λ⋆, ˜ν⋆)
+
+satisfies the KKT conditions, 
+
+P ˜z⋆ + q + AT ˜ν⋆ + GT ˜λ⋆ = 0 , A˜z⋆ − b = 0 
+
+G˜z⋆ − h ≤ 0, ˜λ⋆ ≥ 0dg ( ˜λ⋆) · (G˜z⋆ − h) = 0 
+
+(21)  
+
+> •
+
+(A2). ˜λ⋆ satisfies the strict complementarity condition at ˜z⋆.E.g., ˜λ⋆ 
+
+> A
+
+> 0. 
+
+> •
+
+(A3). P is positive definite on the null space of (AT , G T
+
+> A
+
+)T . 
+
+> •
+
+(A4-LICQ). The gradients of the active constraints are linearly independent, e.g., (AT , G T
+
+> A
+
+)T is full row rank. Under LICQ (A4), (A1) states the first-order KKT conditions. Assumption (A3) is the second-order sufficient condition on the active-constraint null space, while (A2) imposes strict complementarity [36]. 
+
+Proposition 1. Let (D˜ za, D˜λa, D˜ νa) and (D˜ zs, D˜λs
+
+> A
+
+, D˜ νs) be the solutions to (11) and (16) , respectively. If (A1)-(A4) are satisfied, then (i). Ka and Ks are non-singular; (ii). D˜λa 
+
+> I
+
+= 0 ;and (iii). (D˜ za, D˜λa
+
+> A
+
+, Dνa) = (D˜ zs, D˜λs
+
+> A
+
+, D˜ νs).
+
+Next, consider the linear objective (APLP) version of (5). Since P = 0 , (A3) is no longer satisfied. However, the main conclusions still hold under the following result. 
+
+Proposition 2. Consider APLP with P = 0 . Take the same settings as in Proposition 1 and assume (A1) , (A2) , and (A5) 
+
+a non-degenerate vertex solution is found in the solution step. Then all the conclusions in Proposition 1 are satisfied. 
+
+Recall that (11) and (16) may encounter singular issues as shown in previous research [15], [23]. Intuitively, the differentiation-free method (20) should also have the similar problem. This is caused by the non-differentiability of α(ˆ y)
+
+at certain ˆy. It is also the case when there exist multiple dual variables, although the optimization solver only outputs one of them in the forward pass. In this case, it can be shown that (19) becomes a sub-gradient for any given optimal dual variable as shown by Proposition 3 
+
+Proposition 3. Let α(q, c, b, h ) be the value function of (5) 
+
+with respect to the program data q, c, b, and h, i.e., 
+
+α(q, c, b, h ) := inf ˜z
+
+ 12 ˜zT P ˜z + qT ˜z + c A˜z = b, G ˜z ≤ h
+
+(22) 
+
+Assume that Slater’s condition holds for every considered 
+
+(b, h ). Define the optimal primal solution set as Z⋆(q, b, h ) := 
+
+{˜z | (˜ z, ˜ν, ˜λ) satisfies the KKT conditions for (5) for some (˜ ν, ˜λ)},
+
+and the optimal dual solution set as Λ⋆(q, b, h ) := 
+
+{(˜ ν, ˜λ) | (˜ z, ˜ν, ˜λ) satisfies the KKT conditions for (5) for some ˜z},which are nonempty and bounded. Then: (i). α(q, c, b, h )
+
+is concave in q, affine in c, and convex in (b, h ); (ii). 
+
+Dcα(q, c, b, h ) = 1 ; (iii). ∂+ 
+
+> q
+
+α(q, c, b, h ) = Z⋆(q, b, h ), where 
+
+∂+ 
+
+> q
+
+denotes the superdifferential with respect to q; (iv). 
+
+∂(b,h )α(q, c, b, h ) = {(−˜ν, −˜λ) | (˜ ν, ˜λ) ∈ Λ⋆(q, b, h )}; (v). if 
+
+Z⋆(q, b, h ) = {˜z⋆}, then α is differentiable with respect to q
+
+and Dq α(q, c, b, h ) = ˜ z⋆,T ; (vi). if Λ⋆(q, b, h ) = {(˜ ν⋆, ˜λ⋆)},
+
+then α is differentiable with respect to (b, h ) and 
+
+Dbα(q, c, b, h ) = −˜ν⋆,T , Dhα(q, c, b, h ) = −˜λ⋆,T .SUBMITTED TO IEEE 8
+
+Proposition 3 demonstrates that the differentiation (20) follows the same “singularity” issue as (11) and (16) due to the multiple optimal primal and dual solutions. However, it will not introduce any computational inconvenience when solving linear system (13) or (17). V. S IMULATIONS 
+
+A. Simulation Settings 
+
+The performance of the proposed DiffAPQP framework is compared with CvxpyLayers on the IEEE 118-bus system under closed-loop and counterfactual DfL settings, as shown in Fig. 1. The test system contains 34 generators, 10 solar plants, and 10 wind plants. Standard ED and RD models are formulated into continuous convex quadratic programs with 24-hour optimization horizon. This problem size provides a large-scale stress test for differentiable optimization in end-to-end DfL, which is not seen in the literature. One year of hourly nodal load, solar, wind, and weather data is obtained from the quasi-realistic Texas system [39] as the forecasting target. The IEEE 118-bus testbed, profile assignment, and data preprocessing are implemented using our open-source GridForge package [4]. We employ a shared multi-task neural forecaster to jointly predict the 24-hour trajectories of system loads, solar gen-eration, and wind generation. The model consists of three components: a normalized spatiotemporal input representation, a shared two-dimensional convolutional encoder, and three asset-specific forecasting heads. To start, AbL-based forecaster is trained with MSE loss defined in Section II-A, followed by DfL fine-tuning (3) or (4). In DiffAPQP, warm starts are indexed using each sample’s unique start-hour identifier, allowing a daily problem to retrieve its previous solution across epochs. During the DfL training, five solver backends, includ-ing operator splitting-based SCS and OSQP, interior point-based Clarabel and Gurobi, as well as augmented Lagrangian-based QPALM are tested with i) no warm-start and update (referred to as cold-start, CS); ii) with warm-start only (WS); iii) with update only (UP), and iii) with both warm-start and update (WU). All the experiments are tested on Ubuntu 20.04.6 LTS with two Intel(R) Xeon(R) Gold 6230R CPUs and with the number of CPUs capped at 32 to simulate a stress test environment. All DiffAPQP and CvxpyLayers experiments were run under the same random seed, data split, model architecture, optimization solver arguments (for the same solver backend), batch size, and training configuration to ensure a fair comparison. 
+
+B. Performance on Computational Time 
+
+As the evaluated CvxpyLayers 1.0.0 DiffCP interface does not expose OSQP, QPALM, or Gurobi as forward backends, to have a fair comparison, Figs. 3a and 3b compare the epoch-wise computational cost and learning trajectories of CvxpyLayers and DiffAPQP using SCS and Clarabel back-ends. The closed-loop and counterfactual DfLs implement the solution-map and value function layer, respectively. In all experiments, the first recorded epoch evaluates the pretrained AbL forecaster without backward pass; gradient-based DfL fine-tuning is performed during the remaining four epochs and all quantitative runtime comparisons are based on the average of epochs 2–5. First, across both formulations, the optimization layer dominates the total epoch time, whereas the NN forward and backward passes account for only a small fraction of the runtime, as highlighted by the insets. In the closed-loop formulation, the gradient of the re-alized operating cost must propagate through the coupled RD and ED solution maps. For SCS, the selected reduced-KKT DiffAPQP in WS mode results in a 2.27 × end-to-end speedup. Its optimization forward pass is 1.87 × faster, while its optimization backward pass gives a 4.33 × speedup. With Clarabel, the mean time decreases from 38 .7 to 10 .8 min/e-poch, corresponding to a 3.58 × speedup. Its optimization forward and backward passes are accelerated by 1.99 × and 
+
+5.17 ×, respectively. In addition, Table III reports the detailed closed-loop computational performance. Even with the same solver settings as CvxpyLayers (CS mode), the DiffAPQP achieves 1.14 × and 1.57 × optimization-forward speedups over CvxpyLayers with SCS and Clarabel, respectively as the epigraphical reformulation is avoided (see Section III-C1). The computational distinction is more pronounced in the counterfactual formulation. CvxpyLayers returns the optimal ED decision variables, from which the ED objective needs to be reconstructed. Computing the counterfactual value loss therefore requires differentiation through the complete ED solution map. DiffAPQP instead can use its value-function layer, which directly returns the optimal ED value. Its gra-dient with respect to the NN parameter is evaluated from the optimal primal and dual solutions using the envelope-theorem expression from Proposition 3 and free-differentiation strategy (19) with negligible backward pass time. This is evidenced by Fig. 3b. For SCS, the mean recorded time gives a 3.62 × speedup. The optimization forward pass is 3.19 ×
+
+faster, while the optimization backward time decreases from 
+
+308 .6 to negligible 3.0 s/epoch. With Clarabel, the mean time produces a 4.38 × speedup. Its optimization backward time decreases from 333 .2 to 6.0 s/epoch. 
+
+C. Effect of Reduced-KKT Differentiation 
+
+In Table III, the Clarabel configurations isolate the effect of the reduced-KKT formulation. Changing from the full KKT system to the reduced system reduces the optimization-backward time from 12 .82 to 5.47 minutes, a 2.34 × im-provement. In reduced-KKT setting, inactive complementarity equations are removed before solving the adjoint system, which is computationally efficient for the large ED and RD problems considered here. Moreover, the timing decomposition shows that Cvxpy-Layers differentiation can be more expensive than solving the optimization problems themselves. CvxpyLayers operates on the conic canonicalization of the parameterized problem and differentiates the corresponding cone-program solution map. In contrast, DiffAPQP instead preserves the APQP structure (5) and computes the required vector–Jacobian prod-uct through a sparse adjoint reduced-KKT system (16). The results indicate that exploiting this QP structure is particularly beneficial during backpropagation. SUBMITTED TO IEEE 91 2 3 4 5                            
+
+> Epoch
+> 01500 3000 4500
+> Time (s) SCS, CvxpyLayers
+> 12345
+> Epoch SCS, Sol. Map RK=True, W=True, U=False
+> 12345
+> Epoch
+> 0500 1000 1500 2000
+> Time (s) Clarabel, CvxpyLayers
+> 12345
+> Epoch Clarabel, Sol. Map RK=True, W=True, U=N/A
+> 123450510
+> 1.64 1.68 1.72 1.76
+> Operation Cost ($)
+> 1e6
+> 12345048
+> 123450510
+> 1.64 1.68 1.72 1.76
+> Operation Cost ($)
+> 1e6
+> 123450816
+> Train forward NN Train forward opt Train backward opt Train backward NN Val forward NN Val forward opt Operation Cost ($)
+
+(a) Closed-loop DfL 1 2 3 4 5                              
+
+> Epoch
+> 0600 1200 1800 2400
+> Time (s) SCS, CvxpyLayers
+> 12345
+> Epoch SCS, Val. Func. W=True, U=False
+> 12345
+> Epoch
+> 0150 300 450 600
+> Time (s) Clarabel, CvxpyLayers
+> 12345
+> Epoch Clarabel, Val. Func. W=True, U=N/A
+> 12345048
+> 0.30 0.45 0.60 0.75
+> MSE  (($/10 5)2)
+> 123450816
+> 12345048
+> 0.30 0.45 0.60 0.75
+> MSE  (($/10 5)2)
+> 123450816
+> Train forward NN Train forward opt Train backward opt Train backward NN Val forward NN Val forward opt MSE (($/10 5)2)
+
+(b) Counterfactual DfL 
+
+Fig. 3. End-to-end DfL training performances of DiffAPQP compared with CvxpyLayers using SCS and Clarabel solver backends. 
+
+Table III: Closed-loop DfL performance for all evaluated solver configurations. The overall epoch time includes the recorded training forward/backward and validation forward components. 
+
+Method Solver RK W U Avg. cores Peak memory (GiB) Train opt. fwd. (min) Train opt. bwd. (min) Avg. epoch time (min) Test cost ($) 
+
+CvxpyLayers SCS – – – 14 .65 59 .53 49 .81 26 .88 87 .43 1 955 769 
+
+DiffAPQP SCS True False False 17 .75 26 .55 43 .54 6.82 58 .57 1 958 673 
+
+DiffAPQP SCS True False True 17 .66 26 .77 45 .73 6.17 60 .68 1 959 441 
+
+DiffAPQP SCS True True False 14 .08 26 .74 26 .63 6.21 38 .44 1 956 677 
+
+DiffAPQP SCS True True True 13 .81 26 .78 35 .22 6.06 47 .65 1 961 202 
+
+CvxpyLayers Clarabel – – – 17 .55 56 .46 8.32 28 .27 38 .65 1 957 534 
+
+DiffAPQP Clarabel False True N/A 23 .80 28 .51 4.22 12 .82 18 .22 1 959 320 
+
+DiffAPQP Clarabel True False N/A 21 .74 28 .50 5.30 5.82 12 .53 1 961 295 
+
+DiffAPQP Clarabel True True N/A 20 .73 28 .56 4.17 5.47 10 .79 1 961 295 
+
+DiffAPQP OSQP True False False 19 .43 28 .23 22 .30 6.69 33 .57 1 963 473 
+
+DiffAPQP OSQP True False True 17 .57 28 .23 16 .01 7.13 26 .61 1 961 587 
+
+DiffAPQP OSQP True True False 17 .46 28 .25 12 .59 6.50 22 .04 1 953 440 
+
+DiffAPQP OSQP True True True 15 .68 28 .16 10 .44 6.31 18 .96 1 951 734 
+
+DiffAPQP QPALM True False False 22 .98 28 .76 9.81 5.92 18 .08 1 956 886 
+
+DiffAPQP QPALM True False True 22 .20 28 .77 9.41 5.94 17 .66 1 956 886 
+
+DiffAPQP QPALM True True False 17 .54 28 .74 4.16 5.45 10 .92 1 960 899 
+
+DiffAPQP QPALM True True True 20 .96 28 .73 7.98 5.79 16 .00 1 961 098 
+
+DiffAPQP Gurobi True False N/A 13 .54 27 .23 3.29 5.72 9.88 1 961 920 
+
+DiffAPQP Gurobi True True N/A 12 .28 27 .25 3.94 5.65 10 .61 1 961 920 
+
+D. Effect of Warm-start and Solver Update 
+
+Warm-start and solver-data update affect the optimization-forward pass. DiffAPQP stores solver-native iterates using the unique sample index, allowing each daily sample to reuse its previous solution when it is encountered in a subsequent epoch. However, warm-start and update are not universally beneficial and their effectiveness depends on the algorithm implemented by the solver backend. For SCS under the closed-loop setting in Table III, WS accelerates the optimization forward pass from 43 .54 to 26 .63 
+
+minutes, corresponding to a 1.64 × speedup. Solver-data up-date provides no additional benefit: UP is 1.04 × slower than CS in average epoch time, while WS is 1.24 × faster than WU. OSQP benefits more consistently from both mechanisms. Relative to the 33 .57 -minute CS configuration, UP, WS, and WU achieve 1.26 ×, 1.52 ×, and 1.77 × speedups, respec-tively, with WU producing the fastest OSQP configuration at 
+
+18 .96 minutes per epoch. Since both SCS and OSQP employ operator-splitting algorithms, these results demonstrate the importance of the initial iterate, although the benefit of solver-data update remains backend and problem dependent. For QPALM, WS reduces the optimization-forward time from 9.81 to 4.16 minutes and the average epoch time from 18 .08 to 10 .92 minutes. Update alone provides little improvement, and combining it with warm-start increases the epoch time to 16 .00 minutes. Gurobi without warm-start gives the lowest recorded epoch time, 9.88 minutes, followed closely by reduced-KKT Clarabel with warm-start at 10 .79 
+
+minutes and QPALM with warm-start at 10 .92 minutes. For Gurobi, enabling the generic backend warm-start does not help and increases its epoch time to 10 .61 minutes. Among the open-source backends, Clarabel and QPALM therefore provide performance close to the commercial Gurobi backend. 
+
+E. Resource Usage and Decision Quality 
+
+DiffAPQP also substantially reduces peak memory. For the fastest shared-solver configurations, this represents memory reductions of 55 .1% for SCS and 49 .4% for Clarabel, com-pared to CvxpyLayers where the same solvers are used. The SUBMITTED TO IEEE 10 
+
+reduction is consistent with retaining the sparse QP represen-tation rather than maintaining the larger conic differentiation representation and its associated derivative state. In addition, the test costs obtained using the DiffAPQP differ from those of CvxpyLayers by at most 0.2% using SCS and Clarabel under both closed-loop and counterfactual for-mulation. The maximum differences along the counterfactual training trajectories are also small, reaching 0.127% for SCS and 0.057% for Clarabel. As a result, the computational gains do not materially alter the learning trajectories or test perfor-mance. In addition, the close CPU cores usage demonstrate that the observed improvements therefore arise primarily from the solver and differentiation mechanisms rather than from consuming more computational resources. VI. C ONCLUSION 
+
+This paper presented DiffAPQP, a solver-flexible frame-work for scalable exact decision-focused learning for large-scale power systems. DiffAPQP automatically canonicalizes optimization models written in CVXPY, accelerates repeated forward solves through solver warm starts and solver-data updates, and supports efficient implicit differentiation through either a full or reduced KKT system which eliminates inactive inequality constraints. For counterfactual value-based learning, we further developed an envelope-theorem-based gradient that completely avoids the time-consuming adjoint KKT solve. Given matched solver configuration, the training performance on IEEE 118-bus system DfL demonstrates that DiffAPQP can achieve 2.27 ×–3.58 × closed-loop and 3.62 ×–4.38 × coun-terfactual DfL training speedups over CvxpyLayers, while reducing peak memory usage by approximately 50% .APPENDIX 
+
+The appendix provides extra theoretical proofs, experiment setting and results. It starts by proofs on the equivalence between the full-KKT and reduced-KKT system in QP (Propo-sition 1) and LP (Proposition 2) case, respectively in solution-map layer, as well as the equivalence to the value-function layer differentiation (Proposition 3) in Appendix A; Imple-mentation details of DiffAPQP are explained in Appendix B with Python pseudo-code for both solution-map and value-function usages; Extensive experiment settings including re-producibility, power system optimization settings, data pre-processing, neural forecaster structure, training configurations, optimization solver settings, hardware configurations and re-source reporting of the DfL training on ED-RD examples in Appendix C; Appendix D discusses the extra results on counterfactual DfL training beyond Section V; Gradient fi-delity between DiffAPQP and CvxpyLayers are summarized in Section E. Beyond the experiment on power system ED-RD cases, Appendix F initiates experiment on random batched QP and LP studies; Appendix G discuss the detailed setting in cus-tomized CVXPY, compared to solver-native interface, original CVXPY, and CvxpyLayers; Appendix H then demonstrates the alignment of DiffAPQP’s customized CVXPY with the original CVXPY; Lastly, the performances on random QP/LP studies, including warm-start/solver-update ablation, end-to-end computational time, gradient fidelity, as well as CPU and memory resources are reported in Appendix I. 
+
+A. Proofs 1) Proof to Proposition 1: First, Ka and Da,i in (11) can be denoted as 
+
+Ka =
+
+
+
+P AT GT 
+
+> A
+
+GT
+
+> I
+
+A 0 0 0dg( ˜λ⋆
+
+> A
+
+)GA 0   : 0
+
+dg( GA ˜z⋆ − hA) 0
+
+  : 0
+
+dg( ˜λ⋆ 
+
+> I
+
+)GI 0 0 dg( GI ˜z⋆ − hI )
+
+
+
+Da,i =
+
+
+
+−Qi
+
+Bi
+
+dg ( λA)Hi, A
+
+  : 0
+
+dg( λI )Hi, I
+
+
+
+by setting ˜λ⋆ 
+
+> I
+
+= 0 and GA ˜z⋆ − hA = 0 . Define the vector 
+
+δ = (δz T , δν T , δλ T
+
+> A
+
+, δλ T 
+
+> I
+
+)T . We prove that the solution 
+
+Kaδ = 0 is δ = 0 . Taking the last row-block of Ka, we have 
+
+dg( GI ˜z⋆ − hI )δλ I = 0 . On the inactive inequality constraint set I, because (G˜z⋆ −h)I < 0, it gives δλ I = 0 . For the third row-block, on A, it becomes GAδz = 0 due to assumption (A2). Combining the second row-block in Ka, e.g., Aδz = 0 ,it gives that δz ∈ Null(( AT , G T
+
+> A
+
+)T ). Next, consider the first row-block of Ka, e.g., P δz + AT δν + GT
+
+> A
+
+δλ A + GT 
+
+> I
+
+δλ I = 0 .If it is left multiplied by δz T , this condition is simplified into 
+
+δz T P δz + : 0
+
+δz T AT δν + : 0
+
+δz T GT
+
+> A
+
+δλ A +  : 0
+
+δz T GT 
+
+> I
+
+δλ I = 0 SUBMITTED TO IEEE 11 
+
+Then, because of (A3), δz T P δz = 0 iff δz = 0 . Then the first row-block of Ka becomes AT δν + GT
+
+> A
+
+δλ A +  : 0
+
+GT 
+
+> I
+
+δλ I = 0 .Finally, by (A4), both δν and δλ A are 0. Consequently, Ka
+
+is non-singular. Then consider solving the linear system (11). Similarly as before, the last row-block dg ( GI ˜z⋆ − hI )D ˜λa 
+
+> I
+
+= 0 immedi-ately results in D˜λa 
+
+> I
+
+= 0 and (11) is reduced into 
+
+K2 · Dˆyi (˜ z⋆, ˜ν⋆, ˜λ⋆
+
+> A
+
+) = D2, with 
+
+K2 =
+
+
+
+P AT GT
+
+> A
+
+A 0 0dg ( ˜λ⋆
+
+> A
+
+)GA 0 0
+
+ , D 2 =
+
+
+
+−Qi
+
+Bi
+
+dg ( ˜λ⋆
+
+> A
+
+)Hi, A
+
+
+
+Because λA > 0 by (A2), dg( λA)s are canceled so that K2
+
+and D2 become Ks and Ds in (16). Then by (A3) and (A4), 
+
+Ks is non-singular so that (16) has unique solution. Because (16) is derived from (11), their unique solutions must be the same. Therefore, the full and reduced KKT systems (11) and (16) are equivalent. 
+
+2) Proof to Proposition 2: The proof to the LP case is similar to the QP case. First, let P = 0 in Ka. Define the vector δ = ( δz T , δν T , δλ T
+
+> A
+
+, δλ T 
+
+> I
+
+)T . We prove that the solution 
+
+Kaδ = 0 is δ = 0 . Consider (A5). Being a vertex (basic feasible solution) means that rank  (AT , G T
+
+> A
+
+)T  = nd. The vertex being non-degenerate means that the number of active constraints is nd. Therefore, (AT , G T
+
+> A
+
+)T ∈ Rnd×nd is square and full rank. Then from the last row-block, it immediantely gives that δλ I = 0 and the first row-block becomes AT δν +
+
+GT
+
+> A
+
+δλ A = 0 . Therefore, δν = 0 and δλ A = 0 . The second and third row-blocks result in Aδz = 0 and dg ( ˜λ⋆
+
+> A
+
+)GAδz =
+
+GAδz = 0 due to (A2). As a result, δz = 0 . Consequently, we have proved that δ = 0 for Kaδ = 0 .Then consider solving the linear system (11). It is straight-forward to show D˜λa 
+
+> I
+
+= 0 and (11) is reduced into 
+
+K3 · Dˆyi (˜ z⋆, ˜ν⋆, ˜λ⋆
+
+> A
+
+) = D3, with 
+
+K3 =
+
+
+
+0 AT GT
+
+> A
+
+A 0 0
+
+GA 0 0
+
+ , D 3 =
+
+
+
+−Qi
+
+Bi
+
+Hi, A
+
+
+
+Because (AT , G T
+
+> A
+
+)T is square and full rank, K3 is non-singular and all the conclusion stated in Proposition 2 follows. 
+
+3) Proof to Proposition 3: To start, the Danskin’s theorem [17] is given as follows. 
+
+Theorem 1. Let f : X × Y → R and X be a compact convex set. Let 
+
+h(y) := max  
+
+> x∈X
+
+f (x, y )
+
+x⋆(y) := arg max 
+
+> x∈X
+
+f (x, y )
+
+If f is concave in x and convex in y, and the maximum x⋆(y)
+
+is unique, then the function h is differentiable with gradient 
+
+Dh(y) = D 2f (x⋆(y), y )
+
+If the maximum is not unique, we get a subgradient. 
+
+Then for Proposition 3 with fixed (b, h ),
+
+α(q, c, b, h ) = min 
+
+> ˜z∈F (b,h )
+
+(˜ zT P ˜z + qT ˜z + c),
+
+and 
+
+Z⋆(q, c, b, h ) = arg min 
+
+> ˜z∈F (b,h )
+
+(˜ zT P ˜z + qT ˜z + c)
+
+where F(b, h ) := {˜z | A˜z = b, G ˜z ≤ h}.First, α(q, c, b, h ) = c + min ˜z∈F (b,h )(˜ zT P ˜z + qT ˜z). Then it is straightforward to see that α(c) is affine on c for some fixed ˜z, b, and h, and 
+
+Dcα(q, c, b, h ) = 1 
+
+For every fixed ˜z, 12 ˜zT P ˜z+qT ˜z+c is affine in q. The point-wise minimum of affine functions α(·) is therefore concave on 
+
+q. Moreover, since ˜zT P ˜z +qT ˜z +c is convex in ˜z and concave in q, the Danskin’s theorem is applicable such that 
+
+∂+ 
+
+> q
+
+α(q, b, h ) = Z⋆(q, b, h ).
+
+Hence, if Z⋆(q, b, h ) = {˜z⋆}, then α is differentiable with respect to q and 
+
+Dq α(q, b, h ) = ˜ z⋆.
+
+The convexity on b and h can be directly obtained from perturbation analysis [37]. In addition, the Lagrangian of (5) is 
+
+L(˜ z, ˜λ, ˜ν, q, h, b, c ) = ˜ zT P ˜z+qT ˜z+c+˜λT (G˜z−h)+˜ νT (A˜z−
+
+b). Define the dual function ϕ(˜λ, ˜ν) := min ˜z {˜zT P ˜z + qT ˜z +˜λT G˜z + ˜ νT A˜z} − ˜λT h − ˜νT b + c, which is concave in (˜λ, ˜ν)
+
+and convex (and affine) in (h, b ). In addition, since Slater’s condition holds, strong duality gives 
+
+α(q, b, h ) = sup 
+
+> ˜λ≥0,˜ν
+
+ϕ(˜λ, ˜ν), (26) and 
+
+Λ⋆(q, b, h ) = sup 
+
+> ˜λ≥0,˜ν
+
+ϕ(˜λ, ˜ν).
+
+Applying Danskin’s theorem to (26) yields 
+
+∂(b,h )α(q, c, b, h ) = {(−ν, −λ) : ( ν, λ ) ∈ Λ⋆(q, b, h )}.
+
+Hence, if Λ⋆(q, b, h ) = {(˜ ν⋆, ˜λ⋆)}, then α is differentiable with respect to (b, h ) and 
+
+Dbα(q, b, h ) = −˜ν⋆, Dhα(q, b, h ) = −˜λ⋆.
+
+B. Implementation 
+
+It is worth noting that DiffAPQP’s forward solve relies on external solver backends, accessed through CVXPY. As shown in Table II, although DiffAPQP is general, five solver backends are evaluated in this paper, including operator splitting (OS)-based algorithms OSQP [32] and SCS [20]; interior point (IP)-based algorithms Clarabel [21] and Gurobi [40]; Augmented Lagrangian (AL)-based algorithms QPALM [33]. Meanwhile, the availability of solver-data update and warm start is con-strained by both the native solver API and the corresponding CVXPY interface. Some solvers do not expose these features at the solver level; others do, but the current CVXPY interface does not fully expose them. SUBMITTED TO IEEE 12 
+
+To address these limitations, we refactor CVXPY’s 
+
+solve_via_data routine for OSQP, QPALM, and SCS to decouple the warm-start and update triggers. Moreover, we do not save the solver caches for each solver, which is memory intensive. Instead, we cache solver workspaces for samples in the first batch of the first epoch, which are then reused in all subsequent batches and epochs as discussed in Section III-C2. In parallel, we maintain a second solution cache of size |D| ,which stores the latest solution for each sample and reuses it as the initial point whenever that sample reappears in following epoch. Consequently, besides the forecast parameters passed to DiffAPQP, a persistent sample index must additionally be provided when sample-indexed explicit warm starting is enabled. For the remaining solvers in CVXPY, we retain the default CVXPY workflow and, when warm-start is triggered, reuse the cached solver instances managed by the original CVXPY. To sum up, the developed DiffAPQP package implements both solution-map (with full-KKT and reduced-KKT differ-entiation) and value-function layers for training closed-loop and counterfactual power system DfLs. And the following Python example integrates DiffAPQP into an end-to-end Py-Torch training pipeline. Users can specify a power-system optimization problem directly in CVXPY’s modeling language and embed it as a differentiable layer. Each layer is initialized once, while the prediction model generates batch-specific opti-mization parameters. Persistent dataset indices associate each sample with its cached solver state, enabling subsequent calls to reuse previous solutions through warm starting; problem-data updates avoid repeated solver initialization. In the mean-time, DiffAPQP supports parallel forward solves and backward differentiation, which is essential for stochastic training with large sample batches. The solution-map layer returns decision variables as adictionary indexed by their names defined when constructing the corresponding CVXPY optimization model. The value function layer directly outputs the optimal objective. In both cases, gradients propagate through the optimization problem by a counterfactual MSE loss (4) to update the prediction model using standard PyTorch operations. As the input param-eters are also named, the gradient with respect to the output of the forecasters can be easily obtained. 
+
+1 from diffapqp import ValueFuncLayer, SolMapLayer 
+
+2 # Initialize: prob is cvxpy.Problem instance. 
+
+3 layer_val = ValueFuncLayer(prob) 
+
+4 layer_sol = SolMapLayer(prob) 
+
+5 # Sample index for warm-start from cached sol. 
+
+6 idx_list = sample_idx.detach().cpu().tolist() 
+
+7 # Forward pass via torch.nn.Module predictor. 
+
+8 load_hat, solar_hat = nn(x) 
+
+9 param_dict = {"load_hat": load_hat, 
+
+10 "solar": solar_hat }
+
+11 solver = "OSQP" 
+
+12 # Value-function layer. 
+
+13 c_hat, *_ = layer_val( 
+
+14 param_dict, idx_list=idx_list, 
+
+15 solver=solver, solver_args=solver_args, 
+
+16 warm_start=True, update=True 
+
+17 )
+
+18 loss=0.5/x.shape[0]*torch.square(c_hat - c). sum () 
+
+19 # Alternatively, use the solution-map layer. 
+
+20 primal_dict, *_ = layer_sol(param_dict, 
+
+21 idx_list=idx_list, solver=solver, 
+
+22 solver_args=solver_args, warm_start=True, 
+
+23 update=True, reduced_kkt=True 
+
+24 )
+
+25 dispatch_hat = primal_dict["dispatch"] 
+
+26 c_hat = cost_fn(dispatch_hat) 
+
+27 loss=0.5/x.shape[0]*torch.square(c_hat - c). sum () 
+
+28 # Backward pass and parameter update. 
+
+29 optimizer.zero_grad() 
+
+30 loss.backward() 
+
+C. Extensive Experiment Settings of Section V 
+
+The detailed experiment settings for Section V is described in this appendix. 
+
+1) Reproducibility: The DiffAPQP and benchmark on ran-dom batched QP/LP experiment in Appendix F–I are available at https://github.com/xuwkk/diffapqp and can be installed by 
+
+pip install diffapqp . The ED-RD experiment in Sec-tion V is reproducible at https://github.com/xuwkk/diffapqp_ power_systems. The modified version of CVXPY is main-tained separately at https://github.com/xuwkk/cvxpy based on CVXPY v1.9.0. 
+
+2) Power System Decision Making Settings: The perfor-mance of the proposed DiffAPQP framework is compared with CvxpyLayers on the IEEE 118-bus system under closed-loop and counterfactual DfL settings, as shown in Fig. 1. The test system contains 118 buses, 34 generators, 186 transmission branches, 99 loads, 10 solar plants, and 10 wind plants. The ED and RD models are continuous convex quadratic programs incorporating generator capacity and ramping constraints, DC nodal power balance, transmission limits, renewable curtail-ment, load shedding, and emergency generation shedding. The RD model additionally represents asymmetric upward and downward redispatch costs. A 24-hour optimization horizon is used for both ED and RD. The ED and RD problems contain 8,952 and 10,584 scalar decision variables, respectively. Both models contain 4,488 scalar equality constraints, while ED and RD contain 19,536 and 24,432 scalar inequality constraints, respectively. This problem size provides a large-scale stress test for differentiable optimization in end-to-end DfL, which is rare in the current research. 
+
+3) Data Acquisition and Preprocessing: One year of hourly nodal load, solar, wind, and weather data is obtained from the quasi-realistic Texas system [39]. The IEEE 118-bus testbed, profile assignment, and data preprocessing are implemented using our open-source GridForge package [4]. The forecaster inputs comprise cyclical weekday and hour encodings, temper-ature, shortwave and longwave radiation, zonal and meridional wind speeds, and total wind speed. Non-calendar features and forecast targets are standardized, while the predicted load, solar, and wind profiles are transformed back to MW and constrained to be nonnegative before being passed to the optimization layers. The dataset contains 8,737 rolling 24-hour windows and 365 non-overlapping daily windows. The daily windows are randomly divided into 255 training, 54 validation, and 56 test samples. Rolling windows are used for AbL, whereas the non-overlapping daily windows are used for DfL fine-tuning. SUBMITTED TO IEEE 13 
+
+4) Neural Forecaster Structure: We employ a shared multi-task neural forecasting model to jointly predict the 24-hour trajectories of system loads, solar generation, and wind gener-ation. The model consists of three components: a normalized spatiotemporal input representation, a shared two-dimensional convolutional encoder, and three asset-specific forecasting heads. By sharing the encoder across forecasting tasks, the model can exploit common temporal and exogenous patterns while retaining separate output mappings for different asset types. Let the normalized input context window be denoted by 
+
+X ∈ RB×T ×Nbus ×Nf eature 
+
+where B is the batch size, T = 24 is the number of hourly time steps, Nbus = 118 is the number of buses, and Nf eature = 10 
+
+is the number of input features. The feature set contains four calendar variables, one temperature variable, two solar-radiation variables, and three wind-speed variables. The input is rearranged into the channel-first format required by the convolutional layers: 
+
+eX = permute( X) ∈ RB×Nf eature ×T ×Nbus 
+
+The shared encoder contains two consecutive two-dimensional convolutional layers with ReLU activations: 
+
+H(1) = σ
+
+
+
+Conv2D 10 →128 ( eX)
+
+
+
+∈ RB×128 ×24 ×118 
+
+H(2) = σ
+
+
+
+Conv2D 128 →256 (H(1) )
+
+
+
+∈ RB×256 ×24 ×118 
+
+where σ(·) denotes the ReLU activation function. Both con-volutional layers use a kernel size of 3 × 5 and padding of 1 × 2 which preserves the temporal and bus dimensions. The convolutional kernels jointly process the time and bus axes, allowing the encoder to capture short-term temporal dependencies and correlations between nearby buses under the adopted bus ordering. To obtain a compact system-level representation, the en-coded features are averaged along the bus axis: 
+
+Hb,c,t = 1
+
+> Nbus
+
+PNbus  
+
+> n=1
+
+H(2)  
+
+> b,c,t,n
+
+∈ RB×256 ×24 
+
+Hence, each forecasting hour is represented by a 256-dimensional latent vector that aggregates information from the entire network. Three independent prediction heads are then applied to the shared latent representation. Each head consists of a one-dimensional convolution with kernel size one. The forecasting heads are defined as 
+
+eYload = Conv1D 256 →99 (H)
+
+eYsolar = Conv1D 256 →10 (H)
+
+eYwind = Conv1D 256 →10 (H)
+
+After transposing the channel and time dimensions, the final normalized forecasts are 
+
+bYload ∈ RB×24 ×99 , bYsolar ∈ RB×24 ×10 , bYwind ∈ RB×24 ×10 
+
+Finally, the normalized outputs are transformed back to phys-ical units in MW using the corresponding inverse normaliza-tion. Since negative load and renewable-generation values are physically infeasible, the reported forecasts and the values passed to downstream optimization are projected onto the nonnegative domain: 
+
+bY = max 
+
+n
+
+Denorm( bY ), 0
+
+o
+
+Overall, the architecture combines parameter-efficient shared representation learning with task-specific output layers, thereby capturing common weather and temporal drivers while preserving the distinct forecasting characteristics of load, solar, and wind assets. 
+
+5) Training Configurations: The AbL forecaster is trained with Adam by minimizing the equally weighted mean of the normalized load, solar, and wind MSEs. We perform a grid search over hidden_dim ∈ {128 , 256 }, num_layers ∈{2, 3}, lr ∈ {0.001 , 0.005 , 0.01 }, batch_size ∈{16 , 32 , 64 }, giving 36 configurations. Each configuration is trained for at most 100 epochs, with early stopping after 10 validation epochs without improvement. The checkpoint with the lowest validation normalized MSE is selected. The result-ing forecaster uses hidden_dim = 256 , two convolutional layers, a learning rate of 0.005 , and a batch size of 32. The selected model contains 541,687 trainable parameters. The selected AbL checkpoint initializes all DfL experi-ments. Fine-tuning uses Adam with a learning rate of 10 −5 and a daily batch size of 32. Five epochs are recorded, where the first epoch evaluates the initial ABL model without parameter updates and the subsequent four epochs perform DfL fine-tuning. In the closed-loop setting, the predicted profiles are first passed through ED. The resulting generation schedule is then passed to RD together with the realized load, solar, and wind profiles. Training minimizes the mean realized end-to-end RD cost, scaled by 10 6 for numerical stability during backpropagation, while the reported operational cost remains in dollars. In the counterfactual setting, training minimizes the loss (4). The true ED costs are computed using Gurobi and cached for all daily samples. In DiffAPQP, warm starts are indexed using each sample’s unique start-hour identifier, allowing a daily problem to re-trieve its previous solution across epochs. 
+
+6) Solver Arguments: The solver arguments used for Sec-tion V are reported in Table IV. Default arguments are used if not specified in the table in other simulations in Appendix. The primary closed-loop DiffAPQP experiments use reduced-KKT differentiation with MINRES and a relative tolerance of 10 −9. Full-KKT experiments use LSQR with absolute and relative tolerances of 10 −6 and a maximum of 5,000 iterations. For each solver backend, DiffAPQP and CvxpyLayers use identical solver tolerances and training con-figurations. 
+
+7) Hardware Configuration: All DfL timing experiments are executed on a dual-socket workstation equipped with two Intel Xeon Gold 6230R CPUs at 2.10 GHz and 256 GB of system memory whereas AbL pretraining is performed using an NVIDIA GeForce RTX 3090 GPU. All methods use the same random seed, data split, forecaster initialization, batch size, learning rate, and solver arguments whenever the same SUBMITTED TO IEEE 14 
+
+Table IV: Solver and their algorithm types considered in the paper. Default settings are used if not specified.                              
+
+> Solver Prob. Type Algorithm Settings OSQP QP Operator splitting (ADMM) eps_abs :1e-4, eps_rel :1e-4, max_iter : 10,000
+> SCS CP Operator splitting eps_abs :1e-5, eps_rel :1e-5, max_iters :100,000
+> QPALM QP Augmented-Lagrangian eps_abs :1e-6, eps_rel :1e-6, max_iter : 10,000
+> Gurobi QP Gurobi chooses automatically Threads :1, OptimalityTol :1e-8, FeasibilityTol :1e-8, BarConvTol : 1e-8
+> Clarabel CP Interior point tol_gap_abs :1e-8, tol_gap_rel :1e-8, max_iter :10,000
+
+backend is used. To represent a stress test, the number of CPU cores are controlled as 32 for both CvxpyLayers and DiffAPQP training with the following prefix for all the experiment: taskset -c 0-31 .
+
+8) CPU and Memory Usage Reporting: We record CPU and memory usage with a lightweight sampler running at 0.05 s intervals. CPU usage is measured for all recursive child processes, so multiprocessing workers are included correctly. The CPU usage is reported as the mean effective number of cores, computed from process-level CPU utilization during the measured interval (including both forward and backward passes). Memory usage is measured from system-wide used memory via psutil.virtual_memory().used . The memory sampler starts after benchmark data generation and before layer construction, so memory monitoring is end-to-end, including layer construction, solver/cache initialization, the base solve, perturbed solve, and backward pass. Memory usage is reported as the peak increase in system memory during the same interval. Wall-clock time is decomposed into neural-network forward time, optimization forward time, optimization-layer backward time, and neural-network backward time. First-call setup and canonicalization overhead are retained in the reported optimization-forward time. Resource usage is sampled every 50 ms for the training process and its child processes. CPU utilization is reported as the average effective number of occu-pied cores, computed from process CPU time relative to wall-clock time. Memory usage is reported as the peak increase in system-wide memory relative to the baseline measured at the beginning of each batch. All reported experiments use the fixed random seed 404. 
+
+D. Simulation Results for Counterfactual DfL in Power System 
+
+As a complementary to Table III, Table V shows a larger DiffAPQP advantage in the counterfactual formulation. With SCS, warm-started DiffAPQP reduces the mean epoch time from 38 .16 to 10 .53 minutes, giving a 3.62 × speedup. Its optimization-forward pass is 3.19 × faster, while optimization-backward time decreases from 5.144 to 0.049 minutes, corre-sponding to an approximately 104 × speedup. With Clarabel, DiffAPQP reduces the epoch time from 10 .73 to 2.45 minutes, giving a 4.38 × speedup. Its forward and backward compo-nents are accelerated by 2.38 × and 56 ×, respectively. The particularly large backward speedup follows from the DiffAPQP value-function mechanism. CvxpyLayers recon-structs the optimal ED cost from the primal solution and differ-entiates through the complete conic solution map. DiffAPQP instead evaluates the value gradient directly from the optimal primal and dual variables using the envelope theorem, avoiding an adjoint KKT solve. Consequently, the DiffAPQP backward time is only a few seconds per epoch and is negligible relative to its forward optimization time. Warm-start provides the most consistent forward-pass im-provement. It accelerates SCS, OSQP, and QPALM by 2.67 ×,
+
+3.73 ×, and 2.80 ×, respectively, relative to their cold-start configurations. Solver-data update provides little additional benefit and generally makes the warm-started configurations slower. The fastest DiffAPQP configuration is warm-started QPALM at 1.68 minutes per epoch. Compared with the fastest CvxpyLayers configuration, Clarabel at 10 .73 minutes, this represents a cross-backend speedup of 6.39 ×.DiffAPQP also reduces peak memory from 38 .68 to 
+
+11 .94 GiB with SCS and from 34 .46 to 12 .89 GiB with Clarabel, corresponding to reductions of 69 .1% and 62 .6% .These gains do not materially affect decision quality: the SCS and Clarabel test-MSE differences relative to CvxpyLayers are only 0.022% and 0.003% , respectively. 
+
+E. Gradient Agreement and Training-Path Divergence in Power Systems 
+
+In Section V-E, it has been demonstrated that various for-ward and backward settings result in similar training and test losses compared to CvxpyLayers’ training outcome. To verify this observation, Tables VI and VII compare the gradients of DiffAPQP against those of CvxpyLayers with respect to the load, solar, and wind forecasts, under the closed-loop and counterfactual DfL settings in Section V. The closed-loop comparison evaluates the full- and reduced-KKT solution-map layers, while the counterfactual comparison evaluates the value-function layer. Clarabel is used for both methods. The cosine similarity is first computed for each daily sample by flattening its 24-hour forecast gradient, after which the mean and fifth percentile (P05) are reported. During DfL training, solar and wind forecasts are restricted to positive values before passing to the ED layers. At a zero renewable forecast, the lower and upper curtailment bounds are simultaneously active, e.g., 0 ≤ pcurt solar ≤ bpsolar = 0 , resulting in a degenerate KKT point at which the derivative need not be unique. CvxpyLayers and DiffAPQP may consequently select different numerical derivatives at these boundary points. Moreover, gradients associated with forecasts clipped from negative values are blocked by the clamp and do not propagate to the NN. The positive-forecast comparison therefore better represents the effective differentiable training signal. Table VI provides the controlled layer-to-layer comparison. All 32 samples in this batch are evaluated using the same pretrained AbL forecaster before either method performs an SUBMITTED TO IEEE 15 
+
+Table V: Counterfactual DfL performance for all evaluated solver configurations. The overall epoch time includes the recorded training forward/backward and validation forward components, whereas the optimization component columns include training only.                                                                                                                                                                             
+
+> Method Solver WUAvg. cores Peak memory (GiB) Train opt. fwd. (min) Train opt. bwd. (min) Avg. epoch time (min) Test MSE ($ /10 6)2
+> CvxpyLayers SCS ––15 .87 38 .68 27 .16 5.144 38 .16 0.009 856 87
+> DiffAPQP SCS False False 19 .82 11 .93 23 .23 0.111 28 .16 0.009 855 61
+> DiffAPQP SCS False True 20 .82 11 .96 22 .06 0.047 26 .46 0.009 854 82
+> DiffAPQP SCS True False 10 .58 11 .94 8.51 0.049 10 .53 0.009 859 08
+> DiffAPQP SCS True True 9.04 11 .94 9.43 0.112 11 .80 0.009 860 04
+> CvxpyLayers Clarabel ––17 .26 34 .46 4.11 5.553 10 .73 0.009 856 35
+> DiffAPQP Clarabel False N/A 22 .60 12 .86 2.33 0.052 3.13 0.009 856 67
+> DiffAPQP Clarabel True N/A 24 .47 12 .89 1.73 0.099 2.45 0.009 856 67
+> DiffAPQP OSQP False False 21 .24 12 .53 7.93 0.054 9.82 0.009 852 53
+> DiffAPQP OSQP False True 19 .90 12 .51 8.44 0.055 9.97 0.009 841 88
+> DiffAPQP OSQP True False 11 .69 12 .50 1.84 0.100 2.63 0.009 862 97
+> DiffAPQP OSQP True True 13 .46 12 .49 2.09 0.048 2.80 0.009 863 61
+> DiffAPQP QPALM False False 22 .45 13 .45 3.63 0.050 4.71 0.009 856 82
+> DiffAPQP QPALM False True 21 .36 13 .44 3.69 0.055 4.82 0.009 856 82
+> DiffAPQP QPALM True False 13 .21 13 .45 1.11 0.098 1.68 0.009 856 71
+> DiffAPQP QPALM True True 17 .35 13 .50 2.25 0.057 3.01 0.009 856 85
+> DiffAPQP Gurobi False N/A 9.36 12 .41 1.51 0.090 2.11 0.009 856 67
+> DiffAPQP Gurobi True N/A 7.98 12 .39 1.81 0.047 2.46 0.009 856 67
+
+Table VI: Per-sample cosine similarity between DiffAPQP and CvxpyLayers forecast gradients for the first batch of the first 
+
+DfL training epoch. Both methods use Clarabel, and all 32 samples are evaluated before the first optimizer update. Solar and wind statistics include only positive forecasts. 
+
+DiffAPQP layer Formulation Solver Samples Load Solar > 0 Wind > 0
+
+Mean P05 Mean P05 Mean P05 
+
+Full KKT Closed-loop Clarabel 32 0.983 099 0.942 964 0.980 163 0.940 726 0.981 288 0.942 180 
+
+Reduced KKT Closed-loop Clarabel 32 0.999 541 0.997 859 0.999 324 0.997 350 0.999 484 0.997 752 
+
+Value function Counterfactual Clarabel 32 0.999 897 0.999 705 0.999 916 0.999 849 0.999 978 0.999 921 
+
+Table VII: Cosine similarity over all training samples stored during the first DFL training epoch. Both methods use Clarabel. Unlike Table VI, later batches are evaluated after method-specific optimizer updates and gradient mismatches are expected. 
+
+DiffAPQP layer Formulation Solver Samples Load Solar > 0 Wind > 0
+
+Mean P05 Mean P05 Mean P05 
+
+Full KKT Closed-loop Clarabel 255 0.974 053 0.929 482 0.960 763 0.872 009 0.974 022 0.928 346 
+
+Reduced KKT Closed-loop Clarabel 255 0.991 010 0.986 669 0.980 531 0.898 744 0.989 846 0.984 164 
+
+Value function Counterfactual Clarabel 255 0.998 134 0.995 841 0.713 828 0.050 653 0.965 518 0.692 364 
+
+optimizer update. The full-KKT layer achieves mean cosine similarities of 0.9831 , 0.9802 , and 0.9813 for load, solar, and wind, respectively. Its P05 values remain above 0.9407 , show-ing that the gradients are strongly aligned for most samples. The residual discrepancy is consistent with the approximate solution of the large full asymmetric adjoint system (11) using LSQR with finite termination tolerances. The reduced-KKT formulation (16) improves the agree-ment substantially. Its mean cosine similarities are 0.99954 ,
+
+0.99932 , and 0.99948 , while all P05 values exceed 0.9973 .Thus, even the lower tail of the sample-wise distribution re-mains closely aligned with CvxpyLayers. Under the evaluated configuration, this improvement reflects the combined effect of removing inactive constraints from the adjoint system to obtain more robust results and solving the resulting smaller system using MINRES with a tighter tolerance. The value-function layer provides the closest agreement, with mean cosine similarities of 0.99990 , 0.99992 , and 
+
+0.99998 for load, solar, and wind, respectively. Its P05 values are also above 0.9997 . The nearly identical gradients demon-strate that, at regular positive-forecast points, the proposed value-function formulation (Proposition 3 and (19)) can re-produce the CvxpyLayers training signal without requiring an adjoint KKT solve. Table VII aggregates the 255 common training samples stored after the first DfL training epoch. The full-KKT mean similarities remain between 0.9608 and 0.9741 , while the reduced-KKT values remain between 0.9805 and 0.9910 .However, this table is not a controlled measure of intrinsic layer fidelity. After the first batch, CvxpyLayers and Dif-fAPQP update their forecasters independently. Consequently, the gradients for subsequent samples are evaluated at different NN parameters, forecast values, and optimization active sets, even though there disagreements are expected and the training losses are close. This distinction is particularly important for the value-function solar result. Its all-sample mean decreases to 0.7138 ,compared with 0.99992 in the controlled first batch before training. Solar forecasts frequently lie near the clipping bound-ary because of their diurnal profile. Small method-specific SUBMITTED TO IEEE 16 
+
+parameter updates can therefore move a forecast across zero, changing the active constraints discontinuously. In addition, the positive-renewable mask used for the all-sample analysis is reconstructed from the initial AbL forecaster and may no longer match the evolving forecasts in later batches. Ac-cordingly, Table VI is used as the primary gradient-fidelity result, whereas Table VII is interpreted only as a diagnostic of divergence along the sequential training path. 
+
+F. Experiment Settings on Random Quadratic and Linear Programs in the Appendix 
+
+This section summarizes the data generation and solver arguments for random QP and LP experiment in the Appendix .Note that the settings in this section may not be followed in the ED-RD examples in Section V. 
+
+1) Data Generation: We benchmark end-to-end perfor-mance of DiffAPQP (both solution map Layer and value function layer) with CvxpyLayers for both QP and LP. The problem size is denoted as nd, nin , and neq , respectively. The following arguments are considered:  
+
+> •
+
+solver = {OSQP, SCS, QPALM, Clarabel, Gurobi} for DiffAPQP and solver = {SCS, Clarabel} for CvxpyLay-ers.  
+
+> •
+
+matrix_format = {dense, sparse}.  
+
+> •
+
+problem_type = {QP, LP}.  
+
+> •
+
+data_mode = {random, well_conditioned}.  
+
+> •
+
+For DiffAPQP, consider {cold-start (CS), with warm-start only (WS), with update only (UP), with both warm-start and update (WU)}.  
+
+> •
+
+For DiffAPQP with Layer setting, consider {with and without reduced adjoint system formulation}. The LSQR and MINRES solvers are used for full and reduced adjoint system, respectively.  
+
+> •
+
+For DiffAPQP with Layer setting under LP, we test regularizer within {1e-3,0}. The generation procedures for optimization data P, A, G 
+
+under different problem settings are summarized in Table VIII, which are used for all samples in a batch. Moreover, the condition number of Q, A, and G matrices not only influence the efficiency of the forward solution, but also impact on the solution quality of the adjoint system and the stability of the reduced-KKT setting in the backward differentiation. 
+
+2) Parameter Generation: For each fixed problem template 
+
+(P, A, G ), we generate batches of vector parameters while keeping the matrix data fixed. For each sample, we generate a base instance (q, h, b ) and a perturbed instance (q′, h ′, b ′).It is assumed that P , A, and G have been generated based on Table VIII. 
+
+a) QP Problem: For the QP setting, the main design focus is to be feasible . To start, the linear cost vectors are sampled independently as qi ∼ N (0 , I ), i = 1, . . . , N 
+
+where N represents the batch size. Then, for each sample, we draw a reference primal point xref  
+
+> i
+
+∼ N (0 , I ). The equality right-hand side is chosen so that xref  
+
+> i
+
+is feasible: 
+
+bi = Ax ref  
+
+> i
+
+. The inequality right-hand side is generated as 
+
+hi = Gx ref  
+
+> i
+
++ si, where the slack vector si is strictly positive. In the implementation, the slack is sampled elementwise as 
+
+si = 0 .5+0 .2|zi|, z i ∼ N (0 , 1) , so that xref  
+
+> i
+
+is strictly feasible 
+
+for the inequality constraints. To build the perturbed dataset, we generate a nearby point 
+
+xpert  
+
+> i
+
+= xref  
+
+> i
+
++ σξ i, ξi ∼ N (0 , I ), where σ > 0 is the perturbation scale. The perturbed equality and inequality right-hand side is b′ 
+
+> i
+
+= Ax pert  
+
+> i
+
+and h′ 
+
+> i
+
+= Gx pert  
+
+> i
+
++ si where si is the same as the base case. The cost vector is kept unchanged: 
+
+q′ 
+
+> i
+
+= qi.
+
+b) LP Problem: For the LP setting, the main design purpose is to have bounded solution. To start, the cost vector is not sampled independently. Instead, it is constructed so that a sampled primal point satisfies the KKT conditions. First, we draw a reference primal point xref  
+
+> i
+
+∼ N (0 , I ), and define the equality right-hand side by bi = Ax ref  
+
+> i
+
+. Next, an active-set mask is sampled for the inequality constraints. A slack vector 
+
+si is generated such that active constraints have zero slack and inactive constraints have strictly positive slack. The inequality right-hand side is then hi = Gx ref  
+
+> i
+
++ si, with 
+
+(si)j =
+
+(0, j ∈ A i,> 0, j ∈ I i.
+
+A nonnegative dual vector λi is sampled so that λi ≥
+
+0, (λi)j = 0 for j ∈ I i, and an equality multiplier νi is sampled from a Gaussian distribution. The cost vector is then defined through the stationarity condition: 
+
+qi = −(A⊤νi + G⊤λi)
+
+With this construction, the tuple (xref  
+
+> i
+
+, λ i, ν i) satisfies primal feasibility, dual feasibility, complementarity, and stationarity. Therefore, xref  
+
+> i
+
+is an optimal solution of the generated LP instance. The perturbed LP data is generated following the same procedure as QP. 
+
+c) Differentiable Loss: The optimal objective value 
+
+L⋆ = 12 x⋆,T P x ⋆ + qT x⋆ is used as the scalar loss and differentiated with respect to the problem parameters. Dif-fAPQP’s value function layer directly returns L⋆, enabling the “differentiation-for-free” strategy. In contrast, the DiffAPQP solution-map layer and CvxpyLayers return the optimal de-cision variable x⋆; consequently, the objective must first be reconstructed from x⋆ before differentiation. 
+
+G. Comparison of Solver-Interface Pipelines 
+
+In this paper, each solver backend can be accessed through four types of solver-interface pipelines: (i) the solver-native interface, (ii) the default CVXPY interface, (iii) the custom CVXPY interface used by DiffAPQP, and (iv) the CvxpyLay-ers interface. Their relationships are highlighted in Fig. 4. The solver-native interface usually requires the optimization problem to be manually converted into the solver’s standard form before calling the backend. These standard forms differ SUBMITTED TO IEEE 17 
+
+Table VIII: Optimization data generation used in the random QP /LP benchmarks. 
+
+Dense Sparse Random Matrix Well-conditioned Matrix Random Matrix Well-conditioned Matrix 
+
+P 1. Sample Pr with iid standard normal entries. 2. Set P = P ⊤ 
+
+> r
+
+Pr + ϵI .1. Sample Pr with iid standard normal entries. 2. Compute QR factorization: Pr = QP RP .3. Set eigenvalues λi evenly in [1 , 10] .4. Set P = QP dg( λ)Q⊤ 
+
+> P
+
+, so that κ(P ) = 10 .1. Sample zi ∼ N (0 , 1) .2. Set P = dg(0 .5 + |zi|).1. Set diagonal entries λi evenly in [1 , 10] .2. Set P = dg( λ), so that 
+
+κ(P ) = 10 .
+
+A Sample A with iid stan-dard normal entries. 1. Sample Ar with iid standard normal entries. 2. Compute QR factorization: A⊤ 
+
+> r
+
+= QARA.3. Set A = Q⊤ 
+
+> A
+
+, so that the rows of A are orthonormal and κ(A) = 1 .Apply an elementwise Bernoulli mask with density 
+
+0.1 to the dense random A.Apply an elementwise Bernoulli mask with density 0.1 to the dense well-conditioned A.
+
+G Sample G with iid stan-dard normal entries. 1. Sample Gr with iid standard normal entries. 2. Normalize each row of Gr to unit norm to obtain 
+
+G.Apply an elementwise Bernoulli mask with density 
+
+0.1 to the dense random G.Apply an elementwise Bernoulli mask with density 0.1 to the dense row-normalized G.
+
+Table IX: Warm-start and update behaviors in solver-native interface, default CVXPY interface, custom CVXPY interface and CvxpyLayers interface on selected APQP solution algorithms. The custom CVXPY behaviors only support APQP solution. 
+
+Solver Solver-native Interface Original CVXPY Custom CVXPY CvxpyLayers OSQP 
+
+[32] 
+
+solver.warm_start(x=x0, y=y0) solver.update(q=q_new, l=l_new, u=u_new) 
+
+Both are supported with one 
+
+warm_start flag to trigger both. Separate warm_start 
+
+and update flags as in original solver backend. N/A 
+
+SCS [20] solver.solve(warm_start=True, x=x0, y=y0, s=s0) solver.update(b=b_new, c=c_new) 
+
+Only warm-start is supported by the 
+
+warm_start flag Separate warm_start 
+
+and update flags as in original solver backend. Does not sup-port warm-start and update. 
+
+QPALM 
+
+[33] 
+
+solver.warm_start(x0, y0) solver.update_q(q_new) ,
+
+solver.update_bounds(bmin_new, bmax_new) 
+
+Both are supported with one 
+
+warm_start flag to trigger both. Separate warm_start 
+
+and update flags as in original solver backend. N/A 
+
+Clarabel 
+
+[21] No public API for user-specified initial point. 
+
+solver.update(P=P_new, q=q_new, A=A_new, b=b_new) 
+
+No initial-point warm-start. The 
+
+warm_start flag reuses the cached solver and triggers data update when allowed. Same as original CVXPY. Does not sup-port warm-start and update. 
+
+Gurobi 
+
+[40] Continuous QP warm-start can use advanced-start information such as PStart /DStart .Existing models can be update in place, e.g., 
+
+setAttr , chgCoeff , setMObjective ,then optimize() .Partial warm-start only: CVXPY re-builds the Gurobi model and sets vari-able Start from the cached solution. In-place update is not supported. Same as original CVXPY. N/A Native Solver CVXPY CvxpyLayers DiffAPQP Automatic Canonicalization 
+
+> Differentiable Optimization
+
+Fig. 4. Brief relationships among the compilers considered in the paper. Detailed comparison between CvxpyLayers and DiffAPQP is in Table II. 
+
+across solvers. For example, OSQP: min 12 xT P x + qT x
+
+s.t. l ≤ Ax ≤ u
+
+SCS: min 12 xT P x + cT x
+
+s.t. Ax + s = b, s ∈ K 
+
+QPALM: min 12 xT Qx + qT x
+
+s.t. bmin ≤ Ax ≤ bmax 
+
+Clarabel: min 12 xT P x + qT x
+
+s.t. Ax + s = b, s ∈ K 
+
+(27) Here, we retain each solver’s native parameter notation. As discussed in Section III-B, manually converting a problem into solver standard form requires solver-specific optimization knowledge and is prone to implementation errors. In contrast, CVXPY, CvxpyLayers, and DiffAPQP interfaces provide au-tomatic canonicalization from a high-level problem description under different settings. Moreover, as discussed in Section III-C, native solver APIs usually expose warm-start and problem-data update mecha-nisms to different extents. However, these features are not be fully exposed through the default CVXPY interface or CvxpyLayers. The differences are summarized in Table IX. For example, SCS natively supports matrix factorization reuse via solver.update and manual warm-start overrides for primal and dual variables, whereas the current CVXPY’s SCS interface only passes cached previous solve under 
+
+warm_start=True and does not expose the persistent-workspace update path. More generally, in the current CVXPY interfaces for OSQP and QPALM, solver update and warm start are coupled under a single warm_start flag. CVXPY also documents that warm start uses variable value fields only on the first solve; on subsequent solves, initialization is taken from the cached previous solution [19]; therefore, user cannot pass arbitrary warm start point to the solver. Consequently, SUBMITTED TO IEEE 18 
+
+a refactor is needed to better control the warm-start and update behaviors in the custom CVXPY-based interface and DiffAPQP. At last, as both Clarabel and Gurobi have limited warm-start and update exposure, DiffAPQP uses the default CVXPY’s 
+
+warm_start flag and does not separate the update function as the other solvers. 
+
+H. Simulation on Default Custom CVXPY Interface 
+
+This section demonstrates warm-start and update behavior for OSQP, SCS, QPALM, Clarabel and Gurobi for both default and custom CVXPY interfaces. 
+
+1) Settings: The solver arguments are reported in Table IV with eps_abs =eps_rel =1e-6 and 1e-5 modified for SCS and OSQP, respectively. The QP case with dense and random matrix setting in Table VIII is considered with nd = 700 ,
+
+nin = 1000 , and neq = 400 and the perturbation scale σ =0.1. Whenever a problem is resolved with warm-start and/or update option, we always reset and solve the baseline problem before passing to the perturbed problem for fair comparison. 
+
+2) Results: The results are summarized in Table X. The computational performances highlighted in the same color represent the same underlying warm-start and update settings as Table IX. To start, for all five solvers, original CVXPY without warm-start has close performance of custom CVXPY with no warm-start and update triggered. The same iteration numbers and similar computational performance verify that the custom CVXPY follows the same default CVXPY warm-start behavior where update has no effect in Clarabel and Gurobi solvers as the default CVXPY warm-start is implemented. Moreover, for SCS solver, the CVXPY warm_start flag only triggers the warm-start functionality but ignores the update such as matrix factorization caching. This is evidenced by 16.17 s and 16.29 s warm-start solution time in the de-fault and custom CVXPY solution time. In contrast, CVXPY 
+
+warm_start for OSQP and QPALM solvers implement both warm-start and update, as confirmed by the similar end-to-end computational time and iterations for custom CVXPY with both warm_start and update triggers. In addition, different solvers have different warm-start and update performances on a given optimization problem. For the specific QP settings defined in Appendix F, both update and warm-start benefits on the OSQP, and SCS while the improve-ment from update is more significant. For QPALM, warm-start dominates the computational efficiency improvement while update has little improvement. Note that the reported warm-start and update preference may be different to different QP or LP settings. 
+
+I. Performance of DiffAPQP on Batch-solve Random QP and LP 
+
+This section reports random QP and LP runs with 32 samples in parallel. All settings follow Appendix H. The CPU cores are limited by Appendix C7. 
+
+1) Analysis on Warm-start and Update in the Forward Solution: We evaluate how warm starting and solver-state updating affect the forward-pass performance of DiffAPQP under four execution modes: cold start (CS), warm start only (WS), update only (UP), and combined warm start and update (WU). The reported time covers the forward evaluation of the 
+
+perturbed batch. Layer initialization and the initial base solve are excluded. Thus, CS denotes a second solve without reusing the previous solution or solver workspace, rather than the first invocation of the layer under base data setting. All modes solve the same generated instances and use the same solver settings in Table IV (with the same modifications in Appendix H), so comparisons between modes are paired within each solver. The performance is reported in Fig. 5 where no regularization terms are added on LP problems. The main findings on warm-start and update about different solver backends are listed below: 1) No warm-start and update strategy is universally op-timal; 2) OSQP benefits primarily from updating; 3) SCS benefits most from combining both mechanisms and SCS WU shows particularly strong LP improve-ments; 4) Clarabel benefits mainly from solver update; 5) QPALM’s warm-start and update performances vary on different problems; 6) Gurobi shows little systematic improvement. The explicit DiffAPQP update interface is available for OSQP, QPALM, and SCS in this comparison. Gurobi instead uses its conventional primal warm-start mechanism, while Clarabel’s CVXPY warm-start path also reuses and updates its solver workspace. Consequently, the separation between warm start and update should primarily be interpreted for OSQP, QPALM, and SCS. Solver-state updating is the principal source of acceleration for OSQP. Across the six configurations that OSQP solves successfully, UP and WU achieve geometric-mean speedups of 4.43 × and 4.80 ×, respectively, relative to CS, whereas WS alone provides only a 1.04 × speedup. Update-enabled modes reduce forward time by 53-92%, with particularly large improvements for QPs. In detail, the dense well-conditioned QP decreases from 46.82 s under CS to 3.81 s under WU, while the sparse random QP decreases from 4.43 s to 0.85 s. These results indicate that reusing the factorization and solver workspace is considerably more valuable for OSQP than supplying only the previous primal-dual iterate. SCS exhibits a different and complementary pattern. Al-though WS and UP independently provide geometric-mean speedups of 1.77 × and 1.87 ×, their combination achieves a 5.12 × speedup averaged over eight problem settings. The interaction is especially strong for LPs. The WU reduces forward time by 88-92% in every LP configuration. For example, the dense well-conditioned LP decreases from 19.54 s to 1.54 s, and the sparse random LP decreases from 2.80 s to 0.26 s. The combined improvement is substantially larger SUBMITTED TO IEEE 19 
+
+Table X: Performance of default and custom CVXPY interfaces for solving random QP problem. The reported computational time is end-to-end, averaged over solving 5 samples in serial. Numbers in the brackets are the iterations. For each solver, results in same color are comparable as per Table IX.                                     
+
+> Default CVXPY Custom CVXPY No Warm-start With Warm-start Without Both With Warm-start With Update With Both OSQP 5.16 (830) 2.88 (725) 4.97 (830) 4.36 (725) 3.34 (830) 2.84 (725)
+> SCS 17.15 (2910) 16.17 (2940) 16.66 (2910) 16.29 (2940) 12.64 (2640) 11.83 (2565)
+> QPALM 18.22 (115.6) 9.94 (161.4) 18.17 (115.6) 9.93 (161.4) 18.04 (115.6) 9.94 (161.4)
+> Clarabel 3.71 (12.60) 3.26 (12.60) 3.65 (12.60) 3.23 (12.60) 3.39 (12.60) 3.28 (12.60)
+> Gurobi 14.11 (13.60) 13.75 (13.60) 14.01 (13.60) 13.73 (13.60) 13.76 (13.60) 13.73 (13.60)
+
+than either mechanism alone, suggesting that SCS benefits simultaneously from retaining its workspace and initializing the updated problem with a nearby solution. The benefits are less universal for the remaining solvers. Clarabel benefits mainly from its warm-start and solver update path, with an aggregate speedup of approximately 1.58 ×. The improvement is strongest for sparse problems, reaching 50-62%, but is small for dense LPs. QPALM shows no consistent acceleration. Updating alone is close to CS, while warm-start modes can become substantially slower and fail for the dense unregularized LPs. Gurobi also shows no systematic timing improvement because each model is reconstructed and warm starting only supplies an initial primal solution. Its observed differences are generally within the variability expected from independent timing runs. Overall, the results demonstrate that forward-pass reuse in DiffAPQP must be selected according to the underlying solver, given the specific problem. The 16 missing results, all arising from unregularized LP configurations, also indicate that solver robustness is more sensitive in the LP setting and motivate the 
+
+ϵ = 10 −3 regularized term. Nevertheless, the multi-fold OSQP and SCS improvements provide strong evidence for the value of solver-aware warm-start and solver update in DiffAPQP. 
+
+2) End-to-end Forward and Backward Time Comparison for Solution Map and Value Function Layers: We compare the end-to-end computational time of the DiffAPQP solution-map and value-function layers against CvxpyLayers in Fig. 6. The reported time is the sum of the forward and backward passes for the perturbed batch. Layer construction and the initial base solve are excluded, so the results represent the steady-state performance of repeatedly solving and differentiating related optimization problems. The DiffAPQP time is reported with both warm-start and solver update triggered while CvxpyLay-ers does not expose equivalent warm-start or update reuse and directly evaluates the perturbed batch. The main findings are summarized as follows: 1) Reduced KKT setting consistently improves differen-tiation efficiency by 4.13 × on average, resulting in a 
+
+2.02 × geometric-mean end-to-end speedup over full KKT differentiation; 2) Compared to CvxpyLayers, DiffAPQP accelerates the forward pass by 13 .16 × and 3.00 × for SCS and Clarabel solvers in average; 3) The value layer is fastest when only objective sensi-tivities are required. To start, with the same underlying solver, DiffAPQP achieves a geometric-mean forward speedup of 13 .16 × over CvxpyLayers with SCS across all eight problem settings. The corresponding speedups are 11 .84 × for QPs and 14 .63 ×
+
+for LPs, with individual improvements ranging from 6.99 ×
+
+to 32 .46 ×. With Clarabel, DiffAPQP achieves a 3.00 ×
+
+geometric-mean forward speedup across the seven successful settings. The improvement is stronger for QPs, at 5.05 ×,than for LPs, at 1.50 ×. These results show that DiffAPQP’s advantage is already substantial before differentiation. It arises from reusing the canonicalized APQP representation, solver workspaces, and previous primal-dual solutions when evaluat-ing a nearby parameter batch. Full-KKT differentiation constructs the complete comple-mentarity system and solves it using LSQR [35], whereas reduced KKT retains only the active inequality constraints and solves the resulting symmetric system using more efficient MINRES [38]. The active set is selected using an absolute tolerance of 10 −3 and zero relative tolerance. Among the 35 solver-problem combinations for which both unregularized full-KKT and reduced-KKT runs completed successfully, re-duced KKT achieved a geometric-mean end-to-end speedup of 2.02 ×. The backward pass itself is 4.13 × faster, and its median share of total runtime decreases from 62% under full KKT to 32% under reduced KKT. The largest observed end-to-end improvement is 5.62 ×. Reduced KKT is therefore the preferred DiffAPQP solution-map configuration when sensi-tivities of the optimizer are required. Combining the faster forward and backward passes produces substantial solver-matched improvements over CvxpyLayers. With SCS, full-KKT DiffAPQP is 3.17 × faster end to end, while reduced-KKT DiffAPQP is 9.07 × faster. The reduced-KKT advantage is 9.81 × for QPs and 8.40 × for LPs, with individual speedups between 4.79 × and 25 .66 ×. With Clara-bel, the corresponding geometric-mean speedups are 1.71 ×SUBMITTED TO IEEE 20 
+
+for full KKT and 3.19 × for reduced KKT. Reduced-KKT DiffAPQP is particularly effective for Clarabel-based QPs, where it achieves a 5.09 × speedup, while the improvement for LPs is 1.71 ×. Because these comparisons use the same solver on the same problem instances, they provide stronger evidence for the benefits of DiffAPQP’s repeated-solve and differentiation architecture than comparisons across different solver families. When only the gradient of the optimal value is required, DiffAPQP’s value function layer provides a further reduction in differentiation cost. Instead of differentiating the optimizer through a KKT adjoint system, it applies the envelope the-orem directly to the stored primal-dual solution. Across 35 matched configurations, the value layer is 1.50 × faster end to end than the reduced-KKT solution-map layer, while its backward pass is 13 .85 × faster. The median contribution of backward differentiation falls to approximately 2.2% of total runtime. Relative to solver-matched CvxpyLayers, the value layer achieves geometric-mean end-to-end speedups of 18 .20 ×
+
+with SCS and 4.60 × with Clarabel. It is the fastest method in all eight problem categories. For LPs, we additionally evaluate quadratic regularization with ϵ = 10 −3. All regularized full- and reduced-KKT runs complete successfully, whereas the figure contains 15 missing unregularized results caused by solver failures. Regularization is especially beneficial for Gurobi, reducing reduced-KKT end-to-end time by 2.06 × to 3.85 ×, and it enables several pre-viously failing OSQP, QPALM, and Clarabel cases. However, its performance effect is not universally positive. For example, regularized SCS runs are approximately 1.8× to 8.3× slower than their unregularized counterparts. The reason is explained in Section III-C1. Adding second-order regularization term transforms the LP into QP, which requires extra variables and rotated cones in SCS. 
+
+3) Gradient Agreement and Differentiation Reliability: For all the experiments in Appendix I2, considering the DiffAPQP gradient component z ∈ { q, h, b } and CvxpyLayers reference solver r ∈ { SCS , Clarabel }, we compute the mean sample-wise cosine similarity 
+
+C(r) 
+
+> z
+
+= 1
+
+> B
+
+PBi=1      
+
+> D
+> ∇zcLi,∇zL(r)
+> i
+> E
+> ∥∇ zcLi∥2∥∇ zL(r)
+> i∥2
+
+where c(·) represents the loss computed by the DiffAPQP layers. The performance is illustrated in Fig. 7 with the conservative value Cz = min r C(r) 
+
+> z
+
+.The following observations are made: 1) Reduced-KKT is the most reliable solution-map con-figuration for QPs; The value function layer achieves similarly strong agreement and is preferable when only optimal-value sensitivities are needed; 2) Full-KKT differentiation is sensitive to challenging QPs, particularly dense-random problems; 3) LP h- and b-gradients are consistently reliable while unregularized LP q-gradients are solver dependent; 4) Quadratic regularization improves LP consistency and solver robustness. The QP results show a particularly clear advantage for reduced-KKT. Across all five solvers and four QP set-tings, every reduced-KKT cosine similarity exceeds 0.9939 .Its mean/minimum similarities are 1.000 /0.9999 for q,
+
+0.997 /0.9939 for h, and 0.999 /0.9964 for b. The value function layer is similarly reliable, with minimum similarities of 0.9999 , 0.9799 , and 0.9861 , respectively. In contrast, full-KKT differentiation is less reliable for the more difficult QP settings. For the dense-random QP, its solver-averaged similarities fall to approximately 0.851 , 0.489 ,and 0.466 for the q-, h-, and b-gradients in the worst case. The sparse well-conditioned QP also reduces the full-KKT h-gradient similarity to approximately 0.743 . These patterns are nearly identical across all forward solvers, indicating that the discrepancy is associated with the backward KKT solve rather than the choice of forward optimizer. For unregularized LPs, the h- and b-gradient panels exhibit nearly uniform agreement, with cosine similarities close to one for every solved configuration. The q-gradient panel is more solver dependent, particularly for well-conditioned LPs. For the sparse well-conditioned case, the available similarities range from 0.462 for Gurobi to 0.929 for OSQP. Moreover, full-KKT, reduced-KKT, and value function layer produce effectively identical q-gradient similarities for each solver-setting pair. This shows that the variation is not caused by the differentiation mode. The reason is explained below. The LP behavior is consistent with non-unique primal solutions. For 
+
+α(q) = min  
+
+> x∈F
+
+qT x, 
+
+the q-gradient corresponds to an optimal primal solution when the optimizer is unique. If several optimal solutions exist, dif-ferent solvers may select different valid optimizers and hence different valid sensitivities (see Proposition 3). The lower q-gradient cosine should therefore be interpreted primarily as optimizer-selection sensitivity rather than incorrect differenti-ation. The stable h- and b-gradient panels demonstrate that this ambiguity is concentrated in the primal sensitivity. For LPs, the regularized variants add ϵ∥x∥22/2 with ϵ =10 −3. Their q-gradient similarities lie between approximately 
+
+0.934 and 0.995 , and all regularized LP configurations are solved successfully. This suggests that regularization improves the consistency of primal selection and numerical robustness. 
+
+4) CPU Utilization and Computational Work: Fig. 8 and Fig. 9 report mean CPU utilization and estimated CPU work for the large benchmark problems. All experiments use batches of 32 and are restricted to 32 CPU cores according to Ap-pendix C7. CPU utilization includes the parent and recursive worker processes: 
+
+Cef f =
+
+P 
+
+> p
+
+∆TCP U ,p 
+
+∆Twall 
+
+where ∆TCP U ,p is the CPU time consumed by process p
+
+during the measurement interval, including both user and system CPU time and ∆Twall is the elapsed real-world time over the same measurement interval. Thus, Cef f = 24 means that approximately 24 cores were active on average. SUBMITTED TO IEEE 21 
+
+The following observations are made: 1) Both DiffAPQP and CvxpyLayers exploit substantial batch parallelism. 2) Reduced-KKT uses slightly fewer effective cores than full-KKT but requires only about 36% of its QP CPU work and 66% of its LP CPU work. 3) The value function layer is the most computationally economical option, requiring approximately 19% and 43% of full-KKT’s CPU work for QPs and LPs, respectively. 4) Sparse problems consume substantially fewer core-seconds than dense problems. Most DiffAPQP and CvxpyLayers configurations use 18-26 effective cores, demonstrating substantial parallelism in both frameworks. For QPs, full-KKT, reduced-KKT, and the value function layer average 22.83, 21.31, and 18.80 cores, respectively, compared with 23.14 for CvxpyLayers-SCS and 24.24 for CvxpyLayers-Clarabel. For unregularized LPs, the corresponding DiffAPQP averages are 23.08, 22.41, and 20.82. Performance differences therefore cannot be attributed to ei-ther framework operating serially. Meanwhile, lower utiliza-tion does not necessarily imply lower efficiency. Full-KKT introduces substantial parallel backward computation, whereas reduced-KKT solves a smaller adjoint system and the value function layer largely avoids solution-map differentiation. We therefore estimate total processor consumption as 
+
+WCP U = Cef f · (Tf orward + Tbackward )
+
+measured in core-seconds. For QPs, reduced-KKT requires approximately 36% of full-KKT’s CPU work in geometric-mean terms, while the value function layer requires only 19%. For LPs, these ratios are approximately 66% and 43%, respectively. Regularized reduced-KKT consumes approximately 69% of the CPU work required by regularized full-KKT. These reductions show that the lower utilization of reduced-KKT and the value function layer reflects less computation rather than limited parallelism. Sparsity also substantially reduces CPU work. Dense and sparse problems often use similar numbers of effective cores, but sparse configurations finish sooner and consume consid-erably fewer core-seconds. Solver choice has a similar effect. Clarabel frequently reaches 25-27 effective cores, particularly for dense LPs, but can still consume substantial CPU work because of its longer forward pass. Overall, both frameworks exploit multicore execution ef-fectively. Reduced-KKT provides a strong balance between parallelism and processor consumption, while the value func-tion layer is the most economical option when only optimal-value sensitivities are required. Mean effective cores should be interpreted as parallel utilization, whereas core-seconds more directly represent computational efficiency. 
+
+5) Memory Usage: Fig. 10 reports the peak increase in system-used memory from starting time t0,
+
+∆Mpeak = max  
+
+> t
+
+Msys (t) − Msys (t0)
+
+According to Appendix C8, memory sampling begins before layer construction and therefore includes worker creation, solver workspaces, the DiffAPQP base solve and cache, and forward and backward execution. Unsolved configurations are excluded. The following observations are made: 1) With the same SCS or Clarabel backend, DiffAPQP reduces peak memory increase by 72%-87% for dense problems relative to CvxpyLayers; 2) For sparse problems, the corresponding DiffAPQP memory reduction is approximately 48%-71%; 3) Reduced-KKT uses about 7%-9% less memory than full-KKT; 4) The value function layer provides the largest internal saving. DiffAPQP requires substantially less memory than Cvxpy-Layers under the same solver backend. For dense QPs with SCS, CvxpyLayers requires approximately 59 GB, compared with 10.6-10.9 GB for full-KKT, 9.4 GB for reduced-KKT, and 7.4-7.5 GB for the value function layer. These represent reductions of approximately 82%, 84%, and 87%. With Clara-bel, CvxpyLayers requires approximately 60 GB, whereas the corresponding DiffAPQP variants require approximately 13.0, 10.8, and 9.0 GB, giving reductions of 78%-85%. The same pattern holds for dense LPs. CvxpyLayers re-quires approximately 38 GB with either backend. DiffAPQP-SCS uses approximately 8.2, 7.2, and 5.9 GB for full-KKT, reduced-KKT, and value function layer, respectively. DiffAPQP-Clarabel uses approximately 10.9, 9.3, and 8.1 GB. Overall, DiffAPQP reduces dense-LP memory by ap-proximately 72%-84% relative to CvxpyLayers with the same solver. Sparse matrices reduce memory requirements for both frameworks. CvxpyLayers uses approximately 4.0-4.2 GB for sparse problems, while DiffAPQP generally uses 1.7-2.1 GB with the solution-map variants and 1.2-1.4 GB with the value function layer. This corresponds to reductions of approxi-mately 48%-57% for full- and reduced-KKT and 65%-71% for value function layer. The larger advantage on dense problems suggests that CvxpyLayers incurs substantial overhead from dense canonical or derivative data during batched execution. Within DiffAPQP, reduced-KKT uses approximately 7%-8% less memory than full-KKT for unregularized problems and approximately 9% less for regularized LPs. The value function layer provides the largest saving, using approximately 28% less memory for QPs and 26% less for LPs than full-KKT. To conclude, the consistent same-backend differences pro-vide strong evidence that DiffAPQP is substantially more memory efficient than CvxpyLayers. SUBMITTED TO IEEE 22 CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU 010 20 30 40 
+
+> Forward time (s)
+
+OSQP QPALM GUROBI SCS CLARABEL 
+
+> CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU
+
+020 40 60 80 
+
+OSQP QPALM GUROBI SCS CLARABEL 
+
+> CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU
+
+01234
+
+> Forward time (s)
+
+OSQP QPALM GUROBI SCS CLARABEL 
+
+> CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU
+
+01234
+
+OSQP QPALM GUROBI SCS CLARABEL 
+
+> CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU
+
+030 60 90 120 
+
+> Forward time (s)
+> miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL 
+
+> CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU
+
+025 50 75 100 
+
+> miss miss miss miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL 
+
+> CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU
+
+0.0 2.5 5.0 7.5 10.0 
+
+> Forward time (s)
+> miss miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL 
+
+> CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU CS WS UP WU
+
+0.0 2.5 5.0 7.5 10.0 
+
+> miss miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL 
+
+(a) QP , dense, well (b) QP , dense, random (c) QP , sparse, well (d) QP , sparse, random (e) LP , dense, well (f) LP , dense, random (g) LP , sparse, well (h) LP , sparse, random 
+
+CS: cold start WS: warm start only UP: update only WU: warm start + update 
+
+Fig. 5. DiffAPQP forward-pass solution time under cold start (CS), warm start only (WS), update only (UP), and combined warm start and update (WU), evaluated across solver backends, QP and unregularized LP problems, dense and sparse matrices, and well-conditioned and random data. SUBMITTED TO IEEE 23 F R VF R VF R VF R VF R VSCS CLA 025 50 75 100      
+
+> End-to-end time (s)
+> OSQP QPALM GUROBI SCS CLARABEL CXL
+> F R VF R VF R VF R VF R VSCS CLA
+
+080 160 240 320      
+
+> OSQP QPALM GUROBI SCS CLARABEL CXL
+> F R VF R VF R VF R VF R VSCS CLA
+
+036912      
+
+> End-to-end time (s)
+> OSQP QPALM GUROBI SCS CLARABEL CXL
+> F R VF R VF R VF R VF R VSCS CLA
+
+0510 15 20      
+
+> OSQP QPALM GUROBI SCS CLARABEL CXL
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+040 80 120 160     
+
+> End-to-end time (s)
+> miss miss miss
+> OSQP QPALM GUROBI SCS CLARABEL CXL
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+040 80 120 160     
+
+> miss miss miss miss miss miss
+> OSQP QPALM GUROBI SCS CLARABEL CXL
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+036912     
+
+> End-to-end time (s)
+> miss miss miss
+> OSQP QPALM GUROBI SCS CLARABEL CXL
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+036912     
+
+> miss miss miss
+> OSQP QPALM GUROBI SCS CLARABEL CXL
+
+(a) QP , dense, well (b) QP , dense, random (c) QP , sparse, well (d) QP , sparse, random (e) LP , dense, well (f) LP , dense, random (g) LP , sparse, well (h) LP , sparse, random 
+
+Full-KKT Reduced-KKT Full-KKT + reg Reduced-KKT + reg Value layer cvxpylayers SCS cvxpylayers Clarabel Forward Backward 
+
+Fig. 6. End-to-end runtime of the DiffAPQP solution-map and value-function layers and CvxpyLayers, with stacked bars separating forward and backward time. DiffAPQP uses combined warm start and problem-data update (WU), with solution-map gradients computed using either Full-KKT or Reduced-KKT adjoints. LP results additionally include quadratic regularization ( ϵ = 10 −3). CvxpyLayers results using SCS and Clarabel are shown separately in the CXL group. SUBMITTED TO IEEE 24 QP d w QP d r QP s w QP s r LP d w LP d r LP s w LP s r 
+
+OSQP-F OSQP-R OSQP-F+r OSQP-R+r OSQP-V QPM-F QPM-R QPM-F+r QPM-R+r QPM-V GRB-F GRB-R GRB-F+r GRB-R+r GRB-V SCS-F SCS-R SCS-F+r SCS-R+r SCS-V CLA-F CLA-R CLA-F+r CLA-R+r CLA-V 
+
+x xx x      
+
+> N/A N/A N/A N/A N/A N/A N/A N/A
+
+x xx xx x      
+
+> N/A N/A N/A N/A N/A N/A N/A N/A
+
+x x            
+
+> N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A
+
+xx      
+
+> N/A N/A N/A N/A N/A N/A N/A N/A
+
+x
+
+q-gradient 
+
+> QP d w QP d r QP s w QP s r LP d w LP d r LP s w LP s r
+
+OSQP-F OSQP-R OSQP-F+r OSQP-R+r OSQP-V QPM-F QPM-R QPM-F+r QPM-R+r QPM-V GRB-F GRB-R GRB-F+r GRB-R+r GRB-V SCS-F SCS-R SCS-F+r SCS-R+r SCS-V CLA-F CLA-R CLA-F+r CLA-R+r CLA-V 
+
+x xx x      
+
+> N/A N/A N/A N/A N/A N/A N/A N/A
+
+x xx xx x      
+
+> N/A N/A N/A N/A N/A N/A N/A N/A
+
+x x            
+
+> N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A
+
+xx      
+
+> N/A N/A N/A N/A N/A N/A N/A N/A
+
+x
+
+h-gradient 
+
+> QP d w QP d r QP s w QP s r LP d w LP d r LP s w LP s r
+
+OSQP-F OSQP-R OSQP-F+r OSQP-R+r OSQP-V QPM-F QPM-R QPM-F+r QPM-R+r QPM-V GRB-F GRB-R GRB-F+r GRB-R+r GRB-V SCS-F SCS-R SCS-F+r SCS-R+r SCS-V CLA-F CLA-R CLA-F+r CLA-R+r CLA-V 
+
+x xx x      
+
+> N/A N/A N/A N/A N/A N/A N/A N/A
+
+x xx xx x      
+
+> N/A N/A N/A N/A N/A N/A N/A N/A
+
+x x            
+
+> N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A N/A
+
+xx      
+
+> N/A N/A N/A N/A N/A N/A N/A N/A
+
+x
+
+b-gradient 
+
+0.0 0.2 0.4 0.6 0.8 1.0 
+
+Reference: the worse mean against CVXPYLayers-SCS and CVXPYLayers-Clarabel. Abbrev.: F=Full-KKT, R=Reduced-KKT, F+r/R+r=regularized, V=Value layer. Columns: d=dense, s=sparse, w=well-conditioned, r=random; x=unsolved, N/A=regularized QP not evaluated. 
+
+Fig. 7. Mean sample-wise cosine similarity between DiffAPQP gradients and CvxpyLayers references. For each gradient component q, h,and b, similarities are averaged over the batch separately against CvxpyLayers-SCS and CvxpyLayers-Clarabel, and the lower of the two means is reported. SUBMITTED TO IEEE 25 F R VF R VF R VF R VF R VSCS CLA 0612 18 24 
+
+> Mean effective cores
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> F R VF R VF R VF R VF R VSCS CLA
+
+0612 18 24 
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> F R VF R VF R VF R VF R VSCS CLA
+
+0612 18 24 
+
+> Mean effective cores
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> F R VF R VF R VF R VF R VSCS CLA
+
+0612 18 24 
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+0612 18 24 
+
+> Mean effective cores
+> miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+0612 18 24 
+
+> miss miss miss miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+0612 18 24 
+
+> Mean effective cores
+> miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+0612 18 24 
+
+> miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+(a) QP , dense, well (b) QP , dense, random (c) QP , sparse, well (d) QP , sparse, random (e) LP , dense, well (f) LP , dense, random (g) LP , sparse, well (h) LP , sparse, random 
+
+Full-KKT Reduced-KKT Full-KKT + reg Reduced-KKT + reg Value layer cvxpylayers SCS cvxpylayers Clarabel 
+
+Fig. 8. Mean effective CPU-core utilization, aggregated over the parent and worker processes during end-to-end forward and backward evaluation. DiffAPQP solution-map and value-function layers use combined warm start and problem-data update (WU); the CXL group reports the corresponding CvxpyLayers-SCS and CvxpyLayers-Clarabel references. SUBMITTED TO IEEE 26 F R VF R VF R VF R VF R VSCS CLA 0600 1200 1800 2400 
+
+> Estimated CPU work (core-s)
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> F R VF R VF R VF R VF R VSCS CLA
+
+02000 4000 6000 8000 
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> F R VF R VF R VF R VF R VSCS CLA
+
+080 160 240 320 
+
+> Estimated CPU work (core-s)
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> F R VF R VF R VF R VF R VSCS CLA
+
+0100 200 300 400 
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+01000 2000 3000 4000 
+
+> Estimated CPU work (core-s)
+> miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+01000 2000 3000 4000 
+
+> miss miss miss miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+080 160 240 320 
+
+> Estimated CPU work (core-s)
+> miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+080 160 240 320 
+
+> miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+(a) QP , dense, well (b) QP , dense, random (c) QP , sparse, well (d) QP , sparse, random (e) LP , dense, well (f) LP , dense, random (g) LP , sparse, well (h) LP , sparse, random 
+
+Full-KKT Reduced-KKT Full-KKT + reg Reduced-KKT + reg Value layer cvxpylayers SCS cvxpylayers Clarabel 
+
+Fig. 9. Estimated end-to-end CPU work in core-seconds, computed as the mean effective cores multiplied by the combined forward and backward runtime. DiffAPQP uses combined warm start and problem-data update (WU); the CXL group reports the corresponding CvxpyLayers-SCS and CvxpyLayers-Clarabel references. SUBMITTED TO IEEE 27 F R VF R VF R VF R VF R VSCS CLA 015 30 45 60 
+
+> Memory usage (GB)
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> F R VF R VF R VF R VF R VSCS CLA
+
+015 30 45 60 
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> F R VF R VF R VF R VF R VSCS CLA
+
+01234
+
+> Memory usage (GB)
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> F R VF R VF R VF R VF R VSCS CLA
+
+01234
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+010 20 30 40 
+
+> Memory usage (GB)
+> miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+010 20 30 40 
+
+> miss miss miss miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+01234
+
+> Memory usage (GB)
+> miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+> FRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VFRF+r R+r VSCS CLA
+
+01234
+
+> miss miss miss
+
+OSQP QPALM GUROBI SCS CLARABEL CXL 
+
+(a) QP , dense, well (b) QP , dense, random (c) QP , sparse, well (d) QP , sparse, random (e) LP , dense, well (f) LP , dense, random (g) LP , sparse, well (h) LP , sparse, random 
+
+Full-KKT Reduced-KKT Full-KKT + reg Reduced-KKT + reg Value layer cvxpylayers SCS cvxpylayers Clarabel 
+
+Fig. 10. Peak increase in system-used memory relative to the pre-construction benchmark baseline, measured during layer initialization and end-to-end evaluation. DiffAPQP uses combined warm start and problem-data update (WU); the CXL group reports the corresponding CvxpyLayers-SCS and CvxpyLayers-Clarabel measurements. SUBMITTED TO IEEE 28 
+
+REFERENCES [1] J. Zhang, Y. Wang, and G. Hug, “Cost-oriented load forecasting,” 
+
+Electric Power Systems Research , vol. 205, p. 107723, 2022. [2] J. M. Morales, M. Munoz, and S. Pineda, “Prescribing net demand for two-stage electricity generation scheduling,” Operations Research Perspectives , vol. 10, p. 100268, 2023. [3] H. Zhang, R. Li, Q. Du, J. Tao, S. Pineda, G. Kariniotakis, S. Camal, C. B. Monroc, M. Sun, C. Wan, W. Xu, and F. Teng, “Decision-focused learning for power system decision-making under uncertainty,” IEEE Transactions on Power Systems , vol. 41, no. 1, pp. 307–323, 2026. [4] W. Xu, Z. Chu, and F. Teng, “Learning-augmented power system operations: A unified optimization view,” 2026. [Online]. Available: https://arxiv.org/abs/2505.05203 [5] X. Chen, Y. Yang, Y. Liu, and L. Wu, “Feature-driven economic improvement for network-constrained unit commitment: A closed-loop predict-and-optimize framework,” IEEE Transactions on Power Systems ,vol. 37, no. 4, pp. 3104–3118, 2022. [6] X. Chen, Y. Liu, and L. Wu, “Towards improving unit commitment economics: An add-on tailor for renewable energy and reserve predic-tions,” IEEE Transactions on Sustainable Energy , vol. 15, no. 4, pp. 2547–2566, 2024. [7] P. Donti, B. Amos, and J. Z. Kolter, “Task-based end-to-end model learning in stochastic optimization,” Advances in neural information processing systems , vol. 30, 2017. [8] J. Han, L. Yan, and Z. Li, “A task-based day-ahead load forecasting model for stochastic economic dispatch,” IEEE Transactions on Power Systems , vol. 36, no. 6, pp. 5294–5304, 2021. [9] R. Vohra, A. Rajaei, and J. L. Cremer, “End-to-end learning with multiple modalities for system-optimised renewables nowcasting,” in 
+
+2023 IEEE Belgrade PowerTech , 2023, pp. 1–8. [10] Y. Zhang, M. Jia, H. Wen, Y. Bian, and Y. Shi, “Toward value-oriented renewable energy forecasting: An iterative learning approach,” IEEE Transactions on Smart Grid , 2024. [11] D. Wahdany, C. Schmitt, and J. L. Cremer, “More than accuracy: end-to-end wind power forecasting that optimises the energy system,” Electric Power Systems Research , vol. 221, p. 109384, 2023. [12] W. Xu, J. Wang, and F. Teng, “E2e-at: A unified framework for tackling uncertainty in task-aware end-to-end learning,” in Proceedings of the AAAI Conference on Artificial Intelligence , vol. 38, no. 14, 2024, pp. 16 220–16 227. [13] W. Xu and F. Teng, “Task-aware machine unlearning and its application in load forecasting,” IEEE Transactions on Power Systems , 2024. [14] A. Stratigakos, S. Pineda, and J. M. Morales, “Decision-focused linear pooling for probabilistic forecast combination,” International Journal of Forecasting , vol. 41, no. 3, pp. 1112–1125, 2025. [15] Á. Paredes, J.-F. Toubeau, J. A. Aguado, and F. Vallée, “On the participation of energy storage systems in reserve markets using decision focused learning,” Sustainable Energy, Grids and Networks , vol. 42, p. 101677, 2025. [16] J. Kotary, M. H. Dinh, and F. Fioretto, “Backpropagation of unrolled solvers with folded optimization,” arXiv preprint arXiv:2301.12047 ,2023. [17] M. Blondel and V. Roulet, “The elements of differentiable program-ming,” arXiv preprint arXiv:2403.14606 , 2024. [18] A. Agrawal, S. Barratt, S. Boyd, E. Busseti, and W. M. Moursi, “Dif-ferentiating through a cone program,” arXiv preprint arXiv:1904.09043 ,2019. [19] S. Diamond and S. Boyd, “CVXPY: A Python-embedded modeling lan-guage for convex optimization,” Journal of Machine Learning Research ,vol. 17, no. 83, pp. 1–5, 2016. [20] B. O’Donoghue, “Operator splitting for a homogeneous embedding of the linear complementarity problem,” SIAM Journal on Optimization ,vol. 31, no. 3, pp. 1999–2023, 2021. [21] P. J. Goulart and Y. Chen, “Clarabel: An interior-point solver for conic programs with quadratic objectives,” 2024. [22] B. Amos, “Differentiable Optimization-Based Modeling for Machine Learning,” Ph.D. dissertation, Carnegie Mellon University, May 2019. [23] B. Wilder, B. Dilkina, and M. Tambe, “Melding the data-decisions pipeline: Decision-focused learning for combinatorial optimization,” in 
+
+Proceedings of the AAAI conference on artificial intelligence , vol. 33, no. 01, 2019, pp. 1658–1665. [24] G. Li and H.-D. Chiang, “Toward cost-oriented forecasting of wind power generation,” IEEE Transactions on Smart Grid , vol. 9, no. 4, pp. 2508–2517, 2018. [25] J. Kotary, V. Di Vito, J. Christopher, P. Van Hentenryck, and F. Fioretto, “Learning joint models of prediction and optimization,” in ECAI 2024 .IOS Press, 2024, pp. 2476–2483. [26] J. Pan, Z. Ye, X. Yang, X. Yang, W. Liu, L. Wang, and J. Bian, “Bpqp: A differentiable convex optimization framework for efficient end-to-end learning,” Advances in Neural Information Processing Systems , vol. 37, pp. 77 468–77 493, 2024. [27] C. Magoon, F. Yang, N. Aigerman, and S. Kovalsky, “Differentiation through black-box quadratic programming solvers,” Advances in Neural Information Processing Systems , vol. 38, pp. 108 486–108 517, 2026. [28] A. J. Conejo and L. Baringo, Power system operations . Springer, 2018, vol. 14, no. 54. [29] Y. LeCun, Y. Bengio, and G. Hinton, “Deep learning,” nature , vol. 521, no. 7553, pp. 436–444, 2015. [30] A. Domahidi, E. Chu, and S. Boyd, “Ecos: An socp solver for embedded systems,” in 2013 European control conference (ECC) . IEEE, 2013, pp. 3071–3076. [31] P. Neal, C. Eric, P. Borja, and E. Jonathan, “Distributed optimization and statistical learning via the alternating direction method of multipliers,” 
+
+Foundations and Trends® in Machine learning , vol. 3, no. 1, pp. 1–122, 2011. [32] B. Stellato, G. Banjac, P. Goulart, A. Bemporad, and S. Boyd, “Osqp: An operator splitting solver for quadratic programs,” Mathematical Programming Computation , vol. 12, no. 4, pp. 637–672, 2020. [33] B. Hermans, A. Themelis, and P. Patrinos, “Qpalm: A proximal aug-mented lagrangian method for nonconvex quadratic programs,” Mathe-matical Programming Computation , vol. 14, no. 3, pp. 497–541, 2022. [34] A. Paszke, S. Gross, F. Massa, A. Lerer, J. Bradbury, G. Chanan, T. Killeen, Z. Lin, N. Gimelshein, L. Antiga et al. , “Pytorch: An imperative style, high-performance deep learning library,” Advances in neural information processing systems , vol. 32, 2019. [35] C. C. Paige and M. A. Saunders, “Lsqr: An algorithm for sparse linear equations and sparse least squares,” ACM Transactions on Mathematical Software (TOMS) , vol. 8, no. 1, pp. 43–71, 1982. [36] J. Nocedal and S. J. Wright, Numerical optimization . Springer, 1999. [37] S. P. Boyd and L. Vandenberghe, Convex optimization . Cambridge university press, 2004. [38] C. C. Paige and M. A. Saunders, “Solution of sparse indefinite systems of linear equations,” SIAM journal on numerical analysis , vol. 12, no. 4, pp. 617–629, 1975. [39] J. Lu, X. Li, H. Li, T. Chegini, C. Gamarra, Y. E. Yang, M. Cook, and G. Dillingham, “A synthetic texas power system with time-series weather-dependent spatiotemporal profiles,” Sustainable Energy, Grids and Networks , p. 101774, 2025. [40] Gurobi Optimization, LLC, “Gurobi Optimizer Reference Manual,” 2025. [Online]. Available: https://www.gurobi.com

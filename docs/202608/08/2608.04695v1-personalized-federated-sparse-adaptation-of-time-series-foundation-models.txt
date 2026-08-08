@@ -1,0 +1,641 @@
+Title: Personalized Federated Sparse Adaptation of Time-Series Foundation Models
+
+URL Source: https://arxiv.org/pdf/2608.04695v1
+
+Published Time: Thu, 06 Aug 2026 00:59:50 GMT
+
+Number of Pages: 15
+
+Markdown Content:
+# Personalized Federated Sparse Adaptation of Time-Series Foundation Models ∗
+
+## Priyanka Nihalchandani 1 , Naman Srivastava 1 , Varun Ojha 2 , Pandarasamy Arjunan 11Robert Bosch Centre for Cyber-Physical Systems, Indian Institute of Science, Bengaluru, India 
+
+> 2
+
+## School of Computing, Newcastle University, Newcastle upon Tyne, United Kingdom priyankan@iisc.ac.in, snaman@iisc.ac.in, varun.ojha@newcastle.ac.uk, samy@iisc.ac.in 
+
+## Abstract 
+
+Federated adaptation of time-series foundation models (TSFMs) is attractive for building energy forecasting because meter data are private, dis-tributed, and highly non-IID. However, a sin-gle parameter-sharing strategy is unlikely to serve all pretrained TSFMs or building clients: fully shared adapters can suppress building-specific tem-poral behavior, while fully local adaptation dis-cards cross-building transfer. We propose a per-sonalized federated sparse adaptation framework with a heterogeneous temporal mixture-of-experts (MoE) adapter placed after the pretrained TSFM representation. A sequence-level router assigns each input window to a sparse subset of experts capturing complementary temporal inductive bi-ases. We compare global FL, local training, and personalized FL variants with globally shared or client-private expert banks. Across 50 buildings and three TSFM backbones, personalized adapta-tion consistently improves over Global FL-MoE and is generally competitive with Local MoE. The strongest adaptation strategy varies across back-bones and evaluation metrics, highlighting the need for backbone-aware personalization. Across the three TSFMs, the best-performing personal-ized variants reduce NRMSE by 8.2%, 7.1%, and 12.5% relative to Global FL-MoE for MOMENT, Chronos-2, and Moirai, while simultaneously re-ducing communication through selective parame-ter sharing. Routing analysis reveals backbone-specific expert utilization patterns, including client-level specialization in MOMENT, expert concen-tration in Chronos-2, and more uniform expert us-age in Moirai. 
+
+## 1 Introduction 
+
+Time-series foundation models (TSFMs) have shown strong transfer ability for forecasting by learning reusable tem-
+
+> ∗Accepted at International Workshop on Federated Learning in the Age of Foundation Models In Conjunction with IJCAI 2026 (FL@FM-IJCAI’26)
+
+poral representations from large-scale pretraining cor-pora [Goswami et al. , 2024; Ansari et al. , 2025; Li et al. ,2025; Woo et al. , 2024]. Building energy forecasting is a natural target for TSFMs because short-term load pre-diction supports demand response, HVAC operation, fault detection, and grid-aware control [Saravanan et al. , 2024; Prabhu and Arjunan, 2022; Prabhu et al. , 2023]. However, building-level meter data are distributed across facilities and are often difficult to centralize because of privacy, owner-ship, and operational constraints. Federated learning (FL) offers a way to adapt forecasting models across buildings without sharing raw time-series data [McMahan et al. , 2017; Liu et al. , 2024; Chen et al. , 2025]. Federated TSFM adaptation is challenging because build-ing clients are highly non-IID: they differ in load scale, occupancy rhythms, operating schedules, seasonal sensitiv-ity, and transient usage patterns. Fully shared adaptation can average away these local temporal signatures, whereas fully local adaptation forgoes cross-building transfer. This motivates personalized parameter-efficient adaptation, where selected components are shared through FL while others remain client-specific [Li et al. , 2020; Hu et al. , 2022; Zhang et al. , 2023]. We study personalization through sparse expert adapta-tion. Rather than personalizing only prediction heads or shallow layers [Arivazhagan et al. , 2019; Oh et al. , 2022; T. Dinh et al. , 2020], we route each input window through a heterogeneous temporal expert bank that captures comple-mentary inductive biases, including periodicity, long-range interaction, local temporal variation, trend–residual struc-ture, and multi-resolution behavior [Vaswani et al. , 2017; Wu et al. , 2021; Zhou et al. , 2022]. Beyond improving fore-casting performance, expert-selection patterns provide in-sight into how different pretrained TSFM backbones organize building-specific temporal behavior. We propose a personalized federated sparse adapta-tion framework and evaluate it across MOMENT-1-large, Chronos-2, and Moirai-1.1-R-small on 50 non-residential buildings. We compare Global FL-MoE, Local MoE, PFL without MoE, shared-expert PFL-MoE, and private-expert PFL-MoE. Our results show that personalized adaptation con-sistently improves over Global FL-MoE and is generally competitive with or better than Local MoE. More impor-tantly, the optimal adaptation strategy varies across TSFM arXiv:2608.04695v1 [cs.LG] 5 Aug 2026 backbones and evaluation metrics, indicating that federated personalization should be designed jointly with the under-lying pretrained model rather than treated as a backbone-agnostic procedure. Routing analysis further reveals dis-tinct backbone-specific expert utilization regimes, including client-level specialization in MOMENT, expert concentration in Chronos-2, and near-uniform routing in Moirai. Our contributions are: • We propose a personalized federated sparse-adaptation framework for adapting pretrained TSFMs under non-IID building clients without sharing raw meter data. • We design a post-representation temporal MoE adapter with sequence-level top-k routing over heterogeneous experts that capture periodic, long-range, local, trend– residual, and multi-resolution temporal patterns. • We systematically compare global, local, non-MoE person-alized, shared-expert, and private-expert adaptation strate-gies across 50 buildings and three TSFM backbones. • We show that the effectiveness of federated personaliza-tion is backbone-dependent and characterize the resulting communication–accuracy trade-offs and expert-utilization patterns through extensive empirical and statistical evalua-tion. 
+
+## 2 Related Work 
+
+Time-series foundation models. Time-series foundation models (TSFMs) learn transferable temporal representations through large-scale pretraining and have demonstrated strong zero-shot and fine-tuning performance across diverse fore-casting tasks. Representative models include MOMENT, Chronos, and Moirai, which adopt different pretraining ob-jectives and architectural designs for general-purpose time-series forecasting [Goswami et al. , 2024; Ansari et al. , 2025; Woo et al. , 2024]. Recent benchmarks have systematically evaluated TSFMs across zero-shot, few-shot, and full-shot forecasting settings [Li et al. , 2025]. Their potential for building-energy applications has also attracted growing in-terest, including predictive building analytics and short-term load forecasting [Mulayim et al. , 2024; Saravanan et al. ,2024]. 
+
+Federated and personalized adaptation. Federated learn-ing enables collaborative model adaptation without sharing raw data, but standard FedAvg can degrade under hetero-geneous client distributions [McMahan et al. , 2017; Li et al. , 2020]. Personalized FL methods address this chal-lenge by separating globally shared representations from client-specific parameters through private heads, personaliza-tion layers, final personalization stages, or regularized lo-cal objectives [Arivazhagan et al. , 2019; Oh et al. , 2022; T. Dinh et al. , 2020]. Recent work has begun extending these ideas to foundation models and time-series forecasting, in-cluding LM-empowered federated TSFMs and heterogeneous TSFM training [Liu et al. , 2024; Chen et al. , 2025]. More re-cent approaches such as pFedDKS further explore selective knowledge sharing mechanisms that balance global transfer and client-specific adaptation while preserving privacy [Wang 
+
+et al. , 2026]. However, it remains unclear how sparse expert adapters for pretrained TSFMs should be shared or personal-ized under federated non-IID building clients. 
+
+Sparse experts and temporal inductive biases. Sparse mixture-of-experts (MoE) architectures route each input to a subset of expert modules, enabling conditional computa-tion and expert specialization [Lepikhin et al. , 2021; Fedus 
+
+et al. , 2022]. MoE-based forecasting has been explored for energy applications under federated learning, where expert gating improves adaptation to heterogeneous load, PV, and prosumption time series [Sievers et al. , 2024]. Recent TSFM research further demonstrates that sparse experts can special-ize to diverse temporal patterns [Liu et al. , 2025]. In contrast to generic expert banks, our approach combines experts en-coding temporal inductive biases that are particularly relevant to building-energy forecasting, including periodicity, long-range dependency, local temporal variation, trend–residual decomposition, and multi-resolution structure. Beyond fore-casting performance, we analyze routing behavior to under-stand how different TSFM backbones and building clients utilize these temporal mechanisms under federated person-alization. 
+
+## 3 Methodology 
+
+3.1 Problem Formulation 
+
+Let C = {1, . . . , N } denote a set of building clients. Each client i ∈ C owns a private hourly electricity-consumption time series x(i) ∈ RTi . Client data are heterogeneous and non-IID, with building-specific distributions Pi that may dif-fer across clients. Raw time-series data are never shared with the server. Given a context window of length L = 168 hours, each client learns a forecasting function 
+
+f (i) : RL → RH ,
+
+where H = 24 is the prediction horizon. We adapt a pre-trained time-series foundation model (TSFM) under feder-ated learning and study three backbones: MOMENT-1-large, Chronos-2, and Moirai-1.1-R-small. 
+
+3.2 Post-Representation Sparse MoE Adapter 
+
+Each pretrained TSFM is used as a representation-producing backbone. Given a batch of input context windows, the back-bone maps the inputs to a sequence of hidden representations: 
+
+Z = Fϕ(x) ∈ RB×P ×D , (1) where B is the batch size, P is the number of tempo-ral patches or hidden tokens, and D is the hidden dimen-sion. Most pretrained backbone parameters remain frozen to reduce communication and local optimization cost. We introduce a lightweight sparse mixture-of-experts (MoE) adapter after the final backbone representation and before the backbone-specific forecasting or distribution head. The adapter produces an adapted representation through a residual update: 
+
+Z′ = Z + αg (Z), (2) where g(Z) is the sparse MoE transformation and α = σ(ℓα)
+
+is a learnable scalar residual gate. We optimize the uncon-strained logit ℓα and use the sigmoid only to keep the adapter Figure 1: Overview of the proposed personalized federated sparse-adaptation framework (private-expert PFL-MoE variant). A pretrained TSFM encodes each input into hidden states Z. A client-private sequence-level router selects top-k experts from a client-private temporal expert bank; selected outputs are fused, projected by the shared output projection Wo, and added residually before the private forecasting head. Colors denote frozen, shared, and private components. 
+
+scale bounded. The gate is initialized conservatively so that the adapter initially acts as a residual correction and does not abruptly change the pretrained backbone representation. This post-representation placement, illustrated in Figure 1, provides a common adaptation interface across heteroge-neous TSFM backbones. Rather than modifying backbone-specific internal layers, the MoE branch operates on the fi-nal hidden representation and produces a residual update that specializes the forecasting representation. In our federated setting, most pretrained backbone parameters remain frozen. The trainable components consist of the final backbone-side adaptation block and the lightweight post-representation adaptation modules. The final backbone-side block is always shared through FL, while the remaining trainable components are assigned to shared or client-private parameter sets de-pending on the personalization strategy being evaluated. This design enables backbone-agnostic adaptation while reducing communication and local optimization costs by limiting the number of trainable parameters. 
+
+3.3 Sequence-Level Sparse Routing and Expert Fusion 
+
+We use sequence-level sparse routing to make expert selec-tion stable at the forecast-window level. The router makes one routing decision per input sequence. The same selected expert subset is then used for all hidden tokens in that se-quence. This design is important for building energy fore-casting because the relevant temporal behavior of a 168-hour context window, such as daily periodicity, local transients, or trend shifts, usually characterizes the whole input window rather than an isolated patch. Sequence-level routing there-fore reduces patch-wise routing noise and makes the selected experts easier to interpret as client- and sequence-level tem-poral preferences. Given hidden representations Z ∈ RB×P ×D , the router computes one sequence-level summary for each input win-dow by pooling over the observed context-side hidden tokens: 
+
+¯zb = 1
+
+|I b|
+
+X
+
+> p∈I b
+
+LN r (Zb,p, :), ¯Z ∈ RB×D. (3) Here, b ∈ 1, . . . , B indexes one input sequence within the batch, and Ib denotes the set of observed context-token in-dices for that sequence. For backbones whose hidden se-quence contains only context-side tokens, Ib = 1 , . . . , P ,so Eq. (3) reduces to mean-pooling over all hidden tokens. For backbones whose native forecasting interface includes prediction-side hidden tokens, routing is based only on the observed context tokens so that expert selection does not de-pend on future-side positions. Router logits and probabilities are computed as 
+
+ℓ = ¯ZW ⊤ 
+
+> r
+
+, π = softmax( ℓ), (4) where ℓ, π ∈ RB×M , Wr ∈ RM ×D is the router matrix, and 
+
+M is the number of experts. For each sequence b in the batch, the router selects the top-
+
+k experts: 
+
+Tb = top -k(ℓb, :), |T b| = k. (5) Top-k selection is applied independently to each input se-quence. Since softmax preserves ordering, selecting top-k
+
+logits is equivalent to selecting top-k routing probabilities. In the main sparse-execution setting, only the selected ex-perts are executed. We use k = 2 as the main sparse-routing setting and vary k in routing-sparsity ablations. Top-2 rout-ing provides sparse expert execution while allowing multiple complementary temporal inductive biases to contribute to a single forecast window. In contrast, top-1 routing enforces harder specialization, whereas top-5 routing effectively re-moves sparsity by activating all experts. The main expert bank contains five heterogeneous tempo-ral experts: Fourier, attention, convolution, decomposition, and wavelet experts. These experts are not intended to be novel temporal modules individually; rather, their role is to provide a compact set of complementary inductive biases for personalized TSFM adaptation. The Fourier expert targets periodic structure, the attention expert captures long-range patch interactions, the convolution expert models local and multi-scale temporal variation, the decomposition expert sep-arates trend and residual components, and the wavelet ex-pert captures localized time-frequency behavior. Each expert 
+
+Em maps RB×P ×D to RB×P ×D . We also evaluate reduced expert-bank variants as ablations. For selected experts m ∈ T b, routing weights are normal-ized over the selected set: 
+
+˜πb,m = exp( ℓb,m )
+
+P 
+
+> m′∈T b
+
+exp( ℓb,m ′ ) , m ∈ T b. (6) The sparse MoE transformation for sequence b is 
+
+g(Z)b, :,: = Wo
+
+X
+
+> m∈T b
+
+˜πb,m Em(Zb, :,:)
+
+!
+
+. (7) where Wo is the adapter output projection. We keep Wo
+
+shared to provide a common latent adaptation interface across clients, while allowing expert transformations and routing de-cisions to be personalized. The adapted representation Z′ is then passed to the backbone-specific forecasting or distribu-tion head; in personalized variants, this head is client-private. 
+
+Expert-selection analysis. On held-out test windows, we compute, for each client, the fraction of windows in which each expert is selected by the top-k router. These selection patterns indicate whether a backbone uses client-specific ex-perts, concentrates on a small set of experts, or spreads selec-tion across the expert bank. 
+
+3.4 Federated Objective and Training 
+
+The personalized federated objective is: 
+
+min  
+
+> θs,{θ(i)
+> p}Ni=1
+> N
+
+X
+
+> i=1
+
+ni
+
+PNj=1 nj
+
+Li
+
+
+
+θs, θ(i)
+
+> p
+
+
+
+. (8) where θs denotes trainable shared parameters and θ(i) 
+
+> p
+
+de-notes client-private parameters for client i. Here, ni denotes the number of training windows available at client i. The exact shared/private split depends on the adaptation setting defined in Section 4. For MoE-based variants, each selected client minimizes 
+
+Ltotal = Lforecast + λlb Llb + λz Lz , (9) where Lforecast is the backbone-specific forecasting loss, and 
+
+Llb and Lz are standard sparse MoE load-balancing and router regularization losses [Fedus et al. , 2022; Zoph et al. ,2022; Lepikhin et al. , 2021]. 
+
+Llb = M
+
+> M
+
+X
+
+> m=1
+
+ImPm, (10) Here, Im denotes the fraction of sequences in the batch for which expert m is selected by the top-k router, and Pm
+
+denotes the average routing probability assigned to expert m
+
+over the batch. 
+
+Lz = 1
+
+B
+
+> B
+
+X
+
+> b=1
+
+log 
+
+> M
+
+X
+
+> m=1
+
+exp( ℓb,m )
+
+!2
+
+. (11) The forecasting loss follows each backbone’s native train-ing interface: MSE for MOMENT, quantile pinball loss for Chronos-2, and masked negative log-likelihood for Moirai. Training proceeds for T communication rounds with par-tial client participation. At each round, selected clients up-date both shared and client-private parameters locally. The server aggregates only the uploaded shared parameters us-ing sample-weighted FedAvg [McMahan et al. , 2017]. We also evaluate FedProx [Li et al. , 2020], where the proximal penalty is applied only to shared parameters. After the final communication round, each client performs final personaliza-tion by freezing θTs and updating only its private parameters 
+
+θ(i) 
+
+> p
+
+.Algorithm 1 summarizes the personalized MoE variants. Global FL-MoE, Local MoE, and PFL without MoE use the same protocol with the parameter partition or MoE branch changed as described in Section 4. In the shared-expert vari-ant, the expert bank and Wo are shared, while the router, residual gate, and forecasting head remain private. In the private-expert variant, the expert bank is also client-private, while Wo remains shared. In Algorithm 1, μ denotes the FedProx proximal coefficient. Algorithm 1 Personalized Federated Sparse-MoE Adaptation  
+
+> 1:
+
+Input: clients C, rounds T , local epochs Elocal , final per-sonalization epochs Efinal , participation rate ρ, partition 
+
+q ∈ { shared -experts , private -experts }, routing sparsity 
+
+k, optimizer a, selection rule s 
+
+> 2:
+
+Initialize frozen backbone θf , shared parameters θ0
+
+> s
+
+, and private parameters {θ(i),0 
+
+> p
+
+}Ni=1 according to q 
+
+> 3:
+
+for t = 1 , . . . , T do  
+
+> 4:
+
+Select St ⊂ C using s, with |S t| = ⌈ρN ⌉ 
+
+> 5:
+
+for each client i ∈ S t in parallel do  
+
+> 6:
+
+Load θt−1 
+
+> s
+
+and θ(i),t −1 
+
+> p
+> 7:
+
+Update (θs, θ(i) 
+
+> p
+
+) for Elocal epochs using Ltotal 
+
+with Z′ = Z + αg (Z) 
+
+> 8:
+
+if a = FedProx then  
+
+> 9:
+
+Add μ 
+
+> 2
+
+∥θs − θt−1 
+
+> s
+
+∥22 only on shared parameters  
+
+> 10:
+
+end if  
+
+> 11:
+
+Upload θ(i),t s and keep θ(i),t p local  
+
+> 12:
+
+end for  
+
+> 13:
+
+Aggregate θts = P  
+
+> i∈S t
+> niP
+> j∈S tnj
+
+θ(i),t s 
+
+> 14:
+
+end for  
+
+> 15:
+
+for each client i ∈ C in parallel do  
+
+> 16:
+
+Freeze θTs and update only θ(i),⋆ p for Efinal epochs  
+
+> 17:
+
+end for  
+
+> 18:
+
+return θTs and {θ(i),⋆ p }Ni=1 
+
+## 4 Experiments and Results 
+
+Dataset and task. We evaluate on a subset of the ASHRAE Great Energy Predictor III dataset [Miller et al. , 2020] con-taining hourly electricity-consumption data from 50 non-residential buildings. This setting provides a controlled but heterogeneous cross-building FL benchmark in which each client has a distinct load distribution. Each building is treated as one federated client, yielding a non-IID cross-building forecasting setting. For each client, the time series is split chronologically into 50% training, 25% validation, and 25% testing data. A standard scaler is fitted only on the training split of each client and applied to the corresponding valida-tion and test splits. The forecasting task uses a 168 hour con-text window to predict the next 24 hours. During evaluation, the test split is partitioned into consecutive non-overlapping 24 hour forecast windows, and metrics are computed after transforming predictions back to the original energy scale. 
+
+Backbones and adapter configuration. We evaluate three pretrained TSFM backbones: MOMENT-1-large, Chronos-2, and Moirai-1.1-R-small. Across all backbones, the adapter is applied after the final hidden representation and before the backbone-specific forecasting or distribution head. Un-less otherwise stated, PFL-MoE uses the full five-expert bank 
+
+{Fourier, Attention, Convolution, Decomposition, Wavelet },sequence-level top-k = 2 routing, and sparse expert execu-tion. The parameter-sharing choices for each adaptation set-ting are defined under Baselines and personalized variants. Appendix B summarizes the shared training and federated-learning hyperparameters used across experiments, including communication rounds, participation rates, routing sparsity, regularization coefficients, and optimization settings. 
+
+Federated training protocol. We train for 15 communica-tion rounds with 20% client participation per round. Each selected client performs 5 local epochs before server aggre-gation. Unless otherwise stated, shared parameters are ag-gregated using sample-weighted FedAvg, and clients are se-lected using a coverage-based strategy that prioritizes under-selected clients under partial participation. We compare ran-dom client selection and FedProx as federated-training abla-tions. We maintain a participation count for each client across communication rounds. At each round, clients with lower historical participation counts are assigned higher selection priority to encourage balanced coverage under partial partic-ipation. When multiple clients have the same participation count, ties are broken uniformly at random. This strategy en-sures that all clients are selected regularly while preserving stochasticity in client participation. 
+
+Baselines and personalized variants. We compare the fol-lowing adaptation settings: • Zero-shot TSFM: the pretrained backbone is evaluated without any fine-tuning. • Global FL-MoE: all trainable adapter, router, residual gate, and forecasting-head parameters are globally aggre-gated, with no client-private state. • Local MoE: each building trains its own MoE adapter lo-cally without communication. • PFL without MoE: we remove the sparse expert branch and retain the same personalized FL protocol. The trainable backbone-side adaptation parameters are globally shared, while the forecasting head remains client-private; no router, expert bank, residual MoE gate, or MoE output projection is used. This baseline isolates the effect of personalized federated adaptation without conditional expert routing. • Shared-expert PFL-MoE: the expert bank and adapter output projection Wo are globally shared, while the router, residual gate, and forecasting head remain client-private. The shared-expert variant uses the same architecture, but the expert bank is moved from the private parameter set to the shared parameter set. • Private-expert PFL-MoE: the expert bank is also kept client-private, while Wo remains globally shared. Table 3 summarizes the shared and client-private trainable components across all adaptation strategies. 
+
+Ablations. We evaluate ablations over expert-bank compo-sition, routing sparsity, federated optimization, client partic-ipation, and LoRA adaptation. Four-expert variants remove one expert from the full expert bank; F, A, C, D, and W denote Fourier, Attention, Convolution, Decomposition, and Wavelet experts. Routing ablations compare top-k ∈ { 1, 2, 5} selec-tion, where top-2 is the main sparse setting and top-5 selects all experts. LoRA rows denote rank-8 low-rank adapter base-lines without the MoE branch. 
+
+Evaluation metrics. We report NRMSE and sMAPE as primary metrics. NRMSE is computed over complete 24-Figure 2: Per-client NRMSE distribution across 50 buildings for Moirai. PFL WITHOUT MOE denotes personalized federated adap-tation without the MoE branch. G LOBAL FL-M OE aggregates the trainable MoE adaptation globally, while S HARED EXPERTS PFL-MOE and P RIVATE EXPERTS PFL-M OE use shared and private ex-pert banks, respectively. Lower values indicate better forecasting performance. 
+
+hour forecast windows [Saravanan et al. , 2024]. 
+
+NRMSE = 100 ¯y
+
+vuut 124 Nwin 
+
+> Nwin
+
+X
+
+> r=1 24
+
+X
+
+> h=1
+
+(yr,h − ˆyr,h )2, (12) where Nwin is the number of 24-hour forecast windows and 
+
+¯y is the mean ground-truth electricity consumption over the evaluated windows. sMAPE is computed over all evaluated forecast time steps as 
+
+sMAPE = 100 
+
+N
+
+> N
+
+X
+
+> t=1
+
+2 |yt − ˆyt||yt| + |ˆyt| + ε , (13) where N denotes the total number of evaluated forecast points and where ε = 10 −8 is a small constant used for nu-merical stability. We treat private-expert PFL-MoE with FedAvg, coverage-based client selection, top-k = 2 , and the full five-expert bank as the default proposed setting. Most ablation rows modify one component relative to the default private-expert PFL-MoE, while additional shared-expert rows evaluate alter-native optimizer or client-selection settings under the shared-expert partition. In Table 1, PFL-MoE denotes our default private-expert personalized sparse-adaptation method. Zero-shot TSFM, Global FL-MoE, Local MoE, PFL without MoE, and LoRA variants are baselines, while rows with modified expert banks, routing sparsity, optimizer, client selection, or shared experts are ablations. We analyze forecasting accuracy, expert-sharing strategies, communication cost, and the routing behavior defined in Sec-tion 3.3 across the three TSFM backbones. Table 1 re-ports the complete forecasting and ablation results, including main baselines, expert-bank ablations, routing-sparsity vari-ants, optimizer variants, client-selection variants, and LoRA baselines. To assess statistical significance, we performed paired Wilcoxon signed-rank tests with Holm correction across building-level NRMSE and sMAPE values. Private-expert 
+
+Table 1: Forecasting and ablation results across all TSFM back-bones. NRMSE and sMAPE are reported as median values across 50 building clients (lower is better). The default proposed method is private-expert PFL-MoE with FedAvg, coverage-based client se-lection, top-k = 2 routing, and the full five-expert bank. F, A, C, D, and W denote Fourier, Attention, Convolution, Decomposition, and Wavelet experts. The best result for each backbone and metric is shown in bold, while the second-best result is underlined.                                                                                                                                       
+
+> TSFM Adaptation / Ablation Setting NRMSE ↓sMAPE ↓
+> MOMENT Private-expert PFL-MoE (top-1routing) 12.769 9.553 PFL without MoE 12.890 9.585 Shared-expert PFL-MoE 12.893 9.565 Shared-expert PFL-MoE (random CS) 12.928 9.500 FedProx Shared-expert PFL-MoE 12.948 9.738 FedProx Private-expert PFL-MoE 12.975 9.630 Private-expert PFL-MoE (4 experts: F,A,D,W) 13.015 9.408 Private-expert PFL-MoE (top-5routing) 13.036 9.468 PFL-LoRA 13.042 9.775 Local LoRA 13.048 9.439 Private-expert PFL-MoE (4 experts: F,C,D,W) 13.072 9.497 Private-expert PFL-MoE (default) 13.103 9.403
+> Local MoE 13.118 9.688 Private-expert PFL-MoE (4 experts: F,A,C,W) 13.146 9.463 Private-expert PFL-MoE (4 experts: F,A,C,D) 13.190 9.538 Private-expert PFL-MoE (4 experts: A,C,D,W) 13.200 9.566 FedProx Global FL-MoE 13.747 10.355 Global FL-MoE 13.912 10.349 Global FL-LoRA 14.290 10.926 Zero-shot TSFM 32.275 28.112
+> Chronos-2 Private-expert PFL-MoE (4 experts: F,A,D,W) 10.559 6.924 Zero-shot TSFM 10.573 7.144 Private-expert PFL-MoE (4 experts: F,A,C,D) 10.598 6.791
+> Private-expert PFL-MoE (default) 10.662 6.873 Private-expert PFL-MoE (4 experts: A,C,D,W) 10.688 6.804 Private-expert PFL-MoE (4 experts: F,A,C,W) 10.732 6.822 Private-expert PFL-MoE (top-5routing) 10.733 6.922 Private-expert PFL-MoE (4 experts: F,C,D,W) 10.776 6.809 Private-expert PFL-MoE (top-1routing) 10.803 6.855 Shared-expert PFL-MoE 10.834 6.941 Shared-expert PFL-MoE (random CS) 10.898 7.056 FedProx Private-expert PFL-MoE 10.937 6.981 PFL-LoRA 10.960 7.303 FedProx Shared-expert PFL-MoE 10.973 7.023 Local LoRA 10.987 7.102 PFL without MoE 10.992 6.885 Local MoE 11.215 7.268 FedProx Global FL-MoE 11.259 7.838 Global FL-MoE 11.360 7.764 Global FL-LoRA 11.363 8.151
+> Moirai FedProx Private-expert PFL-MoE 12.429 8.502 Private-expert PFL-MoE (4 experts: F,A,C,W) 12.430 8.489 Private-expert PFL-MoE (default) 12.610 8.634 Private-expert PFL-MoE (4 experts: F,A,D,W) 12.623 8.758 Private-expert PFL-MoE (4 experts: A,C,D,W) 12.691 8.707 FedProx Shared-expert PFL-MoE 12.698 8.779 Private-expert PFL-MoE (top-1routing) 12.826 8.673 Private-expert PFL-MoE (4 experts: F,C,D,W) 12.829 8.531 Shared-expert PFL-MoE 12.837 8.906 Private-expert PFL-MoE (top-5routing) 12.994 8.749 Private-expert PFL-MoE (4 experts: F,A,C,D) 12.997 8.586 Shared-expert PFL-MoE (random CS) 13.100 8.832 PFL without MoE 13.260 8.466
+> PFL-LoRA 14.144 9.830 FedProx Global FL-MoE 14.163 10.124 Global FL-MoE 14.212 9.873 Local MoE 14.298 9.327 Global FL-LoRA 15.407 11.416 Local LoRA 15.766 10.638 Zero-shot TSFM 38.869 32.649
+
+PFL-MoE significantly outperformed Global FL-MoE across all three backbones, whereas improvements over PFL without MoE were not consistently significant after correction. 
+
+Effect of personalization. Across all three backbones, the best personalized variant in Table 1 reduces NRMSE rela-tive to the corresponding Global FL-MoE baseline by 8.2% for MOMENT, 7.1% for Chronos-2, and 12.5% for Moirai. These gains are computed within each backbone using Global FL-MoE as the reference. Personalized variants generally Figure 3: Expert-selection patterns for MOMENT-1-large, Chronos-2, and Moirai-1.1-R-small. Each row corresponds to one building client and each column corresponds to one expert. The color of a cell shows how often that expert was selected for that building’s test windows by the top-k router. MOMENT shows more building-specific expert choices, Chronos-2 selects a smaller set of experts more frequently, and Moirai uses the expert bank more evenly. 
+
+outperform or remain competitive with Local MoE. The sta-tistically significant gains over Local MoE are observed for Chronos-2 and Moirai, while MOMENT shows no significant improvement over Local MoE after Holm correction. 
+
+Chronos-2. For Chronos-2, zero-shot performance is al-ready very strong, indicating that the pretrained representa-tion is well aligned with the building-energy forecasting task. A four-expert PFL-MoE variant achieves the best NRMSE, while another four-expert variant obtains the best sMAPE. Personalized sparse adaptation generally outperforms Global FL-MoE and remains competitive with Local MoE. However, the improvement over zero-shot forecasting remains modest, suggesting that Chronos-2 already learns representations that transfer effectively to building-energy forecasting. Conse-quently, adaptation has a relatively limited impact on over-all forecasting accuracy and primarily affects expert selection and relative-error behavior. 
+
+MOMENT. For MOMENT, top-1 routing achieves the best NRMSE, while private-expert PFL-MoE obtains the best sMAPE. PFL without MoE and shared-expert PFL-MoE re-main competitive in NRMSE, suggesting that personalized adaptation already captures much of the client-specific in-formation required by this backbone. The stronger sMAPE performance of private-expert variants indicates that sparse expert routing mainly improves relative-error behavior rather than substantially changing absolute forecasting accuracy. 
+
+Moirai. For Moirai, FedProx PFL-MoE with private ex-perts achieves the best NRMSE, with the four-expert Fe-dAvg variant performing nearly identically. Both outper-form Global FL-MoE, Local MoE, PFL without MoE, and zero-shot evaluation in terms of NRMSE. This suggests that Moirai benefits from client-private expert transformations and that a single globally averaged expert bank may be re-strictive under heterogeneous building distributions. How-ever, PFL without MoE achieves the best sMAPE, indicating that the optimal parameter-sharing strategy depends on the evaluation metric. Figure 2 further shows that private-expert PFL-MoE shifts the per-client NRMSE distribution below both Global FL-MoE and Local MoE for Moirai, indicating that the improve-ment is not driven by only a few buildings. Similar per-client NRMSE distributions for MOMENT and Chronos-2 are shown in Appendix Figure 5. The larger personalization gains observed for Moirai further suggest that client-specific temporal transformations are particularly important for this backbone and may be difficult to represent using a single globally shared expert bank. 
+
+Shared versus private experts. Expert sharing is not uni-formly beneficial. Private experts improve sMAPE over shared experts for MOMENT and Chronos-2 and give the strongest Moirai NRMSE among the main FedAvg partitions. Shared experts remain competitive for MOMENT NRMSE, but are weaker for Moirai, suggesting that globally averaged expert banks can suppress client-specific temporal specializa-tion. 
+
+Communication cost. A practical advantage of private ex-perts is reduced communication by limiting which trainable parameters are shared across clients. We compare communi-cation across parameter-sharing strategies rather than across the best-performing accuracy rows. Communication is com-puted as 2RK |θs| × 4 bytes, where |θs| is the number of shared trainable parameters, R = 15 rounds, and K = 10 de-notes the number of selected clients per round. This account-ing includes only shared-parameter transmission in the down-load and upload directions, and excludes optimizer states and client-private parameters. Compared with shared-expert PFL-MoE, private-expert PFL-MoE reduces communication by 66.3%, 58.6%, and 66.8% for MOMENT, Chronos-2, and Moirai, respectively, while adding only 8.2%, 6.3%, and 8.3% overhead over PFL without MoE. Table 2 reports the corresponding shared-parameter counts and total communi-cation. While communication is reduced through private ex-perts, this strategy increases client-side storage because each client maintains its own expert bank. A communication-accuracy trade-off visualization for all three backbones is shown in Figure 4 in the appendix. 
+
+Routing behavior. Figure 3 shows that the three backbones induce distinct expert-usage regimes. MOMENT exhibits Table 2: Communication cost under coverage-based client selec-tion. Communication is computed for bidirectional FP32 transmis-sion of shared parameters, using 15 rounds and 10 selected clients per round.                         
+
+> Backbone Strategy Shared Params (M) Comm. (GB)
+> MOMENT PFL without MoE 12.85 15.42 Shared experts 41.28 49.53 Private experts 13.90 16.68 Chronos-2 PFL without MoE 9.44 11.33 Shared experts 24.22 29.06 Private experts 10.03 12.04 Moirai PFL without MoE 1.77 2.12 Shared experts 5.77 6.93 Private experts 1.92 2.30
+
+more building-specific expert preferences, Chronos-2 con-centrates selections on a small subset of experts, and Moirai shows a more distributed usage pattern. These differences suggest that pretrained TSFM backbones organize building-level heterogeneity differently in the sparse-routing space. 
+
+Limitations. This study focuses on 50 non-residential buildings from one building-energy benchmark and on hourly univariate electricity forecasting. Broader validation across climates, building types, multivariate forecasting settings, and larger client populations is needed. 
+
+## 5 Conclusion 
+
+We studied personalized federated adaptation of pretrained TSFMs for short-term building energy forecasting. Across 50 non-IID building clients and three TSFM backbones, per-sonalized adaptation consistently improves over Global FL-MoE and is generally competitive with or better than Local MoE, with statistically significant gains over Local MoE for Chronos-2 and Moirai, demonstrating that federated TSFM adaptation benefits from combining cross-client knowledge transfer with client-specific specialization. The strongest adaptation strategy depends on both the backbone and evaluation metric. Chronos-2 exhibits strong zero-shot performance and is most sensitive to expert-bank composition; MOMENT shows relatively small NRMSE dif-ferences but benefits from sparse routing and private experts in terms of sMAPE; and Moirai achieves the best NRMSE with private-expert FedProx PFL-MoE. Expert-selection pat-terns further reveal that different TSFMs organize client het-erogeneity differently, while private experts reduce commu-nication by limiting the shared parameter set. More broadly, our findings suggest that federated adapta-tion of foundation models should be designed jointly with the characteristics of the underlying pretrained backbone. The degree of personalization that is beneficial for sparse expert adaptation varies substantially across TSFMs, indicating that backbone-aware federated adaptation may be as important as client-aware adaptation. The backbone-dependent behavior observed across MO-MENT, Chronos-2, and Moirai suggests that there is no universally optimal personalization strategy for federated TSFM adaptation. Instead, the degree of personalization may itself need to be learned. Future work could develop adaptive expert-sharing mechanisms that dynamically deter-mine which experts should be shared globally and which should remain client-specific, potentially combined with meta-learned adapters that enable rapid adaptation to new clients. More broadly, our results indicate that backbone-aware personalization may be a key design principle for fed-erated foundation-model adaptation beyond building energy forecasting. 
+
+## References 
+
+[Ansari et al. , 2025] Abdul Fatir Ansari, Oleksandr Shchur, Jaris K¨ uken, Andreas Auer, Boran Han, Pedro Mercado, Syama Sundar Rangapuram, Huibin Shen, Lorenzo Stella, Xiyuan Zhang, Mononito Goswami, Shubham Kapoor, Danielle C. Maddix, Pablo Guerron, Tony Hu, Junming Yin, Nick Erickson, Prateek Mutalik Desai, Hao Wang, Huzefa Rangwala, George Karypis, Yuyang Wang, and Michael Bohlke-Schneider. Chronos-2: From univariate to universal forecasting, 2025. [Arivazhagan et al. , 2019] Manoj Ghuhan Arivazhagan, Vinay Aggarwal, Aaditya Kumar Singh, and Sunav Choudhary. Federated learning with personalization layers, 2019. [Chen et al. , 2025] Shengchao Chen, Guodong Long, Jing Jiang, and Chengqi Zhang. Federated foundation mod-els on heterogeneous time series. In Proceedings of the Thirty-Ninth AAAI Conference on Artificial Intelli-gence and Thirty-Seventh Conference on Innovative Ap-plications of Artificial Intelligence and Fifteenth Sympo-sium on Educational Advances in Artificial Intelligence ,AAAI’25/IAAI’25/EAAI’25. AAAI Press, 2025. [Fedus et al. , 2022] William Fedus, Barret Zoph, and Noam Shazeer. Switch transformers: Scaling to trillion param-eter models with simple and efficient sparsity. Journal of Machine Learning Research , 23(120):1–39, 2022. [Goswami et al. , 2024] Mononito Goswami, Konrad Szafer, Arjun Choudhry, Yifu Cai, Shuo Li, and Artur Dubrawski. Moment: A family of open time-series foundation models. In International Conference on Machine Learning , 2024. [Hu et al. , 2022] Edward J Hu, yelong shen, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen. LoRA: Low-rank adaptation of large language models. In International Conference on Learn-ing Representations , 2022. [Lepikhin et al. , 2021] Dmitry Lepikhin, HyoukJoong Lee, Yuanzhong Xu, Dehao Chen, Orhan Firat, Yanping Huang, Maxim Krikun, Noam Shazeer, and Zhifeng Chen. 
+
+{GS }hard: Scaling giant models with conditional compu-tation and automatic sharding. In International Conference on Learning Representations , 2021. [Li et al. , 2020] Tian Li, Anit Kumar Sahu, Manzil Zaheer, Maziar Sanjabi, Ameet Talwalkar, and Virginia Smith. Federated optimization in heterogeneous networks. In I. Dhillon, D. Papailiopoulos, and V. Sze, editors, Proceed-ings of Machine Learning and Systems , volume 2, pages 429–450, 2020. [Li et al. , 2025] Zhe Li, Xiangfei Qiu, Peng Chen, Yihang Wang, Hanyin Cheng, Yang Shu, Jilin Hu, Chenjuan Guo, Aoying Zhou, Christian S. Jensen, and Bin Yang. Tsfm-bench: A comprehensive and unified benchmark of foun-dation models for time series forecasting. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Dis-covery and Data Mining V.2 , KDD ’25, page 5595–5606, New York, NY, USA, 2025. Association for Computing Machinery. [Liu et al. , 2024] Qingxiang Liu, Xu Liu, Chenghao Liu, Qingsong Wen, and Yuxuan Liang. Time-ffm: Towards lm-empowered federated foundation model for time se-ries forecasting. In A. Globerson, L. Mackey, D. Bel-grave, A. Fan, U. Paquet, J. Tomczak, and C. Zhang, edi-tors, Advances in Neural Information Processing Systems ,volume 37, pages 94512–94538. Curran Associates, Inc., 2024. [Liu et al. , 2025] Xu Liu, Juncheng Liu, Gerald Woo, Taha Aksu, Yuxuan Liang, Roger Zimmermann, Chenghao Liu, Junnan Li, Silvio Savarese, Caiming Xiong, and Doyen Sahoo. Moirai-moe: Empowering time series foundation models with sparse mixture of experts. In Forty-second International Conference on Machine Learning , 2025. [McMahan et al. , 2017] Brendan McMahan, Eider Moore, Daniel Ramage, Seth Hampson, and Blaise Aguera y Ar-cas. Communication-Efficient Learning of Deep Networks from Decentralized Data. In Aarti Singh and Jerry Zhu, editors, Proceedings of the 20th International Conference on Artificial Intelligence and Statistics , volume 54 of Pro-ceedings of Machine Learning Research , pages 1273– 1282. PMLR, 20–22 Apr 2017. [Miller et al. , 2020] Clayton Miller, Anjukan Kathirga-manathan, Bianca Picchetti, Pandarasamy Arjunan, June Young Park, Zoltan Nagy, Paul Raftery, Brodie W Hobson, Zixiao Shi, and Forrest Meggers. The build-ing data genome project 2, energy meter data from the ashrae great energy predictor iii competition. Scientific data , 7(1):368, 2020. [Mulayim et al. , 2024] Ozan Baris Mulayim, Pengrui Quan, Liying Han, Xiaomin Ouyang, Dezhi Hong, Mario Berg´ es, and Mani Srivastava. Are time series foundation models ready to revolutionize predictive building analytics? In 
+
+Proceedings of the 11th ACM International Conference on Systems for Energy-Efficient Buildings, Cities, and Trans-portation , BuildSys ’24, page 169–173, New York, NY, USA, 2024. Association for Computing Machinery. [Oh et al. , 2022] Jaehoon Oh, SangMook Kim, and Se-Young Yun. FedBABU: Toward enhanced representation for federated image classification. In International Con-ference on Learning Representations , 2022. [Prabhu and Arjunan, 2022] Hardik Prabhu and Pan-darasamy Arjunan. eptk: energy prediction toolkit. In 
+
+Proceedings of the 9th ACM International Conference on Systems for Energy-Efficient Buildings, Cities, and Transportation , BuildSys ’22, page 512–515, New York, NY, USA, 2022. Association for Computing Machinery. [Prabhu et al. , 2023] Hardik Prabhu, Jayaraman Valdi, and Pandarasamy Arjunan. Explainable ai for energy predic-tion and anomaly detection in smart energy buildings. In 
+
+Proceedings of the 10th ACM International Conference on Systems for Energy-Efficient Buildings, Cities, and Trans-portation , BuildSys ’23, page 472–475, New York, NY, USA, 2023. Association for Computing Machinery. [Saravanan et al. , 2024] Harish Kumar Saravanan, Shivam Dwivedi, P Praveen, and Pandarasamy Arjunan. Analyz-ing the performance of time series foundation models for short-term load forecasting. In Proceedings of the 11th ACM International Conference on Systems for Energy-Efficient Buildings, Cities, and Transportation , pages 346– 349, 2024. [Sievers et al. , 2024] Jonas Sievers, Thomas Blank, and Frank Simon. Advancing accuracy in energy forecasting using mixture-of-experts and federated learning. In Pro-ceedings of the 15th ACM International Conference on Fu-ture and Sustainable Energy Systems , e-Energy ’24, page 65–83, New York, NY, USA, 2024. Association for Com-puting Machinery. [T. Dinh et al. , 2020] Canh T. Dinh, Nguyen Tran, and Josh Nguyen. Personalized federated learning with moreau en-velopes. In H. Larochelle, M. Ranzato, R. Hadsell, M.F. Balcan, and H. Lin, editors, Advances in Neural Informa-tion Processing Systems , volume 33, pages 21394–21405. Curran Associates, Inc., 2020. [Vaswani et al. , 2017] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Ł ukasz Kaiser, and Illia Polosukhin. Attention is all you need. In I. Guyon, U. Von Luxburg, S. Bengio, H. Wal-lach, R. Fergus, S. Vishwanathan, and R. Garnett, editors, 
+
+Advances in Neural Information Processing Systems , vol-ume 30. Curran Associates, Inc., 2017. [Wang et al. , 2026] Haozhao Wang, Wenchao Xu, Jingzhi Wang, Yunfeng Fan, Xiaoquan Yi, and Rui Zhang. pfed-dks: Detached knowledge sharing for personalized feder-ated learning. In Proceedings of the ACM Web Conference 2026 , WWW ’26, page 5953–5964, New York, NY, USA, 2026. Association for Computing Machinery. [Woo et al. , 2024] Gerald Woo, Chenghao Liu, Akshat Ku-mar, Caiming Xiong, Silvio Savarese, and Doyen Sahoo. Unified training of universal time series forecasting trans-formers. In Forty-first International Conference on Ma-chine Learning , 2024. [Wu et al. , 2021] Haixu Wu, Jiehui Xu, Jianmin Wang, and Mingsheng Long. Autoformer: Decomposition transform-ers with auto-correlation for long-term series forecasting. In A. Beygelzimer, Y. Dauphin, P. Liang, and J. Wortman Vaughan, editors, Advances in Neural Information Pro-cessing Systems , 2021. [Zhang et al. , 2023] Qingru Zhang, Minshuo Chen, Alexan-der Bukharin, Pengcheng He, Yu Cheng, Weizhu Chen, and Tuo Zhao. Adaptive budget allocation for parameter-efficient fine-tuning. In The Eleventh International Con-ference on Learning Representations , 2023. [Zhou et al. , 2022] Tian Zhou, Ziqing Ma, Qingsong Wen, Xue Wang, Liang Sun, and Rong Jin. FEDformer: Frequency enhanced decomposed transformer for long-term series forecasting. In Kamalika Chaudhuri, Stefanie Jegelka, Le Song, Csaba Szepesvari, Gang Niu, and Sivan Sabato, editors, Proceedings of the 39th International Conference on Machine Learning , volume 162 of Pro-ceedings of Machine Learning Research , pages 27268– 27286. PMLR, 17–23 Jul 2022. [Zoph et al. , 2022] Barret Zoph, Irwan Bello, Sameer Ku-mar, Nan Du, Yanping Huang, Jeff Dean, Noam Shazeer, and William Fedus. St-moe: Designing stable and trans-ferable sparse expert models, 2022. A Additional Analysis 
+
+A.1 Temporal Expert Implementations 
+
+This section provides implementation details for the expert modules used in the proposed sparse Mixture-of-Experts (MoE) adaptation branch. Unless otherwise noted, the same expert formulations are used across MOMENT, Chronos-2, and Moirai, with only minor backbone-specific hyperparam-eter differences. The adapter residual update is described in Section 3.2, the routing formulation and sparse top-k expert fusion are described in Section 3.3, and the auxiliary routing losses are described in Section 3.4. Therefore, this section fo-cuses only on the expert-specific transformations used inside the MoE branch. Let the final hidden representation produced by the pre-trained TSFM backbone be 
+
+Z ∈ RB×P ×D , (14) where B is the batch size, P is the number of temporal patches or hidden tokens, and D is the hidden dimension. Each expert receives the same hidden representation Z and returns an output of the same shape: 
+
+Em(Z) ∈ RB×P ×D . (15) Thus, all experts operate in the latent patch-token space rather than directly on raw time-series values. All experts follow the same general structure: 
+
+Em(Z) = OutProj m (Φ m(LN m(Z))) , (16) where LN m(·) is expert-specific layer normalization, 
+
+Φm(·) is the expert-specific temporal transformation, and 
+
+OutProj m maps the transformed representation back to di-mension D. The output projection of each expert is initialized with a small standard deviation so that the MoE branch ini-tially applies only a small residual perturbation to the frozen backbone representation. The final expert bank used in all experiments consists of five experts: Fourier, Attention, Convolution, Decomposi-tion, and Wavelet. 
+
+Fourier Expert 
+
+The Fourier expert captures periodic and frequency-domain structure in the latent patch representation. The Fourier expert applies a real-valued FFT along the patch dimension of the normalized representation. 
+
+bX = rFFT( X, dim = P ), bX ∈ CB×Nf ×D , (17) where 
+
+Nf =
+
+ P
+
+2
+
+
+
++ 1 (18) is the number of frequency bins. The implementation uses two learnable frequency filters: 
+
+Glow , G band ∈ RNf ×D . (19) The low-frequency filter is initialized to ones: 
+
+Glow (f, d ) = 1 . (20) where f indexes the frequency bins and d indexes the hidden dimension. The band-pass filter is initialized with a Gaussian-shaped profile: 
+
+Gband (f, d ) = exp − 12
+
+ f − cw
+
+2!
+
+, (21) where 
+
+c = max 
+
+
+
+1,
+
+ Nf
+
+4
+
+ 
+
+, w = max 
+
+
+
+1,
+
+ Nf
+
+8
+
+ 
+
+. (22) The filtered spectra are 
+
+bXlow = bX ⊙ Glow , bXband = bX ⊙ Gband . (23) Both filtered representations are transformed back to the patch domain using the inverse real FFT: 
+
+Xlow = irFFT( bXlow ), Xband = irFFT( bXband ). (24) The two components are concatenated along the hidden di-mension and mixed: 
+
+UF = [ Xlow ; Xband ]WF + bF , WF ∈ R2D×D. (25) The final expert output is 
+
+EF (Z) = OutProj F (Dropout( UF )) . (26) The Fourier expert is designed to capture periodic patterns such as daily or weekly load cycles. The low-frequency filter emphasizes smooth long-range variation, while the band-pass filter focuses on intermediate-frequency changes. Since both filters are learnable, the model can adapt the frequency em-phasis during training. 
+
+Attention Expert 
+
+The attention expert models long-range dependencies be-tween latent patch tokens. Given 
+
+X = LN A(Z), (27) multi-head self-attention is applied over the patch dimension: 
+
+Q = XW Q, K = XW K , V = XW V . (28) For each attention head, the attention output is 
+
+Attn( Q, K, V ) = softmax 
+
+ QK ⊤
+
+√dh
+
+
+
+V, (29) where dh is the head dimension. The outputs from all heads are concatenated and projected back to dimension D:
+
+EA(Z) = OutP roj A
+
+
+
+Dropout (M HA (Q, K, V )) 
+
+
+
+. (30) The attention expert captures non-local interactions be-tween patches. In building energy forecasting, this can help relate distant parts of the input window, such as repeated occupancy patterns, morning ramp-up behavior, or evening shutdown behavior. Convolution Expert 
+
+The convolution expert captures local and medium-range temporal variation in the latent patch sequence. Given 
+
+X = LN C (Z), (31) the tensor is transposed so that the hidden dimension becomes the channel dimension: 
+
+X⊤ ∈ RB×D×P . (32) A depthwise dilated one-dimensional convolution is then ap-plied: 
+
+C = DWConv1D k=3 ,δ =2 (X⊤), (33) where k = 3 is the kernel size and δ = 2 is the dilation factor. Depthwise convolution applies a separate temporal filter to each hidden channel. The output is then transposed back to shape B × P × D.A pointwise feed-forward transformation is applied: 
+
+UC = W2 Dropout (GELU( CW 1 + b1)) + b2, (34) where 
+
+W1 ∈ RD×2D, W2 ∈ R2D×D. (35) The final expert output is 
+
+EC (Z) = UC . (36) The convolution expert uses a dilated convolution to cap-ture short- and medium-range temporal changes. Dilation in-creases the receptive field without substantially increasing the number of parameters, making it useful for local load fluctu-ations, ramp-up behavior, and ramp-down behavior. 
+
+Decomposition Expert 
+
+The decomposition expert separates the latent patch represen-tation into a smooth trend component and a residual compo-nent. Given 
+
+X = LN D (Z), (37) a frozen depthwise moving-average convolution is applied along the patch dimension: 
+
+Xtrend = AvgConv1D( X). (38) The moving-average kernel is initialized as 
+
+wi = 1
+
+KM A 
+
+, i = 1 , . . . , K M A . (39) In Chronos-2, the moving-average kernel size is selected as 
+
+KMA = max 
+
+
+
+5,
+
+ P
+
+4
+
+ 
+
+,
+
+and adjusted to be odd when required. For MOMENT and Moirai, a fixed kernel size KMA = 9 is used. The convolu-tion uses replicate padding and is kept frozen, so it acts as a deterministic trend extractor. The residual component is 
+
+Xres = X − Xtrend . (40) The trend and residual components are concatenated: 
+
+CD = [ Xtrend ; Xres ] ∈ RB×P ×2D . (41) A fusion projection maps the concatenated representation back to dimension D:
+
+UD = CD Wfuse + bfuse , Wfuse ∈ R2D×D. (42) The final expert output is produced using a pointwise feed-forward block: 
+
+ED (Z) = W2 Dropout (GELU( UD W1 + b1)) + b2. (43) The decomposition expert introduces a trend–residual in-ductive bias. The trend component represents slowly varying latent behavior, while the residual component captures devia-tions from that trend. This is useful for building energy data, where consumption often contains both smooth base-load be-havior and sharper occupancy- or equipment-driven changes. Importantly, this decomposition is applied to the back-bone’s latent patch representation, not directly to the raw me-ter readings. 
+
+Wavelet Expert 
+
+The wavelet expert captures multi-resolution temporal struc-ture using a Haar-style decomposition over the patch dimen-sion. Given 
+
+X = LN W (Z), (44) the expert repeatedly applies the Haar transform. At each level, the current sequence is split into even and odd patch positions: 
+
+Xeven = X0::2 , Xodd = X1::2 . (45) The approximation and detail coefficients are computed as 
+
+A = Xeven + Xodd 
+
+√2 , ∆ = Xeven − Xodd 
+
+√2 . (46) The approximation A is passed to the next level, while the detail component ∆ is stored. The number of decomposition levels is 
+
+LW = min (3 , ⌊log 2(max( P, 2)) ⌋) . (47) If the sequence length is odd at a level, the final unmatched patch is dropped for that level. Each detail component is upsampled back to the original patch length P using nearest-neighbor interpolation: 
+
+e∆(ℓ) = Upsample(∆ (ℓ), P ). (48) The final approximation is also upsampled: 
+
+eA(LW ) = Upsample( A(LW ), P ). (49) All components are concatenated: 
+
+CW = [ e∆(1) ; e∆(2) ; . . . ; e∆(LW ); eA(LW )] ∈ RB×P ×(LW +1) D .
+
+(50) A fusion projection maps this representation back to dimen-sion D:
+
+UW = CW Wfuse +bfuse , Wfuse ∈ R(LW +1) D×D. (51) The final expert output is 
+
+EW (Z) = W2 Dropout (GELU( UW W1 + b1)) + b2. (52) The wavelet expert captures multi-resolution informa-tion. Fine-level detail coefficients represent short-term lo-cal changes, while deeper approximations represent coarser temporal structure. This is useful because building energy demand can contain both abrupt usage changes and slower long-term patterns. Table 3: Parameter partitioning across adaptation strategies. Shared parameters are aggregated through federated learning, while private parameters remain local to each client. 
+
+Method Shared across clients Private per client 
+
+Global FL-MoE Final backbone-side block, expert bank, router, residual gate, adapter output projection Wo, and forecasting head None Local MoE None Final backbone-side block, expert bank, router, residual gate, adapter output projection Wo, and forecasting head PFL without MoE Final backbone-side block Forecasting head Shared-expert PFL-MoE Final backbone-side block, expert bank, and adapter output projection Wo
+
+Router, residual gate, and forecasting head Private-expert PFL-MoE Final backbone-side block and adapter output pro-jection Wo
+
+Router, residual gate, expert bank, and forecasting head 
+
+Figure 4: Communication cost versus median NRMSE across federated adaptation strategies for (a) MOMENT-1-large, (b) Chronos-2, and (c) Moirai-1.1-R-small. Lower-left regions correspond to preferable operating points with lower communication and lower forecasting error. Across all three backbones, personalized federated adaptation improves the communication–accuracy trade-off relative to globally shared FL-MoE. Private-expert PFL-MoE consistently achieves a favorable communication–accuracy trade-off, attaining competitive or superior forecasting performance while substantially reducing communication by limiting expert parameters to client-private storage. 
+
+## B Training and Federated Learning Hyperparameters 
+
+Table 4: Training and federated learning hyperparameters shared across experiments. Backbone-specific optimization settings follow the default configurations used for each TSFM backbone.                                   
+
+> Parameter Value
+> Context length ( L)168 Forecast horizon ( H)24 Communication rounds 15 Client participation rate 20% Local epochs 5Top-krouting 2Number of experts 5Optimizer AdamW Batch size 8Weight decay 1×10 −4
+> λlb 1×10 −4for MOMENT and Chronos-2; 1×10 −3for Moirai
+> λz1×10 −5for MOMENT and Chronos-2; 1×10 −4for Moirai Initial gate logit ( ℓα)0 (MOMENT, Chronos-2), -1 (Moirai) FedProx coefficient μ0.01 Training window stride 1
+
+B.1 Statistical Significance Testing 
+
+We additionally evaluate whether the observed improvements of the proposed private-expert PFL-MoE method are statis-tically significant across building clients. Since forecasting performance is computed for the same set of buildings un-der each adaptation strategy, we use a paired non-parametric Wilcoxon signed-rank test. Each building contributes one paired score for the compared methods. The test is applied separately to the two primary evaluation metrics, NRMSE and sMAPE. For each TSFM backbone, we compare private-expert PFL-MoE against three baselines: Global FL-MoE, Local MoE, and PFL without MoE. Since lower NRMSE and sMAPE values indicate better forecasting performance, the one-sided alternative hypothesis is 
+
+H1 : ebaseline > e private -PFL -MoE , (53) where e denotes the building-level metric value. Thus, a pos-itive median improvement indicates that private-expert PFL-MoE reduces the corresponding error metric relative to the baseline. For each backbone, we conduct six paired tests, corre-sponding to three baselines and two metrics. We therefore re-port both the raw Wilcoxon p-value and the Holm-Bonferroni adjusted p-value. The Holm–Bonferroni procedure is applied independently for each backbone to control the family-wise error rate across the six hypothesis tests (three baselines ×
+
+two metrics). A comparison is considered statistically signif-icant when the Holm-adjusted p-value is below 0.05. Table 5: Paired Wilcoxon signed-rank tests comparing Private-expert PFL-MoE with the main baselines across 50 building clients. Tests are performed on building-level NRMSE and sMAPE values. Holm-adjusted p-values correct for the six tests performed for each backbone. 
+
+Backbone Comparison Metric Improved Clients Wilcoxon p Holm p
+
+Private-expert PFL-MoE vs Global FL-MoE NRMSE 33/50 0.0034 0.0168 Private-expert PFL-MoE vs Global FL-MoE sMAPE 31/50 0.0012 0.0071 
+
+MOMENT Private-expert PFL-MoE vs Local MoE NRMSE 17/50 0.9297 1.0000 Private-expert PFL-MoE vs Local MoE sMAPE 24/50 0.2992 0.8977 Private-expert PFL-MoE vs Global FL-MoE NRMSE 37/50 6.84 × 10 −6 3.42 × 10 −5
+
+Private-expert PFL-MoE vs Global FL-MoE sMAPE 42/50 9.34 × 10 −8 5.60 × 10 −7
+
+Chronos-2 Private-expert PFL-MoE vs Local MoE NRMSE 34/50 4.40 × 10 −4 0.0013 Private-expert PFL-MoE vs Local MoE sMAPE 36/50 1.49 × 10 −5 5.95 × 10 −5
+
+Private-expert PFL-MoE vs Global FL-MoE NRMSE 40/50 1.52 × 10 −7 7.60 × 10 −7
+
+Private-expert PFL-MoE vs Global FL-MoE sMAPE 43/50 4.89 × 10 −9 2.93 × 10 −8
+
+Moirai Private-expert PFL-MoE vs Local MoE NRMSE 37/50 1.34 × 10 −5 5.38 × 10 −5
+
+Private-expert PFL-MoE vs Local MoE sMAPE 34/50 1.26 × 10 −4 3.77 × 10 −4
+
+The results show that private-expert PFL-MoE signifi-cantly improves over Global FL-MoE for all three TSFM backbones on both NRMSE and sMAPE after Holm correc-tion. This supports the importance of personalized sparse adaptation compared with fully global MoE aggregation. Private-expert PFL-MoE also significantly improves over Lo-cal MoE for Chronos-2 and Moirai on both metrics, indicat-ing that federated transfer remains beneficial compared with isolated local training for these backbones. For MOMENT, the improvement over Local MoE is not statistically signifi-cant. Compared with PFL without MoE, private-expert PFL-MoE does not achieve statistically significant improvements after Holm correction for any of the three backbones. This suggests that the main statistically robust gain comes from personalized federated adaptation relative to global or lo-cal MoE training, while the additional benefit of the sparse MoE branch over non-MoE personalization is backbone- and metric-dependent. (a) MOMENT-1-large (b) Chronos-2 
+
+Figure 5: Per-client NRMSE distributions across 50 buildings for MOMENT-1-large and Chronos-2 under different adaptation strategies. The boxplots compare zero-shot inference, personalized FL without MoE, global FL-MoE, local MoE, shared-expert PFL-MoE, private-expert PFL-MoE, and the best-performing PFL-MoE ablation for each backbone. Lower NRMSE indicates better forecasting performance.
