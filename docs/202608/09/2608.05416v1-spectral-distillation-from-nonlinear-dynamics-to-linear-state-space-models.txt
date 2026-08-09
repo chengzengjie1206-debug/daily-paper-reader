@@ -1,0 +1,1368 @@
+Title: Spectral Distillation: From Nonlinear Dynamics to Linear State-Space Models
+
+URL Source: https://arxiv.org/pdf/2608.05416v1
+
+Published Time: Fri, 07 Aug 2026 00:20:31 GMT
+
+Number of Pages: 21
+
+Markdown Content:
+# Spectral Distillation: From Nonlinear Dynamics to Linear State-Space Models 
+
+Liane Galanti ∗
+
+Princeton University 
+
+Devan Shah ∗
+
+Princeton University 
+
+Shlomo Fortgang 
+
+Princeton University 
+
+Elad Hazan 
+
+Princeton University 
+
+## Abstract 
+
+Can nonlinear dynamical systems be learned through a compact linear state-space representation, without directly solving a non-convex system-identification prob-lem? We give a provable pipeline for doing so. Starting from observations of an unknown nonlinear dynamical system, we first learn an implicit spectral predictor using Observation Spectral Filtering (OSF), a convex method that competes with the best linear observer for the system. We then apply spectral-to-LDS distilla-tion to convert this predictor into an explicit recurrent linear dynamical system. Our main theorem shows that the average prediction error of the distilled LDS decomposes into an exponentially-small distillation term and the OSF learning term governed by the Luenberger complexity of the best observer. The guaran-tee is dimension-free: it depends on observer complexity rather than on the la-tent dimension needed to represent the nonlinear system. To our knowledge, this yields the first end-to-end provable method for extracting a best-in-hindsight LDS representation of nonlinear dynamics through convex learning followed by prov-able distillation. Experiments on linear LDS benchmarks and MuJoCo behavior cloning show that the train-then-distill pipeline produces compact LDS predictors that match or outperform directly trained baselines. 
+
+## 1 Introduction 
+
+Modern sequence modeling and control hinge on the ability to represent and learn dynamical sys-tems. Linear dynamical systems (LDS) occupy a central role in this landscape: they admit compact state-space representations, efficient simulation, and a rich spectral theory that enables both analy-sis and algorithm design. However, most real-world systems are inherently nonlinear, and learning either a nonlinear state-space model or even its best linear approximation remains a fundamentally non-convex and fragile problem. This paper asks a basic question: can we extract a simple linear dynamical system that faithfully represents a nonlinear one, without ever solving a non-convex system identification problem? 
+
+Our answer is affirmative. We present a provable nonlinear-to-LDS distillation pipeline that converts observations from an unknown nonlinear system into a compact linear dynamical system, using only convex optimization followed by a structured distillation step. The key idea is to separate learning from representation. Rather than attempting to fit a state-space model directly, we first learn an implicit predictor using Observation Spectral Filtering (OSF), a convex method that operates in a fixed temporal feature space. OSF does not attempt to recover latent states; instead, it competes with the best linear observer that could explain the data, achieving regret bounds that depend only on an intrinsic measure of observability complexity.         
+
+> ∗Equal contribution; author order chosen alphabetically. Corresponding emails: galanti@princeton.edu ,
+> devan.shah@princeton.edu .Preprint. arXiv:2608.05416v1 [cs.LG] 5 Aug 2026
+
+We then convert this predictor into an explicit state-space model. Leveraging recent results on spectral representations of dynamical systems, we show how a learned spectral predictor can be distilled into a finite-dimensional LDS whose impulse responses approximate those of the predictor up to exponentially small error. The result is a standard recurrent model with memory and per-step cost depending only on the observation and output dimension, suitable for long-horizon simulation and control. 
+
+1.1 Our Contributions 
+
+This paper makes the following contributions. • A nonlinear-to-LDS distillation pipeline. We give a two-stage procedure that first learns a nonlinear dynamical system through the convex OSF feature class, and then distills the resulting spectral predictor into an explicit recurrent LDS. • A dimension-free prediction guarantee. We prove that with k = Θ(log 2 T ) spectral filters and h ≥ k SpectraLDS poles, the distilled LDS satisfies 
+
+1
+
+T
+
+> T
+
+X
+
+> t=1
+
+∥yt − ˆyLDS  
+
+> t
+
+∥2 ≤ eO
+
+ Q2 
+
+> ⋆
+
+log( Q⋆) log 7 T
+
+√T + λmax (F )2 exp 
+
+
+
+− 2k
+
+log T
+
+ 
+
+.
+
+Thus the error decomposes into an exponentially small distillation term and the OSF learn-ing term governed by the Luenberger complexity Q⋆.• An explicit compact representation. Unlike OSF, which is an implicit convolutional pre-dictor, the output of our method is a standard LDS with O(h · (din + dout )) memory and 
+
+O(h·(din +dout )) per-step simulation cost. The guarantee depends on observer complexity rather than on the potentially enormous dimension of a nonlinear lift or discretization. • Empirical validation of train-then-distill. We test the pipeline on linear LDS bench-marks and MuJoCo behavior cloning. Across these settings, the distilled LDS preserves the behavior of the spectral predictor and often outperforms directly trained LDS baselines. Together, these results give a principled route from nonlinear observations to compact linear state-space models: learn in a convex spectral space, then distill into an interpretable recurrent LDS. 
+
+1.2 Related Work Linear dynamical system identification. Classical system identification [11] fits state-space pa-rameters (A, B, C ) directly, typically through non-convex optimization. Recent work has obtained non-asymptotic guarantees for LDS estimation under Gaussian noise [5, 18, 15, 16, 21], with sample complexity scaling polynomially in the state dimension and condition number of the system. These results crucially assume the data are generated by a linear system; extending them to nonlinear settings has remained open. 
+
+Spectral filtering. Spectral filtering [8, 7] sidesteps non-convex identification by learning in a fixed convolutional feature space derived from the Hankel matrix. The OSF extension [1] combines this with a Luenberger-observer analysis to obtain regret guarantees for nonlinear systems through improper learning. SpectraLDS [17] converts spectral predictors into recurrent LDS form. Our work composes these ingredients into an end-to-end provable pipeline with a unified guarantee, and we describe these techniques more in the next section. 
+
+Koopman operator methods. Koopman theory [13] represents nonlinear dynamics as a linear op-erator on an infinite-dimensional observable space, and finite-dimensional approximations underlie methods such as EDMD [22] and deep Koopman embeddings [12, 9]. These approaches typically require choosing a dictionary of observables and offer mostly asymptotic or empirical guarantees. Our pipeline can be viewed in a similar spirit, but the spectral-filter dictionary is universal and the guarantees are non-asymptotic. 2Modern state-space sequence models. Structured state-space models such as S4 [3], S5 [19], the LRU [14], and Mamba [2] have shown that linear recurrences with carefully chosen parameteriza-tions can match or exceed Transformer performance on long-sequence tasks. These works focus on architectural and empirical advances rather than provable system-identification guarantees. Our distilled LDS produces a compact recurrence in the same family, but with a provable approximation guarantee for nonlinear data-generating processes. 
+
+## 2 Background 
+
+We recall the two ingredients used by our pipeline. Observation Spectral Filtering (OSF) [1] learns a convex spectral predictor [8] from past inputs and observations. Spectral-to-LDS distillation [17] then realizes the learned spectral predictor as an explicit recurrent state-space model. 
+
+2.1 Linear systems as convolutional predictors 
+
+A controlled linear dynamical system maps inputs ut ∈ Rdu to outputs yt ∈ Rdy through a hidden state xt ∈ Rdx :
+
+xt+1 = Ax t + Bu t, yt = Cx t + Du t. (2.1) The direct term Du t can be replaced by an expanded hidden state, and so we often consider D = 0 .Taking x0 = 0 and suppressing the direct term, the output expands as 
+
+yt =
+
+> t−1
+
+X
+
+> ℓ=0
+
+CA ℓB u t−ℓ. (2.2) Thus an LDS is equivalently described by its impulse response {CA ℓB}ℓ≥0.This representation exposes the main difficulty in directly fitting LDSs. Long-memory systems require accurately learning high powers of A, and the map from A to the sequence {Aℓ}ℓ≥0 is non-convex and poorly conditioned when ρ(A) is close to one. Spectral filtering [8] avoids this difficulty by learning in a fixed convolutional feature space instead of identifying the latent transition matrix. 
+
+2.2 Spectral filtering 
+
+For α ∈ [0 , 1] , define the length-L geometric response 
+
+μL(α) = (1 , α, α 2, . . . , α L−1).
+
+Consider the Hankel spectral basis obtained from 
+
+ZL =
+
+Z 10
+
+μL(α)μL(α)⊤ dα. (2.3) Let ϕ+1 , . . . , ϕ + 
+
+> k
+
+be the top k eigenvectors of ZL, with corresponding eigenvalues σ1, . . . , σ k. The Spectral Filtering algorithm [8] is rooted in the observation that the span of these filters uniformly approximates length-L geometric responses, with approximation error decaying exponentially in 
+
+k/ log L.For a signal stream st, define the spectral features 
+
+U (s) 
+
+> t,j
+
+= ϕ+ 
+
+> j
+
+, s t−1: t−L =
+
+> L
+
+X
+
+> ℓ=1
+
+ϕ+ 
+
+> j
+
+(ℓ) st−ℓ, j = 1 , . . . , k. (2.4) A spectral predictor over this stream has the form 
+
+ˆySF  
+
+> t
+
+=
+
+> m
+
+X
+
+> r=1
+
+Rr st−r +
+
+> k
+
+X
+
+> j=1
+
+Mj U (s) 
+
+> t,j
+
+. (2.5) The temporal filters ϕ+ 
+
+> j
+
+are fixed in advance, while the readout matrices Rr and Mj are learned. Squared loss is therefore convex in the trainable parameters, even though the resulting predictor can represent long-memory impulse responses for an LDS with PSD matrix A. To extend this result to a symmetric LDS [7], where the transition matrix A is symmetric, we can expand our filter set to include the negative spectral filters ϕ− 
+
+> i
+
+= [( ϕ+ 
+
+> i
+
+)t · (−1) t]L−1 
+
+> t=0
+
+. Thus, when we refer to k spectral filters ϕi, we refer to k/ 2 positive filters ϕ+ 
+
+> i
+
+and k/ 2 negative filters ϕ− 
+
+> i
+
+. For ease of explanation, we redefine the spectral features and predictor to use the combined filter set ϕ1, . . . ϕ k.32.3 Observation Spectral Filtering 
+
+OSF [1] extends spectral filtering to the input-output prediction setting. At time t, the learner pre-dicts yt from both the control history and the observation history. The form of the predictor is motivated by the Luenberger observer for a controlled linear system: 
+
+ˆxt+1 = Aˆxt + Bu t + L(yt − C ˆxt); ˆyt = C ˆxt
+
+The observer error evolves according to the closed-loop matrix 
+
+eA = A − LC. 
+
+Expanding the observer prediction expresses yt as a combination of recent inputs, recent observa-tions, and long convolutions over both streams, with convolution kernels generated by powers of 
+
+eA.The difficulty faced by the best observer is summarized by the Luenberger complexity 
+
+Q( eA) = 11 − ρ( eA) max {1, log κdiag ( eA)}, Q⋆ = inf  
+
+> L
+
+Q(A − LC ). (2.6) This quantity depends on the spectral gap and diagonalization conditioning of the best closed-loop observer, rather than directly on the hidden-state dimension. With k spectral filters and finite memory order n, OSF uses the predictor 
+
+ˆyOSF  
+
+> t
+
+=
+
+> n
+
+X
+
+> r=1
+
+Jr ut−r +
+
+> k
+
+X
+
+> j=1
+
+σ1/4 
+
+> j
+
+Mj U (u) 
+
+> t,j
+
++
+
+> n
+
+X
+
+> r=1
+
+Pr yt−r +
+
+> k
+
+X
+
+> j=1
+
+σ1/4 
+
+> j
+
+Nj U (y) 
+
+> t,j
+
+, (2.7) where 
+
+U (u) 
+
+> t,j
+
+= ⟨ϕj , u t−1: t−L⟩ , U (y) 
+
+> t,j
+
+= ⟨ϕj , y t−1: t−L⟩ . (2.8) Here Jr , M j ∈ Rdy ×du and Pr , N j ∈ Rdy ×dy . The parameters (J, M, P, N ) are learned over a bounded convex constraint set. Since the features are fixed, the prediction is linear in all trainable parameters, and squared loss remains convex. For nonlinear controlled dynamics, 
+
+xt+1 = f (xt, u t), yt = g(xt),
+
+OSF is used as an improper learner: it does not recover the latent state or fit a nonlinear model, but learns a predictor directly from filtered histories of inputs and observations, competing with the best finite-dimensional linear observer over the horizon. Under the boundedness and Lipschitz assumptions of [1], choosing k = Θ(log 2 T ) yields an average prediction bound of the form 
+
+1
+
+T
+
+> T
+
+X
+
+> t=1
+
+∥yt − ˆyOSF  
+
+> t
+
+∥2 ≤ eO
+
+ Q2 
+
+> ⋆
+
+log( Q⋆) log 7 T
+
+√T
+
+
+
+, (2.9) after converting the bounded regret guarantee to squared loss. The important point for our pur-poses is that the rate is controlled by observer complexity Q⋆, not by the dimension of the finite-dimensional linear observer used in the comparison argument. 
+
+2.4 Spectral-to-LDS distillation 
+
+OSF learns a predictor written in terms of length-L convolutions. Spectral-to-LDS distillation con-verts those convolutional features into recurrent coordinates. For αi ∈ [−1, 1] and a signal stream st, define 
+
+z(s,i ) 
+
+> t+1
+
+= αiz(s,i ) 
+
+> t
+
++ st. (2.10) The implicit convolution of this recurrence is 
+
+(1 , α i, α 2 
+
+> i
+
+, . . . , α L−1 
+
+> i
+
+).
+
+Running h such recurrences in parallel gives a dictionary of geometric filters. SpectraLDS chooses modes α1, . . . , α h and a mixing matrix F ∈ Rk×h such that 
+
+Φ1: k ≈ F μ L(α1: h), (2.11) 4where Φ1: k = [ ϕ1, . . . , ϕ k] stacks the spectral filters and μL(α1: h) = [ μL(α1), . . . , μ L(αh)] stacks the geometric responses. Therefore each spectral feature can be replaced by a linear combination of recurrent states: 
+
+⟨ϕj , s t−1: t−L⟩ ≈ 
+
+> h
+
+X
+
+> i=1
+
+F (j, i ) z(s,i ) 
+
+> t
+
+. (2.12) Applying this replacement to both st = ut and st = yt in (2.7) turns the learned OSF predictor into a recurrent LDS. The finite-memory terms Pmr=1 Jr ut−r and Pmr=1 Pr yt−r are implemented by adding recurrent connections. The two stages are complementary: OSF learns the predictor in a convex spectral feature space, and distillation realizes its temporal filters as recurrent coordinates. The resulting LDS’s prediction error decomposes into the OSF learning error and the cost of replacing spectral-filter convolutions by recurrent geometric responses. 
+
+## 3 Nonlinear-to-LDS Distillation 
+
+Algorithm 1 states the full pipeline for the controlled input-output setting. We fix horizon T and filter length L = T .
+
+Algorithm 1 Nonlinear-to-LDS Distillation 
+
+Require: Inputs u1: T , observations y1: T , filters k, AR order n, LDS modes h, filter length L = T 
+
+> 1:
+
+Spectral learning. Run OSF [1] with k spectral filters ϕ1, . . . , ϕ k and AR order n on the controlled trajectory (u1: T , y 1: T ) to learn the readout parameters (Jr , M j , P r , N j ) and obtain 
+
+ˆyOSF  
+
+> t
+
+as in (2.7).  
+
+> 2:
+
+Distillation. Apply SpectraLDS [17] to Φ1: k = [ ϕ1 · · · ϕk]⊤ to obtain modes α1, . . . , α h ∈
+
+[−1, 1] and F ∈ Rk×h such that 
+
+Φ1: k ≈ F μ L(α1: h). 
+
+> 3:
+
+Recurrent realization. Initialize z(u,i )1 = 0 ∈ Rdu and z(y,i )1 = 0 ∈ Rdy for i = 1 , . . . , h . At prediction time t, the states z(u,i ) 
+
+> t
+
+and z(y,i ) 
+
+> t
+
+contain only the histories up to time t − 1. Form 
+
+eU (u) 
+
+> t,j
+
+=
+
+> h
+
+X
+
+> i=1
+
+F (j, i )z(u,i ) 
+
+> t
+
+, eU (y) 
+
+> t,j
+
+=
+
+> h
+
+X
+
+> i=1
+
+F (j, i )z(y,i ) 
+
+> t
+
+. 
+
+> 4:
+
+Output. Predict 
+
+ˆyLDS  
+
+> t
+
+=
+
+> n
+
+X
+
+> r=1
+
+Jr ut−r +
+
+> k
+
+X
+
+> j=1
+
+σ1/4 
+
+> j
+
+Mj eU (u) 
+
+> t,j
+
++
+
+> n
+
+X
+
+> r=1
+
+Pr yt−r +
+
+> k
+
+X
+
+> j=1
+
+σ1/4 
+
+> j
+
+Nj eU (y) 
+
+> t,j
+
+. 
+
+> 5:
+
+State update. After time t is processed, update 
+
+z(u,i ) 
+
+> t+1
+
+= αiz(u,i ) 
+
+> t
+
++ ut, z(y,i ) 
+
+> t+1
+
+= αiz(y,i ) 
+
+> t
+
++ yt.
+
+The finite-memory AR terms are implemented by shift registers over past inputs and observa-tions. The resulting predictor is an LDS with O(( h + m)( du + dy )) scalar state variables. 
+
+Theorem 3.1 (Nonlinear-to-LDS distillation) Let (f, g ) be a nonlinear dynamical system s.t.: 1. For all t, the inputs, states, and outputs are bounded: ∥ut∥, ∥xt∥, ∥yt∥ ≤ R,2. The dynamics f and observations g are 1-Lipschitz, 3. The system has an observable discretized linear lifting (see Appendix B), 
+
+5which are the assumptions of [1]. Run Algorithm 1 with filter length L = T , k = Θ(log 2 T ) filters, and h SpectraLDS modes with k ≤ h ≤ 4k. Then, with probability at least 1 − δ,
+
+1
+
+T
+
+> T
+
+X
+
+> t=1
+
+∥yt − ˆyLDS  
+
+> t
+
+∥2 ≤ eO
+
+ Q2 
+
+> ⋆
+
+log( Q⋆) log 7 T
+
+√T + λmax (F )2 exp 
+
+
+
+− 2k
+
+log T
+
+ 
+
+.
+
+where eO(·) suppresses logarithmic factors in T as well as fixed problem-dependent constants in-cluding R, D, m, and dimension factors. The distilled predictor uses O(( din + dout )( h + m)) 
+
+memory and per-step computation. 
+
+The bound has two terms. The OSF learning term eO(Q2 
+
+> ⋆
+
+log Q⋆ log 7 T / √T ) depends on the Luen-berger complexity of the best linear observer. The distillation term λmax (F )2 exp 
+
+
+
+− 2k 
+
+> log T
+
+
+
+is the cost of replacing the learned convolutional predictor by a recurrent one. SpectraLDS observes em-pirically that λmax (F ) is bounded and decreasing in h [17, Appendix A.2]. The proof of Theorem 3.1 is given in Section A. 
+
+## 4 Experiments: linear systems and behavior cloning 
+
+The central theoretical contribution of this work is the first provable method for extracting a best-in-hindsight LDS representation of a nonlinear system via convex optimization. We showcase this contribution in two regimes. First, we study synthetic LDS recovery, where the target class is itself a linear dynamical system. Second, we study MuJoCo [20] behavior cloning, where the data are generated by nonlinear closed-loop expert policies and performance is measured by rollout reward. In these experiments, we consider the STU and OSF without the recurrent connections Jr and Pr
+
+(i.e., n = 0 ). 
+
+4.1 Learning linear dynamical systems 
+
+We first consider prediction from a ground-truth LDS. Each task samples a system 
+
+xt+1 = Ax t + Bu t, yt = Cx t
+
+and trains a model to predict yt from a length-m history. We evaluate on two LDS families: symmet-ric LDSs, whose transition matrices have real eigenvalues, and asymmetric LDSs, whose non-normal transitions typically have complex eigenvalues and oscillatory responses. We compare the STU →
+
+SpectraLDS pipeline against directly training a Diagonal LDS, training General LDS, and against training the more-general Linear FIR baselines. For the STU, we use k = 48 spectral filters. Each architecture has a +y variant, which is observational and receives past outputs, and a −y variant, which receives only inputs. Thus, the STU +y variant is equivalent to OSF. For STU, all reported losses are computed after SpectraLDS conversion, so the curves evaluate the Diagonal LDS rather than the intermediate convolutional predictor. We sweep learning rates over {10 −1, 10 −2, 10 −3, 10 −4, 10 −5}, select the value minimizing the ge-ometric mean of final test MSE over the symmetric and asymmetric tasks, and rerun the selected configuration over five seeds. Full data-generation, initialization, learning-rate sweep results, and optimization details are given in Appendix C. 
+
+Long-memory systems. For the most challenging setting, we choose din = dout = 16 , dstate =64 , m = 512 , and spectral radius ρ(A) = 0 .999 . In this regime the impulse response decays slowly, so accurate prediction requires retaining information far into the past. We compare parameter-matched STU, Diagonal LDS, and General LDS models at roughly 24 ,600 parameters, together with a Linear FIR baseline, which requires more than ten times as many parameters. We also in-clude STU trained with Online Newton Step (ONS), which we can employ as the prediction is linear in the STU trainable parameters; in contrast, the directly trained LDS baselines remain non-convex in their recurrent parameterizations. We test the +y variant of each architecture. Table 1 and Figure 1 show that STU → SpectraLDS outperforms each baseline under Adam, while STU + ONS improves the error by another three orders of magnitude. The General LDS is more expressive than the Diagonal LDS, but it still does not close the gap to the spectral pipeline, sug-gesting that the main advantage is optimization rather than final model class. The wall-clock times 6in Table 1 also show that the spectral model is substantially faster to train than the full General LDS, whose recurrent rollout dominates computation. Linear FIR requires m · (din + dout ) · dout parame-ters, leading to overparameterization that challenges optimization. In Appendix E, we show that, in this setting, the STU and its distilled SpectraLDS representation have at most 1.5% relative error. Table 1: Linear LDS prediction in the long-memory regime ( din =dout =16 , dstate =64 , m=512 ,
+
+ρ(A)=0 .999 ). Final test MSE over five seeds, parameter count, and wall-clock time for one 100-epoch run on an NVIDIA H100. STU rows report the SpectraLDS-distilled recurrent predictor.                                                 
+
+> Model # Params Symmetric Asymmetric Time/run STU 24,576 2.3×10 −5±3.1×10 −61.3×10 −3±5.5×10 −45.4 s Diag LDS (param-match) 24,598 9.2×10 −3±8.9×10 −37.2×10 −2±1.0×10 −113.0 s General LDS (param-match) 24,705 6.0×10 −4±3.3×10 −41.5×10 −3±4.5×10 −4403.6 s Linear FIR 262,144 5.3×10 −1±3.4×10 −12.9×10 +0 ±2.9×10 +0 4.3 s STU +ONS ( η= 1 , α = 1 )24,576 1.6×10 −7±2.0×10 −85.7×10 −7±8.7×10 −8121.6 s
+
+Figure 1: Test MSE versus epoch on the long-memory LDS task. Curves are geometric means over five seeds with geometric-standard-deviation bands, and the y-axis is log-scaled. STU → Spec-traLDS is competitive under Adam and dominates when optimized with ONS, while Linear FIR fails despite having more than ten times as many parameters. 
+
+Shorter-memory and larger-scale systems. We also test spectral radius ρ(A) = 0 .95 , where transients decay much faster than in the long-memory experiment. We evaluate two scales: 
+
+(din , d out , d state , m ) = (4 , 4, 8, 256) and (64 , 64 , 64 , 512) .
+
+At each scale we evaluate the +y and −y variants of STU → SpectraLDS, parameter-matched Diagonal LDS, Diagonal LDS with h = 2 dstate , General LDS with h = 2 dstate , and Linear FIR. For the large-scale experiment, we report the General LDS at h = 2 dstate rather than using a fully parameter-matched General LDS. As shown in Table 1, General LDS is substantially more expensive than the other methods, making rollouts of a parameter-matched General LDS model prohibitively expensive. We therefore use h = 2 dstate as the feasible General LDS baseline. For the Diagonal LDS, Figure 2 shows that the parameter-matched and h = 2 dstate variants have similar final test MSE. Full parameter counts are reported in Appendix C.4. Figure 2 shows that the qualitative pattern persists. At both scales, STU → SpectraLDS remains a strong predictor on both symmetric and asymmetric dynamics, although surpassed by Linear FIR on the smaller setting and General LDS at the larger setting. The diagonal LDS models, SpectraLDS and Diagonal LDS, without the +y observation struggle on the asymmetric systems, where real diagonal recurrences cannot represent the complex modes of generic non-symmetric transitions. Linear FIR is competitive only in the smallest symmetric setting without the +y observation, where its parameter count is not yet a bottleneck. 7Figure 2: Test MSE versus epoch on linear LDS prediction at spectral radius 0.95 . The top row shows the small scale ( din = dout = 4 , dstate = 8 , m = 256 ), and the bottom row shows the large scale ( din = dout = 64 , dstate = 64 , m = 512 ). Solid curves are +y variants and dashed curves are 
+
+−y variants. Curves are geometric means over five seeds with geometric-standard-deviation bands, and the y-axis is log-scaled. 
+
+4.2 MuJoCo behavior cloning 
+
+We next test the same comparison on nonlinear control data. For each MuJoCo -v5 task [20], we roll out a deterministic Soft Actor-Critic (SAC) [4] expert trained by the Minari team [23] for 
+
+T = 2 ,000 ,000 steps and train a student to predict the expert action from a length-m window of past observations and previous actions. The trained student is then deployed in the environment and evaluated by episode reward. Note that training uses teacher-forced next-action prediction on expert trajectories, while evaluation is closed-loop reward in the environment. MuJoCo results therefore serve as empirical evidence that the train-then-distill recipe survives this distribution shift, not as a direct test of our prediction-error bound, which concerns open-loop prediction. All students share the same encoder, decoder, optimizer, batch size, and training horizon. The only component that changes is the sequence-mixing block: 1. STU → SpectraLDS : trained as a tensor-dot STU approximation with k = 16 spectral filters and deployed after conversion to a Diagonal LDS. 2. Diagonal LDS, hidden-dimension matched : a directly trained Diagonal LDS with hidden dimension h = d.3. Diagonal LDS, parameter-matched : a directly trained Diagonal LDS whose hidden di-mension is chosen to match the STU sequence-block parameter count. Every reward reported for STU is therefore the reward of the distilled recurrent LDS, not the pre-distillation convolutional model. All models are trained for 100 epochs with Adam at learning rate 
+
+3×10 −4 and batch size 1024 , with five seeds per environment-model pair. The students are intentionally compact: all three student architectures use fewer parameters than the SAC actor deployed by the teacher on every environment. Within the student models, STU and the parameter-matched Diagonal LDS have essentially identical parameter counts by construction, while the hidden-dimension-matched Diagonal LDS is roughly twenty to twenty-five percent larger. See Appendices D and D.5 for full details. 8Table 2 and Figure 3 show that STU → SpectraLDS achieves the highest mean reward on four of the six environments: Walker2d, Hopper, HalfCheetah, and Humanoid. On Ant and Pusher, it remains close to the best directly trained Diagonal LDS baseline. The largest separation occurs on Walker2d, where the spectral pipeline exceeds the parameter-matched Diagonal LDS by roughly 
+
+1,700 reward. These results support the same conclusion as the LDS recovery experiments: training in the spectral parameterization and then distilling to an LDS is often more reliable than directly training the recurrent LDS, even when the final deployed model class is the same. 
+
+Figure 3: Evaluation reward during behavior cloning on six MuJoCo tasks. Curves show mean and standard deviation over five seeds. STU denotes the deployed SpectraLDS-distilled recurrent model.                                                                     
+
+> Environment Teacher STU →SpectraLDS DiagLDS ( h=d)DiagLDS (param-match) Walker2d-v5 6956.4 6465.7 ±329.8 5842.3 ±555.0 4765.6 ±2045.2 Hopper-v5 4134.7 4037.6 ±46.6 4006.8 ±41.3 3927.5 ±127.1 Ant-v5 5224.1 5178.4 ±99.8 5195.6 ±167.7 5103.2 ±272.3 HalfCheetah-v5 11471.2 11198.4 ±57.0 10972.3 ±231.4 10838.1 ±205.3 Humanoid-v5 8110.3 8021.2 ±70.4 7922.4 ±88.6 7947.9 ±89.5 Pusher-v5 −26 .6−27 .4±0.5−27 .1±0.3 −27 .3±0.6
+
+Table 2: Best-checkpoint MuJoCo behavior-cloning reward, re-evaluated over 1,000 episodes (mean 
+
+± std, five seeds). STU denotes the deployed SpectraLDS-distilled recurrent model. 
+
+## 5 Conclusion 
+
+We showed that a convex spectral predictor can be distilled into a recurrent LDS whose prediction error decomposes into a distillation term that decays exponentially in the LDS state dimension and an OSF learning term controlled by the observer condition number Q⋆, independent of the latent nonlinear dimension. Empirically, the distilled LDS matches or outperforms directly trained LDS baselines at equal parameter budgets on both linear recovery and MuJoCo behavior cloning, with the advantage appearing to come from the spectral parameterization’s convexity rather than from a richer model class. Several directions remain open. On the theory side, we expect that a refined choice of sampling distribution over the SpectraLDS modes αi would yield sharper guarantees on λmax (F ) in the over-parameterized regime h ≳ k, where the current bound is dominated by the pseudoinverse norm. Additionally, the bound in Theorem 3.1 controls average one-step prediction error under teacher forcing. It does not cover closed-loop rollout error, where errors compound over the horizon — the regime relevant to control and long-horizon simulation. Closing this gap is the most natural extension. Empirically, larger-scale experiments and integration with modern sequence models may establish nonlinear-to-LDS distillation as a building block for long-horizon forecasting and control. 9References 
+
+[1] E. Dogariu, A. Brahmbhatt, and E. Hazan. Universal learning of nonlinear dynamics. arXiv preprint arXiv:2508.11990 , 2025. [2] A. Gu and T. Dao. Mamba: Linear-time sequence modeling with selective state spaces. arXiv preprint arXiv:2312.00752 , 2023. [3] A. Gu, K. Goel, and C. R´ e. Efficiently modeling long sequences with structured state spaces. In International Conference on Learning Representations , 2022. [4] T. Haarnoja, A. Zhou, P. Abbeel, and S. Levine. Soft actor-critic: Off-policy maximum entropy deep reinforcement learning with a stochastic actor, 2018. [5] M. Hardt, T. Ma, and B. Recht. Gradient descent learns linear dynamical systems. In Journal of Machine Learning Research , volume 19, pages 1–44, 2018. [6] E. Hazan, A. Agarwal, and S. Kale. Logarithmic regret algorithms for online convex optimiza-tion. Machine Learning , 69(2):169–192, 2007. [7] E. Hazan, H. Lee, K. Singh, C. Zhang, and Y. Zhang. Spectral filtering for general linear dynamical systems. In Advances in Neural Information Processing Systems , volume 31, pages 4634–4643, 2018. [8] E. Hazan, K. Singh, and C. Zhang. Learning linear dynamical systems via spectral filtering. In 
+
+Advances in Neural Information Processing Systems , volume 30, 2017. [9] V. Kostic, P. Novelli, A. Maurer, C. Ciliberto, L. Rosasco, and M. Pontil. Learning dynamical systems via koopman operator regression in reproducing kernel hilbert spaces. In Advances in Neural Information Processing Systems , 2022. [10] Y. I. Liu, W. Nguyen, Y. Devre, E. Dogariu, A. Majumdar, and E. Hazan. Flash STU: Fast spectral transform units. arXiv preprint arXiv:2409.10489 , 2024. [11] L. Ljung. System Identification: Theory for the User . Prentice Hall, 2nd edition, 1999. [12] B. Lusch, J. N. Kutz, and S. L. Brunton. Deep learning for universal linear embeddings of nonlinear dynamics. Nature Communications , 9(1):4950, 2018. [13] I. Mezi´ c. Spectral properties of dynamical systems, model reduction and decompositions. 
+
+Nonlinear Dynamics , 41(1-3):309–325, 2005. [14] A. Orvieto, S. L. Smith, A. Gu, A. Fernando, C. Gulcehre, R. Pascanu, and S. De. Resur-recting recurrent neural networks for long sequences. In International Conference on Machine Learning , 2023. [15] S. Oymak and N. Ozay. Non-asymptotic identification of lti systems from a single trajectory. 
+
+American Control Conference , pages 5655–5661, 2019. [16] T. Sarkar and A. Rakhlin. Near optimal finite time identification of arbitrary linear dynamical systems. In International Conference on Machine Learning , pages 5610–5618, 2019. [17] D. Shah, S. Fortgang, S. Druchyna, and E. Hazan. SpectraLDS: Provable distillation for linear dynamical systems. arXiv preprint arXiv:2505.17868 , 2025. [18] M. Simchowitz, H. Mania, S. Tu, M. I. Jordan, and B. Recht. Learning without mixing: Towards a sharp analysis of linear system identification. In Conference on Learning Theory ,pages 439–473, 2018. [19] J. T. H. Smith, A. Warrington, and S. Linderman. Simplified state space layers for sequence modeling. In International Conference on Learning Representations , 2023. [20] E. Todorov, T. Erez, and Y. Tassa. Mujoco: A physics engine for model-based control. In 
+
+2012 IEEE/RSJ International Conference on Intelligent Robots and Systems , pages 5026– 5033. IEEE, 2012. 10 [21] A. Tsiamis and G. J. Pappas. Finite sample analysis of stochastic system identification. In 
+
+IEEE Conference on Decision and Control , pages 3648–3654, 2019. [22] M. O. Williams, I. G. Kevrekidis, and C. W. Rowley. A data-driven approximation of the koopman operator: Extending dynamic mode decomposition. Journal of Nonlinear Science ,25(6):1307–1346, 2015. [23] O. G. Younis, R. Perez-Vicente, J. U. Balis, W. Dudley, A. Davey, and J. K. Terry. Minari, Sept. 2024. 
+
+## A Proof of Theorem 3.1 
+
+The proof has two ingredients. First, the OSF guarantee gives a mean-squared prediction bound for the learned spectral predictor. Second, replacing the OSF filters by their SpectraLDS approximation perturbs the predictions by an amount controlled by the filter approximation error and the norm of the learned readout. Combining these two bounds gives the result. Throughout, eO(·) suppresses logarithmic factors in T and fixed problem-dependent constants. We state the proof for scalar outputs for readability; the vector-output case follows by using operator norms for the readout matrices and contributes only the corresponding output-dimension factor. 
+
+Step 1: OSF mean-squared error. By Theorem 3.1 of [1], 
+
+AT := 1
+
+T
+
+> T
+
+X
+
+> t=1
+
+∥yt − ˆyOSF  
+
+> t
+
+∥2 ≤ eO
+
+ Q2 
+
+> ⋆
+
+log( Q⋆) log 7 T
+
+√T
+
+
+
+. (A.1) 
+
+Step 2: SpectraLDS filter approximation. Run Algorithm 2 of [17] on Φ1: k to obtain modes 
+
+α1, . . . , α h and a transformation matrix F ∈ Rk×h (denoted Mf in [17]). We write 
+
+eϕj =
+
+> h
+
+X
+
+> i=1
+
+F (j, i ) μL(αi), j = 1 , . . . , k. 
+
+Define the rowwise approximation error 
+
+ηk,h (L) := max  
+
+> j≤k
+
+∥ϕj − eϕj ∥1. (A.2) By Theorem 1 of [17], on its high-probability event, 
+
+ηk,h (L) ≲ h λ max (F ) exp 
+
+
+
+− k
+
+log L
+
+
+
+, (A.3) where λmax (F ) is the largest singular value of the Moore–Penrose pseudoinverse of the h × k
+
+coefficient matrix produced by Algorithm 2 (called M in [17], with F = M +). As shown in [17, Appendix A.2], the product h λ max (F ) is empirically bounded for the sampling distribution over αi
+
+used by Algorithm 2. 
+
+Step 3: Filter error to prediction error. Let ˆydist  
+
+> t
+
+be the predictor obtained by replacing each ϕj
+
+in the OSF predictor with eϕj . As the finite-memory AR terms P 
+
+> r
+
+Jr ut−r and P 
+
+> r
+
+Pr yt−r in (2.7) are unchanged by the filter substitution and so do not contribute to the error, we have 
+
+ˆyOSF  
+
+> t
+
+− ˆydist  
+
+> t
+
+=
+
+> k
+
+X
+
+> j=1
+
+σ1/4 
+
+> j
+
+Mj
+
+D
+
+ϕj − eϕj , u t−1: t−L
+
+E
+
++
+
+> k
+
+X
+
+> j=1
+
+σ1/4 
+
+> j
+
+Nj
+
+D
+
+ϕj − eϕj , y t−1: t−L
+
+E
+
+.
+
+Using ∥ut∥, ∥yt∥ ≤ R and ∥σ1/4 
+
+> j
+
+Mj ∥op , ∥σ1/4 
+
+> j
+
+Nj ∥op ≤ D, we have 
+
+D
+
+ϕj − eϕj , u t−1: t−L
+
+E
+
+≤ R∥ϕj − eϕj ∥1 ≤ Rη k,h (L),
+
+11 and the same bound holds for the observation-history term. Therefore, 
+
+∥ˆyOSF  
+
+> t
+
+− ˆydist  
+
+> t
+
+∥ ≤ 2kDR η k,h (L).
+
+Averaging over time gives the bound 
+
+1
+
+T
+
+> T
+
+X
+
+> t=1
+
+∥ˆyOSF  
+
+> t
+
+− ˆydist  
+
+> t
+
+∥2 ≤ 4k2D2R2 ηk,h (L)2. (A.4) Substituting (A.3) with L = T yields 
+
+1
+
+T
+
+> T
+
+X
+
+> t=1
+
+∥ˆyOSF  
+
+> t
+
+− ˆydist  
+
+> t
+
+∥2 ≤ eO
+
+
+
+k2D2R2h2λmax (F )2 exp 
+
+
+
+− 2k
+
+log T
+
+ 
+
+. (A.5) The predictor ˆydist  
+
+> t
+
+is realized exactly by an LDS: each geometric response μL(αi) is implemented by a scalar recurrent mode, and the AR terms are implemented by finite shift registers. We denote this exact recurrent realization by ˆyLDS  
+
+> t
+
+.
+
+Step 4: Combine. For every t,
+
+yt − ˆyLDS  
+
+> t
+
+= ( yt − ˆyOSF  
+
+> t
+
+) + (ˆ yOSF  
+
+> t
+
+− ˆydist  
+
+> t
+
+).
+
+Using 
+
+∥a + b∥2 ≤ 2∥a∥2 + 2 ∥b∥2,
+
+together with (A.1) and (A.4), gives 
+
+1
+
+T
+
+> T
+
+X
+
+> t=1
+
+∥yt − ˆyLDS  
+
+> t
+
+∥2 ≤ 2AT + 8 k2D2R2 ηk,h (L)2.
+
+Finally, substituting the SpectraLDS high-probability bound (A.3) with L = T gives the explicit estimate 
+
+1
+
+T
+
+> T
+
+X
+
+> t=1
+
+∥yt − ˆyLDS  
+
+> t
+
+∥2 ≤ eO
+
+ Q2 
+
+> ⋆
+
+log( Q⋆) log 7 T
+
+√T + k2D2R2h2λmax (F )2 exp 
+
+
+
+− 2k
+
+log T
+
+ 
+
+.
+
+Since k = Θ(log 2 T ), the factor k2 is polylogarithmic in T and is absorbed by eO(·). The constants 
+
+D and R, together with h = O(k), are also absorbed by eO(·). Thus the same bound can be written in the cleaner form 
+
+1
+
+T
+
+> T
+
+X
+
+> t=1
+
+∥yt − ˆyLDS  
+
+> t
+
+∥2 ≤ eO
+
+ Q2 
+
+> ⋆
+
+log( Q⋆) log 7 T
+
+√T + λmax (F )2 exp 
+
+
+
+− 2k
+
+log T
+
+ 
+
+.
+
+This proves the theorem. □
+
+## B Assumption: Observable Discretized Linear Lifting 
+
+We recall the discretized lifting assumption used in [1]. For simplicity, we state the autonomous version and consider: 
+
+xt+1 = f (xt), yt = g(xt),
+
+Fix a discretization scale ε > 0, and let S = {s(1) , . . . , s (N )} be an ε-net of the radius-R ball in state space. Thus every bounded state x has a representative π(x) ∈ S with 
+
+∥x − π(x)∥ ≤ ε, N = |S| ≤ 
+
+ 2Rε
+
+dX
+
+.
+
+Define a finite-state approximation to the nonlinear dynamics by 
+
+T (s) = π(f (s)) .
+
+12 Equivalently, define a transition matrix A′ ∈ RN ×N by 
+
+A′ 
+
+> ij
+
+= 1{T (s(j)) = s(i)}.
+
+The lifted state zt ∈ RN is the one-hot vector representing the current grid point. Its evolution is linear: 
+
+zt+1 = A′zt.
+
+Define the observation matrix C′ ∈ RdY ×N by setting its jth column to the observation at the corresponding grid point: 
+
+C′ej = g(s(j)).
+
+The discretized linear lifting is therefore the finite-dimensional LDS 
+
+zt+1 = A′zt, y′ 
+
+> t
+
+= C′zt.
+
+By Lemma 5.5 of [1], if f and g are 1-Lipschitz and the trajectory is bounded, then this lifted LDS approximates the nonlinear output sequence over horizon T :
+
+X
+
+> t≤T
+
+∥y′ 
+
+> t
+
+− yt∥ ≤ T 2
+
+2 ε. 
+
+Thus, choosing ε sufficiently small produces a high-dimensional LDS whose outputs track the non-linear trajectory. The dimension N ≤ (2 R/ε )dX can be very large, but OSF is an improper learner: its runtime and parameter count do not depend on explicitly constructing or learning this lifted state. The additional assumption in Theorem 3.1 is that the pair (A′, C ′) is observable. That is, the ob-servability matrix 
+
+O(A′, C ′) = 
+
+
+
+C′
+
+C′A′
+
+C′(A′)2
+
+...
+
+C′(A′)N −1
+
+ ∈ RN d Y ×N
+
+has full column rank: 
+
+rank O(A′, C ′) = N. 
+
+Equivalently, no nonzero lifted state direction is invisible to all future linear observations: 
+
+C′(A′)ℓv = 0 for all ℓ = 0 , . . . , N − 1 =⇒ v = 0 .
+
+This observability condition is used only in the comparison argument. It ensures that a Luenberger observer can be formed for the lifted LDS and that the observer complexity Q⋆ appearing in the OSF bound is finite. 
+
+## C Linear LDS data-generation and training protocol 
+
+This appendix documents the data-generation procedure, predictor initializations, and training pro-tocol used in the linear-LDS experiments of Section 4.1. 
+
+C.1 Data generation 
+
+Each ground-truth LDS (A, B, C ) is sampled once per (seed, task) pair. • Symmetric A: draw Q ∈ Rdstate ×dstate from the QR decomposition of a Gaussian matrix and eigenvalues λi
+
+> i.i.d.
+
+∼ Uniform( −ρ, ρ ); set A = Q diag( λ) Q⊤.• Asymmetric A: draw ˜Aij 
+
+> i.i.d.
+
+∼ N (0 , 1/d state ) and rescale to the target spectral radius via 
+
+A = ρ ˜A/ max i |λi( ˜A)|. The eigenvalues are typically complex, producing oscillatory dynamics. • B ∈ Rdstate ×din and C ∈ Rdout ×dstate have entries N (0 , 1/d in ) and N (0 , 1/d state ), re-spectively. 13 Inputs are sampled i.i.d. as ut ∼ N (0 , I din ), and the state evolves from x0 = 0 via xt+1 = Ax t +
+
+Bu t with output yt = Cx t. We generate Ttrain = 10 ,000 training time steps and Ttest = 2 ,000 test time steps; the test inputs are drawn with a different RNG seed from the same distribution, so train and test share the same dynamics but no shared input samples. The predictor sees a length-m sliding window of past observations and predicts the current out-put. From a trajectory of length T this yields N = T − m examples; the input at index i is 
+
+(ui+1 , . . . , u i+m) together with, in the +y variant, the corresponding past outputs (yi, . . . , y i+m−1),and the target is yi+m. So the training set contains Ntr = Ttrain − m samples and the held-out test set contains Ttest − m samples. 
+
+C.2 Predictor initializations 
+
+All predictors are strictly linear; the only nonlinearity in any of the parameterizations is the tanh 
+
+on Diagonal LDS eigenvalues. We use default PyTorch dtypes (float32 throughout training) and the random initialization given here, applied with the same seed used for the ground-truth LDS so that any seed-to-seed variance reflects a single jointly resampled configuration of data and model. • STU (with k spectral filters): the spectral filters ϕ ∈ Rm×k are computed deterministically from the m × m Hankel matrix and held fixed. The mixer M ∈ Rk×din ×dout is initialized i.i.d. N (0 , 1/(k · din )) . For the experiments with m = 512 , we choose SpectraLDS h =160 , and otherwise we choose h = 120 .• Diagonal LDS with hidden dimension h: the raw eigenvalue parameter is ˜λ ∼
+
+Uniform( −2, 2) h, and the trained eigenvalues are λ = tanh( ˜λ) · 0.999 , which keeps ev-ery λi ∈ (−0.999 , 0.999) for the entire training run and so guarantees stability without needing projection or clipping. The input matrix B ∈ Rh×din has entries N (0 , 1/d in ) and the output matrix C ∈ Rdout ×h has entries N (0 , 1/h ). We train the Diagonal LDS model convolutionally for maximal efficiency. • General LDS with hidden dimension h: A ∈ Rh×h is drawn from PyTorch’s 
+
+nn.init.orthogonal and then rescaled in-place by ρinit /ρ (A) with ρinit = 0 .95 so that ρ(A) = 0 .95 at initialization. After this, A is an unconstrained nn.Parameter ; we do not project, clip, or otherwise normalize A during training, and rely only on the per-step gradient-norm clip described below to bound updates. The input and readout matrices use the same scheme as the Diagonal LDS. • Linear FIR : the per-tap kernel W ∈ Rm×dout ×d(±y)in has entries N (0 , 1/(m d (±y)in )) , where 
+
+d(±y)in = din + dout in the +y variant and din in the −y variant. The factor of m in the variance is necessary to keep the predicted output’s variance O(1) at initialization; without it, the m-tap sum makes early-epoch predictions blow up by roughly √m and Adam’s first updates are catastrophically large. 
+
+C.3 Optimization and hyperparameter sweep First-order baseline (Adam). All Adam-trained models are run for 100 epochs at batch size 256 on the small-scale and high-spectral-radius experiments and batch size 64 at the large scale (where the longer windows and larger hidden dimensions make the larger batch run out of memory). Af-ter each backward pass we apply torch.nn.utils.clip grad norm (model.parameters(), 1.0) . Adam’s other hyperparameters are PyTorch defaults ( β1 = 0 .9, β2 = 0 .999 , ε = 10 −8,weight decay 0). For each (model, ±y) we sweep the learning rate at seed 0 over the grid 
+
+ηAdam ∈ { 10 −1, 10 −2, 10 −3, 10 −4, 10 −5}, select the value minimizing the geometric mean of final-epoch test MSE across the symmetric and asymmetric tasks, and rerun at seeds {0, 1, 2, 3, 4} with that LR. 
+
+Second-order learner for STU (ONS, used in the high-spectral-radius experiment). The STU is linear in its parameters. Collecting the spectral features into the flattened vector g ∈ Rk·d(±y)in 
+
+where g = vec (gf ull ) for gf ull [n, i ] = P 
+
+> t
+
+xrev [t, i ] ϕ[t, n ], the predictor reduces to ˆy = M ⊤g for a flattened mixer M . Thus, for MSE loss, Online Newton Step [6] attains O(log T ) regret. We use the standard ONS update 
+
+M ← M − η A −1 
+
+> t
+
+gt (M ⊤gt − yt)⊤,
+
+14 with the inverse Hessian estimate maintained by Sherman–Morrison from At = αI + P 
+
+> s≤t
+
+gsg⊤ 
+
+> s
+
+.We chose η = 1 and fixed α = 1 after observing instability with our earlier α = 1 × 10 −3 default. Thus the final choice is (η, α ) = (1 , 1) .
+
+C.4 Per-experiment dimensions 
+
+The two cross-scale settings and the high-spectral-radius setting share the protocol above; only the dimensions differ. 
+
+Experiment din dout dstate m ρ batch Cross-scale, small 4 4 8 256 0.95 256 Cross-scale, large 64 64 64 512 0.95 64 High spectral radius 16 16 64 512 0.999 256 
+
+Table 3: Dimensions used in each experiment. The number of spectral filters k is fixed at 48 through-out; for the parameter-matched Diagonal and General LDS variants, the hidden dimension h is cho-sen so that the predictor matches STU’s parameter count ( k(d(±y)in ) dout ) at each scale. In all settings the training set has Ntr = Ttrain − m samples and the test set has Ttest − m samples; with Ttrain = 10 ,000 and Ttest = 2 ,000 , the longest-window cases ( m = 512 : cross-scale large and high spectral radius) leave 9,488 training windows and 1,488 test windows. 
+
+C.5 Hyperparameter sweep 
+
+In this section, we include the results of the learning rate hyperparameter sweep for the learning linear dynamical systems experiments in Section 4. Table 4: Learning-rate sweep at spectral radius ρ = 0 .999 (din =dout =16 , dstate =64 , m=512 , 100 epochs, seed 0). Final test MSE on symmetric and asymmetric tasks. For STU+ONS, we fixed 
+
+η = 1 and tested α ∈ { 1, 1−3}, choosing α = 1 .Method LR / η Sym. test MSE Asym. test MSE STU + y (Adam) 
+
+10 −5 1.48 ×10 0 9.23 ×10 0
+
+10 −4 6.89 ×10 −2 4.25 ×10 −1
+
+10 −3 2.44 ×10 −5 9.61 ×10 −4
+
+10 −2 1.08 ×10 −3 9.57 ×10 −3
+
+10 −1 9.64 ×10 −1 1.51 ×10 0
+
+Diag LDS + y (Adam) 
+
+10 −5 4.59 ×10 −1 1.99 ×10 0
+
+10 −4 2.86 ×10 −3 1.17 ×10 −1
+
+10 −3 7.71 ×10 −3 2.10 ×10 −2
+
+10 −2 8.23 ×10 −3 8.47 ×10 −2
+
+10 −1 1.37 ×10 0 8.35 ×10 0
+
+General LDS + y (Adam) 
+
+10 −5 6.35 ×10 −1 3.27 ×10 0
+
+10 −4 8.97 ×10 −4 1.10 ×10 −2
+
+10 −3 3.73 ×10 −4 2.12 ×10 −3
+
+10 −2 6.45 ×10 −3 6.06 ×10 −2
+
+10 −1 NaN NaN Linear FIR + y (Adam) 
+
+10 −5 1.96 ×10 0 5.04 ×10 0
+
+10 −4 6.70 ×10 −1 1.19 ×10 0
+
+10 −3 2.59 ×10 −1 1.19 ×10 0
+
+10 −2 2.64 ×10 1 1.90 ×10 2
+
+10 −1 4.15 ×10 3 2.25 ×10 4
+
+15 Table 5: Learning-rate sweep at the small scale ( din =dout =4 , dstate =8 , m=256 ) and the large scale (din =dout =dstate =64 , m=512 ). We report final test MSE after 100 -epochs of training at seed 0
+
+with Adam. Bold marks the best LR per model and scale. 
+
+dstate =8 dstate =64 
+
+Method LR Sym Asym Sym Asym STU + y (Adam) 
+
+10 −1 2.61 ×10 −4 5.79 ×10 −2 2.72 ×10 0 5.05 ×10 0
+
+10 −2 1.69 ×10 −5 5.72 ×10 −7 2.11 ×10 −2 4.30 ×10 −2
+
+10 −3 1.08 ×10 −6 8.16 ×10 −6 3.33 ×10 −4 2.84 ×10 −4
+
+10 −4 1.14 ×10 −1 1.83 ×10 −1 1.15 ×10 −2 2.29 ×10 −2
+
+10 −5 9.07 ×10 −1 3.07 ×10 0 8.95 ×10 −1 1.66 ×10 0
+
+Diag LDS p-match + y (Adam) 
+
+10 −1 1.39 ×10 −2 3.07 ×10 −3 1.16 ×10 2 2.71 ×10 2
+
+10 −2 5.39 ×10 −4 1.90 ×10 −4 6.92 ×10 −3 3.36 ×10 −2
+
+10 −3 7.85 ×10 −5 2.03 ×10 −3 4.08 ×10 −3 1.09 ×10 −2
+
+10 −4 6.73 ×10 −4 1.19 ×10 −3 1.83 ×10 −3 2.42 ×10 −3
+
+10 −5 3.35 ×10 −1 1.33 ×10 0 6.89 ×10 −2 1.56 ×10 −1
+
+Diag LDS 2·dstate + y (Adam) 
+
+10 −1 1.76 ×10 −3 1.11 ×10 −2 4.60 ×10 0 9.13 ×10 0
+
+10 −2 4.32 ×10 −4 2.21 ×10 −4 3.90 ×10 −2 8.17 ×10 −2
+
+10 −3 1.12 ×10 −3 2.07 ×10 −3 8.64 ×10 −4 1.21 ×10 −3
+
+10 −4 3.27 ×10 −2 1.25 ×10 −1 4.01 ×10 −3 1.05 ×10 −2
+
+10 −5 1.99 ×10 0 4.83 ×10 0 8.27 ×10 −1 1.43 ×10 0
+
+Gen. LDS 2·dstate + y (Adam) 
+
+10 −1 NaN NaN NaN NaN 
+
+10 −2 3.30 ×10 −6 7.94 ×10 −5 3.47 ×10 −2 1.52 ×10 −1
+
+10 −3 7.24 ×10 −6 2.69 ×10 −5 1.40 ×10 −3 2.53 ×10 −3
+
+10 −4 4.94 ×10 −3 5.64 ×10 −3 1.56 ×10 −4 4.15 ×10 −4
+
+10 −5 2.97 ×10 0 6.93 ×10 0 3.33 ×10 −1 8.05 ×10 −1
+
+Linear FIR + y (Adam) 
+
+10 −1 3.38 ×10 1 7.00 ×10 1 1.16 ×10 5 3.38 ×10 5
+
+10 −2 3.33 ×10 −1 8.90 ×10 −1 1.16 ×10 3 3.37 ×10 3
+
+10 −3 1.18 ×10 −3 8.02 ×10 −3 1.37 ×10 1 3.73 ×10 1
+
+10 −4 1.11 ×10 −1 2.60 ×10 −1 2.39 ×10 0 3.67 ×10 0
+
+10 −5 9.13 ×10 −1 2.36 ×10 0 2.29 ×10 0 3.34 ×10 0
+
+## D MuJoCo behavior-cloning data and training protocol 
+
+This appendix documents the teacher source, dataset construction, shared architecture, sequence-mixing-block details, training hyperparameters, and evaluation protocol used in the MuJoCo exper-iments of Section 4.2. 
+
+D.1 Environments 
+
+We evaluate the train-then-distill pipeline on six MuJoCo -v5 tasks spanning a range of locomotion and manipulation difficulties. Table 6 lists each environment alongside its observation and action dimensions, along with the history length m, embedding dimension d, and number of spectral filters 
+
+k used by the student. For SpectraLDS distillation, we use h = 80 .16 Environment Description do da m d k                                    
+
+> HalfCheetah-v5 2D quadruped with the goal of running 17 6864 16
+> Hopper-v5 2D monoped with the goal of hopping 11 3128 128 16
+> Walker2d-v5 2D biped with the goal of walking 17 6128 128 16
+> Ant-v5 3D quadruped with the goal of running 105 8864 16
+> Humanoid-v5 3D biped with the goal of walking 348 17 128 128 16
+> Pusher-v5 3D arm with the goal of pushing an object 23 7128 128 16
+
+Table 6: The six MuJoCo environments used in our behavior-cloning experiments, listed with their observation dimension do, action dimension da, history length m, and the used embedding dimen-sion d. Each student receives the concatenation [ot, a t−1] at each time step, so the input dimension to the encoder is do + da. Environment descriptions are adapted from the Minari documentation [23] of the MuJoCo environments [20]. 
+
+D.2 Teachers and trajectory data 
+
+For each of the six environments we distill a single Soft Actor-Critic [4] teacher policy trained by the Minari team [23]. Each teacher is rolled out for T = 2 ,000 ,000 time steps in its environment using a fixed seed and the deterministic action mode. The resulting trajectory (ot, a t)T −1 
+
+> t=0
+
+is the only data the student ever sees: no rollouts of the student itself appear in the training distribution. From this trajectory we construct a sliding-window supervised dataset 
+
+D =    (ot−m+1: t, a t−m:t−1), a t
+
+ : t = m, . . . , T − 1 ,
+
+in which the student observes a length-m window of past observations and previous actions at each time step and is trained, with mean-squared error against the teacher’s action at, to predict the next action. We do not subsample or shuffle the trajectory, so the entire T − m samples are used as training data for every student. The “test” set in this experiment is the live environment itself: trained students are deployed de-terministically and evaluated on Neval = 100 episodes per checkpoint. We report best-checkpoint reward, defined as the mean episode reward of the checkpoint that achieves the highest mean reward over its 1,000 deployment episodes. We save checkpoints every 5 epochs. Each episode runs to the environment’s default time limit or natural termination under the standard -v5 reward function. 
+
+D.3 Shared encoder, head, and action squash 
+
+To isolate the effect of the sequence-mixing block from the surrounding architecture, all three stu-dents share an identical encoder and decoder architecture with embedding dimension d that depends on the environment, (see Table 6). • Encoder (Rdo+da → Rd): a two-layer GELU MLP applied independently at each time step. Both hidden layers have width d, no normalization layers, and GELU is applied be-tween the two linear layers. The encoder concatenates the current observation with the previous action before applying the MLP, so each time step in the sliding window con-tributes a single d-dimensional embedding to the sequence-mixing block’s input. • Sequence-mixing block (Rm×d → Rd): the only component that varies across the three students. It consumes the length-m sequence of encoder embeddings and produces a single 
+
+d-dimensional summary. The three variants are detailed in Appendix D.4. • Decoder (Rd → Rda ): a three-layer GELU MLP with first layer d, second layer d/ 2, and output da, with GELU between layers and a final tanh normalization and scaling to ensure the student’s predictions live in the valid action box. The only architectural variation across the three students lies in the sequence-mixing block. 
+
+D.4 Sequence-mixing-block variants 
+
+The three students differ only in their sequence-mixing block. 17 STU (the train-then-distill variant). At training time, the block is a tensor-dot Spectral Trans-form Unit [10] with k = 16 spectral filters. We use the tensor-dot variant for parameter efficiency at 
+
+d = 128 ; Appendix F compares it against the STU on the linear-LDS task. At evaluation time, the trained STU is converted to a Diagonal LDS via SpectraLDS, and the converted Diagonal LDS is what we deploy. To allow for easier reuse of the published SpectraLDS conversions [17], we use the spectral filters computed with m = 8192 and k = 48 and at 80 -dimensions, truncate, and consider the relevant subset of k = 16 filters. The STU runs in float64 precision due to historical reasons, while other models are in the native float32 . Based on later experimentation, we do not expect this contributes to any differences. 
+
+Diagonal LDS, C-matched ( h = d). A directly-trained recurrence xt+1 = diag( λ) xt +
+
+Bu t, y t = Cx t, with λ = tanh( ˜λ) (1 − 10 −3) to keep eigenvalues strictly inside the unit disk. 
+
+Diagonal LDS, parameter-matched. Identical to the C-matched variant in form, but with h cho-sen so that h(1 + 2 d) = 2 kd + d2, giving exactly the same parameter count as STU’s tensor-dot block. This is the parameter-matched baseline for the train-then-distill comparison. 
+
+D.5 Per-student parameter counts 
+
+Table 7 reports the total trainable parameters of each student alongside the SAC teacher’s parameter count. All three students are smaller than the SAC actor used at inference time on every envi-ronment, and roughly an order of magnitude smaller than the full SAC checkpoint (which carries two critic networks and their target copies in addition to the actor). Within the students, STU and the parameter-matched Diagonal LDS have essentially identical parameter counts by construction, while the C-matched Diagonal LDS is approximately twenty to twenty-five percent larger because the h = d choice inflates its sequence-mixing block.                                      
+
+> Environment STU DiagLDS ( h=d)DiagLDS (param-match) SAC actor SAC full
+> Walker2d-v5 62,150 77,638 62,218 73,484 362,256
+> Hopper-v5 60,803 76,291 60,871 70,406 349,962
+> Ant-v5 22,568 26,216 22,604 97,040 477,972
+> HalfCheetah-v5 16,742 20,390 16,778 73,484 362,256
+> Humanoid-v5 106,641 122,129 106,709 163,874 802,854
+> Pusher-v5 63,111 78,599 63,179 75,534 371,474
+
+Table 7: Total trainable parameters per student model and the corresponding SAC teacher across the six MuJoCo environments. The ”SAC actor” column gives the parameter count of the policy network used at inference time, while ”SAC full” adds the critic and target-critic networks carried in the SAC checkpoint and so reflects the size of the full SAC artifact. The SpectraLDS and parameter-matched LDS students use fewer parameters than the SAC actor on every environment, and within the students the C-matched Diagonal LDS is uniformly larger than the STU pipeline by roughly twenty to twenty-five percent. 
+
+D.6 Optimization and training protocol 
+
+All three students are trained for 100 epochs on the T − m-sample dataset using Adam at a fixed learning rate of 3 × 10 −4 and batch size 1,024 . We use PyTorch’s default Adam hyperparameters otherwise ( β1 = 0 .9, β2 = 0 .999 , ε = 10 −8, weight decay 0). We do not sweep the learning rate in MuJoCo; we use 3 × 10 −4 for every (environment, student) pair, and verified on a small set of pilot runs that all three students train stably at this rate. We run five seeds {0, 1, 2, 3, 4} per environment-student pair. Checkpoints are saved every five training epochs and at the end of training. Each checkpoint is evaluated on 100 episodes, and the reward we report in Table 2 is from taking the best checkpoint and re-evaluating it on 1,000 episodes. 18 Figure 4: Test MSE versus epoch for the STU predictor (dashed) and the SpectraLDS-distilled predictor (solid), at ρ = 0 .999 . Each curve is the geometric mean over five seeds with geometric-standard-deviation bands; the y-axis is log-scaled. The solid and dashed curves overlap almost exactly in every panel, confirming that SpectraLDS distillation introduces negligible error. 
+
+## E SpectraLDS distillation fidelity 
+
+A key step in our evaluation pipeline is converting the trained STU predictor into a SpectraLDS (diagonal-LDS) predictor. The filter fit is approximate, so we verify here that this approximation does not meaningfully change the test MSE. Figure 4 overlays the STU test MSE (from the original five-seed runs) and the SpectraLDS-distilled test MSE (from independent five-seed runs on the same seeds), for both the Adam and ONS opti-mizers on the high-spectral-radius setting ( ρ = 0 .999 , d = 16 , dstate = 64 , m = 512 ). Each curve is the geometric mean over five seeds with geometric-standard-deviation bands; the solid line is the distilled model and the dashed line is the raw STU. The two curves are visually indistinguishable in every panel. Quantitatively, the maximum relative error between the raw and distilled test MSEs, taken over all epochs and all seeds, is below 1.5% in all conditions. 
+
+## F STU vs. tensor-dot STU 
+
+Both STU variants begin from the same intermediate object. Given an input window x ∈ Rm×din 
+
+and the fixed spectral filters ϕ ∈ Rm×k, the spectrally-filtered representation of the window is the matrix 
+
+Z = ϕ⊤x ∈ RK×din , Zk,i = ϕ:,k , x :,i .Z has one row per spectral filter and one column per input channel; all of the time-window informa-tion that the predictor will use lives in this k × din matrix. Both STU variants then linearly map Z
+
+to a dout -dimensional prediction y.19 STU. The STU uses an unconstrained linear map from Rk×din to Rdout , parameterized by a tensor 
+
+M ∈ Rk×din ×dout :
+
+y = X
+
+> k,i
+
+Mk,i, : Zk,i .
+
+Every element of M is independently learned; the map has k d in dout free parameters. 
+
+Tensor-dot STU. The tensor-dot variant replaces the single mixer tensor M ∈ Rk×din ×dout with two matrices, 
+
+Min ∈ Rk×din , Mout ∈ Rdin ×dout ,
+
+constraining the mixer to factorize as Mk,i,o = Min ,k,i · Mout ,i,o . Two benefits follow. First, the parameter count drops from k d in dout to k d in + din dout — at the MuJoCo dimensions 
+
+din = dout = 128 and k = 16 this is a 7.5× reduction. Second, the factorization permits a cheaper convolutional implementation. In the STU, predicting 
+
+y involves k · din distinct filter convolutions. The tensor-dot factorization lets us instead combine 
+
+Min with the spectral filters into din per-input-channel filters f:,i = P 
+
+> k
+
+Min ,k,i ϕ:,k , then perform only din time-convolutions (one per input channel) before mixing through Mout . The number of convolutions thus drops from k · din to din .However, the tensor-dot STU does have reduced representation capacity, which we analyze in the learning an LDS setting. 
+
+Comparison. Figure 5 reports test MSE versus epoch for both STU variants in +y and −y form, at both the small ( dstate = 8 , m = 256 ) and large ( dstate = 64 , m = 512 ) scales. Each curve is the geometric mean over five seeds with geometric-standard-deviation bands, on a log-scaled vertical axis. The STU outperforms the tensor-dot approximation STU in each setting as expected, however, the tensor-dot STU has approximately k× fewer parameters. 20 Figure 5: Test MSE versus epoch for STU (blue) and tensor-dot STU (red), both with k = 48 , and each in +y (solid) and −y (dashed) variants, on the linear-LDS benchmark of Section 4.1. Top row: small scale ( d = 4 , dstate = 8 , m = 256 ). Bottom row: large scale ( d = 64 , dstate = 64 , m = 512 ). Curves are geometric means over five seeds with geometric-standard-deviation bands; the y-axis is log-scaled. 21
