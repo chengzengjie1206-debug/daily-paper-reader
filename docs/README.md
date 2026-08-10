@@ -6,28 +6,32 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-09
-- 运行时间：2026-08-09 19:38:56 UTC
+- 最新运行日期：2026-08-10
+- 运行时间：2026-08-10 20:02:29 UTC
 - 运行状态：成功
-- 本次总论文数：2
-- 精读区：1
-- 速读区：1
+- 本次总论文数：3
+- 精读区：3
+- 速读区：0
 
 ### 今日简报（AI）
-今日精读湍流降阶预测新框架，另速读动力学谱蒸馏方法，共梳理2篇论文。  
-最值得关注的是混合POD与扩散模型的降阶方法，显著提升湍流预测效率（8/10），可尝试结合谱蒸馏思路简化复杂非线性。  
-建议普通读者优先精读该湍流框架，后续可跟踪其在实时流场预报中的扩展验证。
-- 详情：[/202608/09/README](/202608/09/README)
+今日聚焦时间序列预测，精读两篇高分论文。  
+最值得关注：无需训练的检索式长期预测（KReF）与混沌门控量化Transformer（QFCQT），双双获9分。  
+建议优先看KReF，了解检索增强如何提升长期预测及不确定性估计。
+- 详情：[/202608/10/README](/202608/10/README)
 
 ### 精读区论文标签
-1. [A hybrid proper orthogonal decomposition and diffusion framework for reduced-order forecasting of turbulent flow dynamics](/202608/09/2608.04728v1-a-hybrid-proper-orthogonal-decomposition-and-diffusion-framework-for-reduced-order-forecasting-of-turbulent-flow-dynamics)  
+1. [KReF: Training-Free Retrieval for Long-Term Time-Series Forecasting and Predictive Uncertainty](/202608/10/2608.06748v1-kref-training-free-retrieval-for-long-term-time-series-forecasting-and-predictive-uncertainty)  
+   标签：评分：9.0/10、query:aq-forecast
+   evidence：面向长期时间序列预测与不确定性的免训练检索方法
+2. [QFCQT: A Chaotically Gated Quantformer Framework for Volatile Time-Series Forecasting](/202608/10/2608.07363v1-qfcqt-a-chaotically-gated-quantformer-framework-for-volatile-time-series-forecasting)  
+   标签：评分：9.0/10、query:aq-forecast
+   evidence：直接面向波动时间序列预测的新型Transformer框架
+3. [When GNNs Fail: Quantifying and Overcoming Temporal Correlation Volatility in Time Series](/202608/10/2608.07333v1-when-gnns-fail-quantifying-and-overcoming-temporal-correlation-volatility-in-time-series)  
    标签：评分：8.0/10、query:aq-forecast
-   evidence：湍流动力学降阶生成预测，可迁移至时空预测任务
+   evidence：面向多元时间序列的图神经网络预测，量化并应对时变相关波动
 
 ### 速读区论文标签
-1. [Spectral Distillation: From Nonlinear Dynamics to Linear State-Space Models](/202608/09/2608.05416v1-spectral-distillation-from-nonlinear-dynamics-to-linear-state-space-models)  
-   标签：评分：7.0/10、query:aq-forecast
-   evidence：非线性动力学到线性状态空间预测的可证明方法
+- 本次无速读推荐。
 
 
 <div class="dpr-home-promo-card">
