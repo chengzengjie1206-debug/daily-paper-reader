@@ -1,0 +1,517 @@
+Title: AirFlow: Context Preserving and Multi-Rate State Modeling for Air Quality Forecasting
+
+URL Source: https://arxiv.org/pdf/2608.09775v1
+
+Published Time: Tue, 11 Aug 2026 02:43:44 GMT
+
+Number of Pages: 19
+
+Markdown Content:
+# AirFlow: Context Preserving and Multi-Rate State Modeling for Air Quality Forecasting 
+
+Fan Yang ∗ Nan Chen ∗ Yijie Dong Yuchen Zhang Wei Zhang †
+
+School of Software Technology, Zhejiang University Hangzhou, Zhejiang 310000, China 
+
+Abstract 
+
+Accurate air quality forecasting is essential for public health and urban environmental management, but remains challenging because pollutant channels differ in periodicity and distribution drift, while their con-centration trajectories contain both multi-scale dependencies and rapid changes. Recent methods have improved spatial dependency learning and meteorological covariate modeling. However, pollutant chan-nels are still passed through the same normalization rule and temporal backbone, using a shared latent representation for channel-specific distributions and changes at different rates. To address this limitation, we propose AirFlow, a pollutant-aware dual-stream framework that operates on station multivariate ob-servations without additional graph propagation or predefined signal decomposition. Specifically, AirFlow designs two novel blocks: (1) a statistic-guided normalization routing mechanism that selects a normal-ization path for each pollutant according to its 24-hour autocorrelation and distribution drift; and (2) a hierarchical dual-stream state model that combines multi-scale state space propagation with learnable re-sponse coefficients, where gated bidirectional cross-attention exchanges information and adaptively fuses the resulting representations. Experiments on real-world data from multiple cities show that AirFlow achieves the best performance in 34 of 36 metrics comparisons, with reductions of up to 11.11% root mean square error over the state-of-the-art baseline. AirFlow also requires only 0.0483M parameters and 0.0215G FLOPs, achieving high forecasting accuracy with low computational overhead. 
+
+# 1 Introduction 
+
+Air pollution remains a major concern for urban envi-ronmental management, public health protection, and early warning systems [1, 47]. Fine particulate matter and gaseous pollutants are closely associated with res-piratory and cardiovascular diseases [4, 7], while severe pollution episodes increase the burden on healthcare sys-tems and emergency response [23]. Reliable air quality forecasting is therefore essential for proactive risk assess-ment and policy intervention. Spatial modeling remains valuable when inter-station transport can be supported by synchronized wind fields, emission inventories, terrain attributes, and boundary-layer conditions. In many operational monitoring sys-tems, however, these variables are unavailable, coarsely sampled, or temporally misaligned with pollutant obser-vations [8, 35]. Under this setting, coordinates and his-torical correlations provide useful but incomplete spatial priors, because the effective influence between stations varies with atmospheric transport and emission condi-tions. Increasing the complexity of graph propagation therefore does not necessarily resolve the forecasting er-rors caused by unobserved environmental changes. These unobserved changes manifest in the measured trajecto-ries as abrupt peaks, rapid rises or drops, and shifts in level and variability. Such changes are difficult be-cause a forecasting model must preserve the historical context preceding a pollution episode while responding rapidly once the concentration regime changes. We there-fore study a complementary question to increasingly elab-orate spatial modeling: how to improve pollutant-aware temporal state evolution when transport context is in-complete. This forecasting scenario poses two related modeling challenges. First, different pollutants exhibit distinct statistical characteristics. PM 2.5 and PM 10 are more susceptible to local emissions, dust, accumulation, and rapid removal, resulting in abrupt peaks, baseline drift, and non-stationary fluctuations [20]. In contrast, NO 2 often shows traffic activity-related periodicity, while O3 presents diurnal variation. Applying a shared normal-ization strategy may preserve useful magnitude relations 1arXiv:2608.09775v1 [cs.AI] 10 Aug 2026 AirFlow Solution       
+
+> Persistent Context,
+> Periodic Patterns
+> Sharp Peaks,
+> Rapid Rises/Drops
+> Pollutant-Adaptive Normalization
+> Input Multi-Pollutant Sequences
+> SMS ↑TDS ↑
+> Forecast
+> Heterogeneous Dynamics
+> Structural Memory Transient Dynamics
+> Gated Cross-
+> Attention Fusion
+> Stable Events Abrupt Events
+> Wind
+> Field
+> Emission
+> Inventory Terrain Boundary
+> Layer
+> Unavailable, coarse, or misaligned
+> Incomplete Transport Context
+> Periodic Variations
+> Peaks & Drift
+> Diurnal Cycle
+> Large Fluctuations
+> NO 2
+> PM 2.5
+> O3
+> PM 10
+> ←→
+
+... 
+
+...  
+
+> Pollutant-Specific Statistics
+> Spatial relations may not reflect
+> time-varying pollutant transport. Entangled Dynamics:
+
+Figure 1: Motivation and framework of AirFlow for multivariate air quality forecasting. for some variables while compressing local variations or amplifying distribution shifts in others [22, 28]. Second, the temporal behavior of each pollutant is nonuniform. Periodic activity and gradual accumulation generate per-sistent dependencies [9], whereas changes in emissions, dispersion, and removal conditions produce sharp rises, rapid drops, and short-lived peaks [3, 27]. Accurate fore-casting therefore requires both stable historical context and flexible responses to changing concentration condi-tions [12, 15]. Figure 1 summarizes the forecasting sce-nario, the modeling challenges, and the overall design of AirFlow. Existing forecasting methods address these difficul-ties only partially [24]. General sequence models usu-ally process all pollutants using shared normalization and single state-update mechanism, limiting their ability to accommodate variable-specific statistics and nonuni-form changes [48]. Decomposition-based methods sepa-rate sequences into trend, seasonal, frequency, or multi-scale components [40], but their predefined or shared decomposition bases may not adapt well to pollutant concentration distributions, while component-wise pro-cessing may represent abrupt variations as residual or high-frequency parts without sufficiently preserving their connection to the preceding pollution state. These lim-itations motivate an adaptive framework that accom-modates pollutant-specific distributions while combining contextual dependency modeling with state transitions. AirFlow addresses air quality forecasting under in-complete transport context by coordinating two levels of pollutant heterogeneity: statistic-guided normalization preserves channel-dependent distribution information, while complementary state-transition pathways model persis-tent context and heterogeneous response rates without predefined decomposition or graph propagation. The main contributions of this work are summarized as follows: • We propose AirFlow, a lightweight pollutant-aware framework that couples statistic-guided normaliza-tion routing with multi-rate latent state modeling. The routing mechanism preserves cross-window con-centration references for statistically stable chan-nels while reducing local level and scale shifts for drifting channels, avoiding a uniform preprocessing assumption across pollutants. • We design a novel hierarchical dual stream state model that combines multi-scale dependency mod-eling with heterogeneous hidden state transitions. Gated bidirectional cross-attention conditions rapid-response features on relevant historical context be-fore adaptive fusion. • Experiments across multiple cities and pollutants show accuracy gains and competitive computational overhead without additional graph propagation. 
+
+# 2 Related Work 
+
+2.1 Air Quality Forecasting 
+
+Spatial inductive biases are widely adopted in air-quality forecasting to represent interactions across monitoring locations. PM 2.5-GNN incorporates geographical knowl-edge into graph construction, whereas GAGNN models dependencies at both city and city-group levels [2, 38]. AirFormer develops scalable spatial attention for time-varying correlations over a nationwide monitoring net-work [25]. DGN-AEA further constructs dynamic rela-tions from adaptive edge attributes [44], while DSGT constructs them from time-varying station observations and auxiliary features [42]. MGSFformer combines multi-granularity observations with spatiotemporal correlations [46]. These methods improve spatial representation through increasingly flexible relation construction, while the learned 2Input 
+
+B×L×P 
+
+MinMax 
+
+> Linear
+
+RevIN 
+
+# Adaptive Normalization 
+
+Router Gated  HDS-1 
+
+DSFE  DSFF 
+
+# Hierarchical Dual Stream 
+
+HDS-2  HDS-3  Decoder  Output 
+
+B×O 
+
+# Dual Stream Feature Extraction（DSFE） 
+
+B×L×d 
+
+B×L×d Linear 
+
+B×d  Structural Memory Stream S  Transient Dynamics Stream T 
+
+# Dual Stream Feature Fusion（DSFF） 
+
+DWConv1D 
+
+SiLU 
+
+> Selective Propagation 𝒫
+
+SiLU  
+
+> Selective Propagation 𝒫
+
+Wh
+
+Linear 
+
+… Neurons 
+
+L
+
+MHA(Q=S,K=T,V=T) 
+
+^S
+
+Gated Fusion
+F = G ⊙ + (1 − G) ⊙ S^ T^
+
+MHA(Q=T,K=S,V=S) 
+
+^T
+
+Linear 
+
+B×L×d 
+
+Structural Memory Stream 
+
+B×L×d 
+
+Transient Dynamics Stream 
+
+Feed Forward Transformation 
+
+H KFigure 2: Overall architecture of AirFlow. Adaptive Normalization handles heterogeneous statistics via statistic-guided router. Stacked Hierarchical Dual Stream (HDS) composed of Dual Stream Feature Extraction (DSFE) and Dual Stream Feature Fusion (DSFF). DSFE learns complementary representations through Structural Memory Stream and Transient Dynamics Stream, while DSFF fuses them via gated cross-attention. The final representations are decoded for forecasting. dependencies remain tied to the signals used to infer inter-station relations. Beyond learned spatial relations, recent studies in-corporate atmospheric knowledge into the forecasting process. MasterGNN processes air quality and weather stations modeling and suppresses observation noise ac-cumulation caused by spatial-temporal propagation [13]. CauAir models the causal association between weather covariates and Air Quality Index (AQI) [31]. Physics-guided methods further encode transport dynamics. Air-PhyNet represents diffusion and advection with graph-based differential equation networks, Air-DualODE com-bines open system physical dynamics with a data-driven Neural ordinary differential equation (ODE) branch, and AirDDE models propagation delays through multifactor historical features and delay function grounded in dif-fusion and advection processes [18, 36, 39]. These stud-ies demonstrate that spatial and meteorological context provides valuable information for air quality forecast-ing. However, recent advances have emphasized sophis-ticated spatial dependency modeling, while the hetero-geneous temporal patterns of pollutant concentrations remain underexplored. Additional spatial dependencies enrich contextual information, but they may also com-pensate for, rather than resolve, insufficient modeling of abrupt changes and non-stationary patterns. This mo-tivates us to strengthen pollutant-aware temporal mod-eling and verify whether competitive or better perfor-mance can be achieved without constructing additional graph propagation. 
+
+2.2 Normalization and Temporal Model-ing 
+
+Normalization methods address non-stationarity by con-trolling which statistics are removed, estimated, and re-stored. Reversible Instance Normalization (RevIN) ap-plies reversible instance mean and variance normaliza-tion, whereas SAN estimates evolving statistics over lo-cal temporal slices [22, 30]. SIN selects statistics accord-ing to local invariance and global variability [14]; FAN and DDN extend normalization to frequency-domain and dual-domain distribution changes [5, 45]. These methods show that normalization choices embody different as-3sumptions about distribution change, motivating pollutant-wise routing rather than one fixed operator across chan-nels. Temporal forecasting models capture sequence de-pendencies through different computational mechanisms. Convolutional neural network (CNN)-based models ex-tract local patterns with temporal convolutions, whereas recurrent neural network (RNN)-based models propa-gate historical information through recurrent hidden states [41]. Transformer-based models capture long-term inter-actions with attention [48], while selective state space models provide input-dependent state propagation with linear sequence complexity [6, 11]. Liquid neural net-work (LNN)-based models regulate hidden-state tran-sitions through differential dynamics [15, 16]. To ad-dress non-stationarity and temporal patterns at differ-ent scales, recent models further introduce adaptive de-composition, multi-resolution processing, and frequency-domain representations [17, 19, 21, 43]. These works sug-gest that component construction and latent-state mod-eling are complementary design strategies. AirFlow fol-lows the latter to model multi-scale context and rate-varying changes without relying on a fixed component partition. 
+
+# 3 Methodology 
+
+3.1 Problem Formulation 
+
+Let S denote the set of monitoring stations. For station 
+
+s ∈ S and forecasting origin t, the input Xs,t ∈ RL×P
+
+contains L observations of P pollutants collected at the same station. For a fixed target pollutant, AirFlow learns 
+
+bys,t = f (Xs,t ; Θ) ∈ RO , (1) where O is the forecasting horizon and Θ denotes the model parameters. Training sequences are generated by sliding a window over each station, and the model is shared across all stations. The target pollutant is fixed in each training run. AirFlow is designed for two properties of multi-pollutant observations. Pollutants differ in periodicity and distri-bution shift, making a single normalization rule unsuit-able for all channels. Their trajectories also contain long-range dependencies and rapid variations that favor dif-ferent state-update patterns. AirFlow therefore combines station pollutant normalization with two temporal streams. As shown in Figure 2, the normalized sequence is pro-jected to a d-dimensional latent space and passed through 
+
+K Hierarchical Dual-Stream (HDS) blocks. Each block contains Structural Memory Stream (SMS), Transient Dynamics Stream(TDS), and Gated Bidirectional Cross-Attention (GBCA) module. A prediction head maps the final representation to the future target sequence. 
+
+3.2 Station-Wise Pollutant Normalization 
+
+For pollutant p at station s, let xs,p ∈ RT denote its training sequence, where T is the sequence length. The periodicity score is 
+
+ρs,p = Corr ( xs,p [1: T − h], xs,p [1 + h:T ]) , (2) where h is the lag of one diurnal cycle and Corr de-notes the Pearson correlation coefficient [33]. The drift-rate score is 
+
+νs,p = Std (MA w(xs,p )) Std( xs,p ) + ε , (3) where MA w is the moving average with weekly window length w, Std denotes standard deviation, and ε > 0
+
+prevents division by zero. The score νs,p summarizes the relative variation of the smoothed sequence. The normalization route is determined for each station– pollutant pair: 
+
+rs,p =
+
+(
+
+RevIN , ρs,p < θ ρ ∧ νs,p ≥ θν ,
+
+MinMax , otherwise , (4) where θρ and θν are routing thresholds. The rule gives priority to periodicity because instance-wise centering may weaken the cross-window level information associ-ated with a stable recurring pattern. For input window i from station s, let xs,i,p ∈ RL
+
+denote pollutant p. Its normalized sequence is 
+
+exs,i,p =
+
+
+
+xs,i,p − xmin ,s,p 
+
+xmax ,s,p − xmin ,s,p + ε , rs,p = MinMax ,γp
+
+xs,i,p − μs,i,p 
+
+σs,i,p 
+
++ βp, rs,p = RevIN ,
+
+(5) where xmin ,s,p and xmax ,s,p are the station training ex-trema, μs,i,p and σs,i,p are the mean and standard devi-ation of the input window, γp and βp are learnable affine parameters. MinMax uses the station-specific training range for every input window, preserving absolute con-centration levels and cross-window comparability. RevIN standardizes each window with its own mean and vari-ance, reducing local level and scale shifts [22]. AirFlow prefers MinMax when a stable periodic pattern provides a reliable cross-window reference, and uses RevIN when weak periodicity is accompanied by stronger slow distri-bution movement. The normalized channels are concate-nated and projected to the initial hidden representation 
+
+H0 ∈ Rn×L×d, where n is the batch size and d is the hidden dimension. The corresponding target statistics are retained for inverse transformation. 
+
+3.3 Hierarchical Dual-Stream Encoder 
+
+AirFlow stacks K residual HDS blocks to refine the la-tent representation. Let Hk denote the input to the k-th block, with H0 produced by the input projection and 
+
+k = 0 , . . . , K − 1.43.3.1 Structural Memory Stream 
+
+A learned projection of Hk produces two representa-tions. The convolution-enhanced representation is U =SiLU(DWConv(Π u(Hk))) , and the context-preserving rep-resentation is Z = SiLU(Π z (Hk)) , where Πu and Πz are learned projections and DWConv is depth-wise tempo-ral convolution. The selective propagation operator P is applied to both representations, that is U′ = P(U) and 
+
+Z′ = P(Z). To define the operator, let V ∈ { U, Z} de-note either input representation. The input at position j
+
+generates a positive discretization vector ∆j ∈ Rde and vectors Bj , Cj ∈ Rds , where de is the expanded width and ds is the state dimension. Let A ∈ Rde×ds denote the transition coefficients, with A = − exp( Alog ). We define Aj = exp(Diag( ∆j )A) and Bj = ∆j B⊤ 
+
+> j
+
+. The state Mj ∈ Rde×ds is updated by 
+
+Mj = Aj ⊙ Mj−1 + Diag( Vj )Bj , (6) where Diag( ·) forms a diagonal matrix and ⊙ denotes element-wise multiplication. The propagated output is 
+
+P(V)j = Mj Cj + D ⊙ Vj , (7) where D ∈ Rde is the direct term. The product Mj Cj
+
+is matrix–vector multiplication. The symbols A, B, C,and D follow the standard state-space roles [6, 11]. The SMS output is 
+
+S = Wo [U′ ⊙ Z + Z′ ⊙ U] , (8) where Wo projects the expanded representation back to width d. The symmetric interaction combines local filtering with selective propagation without introducing a predefined decomposition. 
+
+3.3.2 Transient Dynamics Stream 
+
+TDS maintains a set of latent features with different learnable response scales. At position j, the candidate state is ehj = tanh( WxHk,j +Whhj−1 +bh), its response coefficients are computed as α = σ(η ⊘ τ ), where η is learnable scalar, τ is learnable vector, ⊘ is element-wise division, and σ is sigmoid function. The state is updated by 
+
+hj = hj−1 + α ⊙ (ehj − hj−1). (9) Different latent features require different degrees of tem-poral persistence, some need to accumulate information over longer contexts, whereas others need to respond more rapidly to recent observations. A smaller entry of 
+
+α retains more of the preceding state, while a larger entry places greater weight on the current candidate state. Finally, the recurrent states are projected to ob-tain T ∈ Rn×L×d.
+
+3.3.3 Gated Bidirectional Cross-Attention 
+
+The GBCA module performs cross-stream interaction and adaptive fusion. Specifically, the SMS representation uses the TDS representation as key and value to retrieve recurrent state information, while the reverse direction retrieves propagated context information: 
+
+bS = MHA( S, T, T), bT = MHA( T, S, S), (10) where the arguments of Multi-Head Attention ( MHA )are query, key, and value [37]. This bidirectional retrieval allows each stream to be conditioned on the other before their relative contributions are estimated by the token-wise gate G = σ(MLP([ bS∥ bT])) , where ∥ denotes con-catenation. The fused representation is 
+
+F = G ⊙ bS + ( 1 − G) ⊙ bT. (11) The gate is estimated at each temporal position from the mutually conditioned representations. The block output is 
+
+Hk+1 = Hk + Φ( F), (12) where Φ denotes the feed forward transformation applied after fusion. 
+
+3.4 Prediction 
+
+After the final HDS block, the representation is decoded by mean pooling and two-layer prediction head D:
+
+by = D
+
+ 1
+
+L
+
+> L
+
+X
+
+> j=1
+
+HK,j 
+
+ . (13) Training is performed in the scale associated with the target route, and predictions are transformed back to the original concentration scale for evaluation. Multi-step air quality forecasting requires both accu-rate concentration values and consistent changes across adjacent forecasting horizons. We therefore optimize a trajectory-aware objective with a robust concentration term and an inter-step variation term: 
+
+L = 1
+
+nO 
+
+> n
+
+X
+
+> i=1
+> O
+
+X
+
+> o=1
+
+ψ(ei,o ) + λ∆L∆, (14) where ei,o = byi,o −yi,o is the point-wise forecasting error, and λ∆ controls the variation term. The penalty ψ is: 
+
+ψ(e) = 
+
+
+
+λs
+
+e2
+
+2κ + λ1|e|, |e| < κ, 
+
+(λs + λ1)|e| − λsκ
+
+2 , |e| ≥ κ, 
+
+(15) where κ > 0 is the transition point and λs, λ 1 ≥ 0 are fixed weights. This penalty retains quadratic sensitivity to small residuals and grows linearly for large residuals, 5preventing a small number of severe pollution episodes from dominating optimization while maintaining a direct penalty on absolute concentration deviations. Point-wise accuracy does not constrain how the predicted trajectory changes across horizons. The inter-step variation term is 
+
+L∆ = 1
+
+n(O − 1) 
+
+> n
+
+X
+
+> i=1
+> O−1
+
+X
+
+> o=1
+
+(∆ byi,o − ∆yi,o )2 , (16) where ∆byi,o = byi,o +1 − byi,o and ∆yi,o = yi,o +1 −yi,o . This design couples adjacent forecasting horizons and penal-izes discrepancies in both the direction and magnitude of concentration changes. 
+
+# 4 Experiments 
+
+4.1 Experimental Settings 
+
+Datasets We evaluate AirFlow on hourly air quality records from Beijing, Tianjin, and Hangzhou. All datasets are publicly available at https://quotsoft.net/air. After filtering stations with PM 2.5 missing rates below 20%, the three datasets contain 35, 21, and 12 monitoring sta-tions. Each dataset spans from Jan. 1, 2023 to Dec. 31, 2024. The data from each station are divided chrono-logically into training, validation, and test sets with a ratio of 8:1:1. Each station provides six pollutant mea-surements, including PM 2.5, PM 10 , SO 2, NO 2, CO, and O3. The four forecasting targets are listed in Table 1. PM 2.5 is treated as the primary forecasting target due to its critical health impacts. 
+
+Baselines We compare AirFlow with general sequence models and air quality forecasting models. The former in-cludes BiLSTM [10], ConvLSTM [34], Transformer [37], LNN [15], PatchTST [32], iTransformer [29], and Mamba [11], covering recurrent, convolutional, attention-based, and state-space architectures. The latter includes PM2.5-GNN [38], AirFormer [25], STAAGCN [26], AirPhyNet [18], MGSFformer [46], and Air-DualODE [36], which in-troduce spatial dependency learning, atmospheric priors, or auxiliary environmental context. 
+
+Metrics Forecasts are evaluated in the original con-centration scale using root mean square error (RMSE), Mean Absolute Error (MAE), and Coefficient of Deter-mination (R 2). These metrics quantify the model’s error magnitude, overall accuracy, and goodness of fit. 
+
+4.2 Main Results 
+
+To demonstrate the effectiveness and robustness of Air-Flow, we compared its performance with various state-of-the-art baselines. For fair comparisons, all baselines and AirFlow are evaluated under an identical experimen-tal setup. As shown in Table 1, several interesting obser-vations can be drawn. General-purpose sequence models exhibit limited performance. Although Mamba improves computational efficiency, it does not outperform recur-rent baselines. The vanilla Transformer underperforms due to the lack of temporal inductive bias, whereas its variants (e.g., iTransformer and PatchTST) achieve bet-ter results by augmenting variable-wise dependencies or local temporal representation. LNN has relatively fewer neurons but is originally developed for causal decision-making under irregular sampling, thus failing to achieve competitive performance on this task. In contrast, domain-specific models designed for spa-tiotemporal air quality forecasting exhibit clear advan-tages over general-purpose sequence models. Especially the physics-guided model Air-DualODE retains RMSE advantage on Tianjin PM 2.5 and AQI. It is also worth noting that on the NO 2 forecasting task, where temporal fluctuations are driven by regular anthropogenic activ-ities, the performance differences among most models remain relatively small. AirFlow ranks first in 34 of the 36 comparisons while operating only on station-level multivariate observations. On the Beijing dataset, it reduces RMSE over the strongest baseline (Air-DualODE) by 5.26% for PM 2.5, 5.24% for PM 10 , 1.48% for NO 2, and 2.24% for AQI. On the Hangzhou dataset, which represents a different geographic domain characterized by subtropical monsoon climate and high-tech manufacturing emissions, AirFlow reduces RMSE over the Air-DualODE by 6.05%, 11.11%, 1.63%, and 7.71% for PM 2.5, PM 10 , NO 2, and AQI. These results in-dicate that in pollutant-only scenarios, prioritizing sta-tion pollutant dynamics can achieve strong forecasting accuracy without additional graph propagation. 
+
+4.3 Ablation Study 
+
+To evaluate the contribution of components in AirFlow, we conduct ablation studies on the Beijing PM 2.5 task. As shown in Table 2, AirFlow achieves the best per-formance across all evaluation metrics, demonstrating that each component contributes positively to the final performance. V0 removes AN, i.e. uses fixed MinMax, leads to 22.09% increase in MAE and 4.89% decrease in R 2, showing that input representation is sensitive to which station-level statistics are retained before tempo-ral encoding. Removing TDS ( V3) increases MAE by 12.85%, while removing SMS ( V4) leads to a larger in-crease of 15.39%. These results indicate that modeling either long-term temporal correlations or abrupt change patterns is insufficient to match the performance of the full model. Within SMS, removing the context-preserving branch ( V5) increases MAE by 7.23%, while removing the convolution-enhanced branch ( V6) leads to 6.29% in-crease. Replacing GBCA with a simpler gate control ( V7) in-creases MAE by 9.91% and reduces R 2 by 2.1% relative to the AirFlow, indicating that fine-grained feature in-6Table 1: Experimental results comparing AirFlow with baseline models across four target variables, averaged over three runs. Lower RMSE and MAE and higher R 2 indicate better performance. Best results are highlighted in bold .Dataset Model PM 2.5 PM 10 NO 2 AQI RMSE ↓ MAE ↓ R2 ↑ RMSE ↓ MAE ↓ R2 ↑ RMSE ↓ MAE ↓ R2 ↑ RMSE ↓ MAE ↓ R2 ↑
+
+Beijing BiLSTM (2014) 16.44 9.01 0.8113 28.89 15.06 0.7451 12.79 8.68 0.6823 22.14 12.08 0.7616 ConvLSTM (2015) 16.48 9.08 0.8104 30.51 15.41 0.7157 12.76 8.70 0.6835 21.46 12.12 0.7761 Transformer (2017) 17.33 10.34 0.7903 27.13 16.18 0.7751 12.80 8.58 0.6814 21.16 11.83 0.7854 PM2.5-GNN (2020) 15.84 8.42 0.8262 24.85 13.88 0.8182 12.82 8.89 0.6788 20.12 11.44 0.8096 LNN (2021) 17.02 8.67 0.7978 26.10 14.29 0.7919 12.83 8.59 0.6803 21.73 11.75 0.7703 PatchTST (2023) 16.12 8.83 0.8186 30.29 14.03 0.7197 12.75 8.59 0.6872 20.09 11.43 0.7937 AirFormer (2023) 15.68 8.40 0.8284 26.45 13.96 0.7862 12.79 8.61 0.6815 21.60 11.30 0.7730 STAAGCN (2023) 15.98 8.41 0.8132 24.81 13.90 0.8120 12.82 8.72 0.6806 20.29 11.48 0.7999 iTransformer (2024) 15.88 8.58 0.8239 29.89 13.92 0.7270 12.95 8.78 0.6742 20.95 11.46 0.7866 Mamba (2024) 16.64 8.62 0.8068 26.19 14.46 0.7904 12.81 8.64 0.6814 22.09 11.99 0.7626 AirPhyNet (2024) 15.93 8.87 0.8127 33.18 18.32 0.7002 14.17 9.71 0.5915 20.49 11.49 0.8088 MGSFformer (2025) 15.62 8.29 0.8297 25.42 14.12 0.8098 12.76 8.60 0.6822 20.32 11.39 0.8007 Air-DualODE (2025) 15.22 8.18 0.8348 23.67 13.38 0.8310 12.84 8.88 0.6794 19.68 11.21 0.8108 AirFlow (Ours) 14.42 7.47 0.8513 22.43 13.02 0.8443 12.65 8.55 0.6889 19.24 10.87 0.8184 
+
+Tianjin BiLSTM (2014) 20.09 11.91 0.6828 28.26 17.81 0.6717 14.79 9.87 0.6681 24.12 14.85 0.6670 ConvLSTM (2015) 19.95 11.86 0.6867 28.46 18.40 0.6670 14.71 10.04 0.6716 23.74 14.62 0.6774 Transformer (2017) 21.67 13.08 0.6311 30.02 19.49 0.6296 14.96 9.91 0.6601 24.39 14.73 0.6595 PM2.5-GNN (2020) 19.22 11.45 0.6897 27.88 17.12 0.6945 14.98 10.01 0.6623 23.02 13.98 0.6874 LNN (2021) 20.06 11.70 0.6839 29.19 18.34 0.6497 14.78 9.82 0.6687 24.07 14.47 0.6683 PatchTST (2023) 19.63 11.78 0.6988 28.08 17.28 0.6760 14.66 9.85 0.6739 23.44 13.91 0.6856 AirFormer (2023) 20.39 11.89 0.6734 28.43 17.49 0.6678 14.59 9.86 0.6767 23.38 14.02 0.6871 STAAGCN (2023) 19.87 11.66 0.6897 29.04 18.35 0.6533 14.85 10.09 0.6653 24.02 14.45 0.6692 iTransformer (2024) 19.58 11.79 0.6921 28.40 17.91 0.6685 14.61 9.82 0.6762 24.69 14.77 0.6510 Mamba (2024) 19.82 11.68 0.6913 29.31 18.54 0.6468 15.05 10.11 0.6563 24.39 14.83 0.6595 AirPhyNet (2024) 20.18 12.07 0.6799 29.98 18.98 0.6305 15.23 11.76 0.6488 23.88 14.58 0.6735 MGSFformer (2025) 19.70 11.54 0.6966 27.89 17.11 0.6859 14.63 9.88 0.6772 23.06 14.01 0.6908 Air-DualODE (2025) 18.78 10.98 0.6974 27.65 16.87 0.7001 15.11 10.44 0.6537 22.51 13.52 0.7012 AirFlow (Ours) 18.87 10.97 0.7124 26.87 16.81 0.7046 14.54 9.78 0.6793 22.58 13.48 0.7023 
+
+Hangzhou BiLSTM (2014) 13.34 8.02 0.6865 18.45 11.72 0.6817 11.33 7.92 0.6107 16.64 9.94 0.6546 ConvLSTM (2015) 13.96 8.75 0.6831 18.51 11.76 0.6789 11.69 8.22 0.5855 16.09 9.98 0.6769 Transformer (2017) 15.96 8.92 0.5654 19.77 12.17 0.6345 11.28 7.94 0.6146 17.34 10.37 0.6246 PM2.5-GNN (2020) 15.23 9.86 0.6211 18.44 10.98 0.6812 11.54 8.18 0.6001 17.45 10.32 0.6311 LNN (2021) 14.22 8.83 0.6802 19.44 12.32 0.6468 11.12 7.76 0.6249 17.12 10.45 0.6341 PatchTST (2023) 16.36 10.47 0.5439 22.92 14.96 0.5109 13.16 9.35 0.4729 20.05 12.78 0.5001 AirFormer (2023) 17.78 10.43 0.5075 24.57 15.20 0.4356 14.39 10.13 0.3710 22.95 13.59 0.3435 STAAGCN (2023) 16.69 10.92 0.5255 24.74 16.45 0.4300 13.78 10.26 0.4227 20.54 13.85 0.4758 iTransformer (2024) 17.04 11.01 0.5053 23.71 15.63 0.4768 14.03 9.62 0.4009 21.27 13.65 0.4378 Mamba (2024) 13.01 8.11 0.7012 18.43 11.32 0.6826 11.04 7.68 0.6304 16.47 9.89 0.6613 AirPhyNet (2024) 16.89 11.76 0.5675 19.04 11.95 0.6609 12.62 8.67 0.5165 15.80 9.76 0.6891 MGSFformer (2025) 17.00 10.43 0.5075 24.08 15.40 0.4580 14.55 10.31 0.3575 20.91 13.15 0.4551 Air-DualODE (2025) 13.22 8.04 0.7026 18.99 12.02 0.6629 11.03 7.91 0.6306 16.08 10.06 0.6780 AirFlow (Ours) 12.42 7.28 0.7455 16.88 10.56 0.7224 10.85 7.43 0.6453 14.84 9.02 0.7105 
+
+Table 2: Ablation study on model components. ! and #
+
+indicate whether a module is included or removed. AN: Adaptive Normalization; CE: Convolution-Enhanced Branch in SMS; CP: Context-Preserving Branch in SMS. TDS: Transient Dynamics Stream; GBCA: Cross Atten-tion. Best results are in bold .Variant AN CE CP TDS GBCA RMSE ↓ MAE ↓ R2 ↑
+
+V0 # ! ! ! ! 16.68 9.12 0.8097 V1 ! ! # # # 16.64 8.62 0.8068 V2 ! # ! # # 16.81 8.70 0.8026 V3 ! ! ! # # 15.65 8.43 0.8276 V4 ! # # ! # 15.85 8.62 0.8201 V5 ! ! # ! ! 15.46 8.01 0.8323 V6 ! # ! ! ! 15.33 7.94 0.8359 V7 ! ! ! ! # 15.45 8.21 0.8334 AirFlow ! ! ! ! ! 14.42 7.47 0.8513 
+
+teractions are more effective than coarse weighting for multi-scale feature fusion. 
+
+4.4 Computational Efficiency 
+
+For real-world air quality early-warning systems, com-putational complexity and memory footprint are as crit-ical as forecasting accuracy. As summarized in Figure 3, AirFlow achieves a superior balance between modeling complexity and computational feasibility. Specifically, its parameter count (0.0483M) is lightweight compared to sequence models like iTransformer (1.6010M), and its FLOPs are approximately 1/95 of the spatiotemporal baseline AirFormer (0.0215G vs. 2.0378G). Furthermore, AirFlow maintains a remarkably low peak memory foot-print (18.7 MB), avoiding the exorbitant memory costs of spatial models like MGSFformer (137.7 MB). 70.001 0.01 0.1 1 10     
+
+> Params (M)
+> 8.0 8.5 9.0 9.5 10.0
+> MAE (PM 2.5 )0.001 0.01 0.1 110
+> FLOPs (G)
+> 8.0 8.5 9.0 9.5 10.0
+> MAE (PM 2.5 )
+
+Figure 3: Computational efficiency comparison based on parameters (upper panel) and FLOPs (lower panel). Bubble size reflects peak memory usage. MAE is re-ported on the Beijing PM 2.5 forecasting task. 
+
+# 5 Limitations and Future Work 
+
+Although AirFlow effectively captures the multi-scale temporal evolution of air quality data through variable-adaptive normalization and hierarchical dual-stream ar-chitecture, this study is currently constrained by the lim-ited external covariates available in the datasets. There-fore, the potential intervention mechanisms of cross-modal factors on the underlying dynamics have not yet been fully explored. In the future, we expect to extend our research to urban sensing scenarios supported by multi-source heterogeneous big data. We aim to investigate how to integrate physical priors with multi-modal fea-tures, thereby further enhancing the model’s reasoning capabilities within complex urban atmospheric systems. 
+
+# 6 Conclusion 
+
+In this paper, we propose AirFlow, a lightweight pollutant-aware forecasting framework under incomplete transport context. AirFlow utilizes statistic-guided normalization routing to preserves cross-window concentration refer-ences for statistically stable channels while reducing local level and scale shifts for drifting channels. The multi-rate latent state modeling identify which historical dependen-cies should continue to propagate and how quickly dif-ferent features update within the recurrent state. Gated cross-attention enables fine-grained interaction between the two streams, allowing rapid concentration changes to be interpreted against the relevant historical context before producing an integrated forecasting representa-tion. Extensive experiments on three real-world datasets across multiple cities and pollutants demonstrate that AirFlow can provide accurate and efficient air quality forecasting. 
+
+# Acknowledgements 
+
+This work was supported by Deep Earth Probe and Min-eral Resources Exploration - National Science and Tech-nology Major Project (2025ZD1007008). 8References 
+
+[1] Bert Brunekreef and Stephen T Holgate. Air pollu-tion and health. The lancet , 360(9341):1233–1242, 2002. [2] Ling Chen, Jiahui Xu, Binqing Wu, and Jianlong Huang. Group-aware graph neural network for na-tionwide city air quality forecasting. ACM Trans-actions on Knowledge Discovery from Data , 18(3), 2024. doi: 10.1145/3631713. [3] Ziyue Chen, Danlu Chen, Chuanfeng Zhao, Mei-po Kwan, Jun Cai, Yan Zhuang, Bo Zhao, Xiaoyan Wang, Bin Chen, Jing Yang, et al. Influence of meteorological conditions on pm2. 5 concentrations across china: A review of methodology and mecha-nism. Environment international , 139:105558, 2020. [4] Aaron J. Cohen, Michael Brauer, Richard Burnett, H. Ross Anderson, Joseph Frostad, Kara Estep, Kalpana Balakrishnan, Bert Brunekreef, Lalit Dan-dona, Rakhi Dandona, Valery Feigin, Greg Freed-man, Bryan Hubbell, Amelia Jobling, Haidong Kan, Luke Knibbs, Yang Liu, Randall Martin, Lidia Morawska, C. Arden Pope, Hwashin Shin, Kurt Straif, Gavin Shaddick, Matthew Thomas, Rita van Dingenen, Aaron van Donkelaar, Theo Vos, Christo-pher J. L. Murray, and Mohammad H. Forouzanfar. Estimates and 25-year trends of the global burden of disease attributable to ambient air pollution: an analysis of data from the global burden of diseases study 2015. The Lancet , 389(10082):1907–1918, 2017. doi: 10.1016/S0140-6736(17)30505-6. URL https://doi.org/10.1016/S0140-6736(17)30505-6. [5] Tao Dai, Beiliang Wu, Peiyuan Liu, Naiqi Li, Yuerong Xue, Shu-Tao Xia, and Zexuan Zhu. DDN: Dual-domain dynamic normalization for non-stationary time series forecasting. In Advances in Neural Information Processing Systems , volume 37, pages 108490–108517, 2024. doi: 10.52202/079017-3444. [6] Tri Dao and Albert Gu. Transformers are SSMs: Generalized models and efficient algorithms through structured state space duality. In Proceedings of the 41st International Conference on Machine Learn-ing , volume 235 of Proceedings of Machine Learning Research , pages 10041–10071. PMLR, 2024. URL https://proceedings.mlr.press/v235/dao24a.html. [7] Jeroen de Bont, Suganthi Jaganathan, Marcus Dahlquist, Åsa Persson, Massimo Stafoggia, and Petter Ljungman. Ambient air pollution and car-diovascular diseases: An umbrella review of system-atic reviews and meta-analyses. Journal of internal medicine , 291(6):779–800, 2022. [8] Aijun Ding, Tao Wang, Likun Xue, Jian Gao, An-dreas Stohl, Hengchi Lei, Dezhen Jin, Yu Ren, Xuezhong Wang, Xiaolin Wei, Yanbin Qi, Jian Liu, and Xiaoqing Zhang. Transport of north china air pollution by midlatitude cyclones: Case study of aircraft measurements in summer 2007. Jour-nal of Geophysical Research: Atmospheres , 114(D8): D08304, 2009. doi: 10.1029/2008JD011023. URL https://doi.org/10.1029/2008JD011023. [9] Sunling Gong, Lei Zhang, Cheng Liu, Shuhua Lu, Weijun Pan, and Yuanhang Zhang. Multi-scale analysis of the impacts of meteorology and emis-sions on pm2. 5 and o3 trends at various regions in china from 2013 to 2020 2. key weather elements and emissions. Science of The Total Environment ,824:153847, 2022. [10] Alex Graves and Navdeep Jaitly. Towards end-to-end speech recognition with recurrent neural net-works. In International conference on machine learning , pages 1764–1772. PMLR, 2014. [11] Albert Gu and Tri Dao. Mamba: Linear-time se-quence modeling with selective state spaces. In First Conference on Language Modeling , 2024. [12] Albert Gu, Karan Goel, and Christopher Re. Ef-ficiently modeling long sequences with structured state spaces. In International Conference on Learning Representations , 2022. URL https:// openreview.net/forum?id=uYLFoz1vlAC. [13] Jindong Han, Hao Liu, Hengshu Zhu, Hui Xiong, and Dejing Dou. Joint air quality and weather pre-diction based on multi-adversarial spatiotemporal networks. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 35, pages 4081– 4089, 2021. doi: 10.1609/aaai.v35i5.16529. [14] Lu Han, Han-Jia Ye, and De-Chuan Zhan. SIN: Selective and interpretable normalization for long-term time series forecasting. In Proceedings of the 41st International Conference on Machine Learn-ing , volume 235 of Proceedings of Machine Learning Research , pages 17437–17453. PMLR, 2024. URL https://proceedings.mlr.press/v235/han24e.html. [15] Ramin Hasani, Mathias Lechner, Alexander Amini, Daniela Rus, and Radu Grosu. Liquid time-constant networks. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 35, pages 7657– 7666, 2021. [16] Ramin Hasani, Mathias Lechner, Alexander Amini, Lucas Liebenwein, Aaron Ray, Max Tschaikowski, Gerald Teschl, and Daniela Rus. Closed-form continuous-time neural networks. Nature Machine Intelligence , 4(11):992–1003, 2022. 9[17] Hui He, Kun Yi, Yuanchi Ma, Qi Zhang, Zhen-dong Niu, and Guansong Pang. SEMPO: Lightweight foundation models for time series forecasting. In Advances in Neural Informa-tion Processing Systems , volume 38, 2025. URL https://proceedings.neurips.cc/paper_files/paper/ 2025/hash/ecfb69ce6be017deb5a926c2718f6bc1-Abstract-Conference.html. [18] Kethmi Hirushini Hettige, Jiahao Ji, Shili Xiang, Cheng Long, Gao Cong, and Jingyuan Wang. Air-PhyNet: Harnessing physics-guided neural networks for air quality prediction. In International Con-ference on Learning Representations , 2024. URL https://openreview.net/forum?id=JW3jTjaaAB. [19] Yifan Hu, Peiyuan Liu, Peng Zhu, Dawei Cheng, and Tao Dai. Adaptive multi-scale decomposition framework for time series forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence ,volume 39, pages 17359–17367, 2025. doi: 10.1609/ aaai.v39i16.33908. [20] Ru-Jin Huang, Yanlin Zhang, Carlo Bozzetti, Kin-Fai Ho, Jun-Ji Cao, Yongming Han, Kaspar R. Dael-lenbach, Jay G. Slowik, Stephen M. Platt, Francesco Canonaco, Peter Zotter, Robert Wolf, Simone M. Pieber, Emily A. Bruns, Monica Crippa, Giancarlo Ciarelli, Andrea Piazzalunga, Margit Schwikowski, Guelcin Abbaszade, Juergen Schnelle-Kreis, Ralf Zimmermann, Zhisheng An, Soenke Szidat, Urs Bal-tensperger, Imad El Haddad, and Andre S. H. Pre-vot. High secondary aerosol contribution to partic-ulate pollution during haze events in china. Nature ,514(7521):218–222, 2014. doi: 10.1038/nature13774. URL https://doi.org/10.1038/nature13774. [21] Songtao Huang, Zhen Zhao, Can Li, and Lei Bai. TimeKAN: KAN-based frequency decomposition learning architecture for long-term time series fore-casting. In International Conference on Learning Representations , 2025. URL https://openreview. net/forum?id=wTLc79YNbh. [22] Taesung Kim, Jinhee Kim, Yunwon Tae, Cheonbok Park, Jang-Ho Choi, and Jaegul Choo. Reversible instance normalization for accurate time-series fore-casting against distribution shift. In International Conference on Learning Representations , 2022. [23] Alan J Krupnick and Paul R Portney. Controlling urban air pollution: a benefit-cost assessment. Sci-ence , 252(5005):522–528, 1991. [24] Yuxuan Liang, Songyu Ke, Junbo Zhang, Xiuwen Yi, and Yu Zheng. Geoman: multi-level atten-tion networks for geo-sensory time series predic-tion. In Proceedings of the 27th International Joint Conference on Artificial Intelligence , IJ-CAI’18, pages 3428–3434. AAAI Press, 2018. ISBN 9780999241127. [25] Yuxuan Liang, Yutong Xia, Songyu Ke, Yiwei Wang, Qingsong Wen, Junbo Zhang, Yu Zheng, and Roger Zimmermann. Airformer: Predicting nation-wide air quality in china with transformers. In Pro-ceedings of the AAAI conference on artificial intel-ligence , volume 37, pages 14329–14337, 2023. [26] Hexiang Liu, Qilong Han, Hui Sun, Jingyu Sheng, and Ziyu Yang. Spatiotemporal adaptive attention graph convolution network for city-level air quality prediction. Scientific Reports , 13(1):13335, 2023. [27] Lang Liu, Xin Long, Yi Li, Zengliang Zang, Feng-wen Wang, Yan Han, Zhier Bao, Yang Chen, Tian Feng, and Jinxin Yang. Impacts of meteorology and emission reductions on haze pollution during the lockdown in the north china plain. Atmospheric Chemistry and Physics , 25(3):1569–1585, 2025. [28] Yong Liu, Haixu Wu, Jianmin Wang, and Mingsheng Long. Non-stationary transform-ers: Exploring the stationarity in time series forecasting. In Advances in Neural Informa-tion Processing Systems , volume 35, 2022. URL https://proceedings.neurips.cc/paper_files/paper/ 2022/hash/4054556fcaa934b0bf76da52cf4f92cb-Abstract-Conference.html. [29] Yong Liu, Tengge Hu, Haoran Zhang, Haixu Wu, Shiyu Wang, Lintao Ma, and Mingsheng Long. itransformer: Inverted transformers are effective for time series forecasting. In The Twelfth International Conference on Learning Representations , 2024. [30] Zhiding Liu, Mingyue Cheng, Zhi Li, Zhenya Huang, Qi Liu, Yanhu Xie, and Enhong Chen. Adaptive normalization for non-stationary time series forecasting: A temporal slice perspec-tive. In Advances in Neural Information Processing Systems , volume 36, 2023. URL https://proceedings.neurips.cc/paper_files/paper/ 2023/hash/2e19dab94882bc95ed094c4399cfda02-Abstract-Conference.html. [31] Jiaming Ma, Zhiqing Cui, Binwu Wang, Pengkun Wang, Zhengyang Zhou, Zhe Zhao, and Yang Wang. Causal learning meet covariates: Empow-ering lightweight and effective nationwide air qual-ity forecasting. In Proceedings of the Thirty-Fourth International Joint Conference on Artificial Intelli-gence , pages 3171–3179, 2025. doi: 10.24963/ijcai. 2025/353. [32] Yuqi Nie, Nam Nguyen, Phanwadee Sinthong, and Jay Kalagnanam. A time series is worth 64 words: 10 Long-term forecasting with transformers. In Inter-national Conference on Learning Representations ,2023. [33] Karl Pearson. Mathematical contributions to the theory of evolution. iii. regression, heredity, and panmixia. Philosophical Transactions of the Royal Society of London. Series A , 187:253–318, 1896. doi: 10.1098/rsta.1896.0007. [34] Xingjian Shi, Zhourong Chen, Hao Wang, Dit-Yan Yeung, Wai-Kin Wong, and Wang-chun Woo. Con-volutional lstm network: A machine learning ap-proach for precipitation nowcasting. Advances in neural information processing systems , 28, 2015. [35] Amos P. K. Tai, Loretta J. Mickley, and Daniel J. Jacob. Correlations between fine particulate matter (pm2.5) and meteorological variables in the united states: Implications for the sensitivity of pm2.5 to climate change. Atmospheric Environment , 44(32): 3976–3984, 2010. doi: 10.1016/j.atmosenv.2010. 06.060. URL https://doi.org/10.1016/j.atmosenv. 2010.06.060. [36] Jindong Tian, Yuxuan Liang, Ronghui Xu, Peng Chen, Chenjuan Guo, Aoying Zhou, Lujia Pan, Zhongwen Rao, and Bin Yang. Air quality predic-tion with physics-guided dual neural ODEs in open systems. In The Thirteenth International Confer-ence on Learning Representations , 2025. [37] Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Ł ukasz Kaiser, and Illia Polosukhin. Attention is all you need. In I. Guyon, U. Von Luxburg, S. Ben-gio, H. Wallach, R. Fergus, S. Vishwanathan, and R. Garnett, editors, Advances in Neural Informa-tion Processing Systems , volume 30. Curran Asso-ciates, Inc., 2017. [38] Shuo Wang, Yanran Li, Jiang Zhang, Qingye Meng, Lingwei Meng, and Fei Gao. Pm2. 5-gnn: A domain knowledge enhanced graph neural network for pm2. 5 forecasting. In Proceedings of the 28th interna-tional conference on advances in geographic infor-mation systems , pages 163–166, 2020. [39] Binqing Wu, Zongjiang Shang, Shiyu Liu, Jianlong Huang, Jiahui Xu, and Ling Chen. AirDDE: Mul-tifactor neural delay differential equations for air quality forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 40, pages 15941–15949, 2026. doi: 10.1609/aaai.v40i19. 38627. [40] Haixu Wu, Jiehui Xu, Jianmin Wang, and Mingsheng Long. Autoformer: Decomposi-tion transformers with auto-correlation for long-term series forecasting. In Advances in Neural Information Processing Systems ,volume 34, pages 22419–22430, 2021. URL https://proceedings.neurips.cc/paper_files/paper/ 2021/hash/bcc0d400288793e8bdcd7c19a8ac0c2b-Abstract.html. [41] Haixu Wu, Tengge Hu, Yong Liu, Hang Zhou, Jian-min Wang, and Mingsheng Long. TimesNet: Tem-poral 2d-variation modeling for general time series analysis. In International Conference on Learning Representations , 2023. URL https://openreview. net/forum?id=ju_Uqw384Oq. [42] Hanzhong Xia, Xiaoxia Chen, Binjie Chen, and Yue Hu. Dynamic synchronous graph transformer net-work for region-level air-quality forecasting. Neu-rocomputing , 616:128924, 2025. doi: 10.1016/j. neucom.2024.128924. [43] Mingyuan Xia, Chunxu Zhang, Zijian Zhang, Hao Miao, Qidong Liu, Yuanshao Zhu, and Bo Yang. TimeEmb: A lightweight static-dynamic disentanglement framework for time series fore-casting. In Advances in Neural Information Processing Systems , volume 38, 2025. URL https://proceedings.neurips.cc/paper_files/paper/ 2025/hash/6e79ae23fe8a8bb15a2b2972053f4fc3-Abstract-Conference.html. [44] Jing Xu, Shuo Wang, Na Ying, Xiao Xiao, Jiang Zhang, Zhiling Jin, Yun Cheng, and Gangfeng Zhang. Dynamic graph neural network with adap-tive edge attributes for air quality prediction: A case study in china. Heliyon , 9(7):e17746, 2023. doi: 10.1016/j.heliyon.2023.e17746. [45] Weiwei Ye, Songgaojun Deng, Qiaosha Zou, and Ning Gui. Frequency adaptive normalization for non-stationary time series forecasting. In Ad-vances in Neural Information Processing Systems ,volume 37, 2024. doi: 10.52202/079017-0985. [46] Chengqing Yu, Fei Wang, Yilun Wang, Zezhi Shao, Tao Sun, Di Yao, and Yongjun Xu. Mgsfformer: A multi-granularity spatiotemporal fusion transformer for air quality prediction. Information Fusion , 113: 102607, 2025. ISSN 1566-2535. [47] Yang Zhang, Marc Bocquet, Vivien Mallet, Chris-tian Seigneur, and Alexander Baklanov. Real-time air quality forecasting, part i: History, techniques, and current status. Atmospheric environment , 60: 632–655, 2012. [48] Haoyi Zhou, Shanghang Zhang, Jieqi Peng, Shuai Zhang, Jianxin Li, Hui Xiong, and Wancai Zhang. Informer: Beyond efficient transformer for long se-quence time-series forecasting. In Proceedings of 
+
+11 the AAAI conference on artificial intelligence , vol-ume 35, pages 11106–11115, 2021. 
+
+# A Appendix 
+
+A.1 Experimental Protocol and Repro-ducibility 
+
+Datasets Statistics and Station Coverage Statis-tical summaries of the Beijing, Tianjin and Hangzhou datasets are reported in Table 3, while the spatial distri-bution of monitoring stations is shown in Figure 4. Table 3: Statistical information of air quality datasets for Beijing, Tianjin, and Hangzhou. Dataset Pollutant Unit Mean Std. Beijing PM 2.5 μg/m 3 32.69 34.38 PM 10 μg/m 3 66.00 85.71 SO 2 μg/m 3 2.82 2.11 NO 2 μg/m 3 24.57 20.62 CO mg/m 3 0.5 0.3 O3 μg/m 3 64.23 49.52 AQI - 61.23 51.23 Tianjin PM 2.5 μg/m 3 40.91 40.45 PM 10 μg/m 3 78.86 80.78 SO 2 μg/m 3 7.36 4.60 NO 2 μg/m 3 33.66 24.12 CO mg/m 3 0.69 0.38 O3 μg/m 3 72.04 53.66 AQI - 72.31 54.51 Hangzhou PM 2.5 μg/m 3 30.76 25.89 PM 10 μg/m 3 51.12 39.93 SO 2 μg/m 3 6.43 1.92 NO 2 μg/m 3 28.93 19.35 CO mg/m 3 0.66 0.19 O3 μg/m 3 62.99 46.26 AQI - 51.91 33.05 
+
+Implementation Details and Hyperparameters All experiments were conducted on two NVIDIA RTX A5000 GPUs (24 GB VRAM) hosted on workstations equipped with Intel Core i7-14700KF CPUs. The software envi-ronment comprised Python 3.8.20, PyTorch 2.2.2, and CUDA 12.1. All baselines are evaluated using the same pollutant variables, historical input windows, target se-quences, station set, and chronological train/validation/test splits. For baselines that model spatial relationships, we additionally provide the latitude and longitude of each monitoring station. The hyperparameter configurations are summarized in Table 4. 
+
+A.2 Mechanism and Design Analysis 
+
+Normalization Routing Analysis We compare fixed normalization with statistic-guided routing to determine whether the gain arises from the normalization opera-tor itself or from pollutant-dependent assignments. The statistics used for routing are computed only from the training split. The thresholds are selected on the vali-dation split and fixed to (θρ, θ ν ) = (0 .425 , 0.40) for test evaluation. As shown in Table 5, RevIN provides a strong base-line, while the selected routing configuration yields a fur-ther improvement. This result suggests that removing window level and scale shifts is beneficial for most non-stationary sequences, but applying the same transforma-tion to every pollutants may discard useful concentration references. The routing rule retains these references only when the training statistics indicate sufficiently stable periodicity or limited drift. The threshold pairs do not produce a monotonic per-formance trend. A small threshold change may leave most assignments unchanged or switch several pollutants located near a decision boundary. Figure 5 further illus-trates that station–pollutant pairs occupy different re-gions of the periodicity or drift space, including multiple observations close to the selected boundaries. 
+
+Spatial Augmentation Analysis To investigate whether introducing spatial inductive biases might lead to a mis-match in the absence of reliable transport priors, we explored several spatial modeling strategies. (1) Spatial Loss: Adding a penalty term to encourage forecasting consistency between proximal stations; (2) Coordinate Embedding: Incorporating station latitude and longitude as additional input features; (3) GCN Fusion: Introduc-ing Graph Convolutional Network (GCN) after the dual-stream fusion to aggregate neighborhood information. The results in Table 6 show that the examined spatial augmentations do not yield useful gains under the cur-rent coverage. This suggests that, under limited station observations and incomplete transport-related priors, in-creasing spatial modeling complexity may introduce ad-ditional dependencies without addressing abrupt tempo-ral changes in pollutant trajectories. These results moti-vate us to reconsider whether reliable forecasting can be achieved by modeling station-level pollutant evolution without relying on additional spatial graph propagation. 
+
+Forecasting Horizon Analysis 
+
+To validate the robustness of AirFlow under differ-ent input lengths and forecasting horizons, we compared it with baselines on the Beijing PM 2.5 forecasting task. As shown in Table 7, although extending the prediction horizon from 6h to 12h increases the errors of all models, AirFlow retains the good performance, reducing 6.06% MAE than the state-of-the-art baseline. When fixing the forecasting horizon at 12h, increas-12 (a) Beijing (Map) (b) Tianjin (Map) (c) Hangzhou (Map)   
+
+> (d) Beijing (Satellite) (e) Tianjin (Satellite) (f) Hangzhou (Satellite)
+
+Figure 4: Geographical distribution of air quality monitoring stations in Beijing, Tianjin, and Hangzhou. The first row (a)-(c) displays the map views, while the second row (d)-(f) presents the corresponding satellite imagery. Red dots represent the specific deployment locations of the stations. Table 4: Key hyperparameter settings of AirFlow. Config Description Values Optimizer The algorithm used for parameter optimization. AdamW Learning rate scheduler The strategy for adjusting the learning rate during training. SGDR Learning rate The starting value for the learning rate. 0.0002 Weight decay The L2 regularization coefficient to prevent overfitting. 0.0001 Multi-head num The number of parallel attention mechanisms in the multi-head attention layer. 4Number of layers The number of stacked HDS layers in the model. 3Dropout The probability of randomly dropping out units during training. 0.1 Batch size The number of training samples processed per iteration. 32 Epoch The total number of complete passes through the training dataset. 60 Periodicity threshold θρ in the normalization routing rule. 0.425 Drift-rate threshold θν in the normalization routing rule. 0.4 Diurnal lag Lag h used to compute the periodicity score. 24 Drift window Moving-average window w used to compute the drift-rate score. 168 Hidden dimension Latent representation width d used throughout the HDS blocks. 32 Expanded dimension Expanded width de used in the SMS. 64 State dimension State dimension ds of the selective propagation operator. 16 DWConv kernel size Kernel size of the depth-wise temporal convolution in the SMS. 4Discretization rank Rank of the projection used to parameterize the discretization vector in the SMS. 4Prediction-head width Hidden width of the two-layer prediction head. 16 TDS hidden dimension Hidden-state width dr of the TDS. 16 Step-scale initialization Initial value of the learnable scalar η controlling the response coefficients. 0.1 Concentration loss weights Weights λs and λ1 of the SmoothL1 and absolute error terms. 0.8, 0.15 Variation loss weight Weight λ∆ of the inter-step variation loss. 0.05 Robust transition point Transition point κ of the SmoothL1 penalty 1.0 13 Table 5: Comparison of fixed normalization strategies and statistic-guided routing under different candidate threshold. Strategy θρ θν RMSE ↓ MAE ↓ R2 ↑
+
+All MinMax – – 16.68 9.12 0.8097 All RevIN – – 14.74 7.61 0.8457 Statistic-guided Routing 0.425 0.50 16.12 8.98 0.8143 0.425 0.45 14.79 7.75 0.8412 
+
+0.425 0.40 14.42 7.47 0.8513 
+
+0.400 0.50 16.54 9.04 0.8111 0.400 0.45 15.48 8.33 0.8301 0.400 0.40 15.76 8.49 0.8217 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8         
+
+> Periodicity score ( s,p)
+> 0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8
+> Drift-rate score (  s, p)
+> PM 2.5 PM 10 SO 2NO 2O3CO AQI
+> MinMax RevIN
+
+Figure 5: Pollutant normalization assignment. Each point represents one station–pollutant pair. Colors dis-tinguish variables, while marker shapes indicate the as-signed normalization operator. Pairs satisfying ρs,p < θ ρ
+
+and νs,p ≥ θν are routed to RevIN, the remaining routed to MinMax. ing the input length from 12h to 24h leads to different performance trends across models. While longer input se-quences provide richer historical context, they may also introduce redundancy and noise. Under this setting, Air-Flow also shows good performance, with RMSE increas-ing only marginally from 21.84 to 22.47 (2.88%), whereas AirFormer experiences a larger increase from 22.10 to 24.01 (8.64%). This suggests that AirFlow can effectively retain informative dependencies while suppressing irrel-evant historical variations. Figure 6 provides Taylor diagram summarizing the forecasting performance under different input lengths and forecasting horizons on the Beijing PM 2.5 dataset. The diagram summarizes multiple complementary evaluation aspects, including correlation, relative variability, and centered root mean square difference. AirFlow appears closer to the observation reference point, indicating bet-ter alignment with the ground truth in these evaluation aspects. 
+
+A.3 Generalization Analysis 
+
+Cross-Period Case Study To evaluate temporal gen-eralization under distribution shifts, we test AirFlow on two non-overlapping periods: Oct. 20–Dec. 31, 2024 and Jan. 1–Sep. 30, 2025. The 2025 records are used only as an additional out-of-period test set. As summarized in Table 8, the later period exhibits a distinct data distri-bution, with lower average pollution levels but substan-tially larger extreme values, consistent with changes in meteorological and emission conditions. Table 9 shows that AirFlow maintains stable predictive performance across the two periods. The relative degradation in R 2
+
+ranges from 6.07% to 11.19% in Beijing and from 4.74% to 7.99% in Tianjin. In Hangzhou, the degradation for PM 2.5, PM 10 , and AQI ranges from 1.99% to 11.04%, while NO 2 exhibits a slight improvement. These results indicate that AirFlow remains effective under substantial cross-period distribution changes. The cross-pollutant results further reveal different levels of temporal stability. NO 2 is relatively stable across cities, which is consistent with its more regular activity-related emission patterns, whereas PM 10 undergoes larger performance degradation because it is more sensitive to changing dust, transport, and removal conditions. Fig-ure 7 provides representative forecasting trajectories. Air-Flow captures abrupt surge-and-drop patterns in partic-ulate matter, including the event around Nov. 2, 2024, while preserving the preceding concentration context. During the summer of 2025, it continues to follow the overall trajectory under frequent short-term fluctuations. 
+
+Cross-City Transfer Learning A primary challenge in air quality forecasting lies in the diversity of geographical topologies, climatic conditions, and emission structures across cities. By modeling intrinsic multi-scale depen-dencies and temporal evolution rates, AirFlow capture universal atmospheric dynamics beyond specific regions. To further leverage this property, we adopt a cross-city transfer learning (TL) strategy, where the model is ini-tialized with pre-trained weights from Beijing and fine-tuned on two target domains: Tianjin (physically prox-imate) and Hangzhou (geographically distant with dis-tinct emission profiles). As shown in Table 10, TL strategy yields improve-ments in Tianjin, suggesting that the model transfers shared regional transport dynamics and background at-mospheric states within geographically proximate areas. This improvement indicates that the learned representa-tions encode not only local correlations but also physi-cally meaningful cross-city dependencies. In contrast, in Hangzhou, the model still maintains competitive perfor-mance across major pollutants, implying that the cap-tured temporal evolution patterns are invariant to re-gional differences. The relatively slight variation observed 14 Table 6: Performance comparison of different spatial dependency modeling against AirFlow. Model Variant Beijing Tianjin Hangzhou RMSE ↓ MAE ↓ R2 ↑ RMSE ↓ MAE ↓ R2 ↑ RMSE ↓ MAE ↓ R2 ↑
+
+Spatial Loss 25.21 13.97 0.5564 31.27 19.04 0.2316 19.84 12.82 0.3285 Coord. Embed 15.29 7.95 0.8369 19.57 11.33 0.6991 12.70 7.50 0.7247 GCN Fusion 15.19 8.04 0.8390 19.56 11.47 0.6992 12.89 7.64 0.7162 AirFlow 14.42 7.47 0.8513 18.87 10.97 0.7124 12.42 7.28 0.7455 
+
+Table 7: Performance comparison under different input lengths and forecasting horizons. Best results are in bold .Model 12h →6h 24h →6h 12h →12h 24h →12h RMSE ↓ MAE ↓ R2 ↑ RMSE ↓ MAE ↓ R2 ↑ RMSE ↓ MAE ↓ R2 ↑ RMSE ↓ MAE ↓ R2 ↑
+
+BiLSTM 16.44 9.01 0.8113 18.89 9.58 0.7522 23.52 13.03 0.6148 24.51 13.63 0.5842 ConvLSTM 16.48 9.08 0.8104 18.34 9.59 0.7665 24.28 13.6 0.5896 23.56 13.68 0.6158 Transformer 17.33 10.34 0.7903 18.47 9.76 0.7630 23.96 13.15 0.6002 25.32 14.05 0.5564 PM2.5-GNN 15.84 8.42 0.8262 16.88 8.97 0.8059 22.27 12.33 0.6511 23.01 12.88 0.6287 LNN 17.02 8.67 0.7978 18.27 9.36 0.7683 22.71 12.59 0.6409 24.15 13.89 0.5964 PatchTST 16.12 8.83 0.8186 17.43 9.08 0.7891 22.53 12.66 0.6467 23.31 13.06 0.6238 AirFormer 15.68 8.40 0.8284 17.53 8.71 0.7867 22.10 12.21 0.6641 24.01 13.01 0.6001 STAAGCN 15.98 8.41 0.8132 17.97 8.73 0.7701 22.23 12.25 0.6467 23.11 12.73 0.6242 iTransformer 15.88 8.58 0.8239 16.47 8.91 0.8118 22.49 12.35 0.6530 23.33 12.82 0.6232 Mamba 16.64 8.62 0.8068 19.18 9.66 0.7445 24.43 13.42 0.5845 24.49 13.43 0.5848 AirPhyNet 15.93 8.87 0.8127 17.30 9.04 0.8145 22.63 13.28 0.6317 22.61 13.40 0.6343 MGSFformer 15.62 8.29 0.8297 16.08 8.67 0.8192 22.21 12.33 0.6502 23.55 13.32 0.6175 Air-DualODE 15.22 8.18 0.8348 16.32 8.68 0.8188 22.43 12.65 0.6422 22.51 12.45 0.6387 AirFlow (Ours) 14.42 7.47 0.8513 15.73 8.24 0.8283 21.84 11.47 0.6679 22.47 11.89 0.6460 12h 6h 24h 6h 12h 12h 24h 12h 0 0.5 0.5 11Standard Deviation Standard Deviation    
+
+> 0.2 0.4 0.6
+> 0.1 0.3 0.5 0.7 0.9 0.95 0.99 Correlation 00.5 0.5 11Standard Deviation Standard Deviation
+> 0.2 0.4 0.6
+> 0.1 0.3 0.5 0.7 0.9 0.95 0.99 Correlation 00.5 0.5 111.5 1.5 Standard Deviation Standard Deviation
+> 0.25 0.5 0.75 1
+> 0.1 0.3 0.5 0.7 0.9 0.95 0.99 Correlation 00.5 0.5 111.5 1.5 Standard Deviation Standard Deviation
+> 0.25 0.5 0.75 1
+> 0.1 0.3 0.5 0.7 0.9 0.95 0.99 Correlation Observation STAAGCN BiLSTM iTransformer ConvLSTM Mamba Transformer AirPhyNet PM2.5-GNN MGSFformer LNN Air-DualODE PatchTST AirFlow Airformer
+
+Figure 6: Taylor diagram comparing the forecasting performance of different models on the Beijing PM 2.5 forecasting task under varying input lengths and forecasting horizons. The diagram visualizes the correlation coefficient, relative standard deviation, and centered root mean square difference between model predictions and observations. The Observation point is the ideal forecasting with perfect correlation, matched variability, and zero centered difference. Models located closer to the Observation point indicate better overall agreement with the ground truth. 15 2024 Test Set 2025 Test Set PM 2.5 2024-10-24 2024-10-26 2024-10-28 2024-10-30 2024-11-01 2024-11-03 050 100 150 200 2025-06-20 2025-06-24 2025-06-28 2025-07-02 2025-07-06 025 50 75 PM 10 2024-10-24 2024-10-26 2024-10-28 2024-10-30 2024-11-01 2024-11-03 050 100 150 200 250 2025-06-20 2025-06-24 2025-06-28 2025-07-02 2025-07-06 050 100 NO 22024-10-24 2024-10-26 2024-10-28 2024-10-30 2024-11-01 2024-11-03 020 40 60 80 100 2025-06-20 2025-06-24 2025-06-28 2025-07-02 2025-07-06 025 50 75 AQI 2024-10-24 2024-10-26 2024-10-28 2024-10-30 2024-11-01 2024-11-03 050 100 150 200 250 2025-06-20 2025-06-24 2025-06-28 2025-07-02 2025-07-06 050 100 Ground Truth Prediction Figure 7: Comparison between ground truth and predicted values for PM 2.5, PM 10 , NO 2, and AQI on the 2024 and 2025 test sets from the Beijing dataset. 16 Table 8: Multi-pollutant Test Set Characteristics Com-parison. Dataset Pollutant 2024 Test Set 2025 Test Set Mean Std. Max Mean Std. Max Beijing PM 2.5 33.55 37.73 227 25.67 25.93 455 PM 10 60.70 57.07 562 49.74 44.26 1111 NO 2 31.46 22.65 198 19.62 18.05 202 AQI 55.45 45.22 462 50.32 34.06 500 Tianjin PM 2.5 40.21 35.63 260 32.57 31.90 1048 PM 10 69.14 49.33 188 60.70 48.66 1186 NO 2 44.44 25.63 188 27.02 21.85 213 AQI 63.22 41.72 310 59.07 37.84 500 Hangzhou PM 2.5 33.39 24.23 175 29.00 23.64 558 PM 10 54.78 32.81 239 48.68 38.77 843 NO 2 38.08 18.22 157 25.40 18.42 186 AQI 53.52 28.36 225 49.76 31.42 500 Table 9: Case study performance of AirFlow on different time periods. Dataset Pollutant 10/20–12/31 2024 01/01–09/30 2025 RMSE ↓ MAE ↓ R2 ↑ RMSE ↓ MAE ↓ R2 ↑                                                                        
+
+> Beijing PM 2.514.42 7.47 0.8513 12.79 7.11 0.7582 PM 10 22.43 13.02 0.8443 24.76 12.87 0.7532 NO 212.65 8.55 0.6889 11.02 6.62 0.6471 AQI 19.24 10.87 0.8184 19.10 10.81 0.7268 Tianjin PM 2.518.87 10.97 0.7124 18.13 9.70 0.6746 PM 10 26.87 16.81 0.7046 28.69 16.42 0.6483 NO 214.54 9.78 0.6793 12.93 7.98 0.6471 AQI 22.58 13.48 0.7023 24.16 14.42 0.6657 Hangzhou PM 2.512.42 7.28 0.7455 12.23 6.79 0.7306 PM 10 16.88 10.56 0.7224 22.17 10.46 0.6427 NO 210.85 7.43 0.6453 9.63 6.06 0.7241 AQI 14.84 9.02 0.7105 17.15 8.93 0.6767
+
+for NO 2 further highlights that gaseous pollutants are more sensitive to localized emission sources such as traf-fic and urban layouts, making them less transferable than particulate matter. These results suggest that Air-Flow learns transferable temporal dynamics while retain-ing sufficient flexibility to adapt to city-specific charac-teristics, enabling stable performance across both near-domain and far-domain scenarios. 
+
+A.4 Visualization of Experimental Results 
+
+The figures presented in this section provide an intuitive visual comparison of model performance across different pollutants, evaluation metrics, and datasets. Figures 8 and 9 visualize the comparative RMSE, MAE, and R 2
+
+results for each model on three datasets, where the red dashed reference line marks the performance of AirFlow. 17 RMSE MAE Beijing 15 20 25 30 
+
+PM 2.5 PM 10 NO 2 AQI 
+
+01810 12 14 16 18 
+
+PM 2.5 PM 10 NO 2 AQI 
+
+01Tianjin 14 16 18 20 22 24 26 28 30 
+
+PM 2.5 PM 10 NO 2 AQI 
+
+0110 12 14 16 18 20 
+
+PM 2.5 PM 10 NO 2 AQI 
+
+01Hangzhou 10 12 14 16 18 20 22 24 26 
+
+PM 2.5 PM 10 NO 2 AQI 
+
+016810 12 14 16 
+
+PM 2.5 PM 10 NO 2 AQI 
+
+01BiLSTM STAAGCN ConvLSTM iTransformer Transformer Mamba PM2.5-GNN AirPhyNet LNN MGSFformer PatchTST Air-DualODE Airformer AirFlow Figure 8: Comparative performance of baseline and proposed models based on RMSE and MAE. 18 Table 10: Comparative performance of AirFlow and its transfer learning variant AirFlow (TL) on Tianjin and Hangzhou datasets, where models are initialized with pre-trained weights from Beijing and fine-tuned on each target city’s training data. Dataset Model PM 2.5 PM 10 NO 2 AQI RMSE ↓ MAE ↓ R2 ↑ RMSE ↓ MAE ↓ R2 ↑ RMSE ↓ MAE ↓ R2 ↑ RMSE ↓ MAE ↓ R2 ↑
+
+Tianjin AirFlow 18.87 10.97 0.7124 26.87 16.81 0.7046 14.54 9.78 0.6793 22.58 13.48 0.7023 AirFlow (TL) 18.52 10.76 0.7182 25.98 16.37 0.7153 14.32 9.64 0.6832 22.17 13.12 0.7111 Hangzhou AirFlow 12.42 7.28 0.7455 16.88 10.56 0.7224 10.85 7.43 0.6453 14.84 9.02 0.7105 AirFlow (TL) 12.30 7.17 0.7501 16.64 10.33 0.7319 10.97 7.45 0.6421 14.46 8.77 0.7396 PM 2.5 PM 10 NO 2AQI Beijing BiLSTM ConvLSTM Transformer PM2.5-GNN LNN PatchTST Airformer STAAGCN iTransformer Mamba AirPhyNet MGSFformer Air-DualODE AirFlow 
+
+> 0.4 0.6 0.8 1.0
+
+BiLSTM ConvLSTM Transformer PM2.5-GNN LNN PatchTST Airformer STAAGCN iTransformer Mamba AirPhyNet MGSFformer Air-DualODE AirFlow 
+
+> 0.4 0.6 0.8 1.0
+
+BiLSTM ConvLSTM Transformer PM2.5-GNN LNN PatchTST Airformer STAAGCN iTransformer Mamba AirPhyNet MGSFformer Air-DualODE AirFlow 
+
+> 0.4 0.6 0.8 1.0
+
+BiLSTM ConvLSTM Transformer PM2.5-GNN LNN PatchTST Airformer STAAGCN iTransformer Mamba AirPhyNet MGSFformer Air-DualODE AirFlow 
+
+> 0.4 0.6 0.8 1.0 Tianjin
+
+BiLSTM ConvLSTM Transformer PM2.5-GNN LNN PatchTST Airformer STAAGCN iTransformer Mamba AirPhyNet MGSFformer Air-DualODE AirFlow 
+
+> 0.4 0.6 0.8 1.0
+
+BiLSTM ConvLSTM Transformer PM2.5-GNN LNN PatchTST Airformer STAAGCN iTransformer Mamba AirPhyNet MGSFformer Air-DualODE AirFlow 
+
+> 0.4 0.6 0.8 1.0
+
+BiLSTM ConvLSTM Transformer PM2.5-GNN LNN PatchTST Airformer STAAGCN iTransformer Mamba AirPhyNet MGSFformer Air-DualODE AirFlow 
+
+> 0.4 0.6 0.8 1.0
+
+BiLSTM ConvLSTM Transformer PM2.5-GNN LNN PatchTST Airformer STAAGCN iTransformer Mamba AirPhyNet MGSFformer Air-DualODE AirFlow 
+
+> 0.4 0.6 0.8 1.0 Hangzhou
+
+BiLSTM ConvLSTM Transformer PM2.5-GNN LNN PatchTST Airformer STAAGCN iTransformer Mamba AirPhyNet MGSFformer Air-DualODE AirFlow 
+
+> 0.4 0.6 0.8 1.0
+
+BiLSTM ConvLSTM Transformer PM2.5-GNN LNN PatchTST Airformer STAAGCN iTransformer Mamba AirPhyNet MGSFformer Air-DualODE AirFlow 
+
+> 0.4 0.6 0.8 1.0
+
+BiLSTM ConvLSTM Transformer PM2.5-GNN LNN PatchTST Airformer STAAGCN iTransformer Mamba AirPhyNet MGSFformer Air-DualODE AirFlow 
+
+> 0.4 0.6 0.8 1.0
+
+BiLSTM ConvLSTM Transformer PM2.5-GNN LNN PatchTST Airformer STAAGCN iTransformer Mamba AirPhyNet MGSFformer Air-DualODE AirFlow 
+
+> 0.4 0.6 0.8 1.0
+
+Figure 9: Comparative performance of baseline and proposed models based on R 2.19

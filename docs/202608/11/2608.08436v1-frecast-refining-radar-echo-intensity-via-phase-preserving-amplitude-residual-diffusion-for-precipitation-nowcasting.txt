@@ -1,0 +1,463 @@
+Title: FreCast: Refining Radar Echo Intensity via Phase-Preserving Amplitude Residual Diffusion for Precipitation Nowcasting
+
+URL Source: https://arxiv.org/pdf/2608.08436v1
+
+Published Time: Tue, 11 Aug 2026 01:18:01 GMT
+
+Number of Pages: 12
+
+Markdown Content:
+> 1
+
+# FreCast: Refining Radar Echo Intensity via Phase-Preserving Amplitude Residual Diffusion for Precipitation Nowcasting 
+
+Heping Fang, Zihuai Yin, Kaicheng Mao, Peiguang Zhang and Peng Yang, Senior Member, IEEE 
+
+Abstract —Precipitation nowcasting predicts the spatiotemporal evolution of future radar echoes from historical radar echo sequences, thereby estimating the occurrence, development, and movement of precipitation over the near term. In recent years, deep learning has become an important approach to precipita-tion nowcasting. Although state-of-the-art models can generally capture the overall spatial distribution of future precipitation, their predictions still exhibit substantial biases in radar echo intensity at individual locations. This observation motivates a more targeted strategy for reducing forecast errors. Instead of regenerating an entire radar echo sequence without spatial constraints, the predicted precipitation structure can be used to guide the refinement of echo intensities at individual locations. This structure-guided refinement directly targets echo intensity biases. Accordingly, we propose FreCast, a two-stage framework for radar echo prediction. The first stage generates an initial forecast of future radar echoes. The second stage uses the spatial structure of the initial forecast as a constraint to further correct intensity biases at individual locations in the first-stage predic-tion. Experiments on three datasets demonstrate that FreCast achieves consistent improvements across forecast skill metrics. Qualitative results further show that FreCast better preserves rainband continuity and intense precipitation structures at longer lead times. 
+
+Index Terms —Precipitation nowcasting, radar echo prediction, spatiotemporal predictive learning, frequency-domain correction, amplitude residual diffusion. 
+
+I. I NTRODUCTION 
+
+# PRECIPITATION nowcasting seeks to predict the initia-tion, evolution and movement of precipitation systems over short lead time, typically 0–6h [1], [2]. Extreme precip-itation often triggers floods, landslides and urban inundation, threatening human life and socioeconomic stability [3]–[6]. Timely and reliable nowcasts are therefore needed for early warning and emergency response. 
+
+This work was supported in part by the National Natural Science Foundation of China under Grant 62272210, and Grant 62331014.(Corresponding author: Peng Yang). Heping Fang is with Department of Statistics and Data Science, Southern University of Science and Technology, Shenzhen 518055, China (e-mail: 12331106@mail.sustech.edu.cn). Zihuai Yin is with Department of Statistics and Data Science, Southern University of Science and Technology, Shenzhen 518055, China (e-mail: 12312003@mail.sustech.edu.cn). Kaicheng Mao is with Department of Statistics and Data Science, Southern University of Science and Technology, Shenzhen 518055, China (e-mail: 12311704@mail.sustech.edu.cn). Peiguang Zhang is with Department of Computer Science and Engineering, Southern University of Science and Technology, Shenzhen 518055, China (e-mail: 12431266@mail.sustech.edu.cn). Peng Yang is with Department of Statistics and Data Science, Southern University of Science and Technology, Shenzhen 518055, China, and also with Guangdong Provincial Key Laboratory of Brain-Inspired Intelligent Computation, Department of Computer Science and Engineering and the Department of Statistics and Data Science, Southern University of Science and Technology, Shenzhen 518055, China (e-mail: yangp@sustech.edu.cn). 
+
+Weather radar provides high-frequency, kilometer-scale ob-servations of hydrometeor distributions across broad cloud and precipitation systems [7], [8]. Radar echo sequences can therefore reflect the evolution of precipitation. Unlike general video prediction, radar echo prediction does not primarily pur-sue perceptual realism. Instead, it places stricter requirements on the quantitative accuracy of echo intensity at each spatial location [9]. Traditional numerical weather prediction is constrained by update cycles, model resolution, and physical parameteriza-tions, resulting in limited performance [4]. Radar echo extrap-olation methods [10]–[12] can predict echo displacement using estimated motion fields, but they struggle to capture intensity changes that cannot be explained by horizontal motion [13]. In recent years, deep learning methods have improved radar echo prediction through end-to-end spatiotemporal modeling and have become an important approach to precipitation nowcasting. Most existing deep learning approaches to precipitation nowcasting predict future radar echoes directly in the pixel domain and can be broadly divided into deterministic and generative paradigms. Deterministic forecasting models [14]– [17] map an observed radar sequence to a single future sequence and are commonly trained using pixelwise recon-struction losses. These models tend to produce overly smooth predictions and underestimate the peak intensities of strong echoes. In contrast, generative forecasting models [8], [18]– [20] learn the conditional distribution of pixel-level future echoes and can recover visually richer local details, but they do not necessarily predict radar echo intensity fields accurately, with the resulting errors manifesting as echo fragmentation, spatial displacement, and structural deformation. These two modeling paradigms therefore exhibit distinct error patterns. Rather than attributing these errors primarily to architectural limitations of different deep learning models, we re-examine existing nowcasting models by investigating where their pre-diction errors arise. We evaluate AlphaPre [21], a recently proposed represen-tative model for precipitation nowcasting, on the Storm Event Imagery (SEVIR) dataset [22] and analyze its predictions. Fig. 1 uses AlphaPre as an illustrative example to visualize the sources of error in radar echo forecasts. The results show that AlphaPre can locate the main precipitation regions with reasonable accuracy, while a substantial proportion of the remaining error arises from inaccurate estimates of echo intensity within the hit regions. The qualitative forecasts of six representative baseline models shown later in Fig. 10 also exhibit similar intensity estimation errors. These preliminary observations inspire us to explore whether forecast perfor-arXiv:2608.08436v1 [cs.CV] 9 Aug 2026 2         
+
+> Fig. 1. Analysis of error sources in radar echo nowcasting. At each spatial location, hit denotes an echo in both the prediction and ground truth, miss
+> denotes no predicted echo where the ground truth contains one, and false alarm denotes a predicted echo where the ground truth contains none. (a) , A SEVIR test example comparing valid echo regions predicted by the AlphaPre baseline model with the corresponding ground-truth regions, together with categorical mask overlays and absolute error maps. Despite a hit rate of 0.9882, substantial echo intensity errors remain within the hit region. (b) ,Distribution of hit rates over the test set, with mean and median values of 0.707 and 0.787, respectively, indicating that the prediction errors are not primarily caused by large-scale spatial displacement. (c) , Contributions of the hit, missed, and false alarm regions to the total absolute error at different forecast lead times. The hit region, shown in green, consistently accounts for the largest proportion of the total error.
+
+mance can be further improved by correcting echo-intensity biases within predicted precipitation regions. To specifically correct echo-intensity biases, we formally interpret the evolution of future radar echoes as the joint effect of advective transport and non-advective intensity change. Un-der this formulation, we adopt a two-stage predict-then-refine strategy. This strategy separately models the baseline forecast of the future echo field and the correction of its remaining intensity biases. Existing two-stage nowcasting methods typ-ically first generate a deterministic baseline forecast in the pixel domain. They then learn a stochastic residual in the same domain to compensate for variations not fully captured by the baseline [23], [24]. From the intensity evolution perspective adopted in this study, this process also can be interpreted as a form of intensity-field decomposition. The resulting pixel-domain residual is typically defined as the pixelwise difference between the baseline forecast and the ground truth. However, it contains both spatial-structure errors and echo-intensity errors. Consequently, a pixel-domain refinement model may alter the precipitation structure predicted in the first stage while recovering local intensity details. To impose a more explicit spatial constraint on refinement, we formulate the second-stage intensity correction in the frequency domain. Previous research has shown that phase variations in the frequency domain are strongly associated with the changes in the locations and morphologies of precipitation regions, whereas amplitude variations are strongly associated with changes in precipitation intensity [21], [25], [26]. Although amplitude and phase do not perfectly separate structure from intensity, they provide useful proxy representations for constraining the refinement process. Based on this insight, we propose FreCast , a two-stage framework for radar echo prediction. In the first stage, Fre-Cast predicts the future amplitude and phase spectra and reconstructs an initial forecast. In the second stage, FreCast retains the predicted phase as a spatial-structure anchor and models only the remaining amplitude-spectrum residual. The supervision target is defined as the difference between the normalized ground-truth amplitude spectrum and the base-line amplitude spectrum. This design focuses the generative correction on intensity-related spectral errors while limiting structural changes introduced during refinement. The main contributions of this study are summarized as follows: 1) We conduct an illustrative error-source analysis of an AlphaPre forecast for a case in the SEVIR dataset. This preliminary observation motivates us to investigate whether targeted correction of echo intensity biases can further improve nowcasting performance when the over-all spatial structure has been predicted with reasonable accuracy. 2) We introduce a structurally constrained frequency-domain refinement strategy for two-stage precipitation nowcasting. The strategy retains the phase predicted in the first stage as a spatial-structure anchor and models only an explicitly supervised amplitude-spectrum resid-ual. 3) We develop FreCast to implement this two-stage model-ing strategy. Experiments on multiple radar echo datasets demonstrate that FreCast reduces echo intensity biases and improves nowcasting performance. The remainder of this paper is organized as follows. Sec-tion II and Section III review the related work and present the motivation, respectively. Section IV describes FreCast, Section V reports the experiments, and Section VI concludes the paper and discusses future research directions. II. R ELATED WORKS 
+
+Existing deep learning-based methods for precipitation now-casting can be reviewed along two complementary dimensions. These dimensions concern the forecasting paradigm and the modeling domain. With respect to the forecasting paradigm, existing methods can be broadly divided into deterministic and probabilistic generative approaches. With respect to the modeling domain, recent studies have extended prediction from the pixel domain to the frequency domain. Following this organization, we first review deterministic forecasting methods. We then discuss probabilistic generative forecasting and residual refinement. Finally, we position FreCast with respect to the most closely related approaches. 3
+
+A. Deterministic Spatiotemporal Predictive Learning for Pre-cipitation Nowcasting 
+
+Based on how temporal dependencies are modeled, de-terministic precipitation nowcasting methods can be grouped into recurrent and non-recurrent approaches. ConvLSTM is a representative recurrent method. PredRNN, MIM, Pre-dRNN++, and MAU further improve memory propagation, nonstationary dynamics modeling, and motion representa-tion [14], [27]–[30]. Non-recurrent methods employ convo-lutional encoder–translator–decoder architectures or attention mechanisms. These designs improve computational paral-lelism and enlarge spatiotemporal receptive fields. Repre-sentative methods include SimVP, TAU, EarthFormer, and Rainformer [16], [31]–[33]. Despite their architectural dif-ferences, these models are commonly trained with pixel-wise reconstruction objectives. They capture dominant motion trends and large-scale echo organization. Thus, they also serve as important baselines for subsequent refinement methods. However, when future evolution is multimodal, regression objectives may favor the conditional mean. At longer lead times, this tendency may lead to degradation of the detail and underestimation of strong echoes. 
+
+B. Probabilistic Spatiotemporal Predictive Learning and Residual Refinement for Precipitation Nowcasting 
+
+Based on their modeling targets, probabilistic generative methods for precipitation nowcasting can be divided into direct full-field generation and deterministic forecast-guided refinement. Methods in the first group directly learn the con-ditional distribution of complete future radar echo sequences. DGMR [8] employs conditional adversarial generation. It constrains the generated sequences using spatial and temporal discriminators. PreDiff [18] instead performs conditional dif-fusion in a compressed latent space. A knowledge alignment mechanism guides the generation process. Methods in the sec-ond group first produce a physics-constrained or deterministic intermediate prediction. This prediction conditions the genera-tion of local variations that the deterministic forecast does not fully capture. NowcastNet [3] constrains its generative network using the output of a differentiable physical evolution network. DiffCast [23] models the residual in the pixel-domain between a deterministic prediction and the ground truth using a tem-porally conditioned diffusion process. CasCast [24] cascades deterministic mesoscale prediction with probabilistic modeling of small-scale variations in a latent space. Compared with di-rect full-field generation, these methods condition probabilistic generation on a structured intermediate prediction. However, they differ in their refinement targets and modeling domains. 
+
+C. Frequency-Domain Modeling for Precipitation Nowcasting 
+
+Frequency information has been incorporated into precipi-tation nowcasting through training objectives, predictive rep-resentations, and frequency-decomposed stochastic modeling. FACL [26] replaces conventional objectives of type L2 with Fourier amplitude and correlation losses. It introduces spectral constraints at the optimization level without changing the full-field prediction task. AlphaPre [21] introduces frequency decomposition at the representation level. It separately predicts future amplitude and phase representations. AlphaMixer then fuses these representations to reconstruct the complete future echo sequence deterministically. DuoCast [20] uses a different decomposition strategy. It projects the complete future field into low frequency and high frequency target components. Separate stochastic diffusion processes model the two com-ponents. The high-frequency stage is conditioned on the low-frequency prediction and refines local variations in a latent space. The role of frequency information therefore depends on where it is introduced into the forecasting pipeline. It can provide spectral supervision or support decomposed predictive modeling. 
+
+D. Positioning of FreCast 
+
+FreCast follows a two-stage paradigm in which baseline prediction is followed by residual correction. Under this paradigm, the most closely related methods are AlphaPre, DiffCast, and DuoCast. AlphaPre deterministically learns and fuses future amplitude and phase representations to recon-struct the complete future echo sequence. DiffCast uses a deterministic prediction as its baseline. It applies diffusion to the pixel-domain residual between the ground truth and this baseline. DuoCast projects the complete echo field into low- and high-frequency components. Separate low- and high-frequency diffusion models represent the two components. The high-frequency model is conditioned on the low-frequency prediction. By contrast, FreCast restricts second-stage stochas-tic refinement to the amplitude-spectrum residual of a deter-ministic spectral baseline. During spectral recombination, it reuses the predicted baseline phase and does not sample a phase residual. III. M OTIVATION 
+
+A. From Forecast Error Analysis to Intensity-Field Evolution Modeling 
+
+Precipitation nowcasting is commonly formulated as an im-age sequence prediction problem. Given historical radar echo observations X = {Xt}0
+
+> t=−Tin +1
+
+, with X ∈ RTin ×C×H×W , a model learns a mapping function Fθ to predict the future radar echo sequence Y = {Yt}Tout  
+
+> t=1
+
+, with Y ∈ RTout ×C×H×W . This formulation can be written as 
+
+Y = Fθ (X). (1) According to the error-source analysis in Section I, pro-nounced echo-intensity biases within precipitation hit regions constitute a major source of forecast error. Radar pixel values encode quantitatively meaningful echo intensities. This error pattern is therefore difficult to interpret clearly from the per-spective of image sequence prediction alone. To distinguish the motion of spatial echo structures from local changes in echo intensity, we regard radar sequences as discrete observations of a spatiotemporal intensity field. We then analyze future echoes from the perspective of intensity-field evolution. 4
+
+Each radar echo frame can be represented as an intensity field 
+
+It = {I(p, t ) | p ∈ Ω} , (2) where p denotes a two-dimensional spatial location and I(p, t )
+
+denotes the radar echo intensity at location p and time t.Accordingly, we formulate the prediction of intensity-field evolution as 
+
+I(p, t + ℓ) = Fθ ({I(q, τ ) | q ∈ Ω, τ }) , (3) where τ indexes the historical time steps within the input window, i.e., τ = t − Tin + 1 , . . . , t . The variable ℓ denotes the forecast lead time and satisfies ℓ = 1, . . . , T out . This formulation requires the model to estimate the amount by which echo intensity increases or decreases at each spatial location. Such changes manifest as the intensification and decay of strong echo cores, as well as echo initiation and dissipation. 
+
+B. Decomposition of Intensity Fields 
+
+From the intensity-field perspective, radar echo evolution can be conceptually viewed as the combined effect of advec-tive transport and nonadvective processes. The corresponding continuous form can be expressed through a transport–source relation [3] ∂I ∂t + u · ∇ I = S, (4) where u denotes the echo motion field. The term u · ∇ I
+
+describes the advective transport of existing echo structures. The term S represents local source–sink effects that cannot be explained by advection alone. Within a finite forecast horizon, the future intensity field can be conceptually approximated as 
+
+I(p, t + ℓ) ≈ Iadv (p, t + ℓ) + Ichg (p, t + ℓ), (5) where Iadv denotes the background echo field produced by advective transport and Ichg denotes the signed local non-advective intensity change. This decomposition has a clear physical interpretation, but its components are not directly available as supervised learning targets. Standard radar echo datasets provide only the observed intensity fields I(p, t + ℓ).Separate labels for the true advective component Iadv and the local change component Ichg are unavailable. Existing models can therefore only approximate this decomposition indirectly. More specifically, full-field forecasting methods include ConvLSTM [14], SimVP [31], DGMR [8], and PreDiff [18]. These methods can be viewed as directly learning the future echo field jointly determined by Iadv and Ichg through a holis-tic black-box mapping ˆY = Fθ (X). A second class of meth-ods uses structured intermediate forecasts to guide subsequent probabilistic generation. NowcastNet [3], DiffCast [23], and CasCast [24] introduce different forms of intermediate forecast conditions and then model residual corrections. Their generic formulation can be written as ˆY = qϕ(X)+ ϵψ (X, q ϕ(X), z ) .
+
+Here, qϕ(X) produces a deterministic forecast. The variable 
+
+z ∼ pz (z) denotes random noise or a latent variable used to characterize uncertainty in future evolution. The function ϵψ (·)
+
+generates the residual correction term. When forecast errors are analyzed in the pixel domain, the prediction error associated with a forecast ˆI(p, t + ℓ) can be written as e(p, t + ℓ) = ˆI(p, t + ℓ) − I(p, t + ℓ). This error can arise from different factors. A spatial displacement of the predicted echo structure can produce a large pixel error even when the predicted intensity is reasonable. Conversely, a substantial error can also arise when the echo location is approximately correct but its intensity is underestimated or overestimated. The pixel-domain error can therefore be conceptually written as 
+
+e(p, t + ℓ) ≈ eloc (p, t + ℓ) + eint (p, t + ℓ), (6) where eloc (p, t + ℓ) denotes the location-related error and 
+
+eint (p, t + ℓ) denotes the intensity-related error. These two components are difficult to separate in the original pixel domain because spatial location and echo intensity jointly determine each pixel value. Consequently, directly learning the full mapping ˆY = Fθ (X) or directly modeling the pixel residual ∆Y = Y − ˆY can mix spatial-structure biases and intensity biases within a single correction target. 
+
+C. Amplitude-Spectrum Residual Refinement Under a Base-line Phase Constraint 
+
+To obtain a more explicitly constrained proxy represen-tation, we transform the radar echo intensity field into the frequency domain. For a future radar echo frame It+ℓ, its two-dimensional Fourier transform can be expressed as 
+
+Zt+ℓ = FFT ( It+ℓ) = At+ℓ ⊙ exp ( iΦt+ℓ) , (7) where At+ℓ = |Zt+ℓ| and Φt+ℓ = arg( Zt+ℓ) denote the amplitude spectrum and phase spectrum, respectively. The symbol ⊙ denotes the Hadamard product. Amplitude and phase are not exact or independent representations of echo intensity and spatial structure. Nevertheless, compared with pixel-domain residual decomposition, they can be regarded as proxy representations with greater relative sensitivity to intensity-related and structure-related changes, respectively. Motivated by this perspective, we formulate precipitation nowcasting as a frequency-domain amplitude-residual refine-ment task under a baseline phase constraint. This formulation uses the spatial-structure prior contained in the initial forecast while providing a more targeted direction for correcting local intensity errors. IV. M ETHODOLOGY 
+
+A. Overview 
+
+As shown in Fig. 2, FreCast consists of two stages. Section IV-B presents the deterministic spectral forecasting stage. AmpliNet and PhaseNet predict the amplitude and phase, re-spectively, while ImagePriorNet performs image-prior-guided spectral correction. MixerNet and SpatialRefiner subsequently perform spectrum-to-image reconstruction. Section IV-C in-troduces the conditional amplitude-residual diffusion network, AmpResidualDM, and phase-preserving reconstruction. Sec-tion IV-D describes the two-stage training procedure and the corresponding inference process. 5 
+
+> Fig. 2. Overall framework of FreCast. Given a sequence of historical radar echo frames, the backbone first predicts the future amplitude and phase spectra in the frequency domain and reconstructs a structured deterministic baseline forecast. The amplitude residual diffusion model then generates the remaining amplitude residual conditioned on the baseline amplitude and low-frequency phase structure. Finally, the sampled amplitude residual is added back to the baseline amplitude, while the phase is retained as a spatial structural anchor. The final precipitation nowcast is obtained through inverse transformation.
+
+B. Deterministic Spectral Baseline 
+
+The deterministic backbone provides the structured spectral reference on which amplitude residual correction is performed. For each historical radar frame Iτ , where τ = t − Tin +1, . . . , t , we compute Zτ = FFT( Iτ ), with Aτ = |Zτ | and 
+
+Φτ = arg( Zτ ). Here, Aτ describes the frequency-energy distribution, while Φτ carries spatial alignment information. The backbone predicts these two components with separate but structurally similar branches. 
+
+1) Amplitude and Phase Prediction: As shown in Fig. 3, AmpliNet predicts the future amplitude spectra from historical amplitude information and frequency coordinates. Its input is HA = Concat( NA(Aτ ), U), where NA(·) denotes the amplitude normalization operator and U denotes the two-dimensional frequency-coordinate map. PhaseNet uses the same multi-branch prediction principle as AmpliNet, but its input is adapted to the periodic nature of phase. It takes sine and cosine phase representations, amplitude information, and frequency coordinates as inputs 
+
+HΦ = Concat   sin( Φτ ), cos( Φτ ), NA(Aτ ), U. (8) The two branches then predict the raw future amplitude and phase spectra as 
+
+¯At+ℓ = N −1 
+
+> A
+
+(NA(At) + fA(HA)) ,
+
+¯Φt+ℓ = Φt + fΦ(HΦ). (9) Here, fA(·) and fΦ(·) denote AmpliNet and PhaseNet, respec-tively. 
+
+2) Image-Prior Spectrum Correction: Frequency-domain prediction alone may miss local morphology cues that are more explicit in the image domain. As illustrated in Fig. 4, we introduce ImagePriorNet and ImageSpectrumCorrector to pro-vide a conservative image-guided correction to the raw spectral prediction. To distinguish the amplitude domains involved in the subsequent operations, we denote the normalized raw amplitude prediction by ¯An 
+
+> t+ℓ
+
+= NA( ¯At+ℓ). The superscript 
+
+> Fig. 3. Amplitude spectrum prediction branch. AmpliNet learns the evolution of future amplitude spectra and provides the intensity basis for subsequent reconstruction. PhaseNet adopts the same prediction structure but differs in its input and output representations.
+
+n indicates that an amplitude quantity is represented in the normalized domain. ImagePriorNet first produces an image-domain prior Pt+ℓ
+
+from the historical radar echo sequence. The prior is then transformed into the frequency domain as Zpt+ℓ =FFT( Pt+ℓ), with Apt+ℓ = |Zpt+ℓ| and Φpt+ℓ = arg( Zpt+ℓ).The superscript p denotes a quantity derived from the image-domain prior. The spectral discrepancy between the image prior and the raw branch prediction is computed as 
+
+RpA,t +ℓ = NA(Apt+ℓ) − ¯An
+
+> t+ℓ
+
+,
+
+Rp 
+
+> Φ,t +ℓ
+
+= Φpt+ℓ − ¯Φt+ℓ. (10) Instead of directly replacing the predicted spectra, ImageSpec-trumCorrector injects these residuals through learnable gates: 
+
+ˆA0,n 
+
+> t+ℓ
+
+= ¯An 
+
+> t+ℓ
+
++ GA,t +ℓ ⊙ RpA,t +ℓ,
+
+ˆΦ0 
+
+> t+ℓ
+
+= ¯Φt+ℓ + GΦ,t +ℓ ⊙ Γp 
+
+> Φ,t +ℓ
+
+⊙ Rp
+
+> Φ,t +ℓ
+
+,
+
+ˆA0 
+
+> t+ℓ
+
+= N −1 
+
+> A
+
+( ˆA0,n
+
+> t+ℓ
+
+).
+
+(11) Here, GA,t +ℓ and GΦ,t +ℓ are amplitude and phase gates, and 
+
+Γp 
+
+> Φ,t +ℓ
+
+denotes the phase-confidence map estimated from the image prior. The superscript 0 identifies the intermediate spec-tral estimate produced by the first-stage correction path. This design lets the image prior supplement local morphology while preserving the spectral structure learned by the backbone. 6 
+
+> Fig. 4. Image-prior spectrum correction. ImagePriorNet first generates a future echo prior in the image domain. Based on this prior, ImageSpectrumCorrector conservatively corrects the predicted amplitude and phase spectra.
+> Fig. 5. Spectrum-to-image reconstruction and spatial refinement. MixerNet further fuses frequency-domain, temporal and spatial information to obtain a more stable future echo estimate. SpatialRefiner is used to perform lightweight residual refinement.
+
+3) Spectrum-to-Image Reconstruction and Spatial Refine-ment: After spectral correction, the deterministic baseline is reconstructed from the corrected amplitude and phase spectra. The reconstruction and refinement modules are shown in Fig. 5. The baseline complex spectrum is written as 
+
+ˆZ0 
+
+> t+ℓ
+
+= ˆA0 
+
+> t+ℓ
+
+⊙ exp 
+
+
+
+i ˆΦ0
+
+> t+ℓ
+
+
+
+. (12) The corresponding image-domain prediction is obtained by inverse Fourier transform and further processed by MixerNet: 
+
+Ymt+ℓ = Mξ
+
+
+
+IFFT( ˆZ0
+
+> t+ℓ
+
+)
+
+
+
+, (13) where Mξ (·) denotes MixerNet. MixerNet converts the cor-rected spectral representation into temporally coherent radar frames by combining frequency, temporal, and spatial mixing operations. SpatialRefiner then applies a lightweight residual correction in the image domain. It uses the MixerNet prediction, the last observed frame, and the most recent frame difference: 
+
+ˆY0 = Ym + λsSη (Concat[ Ym, X t, X t − Xt−1]) , (14) where Sη (·) denotes SpatialRefiner and λs controls the resid-ual scale. The output ˆY0 is used as the deterministic forecast, and ¯An 
+
+> t+ℓ
+
+and ¯Φt+ℓ serve as the spectral baseline for residual diffusion. The deterministic backbone is trained with image-domain and frequency-domain supervision: 
+
+Ldet = Limg + λALA + λΦLΦ + λP LP . (15) Here, Limg denotes pixel-wise MSE, LA denotes normalized amplitude-spectrum MSE, LΦ denotes an amplitude-weighted circular phase loss, and LP denotes stochastic FACL [26] regularization of the image-prior branch. 
+
+C. Stochastic Amplitude Residual Diffusion 
+
+The deterministic backbone provides a structured prediction, but it may still underestimate or overestimate echo intensity. FreCast therefore models the remaining error as an amplitude residual in the normalized frequency domain. Here, we distin-guish the image-prior-corrected intermediate spectra from the spectral baseline used in the diffusion stage. The corrected intermediate spectra ˆA0,n 
+
+> t+ℓ
+
+and ˆΦ0 
+
+> t+ℓ
+
+are used to reconstruct the intermediate deterministic forecast ˆY0. By contrast, the amplitude residual target and diffusion condition are defined using the raw spectral predictions ¯An 
+
+> t+ℓ
+
+and ¯Φt+ℓ.
+
+1) Amplitude Residual Target and Conditioning: Given the ground-truth future sequence Y , its normalized amplitude spectrum is computed as 
+
+Agt ,n 
+
+> t+ℓ
+
+= NA (|FFT( Yt+ℓ)|) . (16) The normalized amplitude residual is defined by 
+
+∆An 
+
+> t+ℓ
+
+= Agt ,n 
+
+> t+ℓ
+
+− ¯An
+
+> t+ℓ
+
+. (17) It represents the spectral-energy bias left by the deterministic baseline. AmpResidualDM is conditioned on the baseline amplitude and the low-frequency phase structure: 
+
+Ct+ℓ = Concat  Clip( ¯An
+
+> t+ℓ
+
+), cos( Tk( ¯Φt+ℓ)) , sin( Tk( ¯Φt+ℓ)) .
+
+(18) where Tk(·) denotes low-frequency truncation. The amplitude condition provides the current energy baseline, and the phase condition preserves the dominant spatial arrangement. 
+
+2) Diffusion-Based Residual Generation: The architecture of AmpResidualDM is shown in Fig. 6. Let z0 = ∆ An
+
+> t+ℓ
+
+.During training, the forward diffusion process adds Gaussian noise to the residual: 
+
+zs = √¯αsz0 + √1 − ¯αsϵ, ϵ ∼ N (0, I), (19) where s denotes the diffusion step and ¯αs is determined by the noise schedule. The denoising network Dω predicts the injected noise from the noisy residual and the condition: 
+
+ˆϵ = Dω (zs, Ct+ℓ, s ). (20) The diffusion objective is written as 
+
+Ldiff = Es, ϵ [ρ (W ⊙ (ˆ ϵ − ϵ))] , (21) where W is a frequency-dependent weight map and ρ(·) is a smooth robust penalty. 
+
+3) Phase-Preserving Residual Correction: During infer-ence, AmpResidualDM samples an amplitude residual under the condition Ct+ℓ:
+
+∆ ˆAn 
+
+> t+ℓ
+
+∼ pω
+
+ ∆An 
+
+> t+ℓ
+
+| Ct+ℓ
+
+ . (22) The corrected amplitude spectrum is obtained by adding the sampled residual to the deterministic baseline: 
+
+˜An 
+
+> t+ℓ
+
+= ¯An 
+
+> t+ℓ
+
++ ∆ ˆAn
+
+> t+ℓ
+
+,
+
+˜At+ℓ = N −1 
+
+> A
+
+( ˜An
+
+> t+ℓ
+
+). (23) 7  
+
+> Fig. 6. Conditional diffusion model for amplitude residual generation.
+> Fig. 7. Two-stage training and inference strategy of FreCast. FreCast adopts a two-stage training procedure that first learns a deterministic baseline and then models amplitude residual.
+
+The corrected amplitude is then recombined with the baseline phase: 
+
+˜Zt+ℓ = ˜At+ℓ ⊙ exp  i ¯Φt+ℓ
+
+ . (24) The corrected spectrum ˜Zt+ℓ is subsequently transformed into the image domain and spatially refined following Eqs. (13) and (14), respectively. In Eq. (13), ˜Zt+ℓ replaces ˆZ0
+
+> t+ℓ
+
+, and the resulting output is taken as the final forecast ˜Y. By reusing this reconstruction and refinement path, the stochastic module corrects the amplitude residual while preserving the phase-derived spatial structure estimated by the deterministic backbone. 
+
+D. Training and Inference 
+
+FreCast is trained in two stages, as illustrated in Fig. 7. In the first stage, the deterministic backbone is optimized with 
+
+Ldet to produce a stable spectral baseline and an intermediate forecast. In the second stage, the trained backbone is used to construct ¯An
+
+> t+ℓ
+
+, ¯Φt+ℓ, and the residual target ∆An
+
+> t+ℓ
+
+.AmpResidualDM is then trained with Ldiff .During inference, FreCast first obtains the deterministic baseline from the input sequence. The baseline amplitude and phase are used to build the diffusion condition. AmpResidu-alDM samples an amplitude residual, which is added to the baseline amplitude spectrum. The corrected amplitude and the retained phase are then recombined and transformed back to the image domain to obtain the final prediction.                                
+
+> TABLE I DATASET SPLITS AND INPUT -OUTPUT SETTINGS .Dataset Train Val Test (C, H, W )Tin Tout
+> SEVIR 23812 6040 8106 (1 ,128 ,128) 520 MeteoNet 3102 351 916 (1 ,128 ,128) 520 Shanghai 2779 528 528 (1 ,128 ,128) 520
+
+V. E XPERIMENTS AND ANALYSES 
+
+A. Experimental Setup 
+
+Datasets. We conduct experiments on three radar precipi-tation nowcasting datasets: SEVIR [22], MeteoNet [34], and Shanghai Radar [35]. SEVIR contains radar event sequences over the continental United States from 2017 to 2020, Me-teoNet provides radar observations over northwestern France from 2016 to 2018, and Shanghai Radar contains radar echo maps collected in Pudong, Shanghai from October 2015 to July 2018. All radar frames are resized to 128 × 128 , and the input and output sequence lengths are set to Tin = 5 
+
+and Tout = 20 , respectively. The dataset splits and input-output settings are summarized in Table I. For threshold-based evaluation, we use the standard thresholds of each dataset: [16, 74, 133, 160, 181, 219] for SEVIR, [12, 18, 24, 32] for MeteoNet, and [20, 30, 35, 40] for Shanghai Radar. 
+
+Metrics. We evaluate image quality using MAE, PSNR, SSIM, and LPIPS, and operational forecasting skill using CSI, HSS, POD, FAR, and FSS. MAE measures absolute intensity error, PSNR measures signal fidelity, SSIM assesses structural similarity, and LPIPS quantifies perceptual discrepancy. CSI jointly accounts for hits, misses, and false alarms, whereas HSS measures forecast skill relative to random forecasts. POD denotes the fraction of observed precipitation events that are detected, while FAR denotes the fraction of predicted events that are false alarms. To account for spatial tolerance and alleviate sensitivity to small displacements, we also report the neighborhood-based FSS. Lower MAE, LPIPS, and FAR val-ues indicate better performance, whereas higher values of the other metrics are preferred. Threshold-dependent metrics are computed at dataset-specific precipitation-intensity thresholds and then averaged across thresholds. 
+
+Baselines. We compare FreCast with six representative nowcasting baselines under the same data splits and evaluation protocol. PhyDNet [36], SimVP [31], EarthFormer [16], and AlphaPre [21] are deterministic methods, while DiffCast [23] and NowcastNet [3] are probabilistic methods. In Table II, PhyDNet, SimVP, and EarthFormer are categorized as deter-ministic non-decoupled methods. AlphaPre is categorized as a deterministic decoupled method because it explicitly predicts amplitude and phase components. DiffCast and NowcastNet are categorized as probabilistic decoupled methods because they decompose precipitation evolution into deterministic and stochastic components. FreCast is also categorized as a proba-bilistic decoupled method, but differs by preserving the phase-related spatial structure and modeling only the amplitude residual for intensity correction. 
+
+Training details. FreCast is trained in two stages. The amplitude, phase, and image-prior terms are weighted by 8
+
+TABLE II IMAGE QUALITY METRICS ON THREE RADAR NOWCASTING DATASETS .BOLD VALUES INDICATE THE BEST PERFORMANCE FOR EACH METRIC .DET . DENOTES DETERMINISTIC MODELS , P ROB . DENOTES PROBABILISTIC GENERATIVE MODELS , N ON -DEC . DENOTES NON -DECOUPLED MODELS , 
+
+> AND
+
+DEC . DENOTES DECOUPLED MODELS . T HE YELLOW AND GREEN BACKGROUNDS DISTINGUISH DETERMINISTIC AND PROBABILISTIC GENERATIVE MODELS , RESPECTIVELY .
+
+Dataset Method Type ↓MAE ↑SSIM ↓LPIPS ↑PSNR 
+
+SEVIR PhyDNet Det./Non-dec. 8.2103 0.6878 0.3272 27.3824 SimVP Det./Non-dec. 8.1634 0.6879 0.3668 27.6084 
+
+EarthFormer Det./Non-dec. 8.4129 0.6831 0.3831 26.9942 AlphaPre Det./Dec. 8.3659 0.6970 0.2835 27.4611 DiffCast Prob./Dec. 9.6737 0.6597 0.1775 25.7700 NowcastNet Prob./Dec. 9.7630 0.6531 0.2434 25.8882 FreCast Prob./Dec. 9.4507 0.6472 0.2819 27.2283 MeteoNet PhyDNet Det./Non-dec. 2.0264 0.6880 0.3717 27.9125 SimVP Det./Non-dec. 1.8196 0.7401 0.2729 28.3307 EarthFormer Det./Non-dec. 2.3655 0.5144 0.3373 27.6379 AlphaPre Det./Dec. 1.8414 0.6970 0.2572 29.1892 
+
+DiffCast Prob./Dec. 1.8731 0.7361 0.1272 27.7334 NowcastNet Prob./Dec. 2.3518 0.7081 0.2188 26.2025 FreCast Prob./Dec. 1.9747 0.6469 0.2579 28.9150 Shanghai PhyDNet Det./Non-dec. 1.9217 0.7289 0.3350 26.5654 SimVP Det./Non-dec. 1.7290 0.7806 0.2699 26.5376 EarthFormer Det./Non-dec. 1.8122 0.7536 0.3190 26.5418 AlphaPre Det./Dec. 1.6700 0.7756 0.2728 27.2903 
+
+DiffCast Prob./Dec. 1.7383 0.7881 0.1442 25.9726 NowcastNet Prob./Dec. 2.2019 0.7661 0.2254 24.5629 FreCast Prob./Dec. 1.6852 0.7677 0.2126 27.1556 
+
+λA = 0 .01 , λΦ = 0 .02 , and λP = 0 .02 , respectively. In the second stage, the backbone is frozen and only the conditional amplitude-residual diffusion model is trained. Both stages use the AdamW optimizer with a learning rate of 1 × 10 −4 and 
+
+β1 = 0 .9 and β2 = 0 .95 . FreCast and all baseline models were trained for 100 epochs. All experiments are conducted on a workstation equipped with an Intel(R) Xeon(R) Silver 4310 CPU @ 2.10 GHz, two NVIDIA RTX 5880 Ada Generation GPUs with 48 GB memory each, and 256 GB RAM. 
+
+B. Experimental Results 
+
+To evaluate the effectiveness of FreCast for precipitation nowcasting, we compared FreCast with other baseline al-gorithms on three datasets. We report both image quality metrics and operational forecasting metrics. This comparison helps determine whether a model only generates visually similar radar echo images or genuinely improves the prediction of precipitation events, strong echo structures, and spatial neighborhood consistency. Table II reports the image quality metrics of different methods on the three datasets, including MAE, SSIM, LPIPS, and PSNR. Deterministic models still show clear advantages in pixel-level reconstruction metrics, especially MAE and PSNR. This result is consistent with the optimization behavior of de-terministic models, which tend to produce locally smooth pre-dictions with small average pixel deviations under regression losses. However, lower pixel error does not necessarily indicate better precipitation nowcasting. Reasonable echo displacement can be strongly penalized by MAE and PSNR, while smoothed 
+
+TABLE III OPERATIONAL NOWCASTING SKILL ON THREE RADAR NOWCASTING DATASETS . B OLD VALUES INDICATE THE BEST PERFORMANCE FOR EACH METRIC . D ET . DENOTES DETERMINISTIC MODELS , P ROB . DENOTES PROBABILISTIC GENERATIVE MODELS , N ON -DEC . DENOTES NON -DECOUPLED MODELS , AND DEC . DENOTES DECOUPLED MODELS .THE YELLOW AND GREEN BACKGROUNDS DISTINGUISH DETERMINISTIC AND PROBABILISTIC GENERATIVE MODELS , RESPECTIVELY .
+
+Dataset Method Type ↑CSI ↑HSS ↑POD ↓FAR ↑FSS 
+
+SEVIR PhyDNet Det./Non-dec. 0.3315 0.4154 0.3979 0.3994 0.5998 SimVP Det./Non-dec. 0.3243 0.4084 0.3889 0.3099 0.6018 EarthFormer Det./Non-dec. 0.3328 0.4240 0.4039 0.3939 0.5854 AlphaPre Det./Dec. 0.3350 0.4253 0.4016 0.4334 0.6209 DiffCast Prob./Dec. 0.3206 0.4168 0.4264 0.5500 0.6221 NowcastNet Prob./Dec. 0.3102 0.3999 0.4102 0.5456 0.6167 FreCast Prob./Dec. 0.3489 0.4440 0.4532 0.4839 0.6414 
+
+MeteoNet PhyDNet Det./Non-dec. 0.3812 0.4956 0.4640 0.3474 0.5708 SimVP Det./Non-dec. 0.4106 0.5306 0.4963 0.3488 0.6281 EarthFormer Det./Non-dec. 0.4303 0.5568 0.5780 0.4101 0.6490 AlphaPre Det./Dec. 0.4417 0.5624 0.5212 0.2995 0.6442 DiffCast Prob./Dec. 0.4016 0.5220 0.5065 0.4025 0.6475 NowcastNet Prob./Dec. 0.4072 0.5293 0.6444 0.4981 0.6405 FreCast Prob./Dec. 0.4475 0.5701 0.5518 0.3298 0.6612 
+
+Shanghai PhyDNet Det./Non-dec. 0.3964 0.5286 0.4571 0.2708 0.3679 SimVP Det./Non-dec. 0.4427 0.4667 0.5353 0.3227 0.5683 EarthFormer Det./Non-dec. 0.4555 0.5986 0.5708 0.3349 0.5453 AlphaPre Det./Dec. 0.4417 0.5777 0.5085 0.2702 0.5346 DiffCast Prob./Dec. 0.4167 0.5539 0.5111 0.3507 0.5448 NowcastNet Prob./Dec. 0.4214 0.5606 0.6235 0.4340 0.5496 FreCast Prob./Dec. 0.4674 0.6055 0.5696 0.3113 0.5901 
+
+strong echo cores may still obtain favorable average error values. The LPIPS results further support this observation. As a perceptual image quality metric, LPIPS shows that prob-abilistic generative models outperform deterministic models. DiffCast achieves the best LPIPS on all three datasets, indicat-ing that pixel-domain generative refinement can produce local details with more realistic perceptual textures. However, such visual details do not necessarily correspond to more accurate precipitation event prediction. Table III reports the operational forecasting metrics of different methods on the three datasets, including CSI, HSS, POD, FAR, and FSS. FreCast achieves the best CSI, HSS, and FSS on all three datasets. This indicates that FreCast improves the overall discrimination of precipitation events, the skill score relative to random forecasts, and spatial neighborhood consistency. The POD and FAR results reveal a typical tradeoff in generative nowcasting models. NowcastNet achieves the highest POD on MeteoNet and Shanghai, but its FAR is also substantially higher than that of FreCast. This suggests that NowcastNet tends to expand the predicted precipitation area to increase the hit rate. In contrast, FreCast maintains a high POD while keeping FAR lower than those of DiffCast and NowcastNet. These results indicate that frequency-domain am-plitude residual refinement can enhance precipitation detection while imposing a more effective constraint on spurious echo expansion. Fig. 8 and Fig. 9 further show the variations in CSI and POD over different forecast lead times on the SEVIR dataset. As the forecast lead time increases from 10 min 9  
+
+> Fig. 8. Variation of CSI with forecasting lead time.
+> Fig. 9. Variation of POD with forecasting lead time.
+
+to 100 min, the CSI and POD of all methods gradually decrease. This indicates that the uncertainty in future echo position, morphology, and intensity increases with lead time. Nevertheless, FreCast maintains the highest or nearly highest CSI at most lead times and preserves a higher POD curve at medium and long lead times. This suggests that FreCast can effectively propagate existing echo structures at short lead times and still maintain strong precipitation event discrim-ination after forecast uncertainty accumulates. DiffCast and NowcastNet, as probabilistic generative models, show weaker CSI curves than FreCast overall. This indicates that simply generating more precipitation structures does not necessarily improve operational forecasting performance. These results are consistent with the design objective of frequency-domain amplitude residual refinement, which enhances future echo representation through generative modeling while applying constrained correction to the energy distribution. This reduces structural drift and unstable predictions as the forecast lead time increases. Fig. 10 presents a qualitative prediction example for a pre-cipitation event from the SEVIR dataset. Deterministic models usually generate spatially continuous but overly smooth echo structures. As the forecast lead time increases, the high-intensity cores gradually weaken. Pixel-domain probabilistic generative methods can recover sharper local textures, but they   
+
+> Fig. 10. Qualitative comparison of precipitation nowcasting results.
+> Fig. 11. Comparison of POD and CSI under six echo intensity thresholds. POD (left) and CSI (right) are arranged around the central model column. the POD axis is reversed so that longer outward-extending bars indicate better performance on both sides. Colors denote thresholds 16, 74, 133, 160, 181, and 219, and red values mark the best score among all methods at each threshold.
+
+are also more prone to fragmented structures, positional insta-bility, and additional spurious echoes. FreCast better recovers the yellow and orange strong echo regions while preserving the geometric pattern and motion trend of the main rainband. 
+
+C. Analysis and discussions 
+
+To further analyze the sources of the performance gains achieved by the proposed model, we formulate three questions around the model design and conduct experiments for each question. 
+
+1) Forecasting Performance Under Different Echo Intensity Thresholds: To verify whether FreCast maintains stable advan-tages across different radar echo intensity levels and to further examine its ability to correct the underestimation of strong echoes, we compare the CSI and POD of different methods under multiple echo intensity thresholds on the SEVIR dataset. CSI-Threshold evaluates the overall discrimination ability of 10 
+
+the model for precipitation events at different intensities, while POD-Threshold measures the hit rate for observed precipita-tion events at different intensities. Fig. 11 show the CSI and POD results under different radar echo intensity thresholds on the SEVIR dataset. As the thresh-old increases from 16 to 219, the CSI and POD of all methods decrease markedly. This indicates that strong echo regions are sparser, smaller in spatial scale, and more difficult to predict in terms of growth, decay, and displacement. Therefore, the results at high thresholds better reflect the ability of a model to characterize strong precipitation structures. In terms of CSI, FreCast shows more pronounced advan-tages at medium and high intensity thresholds. It achieves CSI values of 0.3268, 0.2253, and 0.1818 at CSI-133, CSI-160, and CSI-181, respectively, all of which are the best among the compared methods. At the extremely high threshold CSI-219, DiffCast is slightly better than FreCast. This result suggests that pixel-domain generative refinement may be more inclined to generate stronger or broader local echoes in extremely strong echo regions, thereby improving hit-related metrics at very high thresholds. However, FreCast consistently leads at medium and high thresholds and remains close to the best result at the extremely high threshold. This indicates that frequency-domain amplitude residual refinement does not merely improve large-scale weak echoes, but can also more specifically alleviate the underestimation of strong echoes. The POD results further support this conclusion. FreCast achieves POD values of 0.8763, 0.7591, 0.4687, and 0.2940 at POD-16, POD-74, POD-133, and POD-160, respectively, all of which are the best results. This shows that FreCast maintains a higher event hit rate across multiple levels ranging from weak echoes to relatively strong echoes. Meanwhile, DiffCast achieves higher POD at POD-181 and POD-219. Combined with the FAR results discussed above, the higher POD at extremely high thresholds may be associated with more aggressive generation of high-intensity echoes, whereas FreCast emphasizes a better balance among hit rate, false alarm control, and spatial consistency. 
+
+2) Effectiveness of Frequency-Domain Amplitude Residual Refinement: To verify the role of residual correction, we compare the FreCast Backbone without residual refinement, the pixel-domain residual refinement version DiffCast, and the frequency-domain amplitude residual refinement version Fre-Cast. This comparison examines whether residual refinement compensates for echo-intensity underestimation and whether amplitude correction better preserves spatial structure than pixel-domain residual generation. Fig. 12(a) shows that, compared with DiffCast, FreCast achieves improvements in the desired directions across all operational forecasting metrics, including higher CSI, HSS, POD, and FSS, and lower FAR. This indicates that frequency-domain amplitude residual refinement not only improves the hit rate of precipitation events, but also improves false alarm control. Fig. 12(b) reports the raw operational metrics of the three variants. The complete FreCast achieves the best CSI, HSS, POD, and FSS among the three methods. The FAR of the Backbone is 0.4157, which is lower than the 0.4839 of FreCast. This indicates that the deterministic baseline without      
+
+> Fig. 12. Ablation analysis of residual refinement. (a) , Direction-corrected relative changes using DiffCast as the reference, where positive values indicate performance improvement. (b) , Raw operational nowcasting metrics, where red values indicate the best performance for each metric. (c) , Raw image quality metrics.
+> Fig. 13. Qualitative comparisons of frequency-domain amplitude residual refinement and key FreCast component ablations. The upper rows compare DiffCast, the FreCast Backbone, and FreCast to illustrate differences in the recovery of strong echoes and rainband structure preservation among residual refinement strategies. Red boxes highlight representative regions with strong echo. The lower rows compare FreCast with the w/o ImagePrior and w/o DM Joint Reconstruction variants to assess the effects of these two components on the predictions.
+
+residual refinement is more conservative and produces fewer spurious echoes, but this conservativeness is associated with lower POD and weaker recovery of strong echoes. Compared with the FAR of 0.5500 obtained by DiffCast, FreCast substan-tially reduces the false alarm ratio. This suggests that phase-preserving amplitude refinement can reduce the unconstrained structural expansion introduced by residual generation in the pixel-domain. Fig. 12(c) shows the tradeoff in image quality metrics. The Backbone performs best in MAE, SSIM, and PSNR, while DiffCast achieves the best LPIPS. FreCast does not pursue the best performance across all image quality 11  
+
+> Fig. 14. Ablation analysis of key FreCast components.
+
+metrics. Compared with DiffCast, FreCast improves PSNR and MAE but obtains a worse LPIPS, indicating that frequency-domain refinement sacrifices part of the perceptual texture score. More importantly, this tradeoff leads to more stable CSI, HSS, POD, and FSS performance. The qualitative ablation results in the upper part of Fig. 13, comparing DiffCast, the FreCast Backbone, and FreCast, fur-ther explain these observations. The red boxes highlight the predictions of strong-echo regions produced by the different models. The FreCast Backbone can preserve the approximate morphology of the main precipitation region, but its predic-tions are overly smooth and the strong echo cores are clearly weakened. DiffCast generates more local textures and high-intensity patches through pixel-domain residual refinement, but the local structures are more fragmented and accompanied by spurious echoes. In contrast, the complete FreCast better recovers the yellow and orange strong echoes within the red-box region while preserving the spatial position and overall morphology of the main rainband. 
+
+3) Ablation Analysis of Model Components and the Joint Reconstruction Strategy: To further analyze the contribution of each component in the complete FreCast, we constructed two ablation variants, w/o ImagePrior and w/o DM Joint Reconstruction, and compare them with the complete FreCast. The w/o ImagePrior variant removes both ImagePriorNet and ImageSpectrumCorrector. The w/o DM Joint Reconstruction variant combines the sampled amplitude residual with the am-plitude spectrum and phase spectrum of the frozen backbone network, but does not use the diffusion-backbone joint recon-struction path. Instead, it directly reconstructs the prediction from the corrected spectrum. Fig. 14 compares the performance of the complete FreCast with the two variants. The complete FreCast achieves the best CSI, HSS, POD, and FSS, indicating that ImagePrior and DM Joint Reconstruction make complementary contributions to event recognition, intensity recovery, and spatial consistency. After removing ImagePrior, the CSI, HSS, POD, and FSS decrease to 0.2911, 0.3639, 0.3651, and 0.5773, respectively. Although the FAR of this variant decreases to 0.3671, this mainly reflects a more conservative prediction pattern rather than stronger overall forecasting ability. The lower FAR is accompanied by lower CSI and POD, indicating that the model reduces spurious echoes but also weakens its ability to capture true precipitation events. This suggests that ImagePrior provides necessary spatial structural priors for frequency-domain prediction and helps the model recover more plausible local echo morphology and strong echo regions. When DM Joint Reconstruction is not used, the CSI, HSS, and POD of the model are close to those of the complete FreCast, but FSS de-creases to 0.4804 and FAR increases to 0.5121. This indicates that direct reconstruction from the corrected spectrum can preserve part of the event hit capability, but the absence of the joint reconstruction constraint weakens spatial neighborhood consistency and increases unreliable local echoes. The qualitative ablation results in the lower part of Fig. 13, comparing FreCast, w/o ImagePrior, and w/o DM Joint Recon-struction, are consistent with the above interpretation. The w/o ImagePrior variant predicts a smoother main precipitation band and insufficiently recovers the strong echo cores and boundary details. The w/o DM Joint Reconstruction variant preserves more local textures, but it tends to produce scattered echoes and unstable boundaries. The complete FreCast achieves a bet-ter balance among strong echo recovery, rainband continuity, and structural stability. Overall, the performance improvement of FreCast comes from three interrelated designs. First, the model uses a deter-ministic spectral backbone to provide a phase-related spatial structural anchor. Second, amplitude residual diffusion restricts generative refinement to the correction of intensity and scale-wise energy distribution. Third, ImagePrior and DM Joint Re-construction jointly constrain the corrected spectrum, enabling the model to recover strong echoes while preserving rainband morphology and temporal stability. VI. C ONCLUSION 
+
+This study re-examines multi-step precipitation nowcasting through prediction-error analysis. When models proposed in prior studies can already capture the locations and mor-phologies of the main precipitation regions reasonably well, echo-intensity bias remains an important source of error. We therefore formulate nowcasting as the evolution and correction of radar-echo intensity fields and propose FreCast. FreCast decomposes radar echoes into amplitude and phase, retains the backbone phase as a structural anchor, and models frequency-domain amplitude residuals with conditional dif-fusion. Across the evaluated radar datasets, FreCast reduced echo-intensity errors and improved nowcasting performance, consistent with stronger echo recovery and less structural disruption. However, Its effectiveness depends on the quality of the backbone phase; amplitude-only refinement cannot fully cor-rect substantial displacement or morphological errors. Future work will investigate joint amplitude–phase correction and incorporate multisource observations and physical constraints to improve reliability and interpretability in complex precipi-tation scenarios. REFERENCES [1] S. Pulkkinen, D. Nerini, A. A. P´ erez Hortal, C. Velasco-Forero, A. Seed, U. Germann, and L. Foresti, “Pysteps: An open-source python library 12 
+
+for probabilistic precipitation nowcasting (v1. 0),” Geoscientific Model Development , vol. 12, no. 10, pp. 4185–4219, 2019. [2] Z. Pan, R. Hang, Q. Liu, and X.-T. Yuan, “A short-long term sequence learning network for precipitation nowcasting,” IEEE Transactions on Geoscience and Remote Sensing , vol. 62, pp. 1–14, 2024. [3] Y. Zhang, M. Long, K. Chen, L. Xing, R. Jin, M. I. Jordan, and J. Wang, “Skilful nowcasting of extreme precipitation with nowcastnet,” Nature ,vol. 619, no. 7970, pp. 526–532, 2023. [4] J. Sun, M. Xue, J. W. Wilson, I. Zawadzki, S. P. Ballard, J. Onvlee-Hooimeyer, P. Joe, D. M. Barker, P.-W. Li, B. Golding et al. , “Use of nwp for nowcasting convective precipitation: Recent progress and challenges,” Bulletin of the American Meteorological Society , vol. 95, no. 3, pp. 409–426, 2014. [5] T. Busker, B. van den Hurk, H. de Moel, and J. C. Aerts, “The value of precipitation forecasts to anticipate floods,” Bulletin of the American Meteorological Society , vol. 106, no. 3, pp. E473–E491, 2025. [6] H.-J. Wang, R. Merz, and S. Basso, “Constructing a geography of heavy-tailed flood distributions: insights from common streamflow dynamics,” 
+
+Hydrology and Earth System Sciences Discussions , vol. 2024, pp. 1–33, 2024. [7] L. Han, H. Liang, H. Chen, W. Zhang, and Y. Ge, “Convective precipita-tion nowcasting using u-net model,” IEEE Transactions on Geoscience and Remote Sensing , vol. 60, pp. 1–8, 2021. [8] S. Ravuri, K. Lenc, M. Willson, D. Kangin, R. Lam, P. Mirowski, M. Fitzsimons, M. Athanassiadou, S. Kashem, S. Madge et al. , “Skilful precipitation nowcasting using deep generative models of radar,” Nature ,vol. 597, no. 7878, pp. 672–677, 2021. [9] D. Li, K. Deng, D. Zhang, H. Leng, Y. Liu, K. Ren, and J. Song, “Precipitation nowcasting diffusion model based on fluid dynamics and multisource data,” IEEE Transactions on Geoscience and Remote Sensing , vol. 63, pp. 1–24, 2025. [10] P. Li and E. S. Lai, “Applications of radar-based nowcasting techniques for mesoscale weather forecasting in hong kong,” Meteorological Ap-plications , vol. 11, no. 3, pp. 253–264, 2004. [11] W. K. Wong, L. H. Yeung, Y. C. Wang, and M. Chen, “Towards the blending of nwp with nowcast—operation experience in b08fdp,” in 
+
+WMO Symposium on Nowcasting , vol. 30, 2009, p. 24. [12] S. Chen, T. Shu, H. Zhao, G. Zhong, and X. Chen, “Tempee: Temporal– spatial parallel transformer for radar echo extrapolation beyond au-toregression,” IEEE Transactions on Geoscience and Remote Sensing ,vol. 61, pp. 1–14, 2023. [13] J. Jing, Q. Li, L. Ma, L. Chen, and L. Ding, “Remnet: Recurrent evolution memory-aware network for accurate long-term weather radar echo extrapolation,” IEEE Transactions on Geoscience and Remote Sensing , vol. 60, pp. 1–13, 2022. [14] X. Shi, Z. Chen, H. Wang, D.-Y. Yeung, W.-K. Wong, and W.-c. Woo, “Convolutional lstm network: A machine learning approach for precipitation nowcasting,” Advances in neural information processing systems , vol. 28, 2015. [15] H.-J. Kim, S.-S. Yoon, Y. H. Gu, S. H. Kim, Y.-D. Choi, and H.-H. Kwon, “A hybrid approach to physical and deep learning models for radar-based precipitation nowcasting,” IEEE Transactions on Geoscience and Remote Sensing , 2025. [16] Z. Gao, X. Shi, H. Wang, Y. Zhu, Y. B. Wang, M. Li, and D.-Y. Yeung, “Earthformer: Exploring space-time transformers for earth system fore-casting,” Advances in Neural Information Processing Systems , vol. 35, pp. 25 390–25 403, 2022. [17] X. Dong, Z. Zhao, Y. Wang, J. Wang, and C. Hu, “Motion-guided global–local aggregation transformer network for precipitation nowcast-ing,” IEEE Transactions on Geoscience and Remote Sensing , vol. 60, pp. 1–16, 2022. [18] Z. Gao, X. Shi, B. Han, H. Wang, X. Jin, D. Maddix, Y. Zhu, M. Li, and Y. B. Wang, “Prediff: Precipitation nowcasting with latent diffusion models,” Advances in Neural Information Processing Systems , vol. 36, pp. 78 621–78 656, 2023. [19] C. Luo, X. Li, Y. Ye, S. Feng, and M. K. Ng, “Experimental study on generative adversarial network for precipitation nowcasting,” IEEE Transactions on Geoscience and Remote Sensing , vol. 60, pp. 1–20, 2022. [20] P. Wen, M. He, P. Filippi, N. Zhao, F. Zhang, T. F. Bishop, Z. Wang, and K. Hu, “Duocast: Duo-probabilistic diffusion for precipitation nowcast-ing,” in Proceedings of the AAAI Conference on Artificial Intelligence ,vol. 40, no. 46, 2026, pp. 39 442–39 450. [21] K. Lin, B. Zhang, D. Yu, W. Feng, S. Chen, F. Gao, X. Li, and Y. Ye, “Alphapre: Amplitude-phase disentanglement model for precipitation nowcasting,” in Proceedings of the Computer Vision and Pattern Recog-nition Conference , 2025, pp. 17 841–17 850. [22] M. Veillette, S. Samsi, and C. Mattioli, “Sevir: A storm event imagery dataset for deep learning applications in radar and satellite meteorology,” 
+
+Advances in neural information processing systems , vol. 33, pp. 22 009– 22 019, 2020. [23] D. Yu, X. Li, Y. Ye, B. Zhang, C. Luo, K. Dai, R. Wang, and X. Chen, “Diffcast: A unified framework via residual diffusion for precipitation nowcasting,” in Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , 2024, pp. 27 758–27 767. [24] J. Gong, L. Bai, P. Ye, W. Xu, N. Liu, J. Dai, X. Yang, and W. Ouyang, “Cascast: Skillful high-resolution precipitation nowcasting via cascaded modelling,” arXiv preprint arXiv:2402.04290 , 2024. [25] A. V. Oppenheim and J. S. Lim, “The importance of phase in signals,” 
+
+Proceedings of the IEEE , vol. 69, no. 5, pp. 529–541, 2005. [26] C.-W. Yan, S. Q. Foo, V. H. Trinh, D.-Y. Yeung, K.-H. Wong, and W.-K. Wong, “Fourier amplitude and correlation loss: Beyond using l2 loss for skillful precipitation nowcasting,” Advances in Neural Information Processing Systems , vol. 37, pp. 100 007–100 041, 2024. [27] Y. Wang, M. Long, J. Wang, Z. Gao, and P. S. Yu, “Predrnn: Recurrent neural networks for predictive learning using spatiotemporal lstms,” 
+
+Advances in neural information processing systems , vol. 30, 2017. [28] Y. Wang, J. Zhang, H. Zhu, M. Long, J. Wang, and P. S. Yu, “Memory in memory: A predictive neural network for learning higher-order non-stationarity from spatiotemporal dynamics,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2019, pp. 9154–9162. [29] Y. Wang, Z. Gao, M. Long, J. Wang, and P. S. Yu, “Predrnn++: Towards a resolution of the deep-in-time dilemma in spatiotemporal predictive learning,” in International conference on machine learning . PMLR, 2018, pp. 5123–5132. [30] Z. Chang, X. Zhang, S. Wang, S. Ma, Y. Ye, X. Xinguang, and W. Gao, “Mau: A motion-aware unit for video prediction and beyond,” Advances in Neural Information Processing Systems , vol. 34, pp. 26 950–26 962, 2021. [31] Z. Gao, C. Tan, L. Wu, and S. Z. Li, “Simvp: Simpler yet better video prediction,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2022, pp. 3170–3180. [32] C. Tan, Z. Gao, L. Wu, Y. Xu, J. Xia, S. Li, and S. Z. Li, “Temporal attention unit: Towards efficient spatiotemporal predictive learning,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition , 2023, pp. 18 770–18 782. [33] C. Bai, F. Sun, J. Zhang, Y. Song, and S. Chen, “Rainformer: Features extraction balanced network for radar-based precipitation nowcasting,” 
+
+IEEE Geoscience and Remote Sensing Letters , vol. 19, pp. 1–5, 2022. [34] G. Larvor, L. Berthomier, V. Chabot, B. Le Pape, B. Pradel, and L. Perez, “Meteonet, an open reference weather dataset by meteo-france. 2020,” 
+
+URL https://www. kaggle. com/datasets/katerpillar/meteonet , 2020. [35] L. Chen, Y. Cao, L. Ma, and J. Zhang, “A deep learning-based method-ology for precipitation nowcasting with radar,” Earth and Space Science ,vol. 7, no. 2, p. e2019EA000812, 2020. [36] V. L. Guen and N. Thome, “Disentangling physical dynamics from unknown factors for unsupervised video prediction,” in Proceedings of the IEEE/CVF conference on computer vision and pattern recognition ,2020, pp. 11 474–11 484.

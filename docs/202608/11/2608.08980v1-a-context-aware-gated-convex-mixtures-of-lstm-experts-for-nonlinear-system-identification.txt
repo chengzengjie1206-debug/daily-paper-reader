@@ -1,0 +1,341 @@
+Title: A Context-aware Gated Convex Mixtures of LSTM Experts for Nonlinear System Identification
+
+URL Source: https://arxiv.org/pdf/2608.08980v1
+
+Published Time: Tue, 11 Aug 2026 01:41:19 GMT
+
+Number of Pages: 6
+
+Markdown Content:
+> 1
+
+# A Context-aware Gated Convex Mixtures of LSTM Experts for Nonlinear System Identification 
+
+Ali Rajabi, Graduate Student Member, IEEE , Iman Salehi, Member, IEEE 
+
+Abstract —This work addresses nonlinear and nonstationary system identification using one-step-ahead prediction on the nonlinear autoregressive moving average benchmark with ten-step memory (NARMA-10). Baseline models, including autore-gressive models with exogenous input (ARX), nonlinear ARX using a multilayer perceptron (NARX–MLP), and a single long short-term memory network (LSTM), are used to contextu-alize prediction performance. To improve robustness, multiple LSTM experts are combined through a convex mixture. Astandard adaptive convex mixture updates the mixing weights using an error-driven rule with simplex projection, but this mechanism is reactive, hand-tuned, and not end-to-end learnable. The proposed method introduces a context-aware end-to-end mixture-of-experts (MoE) framework in which a differentiable softmax gating network learns context-aware mixing weights jointly with the expert parameters. On stationary NARMA-10, the proposed MoE gating approach achieves performance comparable to the adaptive convex mixture. Under regime-switching dynamics, a controlled frozen-experts ablation isolates the mixing-weight update mechanism and shows that the MoE gate significantly improves robustness, achieving approximately fivefold lower overall test error and about two-and-a-half-fold lower after-switch error. 
+
+Index Terms —System identification, NARMA-10, LSTM, Con-vex mixture of experts, Mixture of experts gating network. 
+
+I. I NTRODUCTION 
+
+# SYSTEM identification develops predictive models of dy-namical systems from measured input–output data and underpins monitoring, forecasting, and control design [1]. In modern applications, accurate predictors are increasingly needed for plants that are nonlinear and whose operating con-ditions vary over time. Such variability arises in many settings, such as changing loads, component aging, or mode switching, and it can degrade models that assume fixed dynamics. A standard objective in data-driven identification is one-step-ahead prediction: given a finite history of the measured output and input, predict the next output and measure accuracy using a squared-error criterion. Classical linear structures, including ARX, are introduced because they are simple and interpretable [1]. However, benchmarks such as NARMA-10 contain multiplicative nonlinearities and delayed input interactions, so purely linear predictors can underfit and yield large error for nonlinear systems [2]. A common solution is to keep the same history represen-tation while increasing model expressiveness. NARX mod-els learn nonlinear mappings from history features and can improve one-step accuracy on nonlinear plants [2]. NARX implementations are widely used because MLPs can approxi-mate complex nonlinear functions [3]. Nevertheless, NARX predictors still rely on a fixed feature vector and do not maintain an explicit internal state [2]. As a result, the effective memory of the model is determined by the hand-tuned fixed lag orders, and the predictor must infer all temporal context from the same fixed feature representation at every time step. This becomes limiting when the true dependency horizon is uncertain, when longer histories are required, or when dynamics vary over time [3]. Recurrent neural networks (RNNs) address this limitation by processing a sequence and maintaining a hidden state that summarizes relevant history. LSTM networks are a standard RNN variant that uses gating to manage information flow and alleviate vanishing-gradient effects [4]. For nonlinear system identification, LSTMs often provide a strong baseline because they can learn temporal dependencies directly from windowed input–output sequences [5]. LSTM-based dynamic system identification has also been studied in papers published in American Control Conference (ACC), including Wang’s con-vex LSTM-based identification framework [6] and a sequence-to-sequence LSTM model for piezo-electric actuator identifi-cation [7]. While a single LSTM often provides a strong baseline for nonlinear system identification [6], its performance can be sensitive to training stochasticity and model capacity. In particular, LSTM training is nonconvex, and different random initializations or minibatch orders can lead to different local solutions with noticeably different generalization error. More-over, a single network represents the dynamics using one set of parameters, which may not be equally well-suited to all por-tions of the data and becomes especially restrictive when the underlying dynamics change over time. These considerations motivate using an ensemble of LSTM experts and combining their outputs through a convex mixture, which can reduce variance, improve robustness, and enable specialization across operating conditions [8]. A widely used baseline is an adaptive convex mixture in which the mixing weight vector α(k) is updated using an error-driven rule and projected onto the simplex [6]. This mechanism has two drawbacks: First, it is reactive: the mixing weights shift only after errors increase, which can be subop-timal around regime changes in data. Second, it is heuristic and hand-tuned: The mixing weights step size and projection behavior must be chosen manually, and these choices can affect stability and responsiveness of the model. Mixture models and mixtures of experts have a long his-tory in machine learning and adaptive systems [9]. Hier-archical and gating-based mixtures are also classical [10]. For deep learning, sparsely gated MoE models have en-abled scalable conditional computation [11]. A survey of arXiv:2608.08980v1 [eess.SY] 10 Aug 2026 2
+
+mixture-of-experts formulations is given in [12]. In control and identification, switching and regime-dependent dynamics are often studied under Markov jump or switching-system frameworks [13]. A comprehensive treatment of Markov jump linear systems is presented in [14]. In a related learning-to-decide setting, [15] formulate post-earthquake crew dispatch as a sequential decision problem and replace classical mixed-integer programs with a transformer-based deep reinforce-ment learning policy. Extending this learning-based restora-tion perspective to weather-driven disruptions, [16] develop an event-driven actor–critic dispatcher that updates crew-to-repair assignments as new outage information and operational events are revealed. Learning-based surrogates for classical optimization algorithms have also been explored; for example, [17] learns an interior-point method for alternating current (AC) and direct current (DC) optimal power flow. Recent ACC papers have also studied data-driven nonlinear system identification and learning-based modeling from a control-oriented perspective. For example, Koopman representations have been used for nonlinear throttle-valve identification [18], and recurrent neural-network models have been studied with robustness and stability considerations [19]. These works reinforce the growing role of learned dynamical models in control, but they do not address the specific problem studied here: context-aware convex mixing of multiple LSTM experts under regime-switching dynamics. For time-varying or nonstationary systems, a single global predictor may struggle because the same parameter set must represent multiple operating conditions. Switching and hybrid-system identification methods address this issue by allowing the active model to change with the operating regime, but they often require explicit mode assumptions or separate model-selection logic [20]. Mixture-of-experts models provide a softer alternative: rather than selecting one model discretely, they combine expert outputs through weights that can vary with context. This makes MoE models naturally suited to regime-switching identification when different experts capture different local dynamics. Most closely related to this project, Wang introduced a convex-based LSTM concept for dynamic system identification in the American Control Conference [6]. This paper makes three contributions. First, it provides a complete and reproducible evaluation pipeline on NARMA-10, including stationary and regime-switching benchmarks and consistent error evaluation metrics. Second, it implements and analyzes an adaptive convex mixture of LSTM experts that updates mixing weights using per-expert batch losses and simplex projection. Third, it proposes a fully differentiable MoE gating network alternative that learns the mixing weights from recent input–output context using a softmax gate trained jointly with experts. The paper also focuses on improving mixture-based LSTM predictors for settings in which the best expert may change over time. Instead of a single predictor, a mixture combines multiple experts using mixing weights. The mixture can reduce variance and enable specialization, but performance depends critically on how mixing weights are produced and adapted. A controlled frozen-experts ablation isolates the mixing weights update rule and demonstrates that mixing weights learned through gating network can yield a clear advantage when expert specialization is present. 
+
+Notation: The discrete-time index is denoted by k ∈ Z≥0,and u(k) ∈ R and y(k) ∈ R denote the scalar input and output signals at time k. The corresponding one-step prediction is ˆy(k). For ARX and NARX predictors, φ(k) ∈ Rny +nu
+
+denotes the history feature vector formed from the most recent 
+
+ny outputs and nu inputs. For LSTM-based predictors, s(k) ∈
+
+RL×2 denotes the input window of length L, and xt is its t-th element. The LSTM hidden and cell states are ht, c t ∈ Rdh .For mixture predictors, ˆyi(k) is the prediction of expert i,and α(k) = [ α1(k), . . . , α n(k)] ⊤ denotes the mixing-weight vector. The weights satisfy α(k) ∈ ∆, where ∆ = {α ∈ Rn :
+
+αi ≥ 0, P 
+
+> i
+
+αi = 1 }. The operators σ(·) and tanh( ·) denote the logistic sigmoid and hyperbolic tangent, respectively, ⊙
+
+denotes elementwise multiplication, and MSE denotes mean-squared error. II. P RELIMINARIES 
+
+A. NARMA-10 Benchmark 
+
+The NARMA-10 benchmark is a standard nonlinear au-toregressive moving-average task with approximately ten-step memory [21]. Given an input sequence u(k), the output is generated by 
+
+y(k+1) = 0 .3 y(k) + 0 .05 y(k)
+
+> 9
+
+X
+
+> i=0
+
+y(k−i)+ 1 .5 u(k) u(k−9) + 0 .1,
+
+(1) where the sum term introduces nonlinear dependence on the recent output history and the product term introduces nonlinear dependence on delayed inputs. Equation (1) is used to generate training, validation, and test sequences under a stationary regime; regime-switching variants are described later. 
+
+B. Supervised Dataset Construction 
+
+For one-step prediction, the learning problem is cast as supervised regression. For ARX/NARX models, the history feature vector is 
+
+φ(k) = y(k−1) , . . . , y (k−ny ), u (k−1) , . . . , u (k−nu)⊤,
+
+(2) where ny and nu are output and input history lengths. For LSTM-based models, a windowed sequence input is used:       
+
+> s(k) =
+> 
+> y(k−L)u(k−L)
+> ......
+> y(k−1) u(k−1)
+> ∈RL×2,(3)
+
+where L is the window length. In both cases, the supervised target is y(k).
+
+C. Training Objective 
+
+Given a predictor ˆy(k), the mean-squared error (MSE) over a dataset of N samples is      
+
+> MSE all =1
+> N
+> NX
+> k=1
+>  y(k)−ˆy(k)2.(4) 3
+
+For regime-switching sequences, an additional metric focuses on short windows immediately after each regime change. Let 
+
+S be the set of switch indices in the test sequence and let 
+
+W be the window length. The after-switch window MSE is defined as 
+
+MSE sw = 1
+
+|S| 
+
+X
+
+> s∈S
+
+1
+
+W 
+
+> s+W−1
+
+X
+
+> k=s
+
+ y(k) − ˆy(k)2
+
+!
+
+. (5) 
+
+Here, MSE all measures average performance over the entire test horizon, while MSE sw isolates transient performance during regime transitions. 
+
+D. Baseline Predictors (Context) 
+
+The baseline suite is included to contextualize mixture performance. An ARX predictor is linear in φ(k):
+
+ˆy(k) = w⊤φ(k), (6) 
+
+where w ∈ Rny +nu is estimated by (regularized) least squares [1]. A NARX–MLP predictor replaces the linear map with a multilayer perceptron (MLP) while keeping the same history features. In particular, the input is φ(k) and the output is ˆy(k):
+
+ˆy(k) = MLP( φ(k); θ), (7) 
+
+where θ denotes all MLP weights and biases [3]. The function 
+
+MLP( φ(k)) consists of H nonlinear hidden layers (affine map and activation) followed by a linear output layer. Because MLPs are universal function approximators, (7) can capture nonlinearities that ARX cannot [2]. However, NARX remains a fixed-window regressor: it does not maintain an internal state and does not adapt its representation as a sequence is processed. 
+
+E. LSTM Cell Equations 
+
+An LSTM processes the window s(k) sequentially. Let xt =[y(k−L+t−1) , u (k−L+t−1)] ⊤ ∈ R2 be the t-th element of the window, and let ht, c t ∈ Rdh denote the hidden and cell states with hidden dimension dh. The LSTM update is 
+
+ft = σ(Wf xt + Uf ht−1 + bf ), (8a) 
+
+it = σ(Wixt + Uiht−1 + bi), (8b) 
+
+gt = tanh( Wg xt + Ug ht−1 + bg ), (8c) 
+
+ct = ft ⊙ ct−1 + it ⊙ gt, (8d) 
+
+ot = σ(Woxt + Uoht−1 + bo), (8e) 
+
+ht = ot ⊙ tanh( ct). (8f) 
+
+In (8), t ∈ { 1, . . . , L } indexes the position within the window. The vectors ft, i t, o t ∈ Rdh are the forget, input, and output gates, and gt ∈ Rdh is the candidate update. The cell state 
+
+ct stores long-term memory, while the hidden state ht is the exposed representation passed to the next step. The matrices 
+
+W{·} ∈ Rdh×2, U{·} ∈ Rdh×dh , and biases b{·} ∈ Rdh are trainable parameters, and σ(·) is the logistic sigmoid [4], [5]. Initial states h0 and c0 are set to zeros in the implementation. After processing L steps, a linear head maps the final hidden state hL to the one-step prediction 
+
+ˆy(k) = Wout hL + bout , (9) 
+
+with Wout ∈ R1×dh and bout ∈ R.
+
+F. Convex Mixtures and the Simplex 
+
+A convex mixture combines expert predictions using weights on the probability simplex: 
+
+ˆy(k) = 
+
+> n
+
+X
+
+> i=1
+
+αi(k) ˆ yi(k), (10) 
+
+where α(k) ∈ ∆ and 
+
+∆ = 
+
+n
+
+α ∈ Rn : αi ≥ 0,
+
+> n
+
+X
+
+> i=1
+
+αi = 1 
+
+o
+
+. (11) 
+
+III. M ETHODOLOGY 
+
+This section describes the two mixture mechanisms com-pared in this work. Both methods use the same set of LSTM experts and the same one-step prediction objective. They differ only in how the mixing weights are computed. The adaptive convex mixture updates weights from recent expert errors, whereas the proposed context-aware MoE learns a differentiable mapping from recent input–output context to the simplex. 
+
+A. Adaptive Convex Mixture of LSTM Experts 
+
+We instantiate n LSTM experts. For each time index k,every expert receives the same window s(k) and produces an individual one-step prediction ˆyi(k). The mixture prediction is the convex combination: 
+
+ˆy(k) = 
+
+> n
+
+X
+
+> i=1
+
+αi(k) ˆ yi(k), (12) 
+
+with α(k) ∈ ∆.The adaptive baseline updates α(k) from per-expert batch errors. For a mini-batch of size B, expert i incurs batch MSE: 
+
+MSE i = 1
+
+B
+
+> B
+
+X
+
+> b=1
+
+ y(b) − ˆy(b)
+
+> i
+
+2, i = 1 , . . . , n, (13) 
+
+where y(b) is the ground-truth target and ˆy(b) 
+
+> i
+
+is ith expert’s prediction for sample b, and B is the batch size. Let m =[MSE 1, . . . , MSE n]⊤ ∈ Rn collect these losses. The adaptive weight update is 
+
+α(k) ← Π∆
+
+ α(k) − ηα m, (14) 
+
+where ηα > 0 is the mixing weights step size and Π∆(·)
+
+projects onto the simplex ∆. We use the efficient simplex projection algorithm in [22]. Intuitively, (14) decreases weights for high-error experts and increases weights (relative) for low-error experts, while enforcing α(k) ∈ ∆.
+
+B. MoE Gate for Mixing Weights 
+
+The proposed method replaces the heuristic update (14) with a learned gate that outputs mixing weights as a differentiable function of context. Let ψ(k) ∈ Rdψ denote a gate input built from recent input–output history, such as the flattened window 
+
+vec( s(k)) ∈ R2L. The gate is a small multilayer perceptron (MLP) that maps ψ(k) to logits z(k) ∈ Rn:
+
+z(k) = g(ψ(k); θg ), α(k) = softmax( z(k)) , (15) 4
+
+where θg denotes gate parameters. The softmax ensures 
+
+α(k) ∈ ∆ automatically (nonnegative and summing to one), so no projection step is required. Because (15) is differentiable, gradients of the prediction loss propagate through α(k) into the gate parameters, enabling end-to-end learning of how to mix experts. This is the key distinction from the adaptive con-vex update. In the adaptive method, the weights are adjusted only after expert losses are observed and the update step is controlled by a manually selected ηα. In the MoE formulation, the gate parameters are optimized directly with the prediction objective, so the model can learn recurring patterns in the signal history that indicate which expert should receive larger weight. In our WindowGate variant, ψ(k) is constructed from a short window (the same L used by the experts), so the gate can detect regime-dependent patterns in recent y and u. This is particularly relevant under regime switching, where the best expert may change over time. 
+
+C. Training Procedure 
+
+All models are trained for one-step prediction using the MSE objective     
+
+> L= 1
+> B
+> BX
+> b=1
+>  y(b)−ˆy(b)2,(16)
+
+where ˆy(b) is the model output for sample b, and B is the batch size. We use the Adam optimizer [23] and monitor validation MSE for model selection. For LSTM-based models, gradient clipping is applied to improve stability (clipping threshold 1.0
+
+in our experiments). Hyperparameters such as hidden size dh,learning rate, and number of epochs are selected by validation performance. 
+
+D. Regime Switching and Frozen-Experts Ablation 
+
+To stress-test adaptive convex mixture of experts mech-anisms, we create regime-switching datasets by changing the NARMA-10 coefficients periodically. Let switch times be s1, s 2, . . . , s M (in samples), and let W denote a short evaluation window length after each switch. We report two complementary test metrics. The overall test MSE averages squared error over the entire test sequence presented in (4) where N is the total number of evaluated samples in the test sequence. The after-switch window MSE focuses on adaptation immediately after switches, which is shown in (5) where M = |S| is the number of regime switches, and W is the window legth after each switch. The difference is scope where (4) captures average performance across all regimes and steady-state regions, while (5) isolates transient error right after regime changes. Finally, we conduct a controlled apples-to-apples ablation to isolate the mixing weights update rule. Experts are first trained on regime-specific data so that each expert specializes, which makes the experts trained in a context-aware way. We then freeze all expert parameters and compare (i) adaptive α(k)
+
+updates and (ii) the MoE gate, using the same fixed expert outputs. Under this setting, any performance gap is attributable to the mixing weight update mechanism rather than differences in expert capacity. IV. S IMULATION RESULTS 
+
+A. Stationary NARMA-10 benchmark 
+
+Table I and Fig. 1 summarize one-step MSE on a repre-sentative test segment (first 300 points) for the baseline suite and the adaptive convex mixture. As expected, ARX underfits the nonlinear recursion, while NARX–MLP and LSTM reduce error by modeling nonlinearities and temporal structure. The convex mixture provides additional improvement by combin-ing multiple experts. TABLE I: Stationary NARMA-10 One-Step MSE (First 300 Test Points).              
+
+> Method MSE
+> ARX 7.653 ×10 −4
+> NARX–MLP 3.034 ×10 −5
+> Single LSTM 1.640 ×10 −5
+> Adaptive convex mixture (3 experts) 8.833 ×10 −6
+> (a) One-step MSE (log scale).
+> (b) Cumulative MSE versus sample index.
+
+Fig. 1: Stationary NARMA-10 summary plots (first 300 test points). 
+
+B. Regime Switching: Experts Trained on Full Switching Data 
+
+We first compare adaptive convex mixture of experts and MoE gating network when all model components are trained 5
+
+on the full switching dataset. Fig. 2, Fig. 3, and Table II reports the overall test MSE ( MSE all ) and after-switch window MSE ( MSE sw ) defined in (4) and (5). MoE shows a modest improvement in both metrics, but the gap is limited because experts trained on mixed-regime data tend to become gener-alists. TABLE II: Regime-switching NARMA-10 (full-data training): overall and after-switch MSE.               
+
+> Method Overall MSE After-switch MSE
+> Adaptive convex mixture 1.973 ×10 −34.068 ×10 −3
+> MoE (WindowGate) 1.666 ×10 −33.229 ×10 −3
+> (a) Adaptive update: True vs Pred.
+> (b) MoE gate: True vs Pred.
+
+Fig. 2: Regime-switching (full-data training): qualitative pre-dictions on a representative test segment. 
+
+C. Regime Switching: Frozen-Experts Ablation 
+
+To isolate the mixing weights update rule, experts are pre-trained to specialize on different regimes and then frozen. The test stream contains all regimes, but expert outputs are identical across adaptive and MoE methods; only the mixing weights update mechanism differs. Table III shows that MoE gating substantially reduces both overall and after-switch errors compared to the adaptive update. Fig. 4 shows that the MoE gate tracks the true output more closely after regime changes when the experts are frozen and specialized. Fig. 5 and Table III quantify this behavior, showing that the learned gate substantially reduces both overall and after-switch MSE relative to the adaptive update rule. The results support the main claim that is when specialization exists, a learned context-aware MoE can switch experts more effectively than a MoE with reactive error-driven rule. 
+
+D. Context-aware MoE’s advantage over adaptive mixture 
+
+The full-data switching experiment mixes regimes during training, so each expert receives gradients from all operating conditions. In that setting, experts tend to become generalists, 
+
+> (a) Overall and after-switch MSE.
+> (b) Cumulative MSE.
+
+Fig. 3: Regime-switching performance with experts trained on the full switching dataset. and both mixing weights update rules (adaptive update and MoE gating) converge toward using similar convex combi-nations; therefore, gains from a smarter gate are modest. The frozen-experts ablation removes this confounding factor; experts are specialized and fixed, so performance depends primarily on how quickly and accurately the mixing weights update mechanism selects the appropriate expert after a regime change. This is the regime in which end-to-end gating is most beneficial, and the results in Table III, Fig. 4, and Fig. 5 show a large reduction in both MSE all and MSE sw .
+
+> (a) Adaptive update: True vs Pred.
+> (b) MoE gate: True vs Pred.
+
+Fig. 4: Frozen-experts ablation: qualitative predictions under regime switching. 6
+
+(a) Overall and after-switch MSE. 
+
+(b) Cumulative MSE. 
+
+Fig. 5: Regime-switching performance in the frozen-experts ablation. TABLE III: Frozen experts ablation (regime switching): MoE advantage when only the mixing weights update rule differs. 
+
+Method Overall MSE After-switch MSE 
+
+Adaptive (frozen) 8.177 × 10 −3 8.528 × 10 −3
+
+MoE gate (frozen) 1.613 × 10 −3 3.266 × 10 −3
+
+Factor (Adaptive/MoE) 5.07 × 2.61 ×
+
+V. C ONCLUSION 
+
+This paper studied convex mixtures of LSTM experts for nonlinear system identification on NARMA-10 and com-pared two mixing weights update mechanisms: an error-driven adaptive update with simplex projection and a learned MoE gate. The proposed MoE formulation is end-to-end differ-entiable, removes heuristic projection-based tuning, and can learn context-aware expert selection patterns. On stationary NARMA-10, MoE achieves accuracy comparable to the adap-tive mixture, indicating that end-to-end gating can match a strong reactive rule when the dynamics are unchanged in a single regime. On regime-switching data, a frozen-experts ablation isolates the mixing weights update rule and shows that MoE gating network approach provides a clear advan-tage when experts are specialized and trained in a context-aware way, substantially reducing both overall and after-switch MSE errors. Future work includes scaling to more regimes and experts, exploring sparse top-k gating, and extending evaluation to multi-step rollouts where error accumulation becomes critical. Another direction is online adaptation under measurement noise, where the gate must remain stable while tracking gradual drift. REFERENCES [1] L. Ljung, “System identification,” in Signal analysis and prediction .Springer, 1998, pp. 163–173. [2] S. A. Billings, Nonlinear system identification: NARMAX methods in the time, frequency, and spatio-temporal domains . John Wiley & Sons, 2013. [3] T. Lin, B. G. Horne, P. Tino, and C. L. Giles, “Learning long-term dependencies in narx recurrent neural networks,” IEEE transactions on neural networks , vol. 7, no. 6, pp. 1329–1338, 1996. [4] S. Hochreiter and J. Schmidhuber, “Long short-term memory,” Neural computation , vol. 9, no. 8, pp. 1735–1780, 1997. [5] R. Srivastava, “Lstm: A search space odyssey,” IEEE transactions on neural networks and learning systems , 2016. [6] Y. Wang, “A new concept using lstm neural networks for dynamic system identification,” in 2017 American control conference (ACC) . IEEE, 2017, pp. 5324–5329. [7] R. Yin and J. Ren, “Sequence-to-sequence lstm-based dynamic system identification of piezo-electric actuators,” 2023. [8] N. Ahmed and M. Campbell, “Variational learning of autoregressive mixtures of experts for fully bayesian hybrid system identification,” in 
+
+Proceedings of the 2011 American Control Conference . IEEE, 2011, pp. 139–144. [9] R. A. Jacobs, M. I. Jordan, S. J. Nowlan, and G. E. Hinton, “Adaptive mixtures of local experts,” Neural computation , vol. 3, no. 1, pp. 79–87, 1991. [10] M. I. Jordan and R. A. Jacobs, “Hierarchical mixtures of experts and the em algorithm,” Neural computation , vol. 6, no. 2, pp. 181–214, 1994. [11] N. Shazeer, A. Mirhoseini, K. Maziarz, A. Davis, Q. Le, G. Hinton, and J. Dean, “Outrageously large neural networks: The sparsely-gated mixture-of-experts layer,” arXiv preprint arXiv:1701.06538 , 2017. [12] S. E. Yuksel, J. N. Wilson, and P. D. Gader, “Twenty years of mixture of experts,” IEEE transactions on neural networks and learning systems ,vol. 23, no. 8, pp. 1177–1193, 2012. [13] J. D. Hamilton, “A new approach to the economic analysis of nonsta-tionary time series and the business cycle,” Econometrica: Journal of the econometric society , pp. 357–384, 1989. [14] O. L. V. Do Costa, R. P. Marques, and M. D. Fragoso, Discrete-time Markov jump linear systems . Springer, 2005. [15] F. Amani, F. Ardali, and A. Kargarian, “Learning optimal crew dispatch for grid restoration following an earthquake,” IEEE Transactions on Smart Grid , 2026. [16] ——, “Event-driven deep rl dispatcher for post-storm distribution system restoration,” arXiv preprint arXiv:2601.10044 , 2026. [17] F. Amani, A. Kargarian, and R. Vaidyanathan, “Learning interior point method for ac and dc optimal power flow,” arXiv preprint arXiv:2508.19146 , 2025. [18] N. Bongiovanni, B. Mavkov, R. Martins, and G. Allibert, “Data-driven nonlinear system identification of a throttle valve using koopman representation,” in 2024 American Control Conference (ACC) . IEEE, 2024, pp. 92–97. [19] M. Revay, R. Wang, and I. R. Manchester, “A convex parameterization of robust recurrent neural networks,” IEEE Control Systems Letters , vol. 5, no. 4, pp. 1363–1368, 2020. [20] S. Paoletti, A. L. Juloski, G. Ferrari-Trecate, and R. Vidal, “Identification of hybrid systems a tutorial,” European journal of control , vol. 13, no. 2-3, pp. 242–260, 2007. [21] A. F. Atiya and A. G. Parlos, “New results on recurrent network training: unifying the algorithms and accelerating convergence,” IEEE transactions on neural networks , vol. 11, no. 3, pp. 697–709, 2000. [22] J. Duchi, S. Shalev-Shwartz, Y. Singer, and T. Chandra, “Efficient projections onto the l 1-ball for learning in high dimensions,” in 
+
+Proceedings of the 25th international conference on Machine learning ,2008, pp. 272–279. [23] D. P. Kingma and J. Ba, “Adam: A method for stochastic optimization,” 
+
+arXiv preprint arXiv:1412.6980 , 2014.

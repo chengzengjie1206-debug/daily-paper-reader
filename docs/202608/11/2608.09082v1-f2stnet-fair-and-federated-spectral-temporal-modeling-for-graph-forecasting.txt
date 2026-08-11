@@ -1,0 +1,670 @@
+Title: F2STNet: Fair and Federated Spectral-Temporal Modeling for Graph Forecasting
+
+URL Source: https://arxiv.org/pdf/2608.09082v1
+
+Published Time: Tue, 11 Aug 2026 01:48:18 GMT
+
+Number of Pages: 13
+
+Markdown Content:
+# F2STNet: Fair and Federated Spectral-Temporal Modeling for Graph Forecasting 
+
+Jiayi Zhang 1,∗ Jinfeng Xu 2,∗ Hewei Wang 3,∗ Siyuan Cen 3 Haidong Huang 1
+
+Yiyao Zhan 1 Zheyu Chen 4 Jinjiang You 3 Ai Jian 1 Edith C. H. Ngai 2
+
+> 1
+
+University of Nottingham 2The University of Hong Kong 
+
+> 3
+
+Carnegie Mellon University 4The Hong Kong Polytechnic University 
+
+Abstract 
+
+Spatiotemporal prediction on graph-structured data is central to traffic forecasting and environmental monitor-ing, yet decentralized and heterogeneous data complicate both sequence modeling and collaborative training. We pro-pose F 2STNet, a federated forecasting framework that com-bines truncated graph-Fourier features, a lightweight diag-onal state-space temporal encoder, graph convolution, and Fairness-aware Federated Aggregation (FFA). The spectral branch exposes graph-frequency structure, while the state-space layer models long temporal dependencies with lin-ear complexity in the sequence length. FFA adjusts the Fe-dAvg prior using client validation losses and an increas-ing fairness schedule. Experiments on PeMS04, HZMetro, and KnowAir show favorable forecasting accuracy rel-ative to the evaluated baselines; federated experiments on PeMS04 additionally improve worst-client and client-dispersion metrics. 
+
+1. Introduction 
+
+Spatiotemporal forecasting over graph-structured data plays a crucial role in traffic management, environmental moni-toring, and urban planning. It requires jointly modeling spa-tial dependencies among nodes and temporal dynamics over time. Graph Neural Networks (GNNs), particularly Graph Convolutional Networks (GCNs), are widely adopted due to their strong ability to capture spatial relations [42]. While recent advances have proposed unified spatial-temporal ar-chitectures [13, 32], most methods still rely on centralized data access and resource-heavy recurrent or attention-based temporal modules, limiting their applicability in privacy-sensitive and resource-constrained environments. Beyond traffic and environmental sensing, temporally ordered ob-servations also underpin precise video-language supervi-
+
+> *
+
+Equal contribution. FedAvg (ASAST 17) FedProx (arXiv 18) MOON (CVPR 21) FedProto (AAAI 22) FedSage (NeurIPS 21) FedProc (ICLR 21) FedOPT (ICLR 21) FGGP (AAAI 24)  
+
+> F2STNet (Ours) F2STNet
+> (Ours )
+> DDGCRN (Pattern Recogn 23) STG-NCDE (AAAI 22) LightCTS (SIGMOD 23) Cy2Mixer (LoG 24) PDG2Seq (Neural Networks 25) PDFormer (AAAI 23) STG-Mamba (arXiv 24) Multi-SPANS (WSDM 24) STAEformer (CIKM 23) SpoT-Mamba (IJCAI 24)
+> Number of Parameters (Millions) Number of Parameters (Millions) Composite Score (Higher is Better) -RMSE (Higher is Better)
+
+Figure 1. Performance–efficiency trade-off of spatiotemporal models (left) and FL methods (right). Left: RMSE vs. model size on PeMS04 shows accuracy–complexity trade-off; Right: score combining fairness, accuracy, and generalization. F 2STNet deliv-ers top performance with low model size and cost, supporting de-ployment in centralized and federated settings under resource and fairness constraints. 
+
+sion and camera-motion understanding [19, 20]; multi-frame camera-array calibration further illustrates how mea-surements may be coupled across both viewpoints and time [39]. Federated Learning (FL) offers a decentralized training paradigm that enables multiple clients to collaboratively learn a global model without sharing raw data. This setup is especially appealing for spatiotemporal tasks involving data silos, such as distributed traffic sensors or environmen-tal monitors. However, applying FL to spatiotemporal fore-casting introduces two major challenges: (i) statistical het-erogeneity across clients degrades generalization and leads to biased global models, and (ii) uniform aggregation meth-ods such as FedAvg [25] fail to account for disparities in client difficulty, causing unfair performance degradation for underrepresented clients [23, 27]. Related evidence from foundation-model transfer shows that noisy supervision can reshape learned feature spaces and consistently harm out-of-domain performance [3], underscoring the need for ro-bust learning under distributional variation. While prior works have addressed individual chal-lenges—such as spectral modeling [2], temporal depen-1arXiv:2608.09082v1 [cs.LG] 10 Aug 2026 dencies [16], or fairness-aware aggregation [9]—these so-lutions remain fragmented. In particular, integrating them into a unified federated spatiotemporal framework com-bining frequency encoding, lightweight temporal modeling, and fairness-aware aggregation remains largely unexplored. This highlights the need for a holistic architecture capable of jointly addressing these challenges under federated con-straints while ensuring scalability and robustness in deploy-ment. To address these challenges, we propose F2STNet , a federated spatiotemporal forecasting framework that incor-porates: (1) Spectral projection , using a truncated graph Fourier basis to encode node-level graph-frequency contri-butions; (2) State-space temporal modeling , a lightweight alternative to recurrent or attention-based modules for long-range dependency learning; and (3) Fairness-aware Fed-erated Aggregation (FFA) , which reweights client updates based on predictive loss with a reverse-annealing fairness schedule. Our main contributions are summarized as fol-lows: • We propose F2STNet , a federated framework combining spectral encoding and linear state-space modeling for ac-curate and efficient spatiotemporal forecasting on graphs. • We design a novel Fairness-aware Federated Aggre-gation (FFA) scheme, which dynamically adjusts client weights via an annealed loss-based schedule to improve equity across heterogeneous participants. • We conduct experiments on three real-world datasets (i.e., PeMS04, HZMetro, and KnowAir). F 2STNet consistently outperforms SOTA baselines in spatiotemporal prediction across all datasets, and achieves superior fairness under federated settings on PeMS04. 
+
+2. Related Work 
+
+FL-Based Spatio-Temporal Forecasting Methods. 
+
+Time series prediction in real-world systems typically requires integrating data collected from multiple sources (such as sensors or regions), where spatial correlations exist across nodes. Federated learning (FL) has been embraced to enable collaborative forecasting without centralizing sensitive spatio-temporal data [29, 40]. Early works applied FL to wireless traffic and transportation networks, training global models for traffic flow or cellular load prediction across distributed nodes [29, 40]. For example, FedDA introduces a dual-attention FL framework to cluster clients and combine intra- and inter-cluster models [40], and Perifanis et al. apply FL to 5G base station traffic fore-casting using non-IID telecom data [29]. However, these approaches typically share a single global model and over-look the significant spatio-temporal heterogeneity between clients. Recent methods emphasize personalization and heterogeneity modeling. PromptFL leverages prompt-based adaptation in a federated Transformer for cross-region weather forecasting [4], while FUELS integrates dual semantic alignment with contrastive learning to improve client-specific representation [24]. These techniques yield improved local accuracy under heterogeneity with reduced communication overhead. Recent systems move closer to our setting: FedSTGD reconstructs dynamic inter-client spatial dependencies [34], while a VMD-enhanced fed-erated graph-recurrent model addresses non-stationary transport signals [28]. 
+
+Spectral Methods for Graph Time Series. Spectral graph theory offers an alternative to traditional spatial GNNs like STGCN and DCRNN, which capture only low-frequency correlations. Spectral GNNs use Fourier trans-forms and Laplacian eigenbasis to model long-range or signed dependencies [2]. StemGNN applies Chebyshev fil-tering and spectral transforms for multivariate modeling [2], while STG-Mamba treats spatiotemporal graphs as dynamic systems and employs selective state space models to ex-tract evolving latent states [17]. These methods effectively capture complex temporal patterns and outperform stan-dard message-passing under spatial irregularity or sparsity. Recent 2026 work includes graph Fourier-operator mod-eling with linear complexity [11], frequency-aware con-tinual graph forecasting [21], and spectral-clustering-based macro-to-micro prediction [1]. In neighboring graph-based multimodal learning settings, multi-level self-supervision has been used to align modalities while preserving interac-tion information [38], virtual-triplet supervision to alleviate interaction sparsity [37], and hypercomplex prompt-aware embeddings to improve representation diversity and miti-gate GCN over-smoothing [5]. 
+
+Fairness-Aware Federated Aggregation. Fairness in FL encompasses several notions; here we focus on performance fairness, i.e., ensuring that the global model performs rea-sonably across clients rather than favoring those with more or better data. To address this, fairness-aware aggregation methods adjust how updates are combined. Rather than data-size weighting as in FedAvg, methods like FairFed reweight client contributions based on fairness metrics [9]. FedGCR customizes updates for client groups and dynami-cally adjusts weights to improve both performance and eq-uity [6]. These methods reduce performance disparity while maintaining stability. FedGraph-Fair further combines a dy-namic sparsified client graph with worst-case and group-risk constraints [14]; unlike such personalized or group-level objectives, we target client-level forecasting disparity without protected attributes. Accordingly, our F 2STNet em-ploys a lightweight, loss-aware scheme that reweights client updates to ensure efficiency and fairness under spatiotem-poral heterogeneity. 23. Methodology 
+
+3.1. Problem Formulation 
+
+We address the task of multistep forecasting on spatiotem-poral graphs. Let G = ( V, E) denote a graph with N = |V| 
+
+nodes (e.g., sensors or stations), where edges encode spa-tial connectivity. Given a historical observation window 
+
+X ∈ RT ×N of T time steps, the goal is to predict future values ˆY ∈ RH×N over the next H steps. In a federated setting, the global dataset is parti-tioned across K clients, each holding local data Dk =
+
+{(X(i) 
+
+> k
+
+, Y(i) 
+
+> k
+
+)}nk
+
+> i=1
+
+, where no raw data is shared across clients. The underlying adjacency matrix A ∈ RN ×N ,shared globally, defines the spatial structure. Let ˜L = I − ˜D−1/2 ˜A ˜D−1/2 = UΛU ⊤ be the eigende-composition of the normalized graph Laplacian with self-loops. We retain F eigenvectors in UF ∈ RN ×F . Pro-jecting each graph signal onto this basis exposes its graph-frequency content; the fixed basis is precomputed once from the shared topology. 
+
+3.2. Overall Architecture 
+
+We propose F2STNet (Fair and Federated Spectral-Temporal Network), a lightweight federated model com-bining spectral, temporal, and spatial reasoning. For clar-ity, consider one input channel; additional channels are pro-cessed identically and concatenated. For X ∈ RB×T ×N ,define cb,t,f = PNn=1 (UF )n,f Xb,t,n . The contribution of graph frequency f at node n is 
+
+Sb,t,n,f = ( UF )n,f cb,t,f , S ∈ RB×T ×N ×F . (1) Summing over f recovers the rank-F approximation 
+
+UF U⊤ 
+
+> F
+
+Xb,t, :, while retaining the frequency axis supplies a node-level vector to the projection MLP. 
+
+Spectral Projection. The shared topology makes UF
+
+identical across clients. We precompute this basis once and compute coefficients by matrix multiplication. A schematic overview is shown in Figure 3. We apply a shared multilayer perceptron (MLP) to project each node-level graph-frequency vector Sb,t,n, : ∈
+
+RF into a ds-dimensional embedding: 
+
+espec  
+
+> b,t,n
+
+= MLP spec (Sb,t,n, :) ∈ Rds . (2) The MLP consists of two linear layers with a GELU acti-vation and is shared across nodes and time. We concatenate this embedding with the raw input and project the result to width d:
+
+zb,t,n = Win [Xb,t,n, : ∥ espec 
+
+> b,t,n
+
+] + bin ∈ Rd. (3) Thus, both the time-domain observation and its local fre-quency summary reach the temporal encoder. 
+
+Temporal Modeling. For each sample b and node n, a diagonal linear state-space layer maps the fused sequence to latent states hb,t,n ∈ Rdh . Its zero-order-hold discretization is 
+
+¯Ab,t,n = exp( ∆b,t,n ⊙ A), (4) 
+
+¯Bb,t,n = ( ¯Ab,t,n − 1) ⊘ A ⊙ Bb,t,n , (5) 
+
+hb,t,n = ¯Ab,t,n ⊙ hb,t −1,n + ¯Bb,t,n ⊙ zb,t,n , (6) 
+
+ob,t,n = C⊤
+
+> b,t,n
+
+hb,t,n + D ⊙ zb,t,n , (7) where A is parameterized to have negative entries, 
+
+∆b,t,n > 0 is produced by a softplus transform, and ⊘ de-notes elementwise division with the continuous limit used when an entry of A approaches zero. The final outputs form 
+
+Htemp = {ob,T,n }b,n ∈ RB×N ×d.
+
+Spatial Modeling. We leverage graph convolution to cap-ture spatial dependencies using the augmented adjacency matrix ˜A:
+
+Hspatial = σ( ˜D−1/2 ˜A ˜D−1/2Htemp Wgcn ) (8) Here, Htemp ∈ RB×N ×d is the temporal embedding and 
+
+Wgcn ∈ Rd×d is learnable. 
+
+Prediction and Loss. The final prediction is computed through a linear layer: 
+
+P = Hspatial Wpred + bpred , Wpred ∈ Rd×H , (9) 
+
+ˆY = permute (B,H,N )(P). (10) Model parameters Θ are optimized using mean squared er-ror (MSE) loss: 
+
+L(Θ) = 1
+
+BHN 
+
+> B
+
+X
+
+> b=1
+> H
+
+X
+
+> h=1
+> N
+
+X
+
+> n=1
+
+ ˆYb,h,n − Yb,h,n 
+
+2
+
+(11) 
+
+Federated Aggregation. In the federated setting, client k
+
+trains F 2STNet on Dk and shares model parameters rather than raw examples. FFA adjusts the contribution of partici-pating clients according to validation loss (Figure 2, right). The target is client-level performance parity; because no de-mographic attributes are used, we do not claim demographic parity. 
+
+3.3. Fairness-aware Federated Aggregation Strat-egy 
+
+Standard Federated Averaging (FedAvg) aggregates client models in proportion to their local sample counts. It there-fore does not explicitly account for disparities in client-level predictive performance. 3Predictions    
+
+> Spatio-Temporal Graph Sequence Spectral Projection Temporal Module
+> ℎ!= 𝐴ℎ !"# + 𝐵𝑥 !Prediction Federated Fairness Aggregation
+
+F2STNet (Backbone)         
+
+> Fairness
+> Frequence (𝑓 )
+> Time ( 𝑡 )
+> Linear (F to 64)
+> ReLU
+> Linear (64 to 1)
+> Spectral Embedding
+> STFT
+> (a) Spectral Model
+> Space
+> Time
+> XLt-2 XLt-1 XLtXPt+1 XPt+2 XPt+3
+> Learning (Observed) Predicting (Forecasted)
+> (b) Linear State Space Temporal Module Spectral Embedding
+> Input
+> Client 1
+> Client 3
+> Client 2
+> Client n
+> …
+> F2STNet Loss Calculation Aggregation Calculate Average Loss
+> Weighted Aggregation
+> Adjust Weights
+
+Fairness-aware Weighting (c) Federated Fairness Aggregation Figure 2. F2STNet Framework Overview. Our model comprises three core components: (a) a spectral projection module that decomposes each graph signal in a truncated graph Fourier basis and embeds node-level frequency contributions with a shared MLP, (b) a lightweight diagonal state-space temporal encoder for efficient sequence modeling, and (c) an adaptive fairness-aware aggregation mechanism in federated training, which dynamically reweights client updates based on distributional loss differences. 𝐿 = 𝐼 − 𝐷 ! ⁄ # $ 𝐴𝐷 ! ⁄ # $ 
+
+> Spectral Basis
+> Adjacency
+> 𝑨
+> Normalized Laplacian
+> 𝑳
+> Graph Structure
+> 𝐿 = 𝑈Λ𝑈 %
+> Eigendecom-position Graph Fourier Transform
+
+U
+
+Λ Λ Λ Λ Λ𝑋 Spectral Feature 
+
+> 𝑥 = 𝑈 $ 𝑥
+> Inverse GFT
+
+Figure 3. Graph-spectral feature extraction using the normalized Laplacian and a truncated graph Fourier basis. 
+
+Let St be the clients participating in round t and mt =
+
+|S t|. After local training, client k ∈ S t evaluates its model on a held-out local validation split and returns the scalar loss Ltk together with its parameters. Using validation rather than training loss reduces the direct reward for local overfit-ting. We calculate 
+
+¯Lt = 1
+
+mt
+
+X
+
+k∈S t
+
+Ltk, rtk = Ltk − ¯Lt
+
+max( ¯Lt, ε ) , (12) where ε > 0 prevents division by zero. We define a fairness-aware weighting coefficient for each client based on their relative loss deviation: 
+
+qtk = ptk
+
+ 1 + λtrtk
+
+, ptk = nk
+
+P
+
+j∈S t nj
+
+. (13) Here, ptk is the FedAvg prior and λt ∈ [0 , 1) con-trols the fairness adjustment. Since nonnegative losses im-ply rtk ≥ − 1, this range guarantees qtk > 0. Clients with above-average validation loss receive more weight relative to their FedAvg prior, whereas better-performing clients re-ceive slightly less. These raw fairness-aware weights are then normalized to ensure a valid weighted average: 
+
+wtk = qtkP
+
+j∈S t qtj
+
+. (14) The server then forms the next global model: 
+
+Θt+1 = X
+
+k∈S t
+
+wtkΘt+1 
+
+k . (15) This fairness-aware aggregation ensures that the global model progressively improves performance, especially for clients initially disadvantaged by heterogeneous distribu-tions. While the current reweighting strategy adopts a linear form for stability and interpretability, it may not fully cap-ture complex client dynamics. Future work could incorpo-rate nonlinear or history-dependent mechanisms to enhance adaptability under severe heterogeneity. The overall aggre-gation process is illustrated in Figure 4. 
+
+3.4. Dynamic Lambda Scheduling 
+
+To further enhance fairness aggregation efficacy, we intro-duce a dynamic scheduling strategy for the fairness hyper-4Client Updates     
+
+> Weight by loss
+> Reverse-Annealing 𝜆
+> Base FFA
+> Client Loss
+> Global Model Update
+> 𝜔 != 1 + 𝜆 "' 𝐿 !− * 𝐿 *𝐿 Figure 4. Illustration of our fairness-aware aggregation strategy. Client updates are reweighted based on their local loss deviations, with a reverse-annealing schedule gradually increasing fairness emphasis during training.
+
+parameter λ. Intuitively, at early training stages, focusing excessively on fairness might hinder overall model conver-gence. Therefore, we propose a reverse-annealing schedul-ing strategy for λ, gradually increasing its impact to empha-size fairness more strongly as training progresses. Formally, we define λt at round t as: 
+
+λt = min( λmax , λ init + ηt ) (16) where λinit is the initial value, λmax < 1 bounds the fairness emphasis, and η is the schedule slope. We reserve 
+
+αhet for the inverse-concentration heterogeneity parameter used to construct client partitions. This scheduling allows the model to prioritize general performance improvements initially, and subsequently in-crease fairness awareness, thus maintaining a balanced trade-off between accuracy and fairness throughout the fed-erated learning process. This reverse-annealing strategy al-lows the model to first prioritize convergence, then gradu-ally shift to address fairness as model confidence increases. 
+
+4. Experiments 
+
+4.1. Datasets 
+
+We evaluate F 2STNet on three diverse real-world datasets: 
+
+PeMS04 provides traffic flow data from 307 sensors in California, recorded every 5 minutes from January 1 to February 28, 2018, resulting in 16,992 time steps. 
+
+HZMetro contains metro station flow records (inflow and outflow) from 80 Hangzhou metro stations, aggregated at 15-minute intervals between 5:30 and 23:30, spanning January 1–25, 2019, with 72 intervals per day. 
+
+KnowAir includes air quality and weather data from 184 Chinese cities, sampled every 3 hours from September 1, 2016 to January 31, 2017, totaling 1,224 time steps. 
+
+4.2. Baselines 
+
+We conduct two sets of experiments: centralized spa-tiotemporal forecasting and federated learning under data heterogeneity. Accordingly, we compare F 2STNet with two groups of baselines, each representative of its task paradigm. For spatiotemporal forecasting, we evaluate F 2STNet against recent state-of-the-art models across convolu-tional, attention-based, and state-space paradigms. Convo-lutional methods include STG-NCDE [7], which models continuous-time dynamics with neural controlled differen-tial equations, and DDGCRN [36], which fuses dynamic graph convolutions with recurrent units. Attention-based baselines include PDFormer [12], which encodes periodic-ity into transformer layers, STAFormer [22], which intro-duces adaptive embeddings, and MultiSPANS [43], which combines spatial entropy and multi-scale attention. For state-space models, we consider STG-Mamba [17], SpoT-Mamba [8], and Cy2Mixer [16], which use selective re-currence, structured message passing, and spatial gating. We also compare with PDG2Seq [10], a periodic graph-to-sequence model, and LightCTS [15], a compact framework for correlated time series. For the federated learning experiments, we benchmark against a range of aggregation strategies. FedAvg [25] serves as the canonical baseline, employing simple aver-aging. FedProx [31] adds a proximal regularization term to mitigate client drift. MOON [18] introduces contrastive learning to preserve inter-client representation alignment across local updates. FedOPT [30] integrates adaptive op-timization algorithms such as Adam into the global update. FedProc [26] enhances generalization through prototypical contrastive objectives. FedSage [41] addresses topological incompleteness by synthesizing missing neighbors during training. We also include FGGP [33], a recent state-of-the-art method that learns domain-invariant prototypes to im-prove robustness under distribution shifts. Note that FGGP is reproduced for comparison and is not part of our contri-bution. These baselines collectively provide a rigorous evalua-tion of F 2STNet across both centralized and federated sce-narios. 
+
+4.3. Experimental Settings 
+
+We evaluate F 2STNet under two primary configurations: centralized spatiotemporal forecasting and federated learn-ing with heterogeneous data distributions. In both settings, a historical window of 12 time steps is used to predict the subsequent 12. Performance is evaluated on held-out test sets using root mean squared error (RMSE), mean absolute error (MAE), and mean absolute percentage error (MAPE). Table 1 presents results on three benchmarks: PeMS04, HZMetro, and KnowAir. F 2STNet consistently outperforms 5Table 1. Performance comparison with baselines on PeMS04, HZMetro, and KnowAir. Results for F 2STNet are reported as mean ±
+
+standard deviation over three random seeds. RMSE, MAE, and MAPE are lower-is-better metrics. The optimal and suboptimal mean results are highlighted in bold and underline, respectively.                                                                                                                                          
+
+> Methods PeMS04 (Flow) HZMetro KnowAir
+> RMSE ↓MAE ↓MAPE ↓RMSE ↓MAE ↓MAPE ↓RMSE ↓MAE ↓MAPE ↓
+> STG-NCDE [AAAI 2022] 31.089 19.214 12.762 32.917 20.754 12.883 10.853 7.931 10.473 LightCTS [ACM SIGMOD 2023] 30.141 18.787 12.716 30.759 19.956 12.965 9.423 7.188 10.214 PDFormer [AAAI 2023] 30.034 18.361 12.105 30.183 19.133 11.925 9.461 7.121 10.063 DDGCRN [Pattern Recogn 2023] 31.463 18.451 12.192 31.694 19.518 12.455 10.434 7.841 10.384 STAEformer [CIKM 2023] 30.179 18.224 11.982 29.944 18.850 12.030 8.692 6.931 9.893 Cy2Mixer [LoG 2024] 30.018 18.135 11.928 30.614 18.491 12.183 8.712 6.841 10.025 SpoT-Mamba [IJCAI 2024] 30.109 18.314 11.859 30.731 18.728 12.082 8.843 6.991 9.988 MultiSPANS [WSDM 2024] 30.457 19.074 13.294 30.309 18.974 11.853 8.567 6.843 10.049 STG-Mamba [arXiv 2024] 29.531 18.094 12.111 29.232 18.264 11.591 8.051 6.373 9.645 PDG2Seq [Neural Networks 2025] 30.077 18.235 12.090 30.724 18.623 12.318 9.118 7.021 10.130 F2STNet (Ours) 29.203 ±0.11 18.028 ±0.09 11.801 ±0.12 29.213 ±0.15 18.262 ±0.08 11.440 ±0.13 7.871 ±0.08 6.328 ±0.05 9.460 ±0.09
+
+all baselines in RMSE, MAE, and MAPE on PeMS04 and KnowAir, and achieves the lowest MAE on HZMetro. These results confirm the effectiveness of our spectral-temporal modeling in capturing localized dynamics and global trends. The robustness on KnowAir highlights the model’s adaptability under decentralized, city-level data, while the gains on HZMetro demonstrate the benefit of fairness-aware aggregation for periodic graph structures. For federated evaluation, we use an inverse-concentration parameterization: client proportions are sampled from Dirichlet( 1/α het ) with αhet ∈ {5, 10 }.Thus, larger αhet produces a smaller concentration and a more heterogeneous partition. In each global round, a random subset of clients performs local training under fixed hyperparameters. Table 2 reports comparisons across federated aggregation strategies. The main-text federated analysis focuses on PeMS04; Appendix B reports the corresponding HZMetro and KnowAir results. 
+
+4.4. Implementation Details 
+
+All models are implemented using PyTorch and PyTorch Geometric. F 2STNet is composed of: • A single-layer GCN for spatial encoding; • A diagonal selective state-space layer for temporal mod-eling; • A two-layer MLP that embeds node-level contributions from F = 16 retained graph frequencies. The graph Fourier basis is precomputed offline. We use Adam with learning rate 10 −3 and batch size 64, and se-lect checkpoints using validation loss. F 2STNet has fewer than 1.2M parameters. All experiments are conducted on an NVIDIA A100 GPU unless otherwise specified. The fair-ness schedule uses λinit = 0 .03 , η = 0 .005 , and λmax =0.2. The number of retained graph frequencies ( F = 16 )and client count ( K) are selected empirically; sensitivity re-sults are provided in Figure 6. For multi-run evaluation, let xr denote a metric obtained with random seed r and let R ≥ 3. We report the sample mean and sample standard deviation, 
+
+¯x = 1
+
+R
+
+> R
+
+X
+
+> r=1
+
+xr , sx =
+
+vuut 1
+
+R − 1
+
+> R
+
+X
+
+> r=1
+
+(xr − ¯x)2. (17) The same seed list is used for all compared methods so that differences can be analyzed with paired runs. Standard devi-ations are displayed only for configurations whose complete set of paired runs has been verified. 
+
+4.5. Composite Utility–Fairness Score 
+
+We define the ∆ column in Table 2 relative to FedAvg. Let 
+
+b denote FedAvg, m a compared method, S = {5, 10 } the heterogeneity settings, and Q = {RMSE , MAE , MAPE }
+
+the lower-is-better forecasting metrics. If Em,s,q is the er-ror of method m under setting s and metric q, its average relative utility gain is 
+
+Um = 1
+
+|S||Q| 
+
+X
+
+> s∈S
+
+X
+
+> q∈Q
+
+Eb,s,q − Em,s,q 
+
+Eb,s,q 
+
+. (18) Let Mm and Sm denote Max-RMSE and Std-RMSE, re-spectively. The corresponding relative fairness gain is 
+
+Fm = 12
+
+ Mb − Mm
+
+Mb
+
++ Sb − Sm
+
+Sb
+
+
+
+. (19) We combine the two components as 
+
+∆m = 100 [ ρU m + (1 − ρ)Fm] , ρ = 0 .6. (20) This definition gives ∆b = 0 and is invariant to a common rescaling of any metric. Because every denominator is posi-tive, reducing any error, Max-RMSE, or Std-RMSE while holding the other quantities fixed strictly increases ∆m.Thus, a larger score consistently represents a better utility– fairness trade-off. The weight ρ = 0 .6 assigns slightly more emphasis to forecasting utility while retaining a substantial fairness contribution. 6Table 2. Comparison of FL methods on PeMS04 under moderate ( αhet = 5 ) and high ( αhet = 10 ) heterogeneity. Results for F 2STNet are reported as mean ± standard deviation over three paired random seeds. ∆ is the composite utility–fairness gain relative to FedAvg defined in Eq. (20) (higher is better); Max-RMSE and Std-RMSE measure client-level disparity. 
+
+Methods Moderate Heterogeneity ( αhet = 5 ) High Heterogeneity ( αhet = 10 ) Fairness Metrics 
+
+RMSE ↓ MAE ↓ MAPE ↓ RMSE ↓ MAE ↓ MAPE ↓ ∆ ↑ Max-RMSE ↓ Std-RMSE ↓
+
+FedAvg [AISTATS 2017] 30.857 19.927 13.345 31.419 20.408 13.876 0.000 33.21 1.19 FedProx [arXiv 2018] 30.414 19.508 12.938 30.978 19.929 13.414 4.255 32.88 1.03 MOON [CVPR 2021] 30.674 19.779 13.217 31.144 20.198 13.629 4.272 32.97 0.98 FedOPT [ICLR 2021] 29.774 18.752 12.035 30.209 19.339 12.916 10.664 31.12 0.84 FedProc [ICLR 2021] 30.149 19.081 12.763 30.579 19.566 13.152 8.135 31.88 0.89 FedSage [NeurIPS 2021] 30.023 18.888 12.653 30.442 19.385 12.981 8.269 31.61 0.92 FedProto [AAAI 2022] 30.461 19.269 13.014 30.929 19.843 13.443 6.808 32.13 0.91 FGGP [AAAI 2024] 29.841 18.668 12.314 30.048 19.127 12.666 11.369 31.03 0.81 F2STNet (Ours) 29.500 ± 0.18 18.210 ± 0.12 11.910 ± 0.15 29.819 ± 0.26 18.691 ± 0.18 12.001 ± 0.22 14.166 30.40 0.75 RMSE MAE MAPE        
+
+> 0510 15 20 25 30
+> Metric Value
+> PeMS04
+> RMSE MAE MAPE
+> 0510 15 20 25 30
+> Metric Value
+> HZMetro
+> RMSE MAE MAPE
+> 0246810
+> Metric Value
+> KnowAir
+> Full w/o Spectral w/o Fair w/o Temporal
+
+Figure 5. Performance comparison of F 2STNet variants on three datasets, showing the impact of removing spectral, temporal, and fairness-aware components. Full F 2STNet performs best across all metrics. 
+
+4.6. Ablation Study 
+
+We conduct ablation experiments to assess the contribution of each module within F 2STNet. Specifically, we design the following variants: • w/o Spectral : Removes the spectral representation mod-ule and uses raw graph signals only. • w/o Fair Aggregation : Replaces the fairness-aware ag-gregation strategy with vanilla FedAvg. • w/o Temporal Module : Disables the Mamba-inspired temporal encoder, reducing temporal modeling capacity. Figure 5 shows results on PeMS04, HZMetro, and KnowAir. Across RMSE, MAE, and MAPE, the com-plete F 2STNet outperforms its ablated variants. Removing the spectral module or fairness-aware aggregator increases RMSE and MAE. Dropping the temporal encoder causes the largest drop, underscoring the role of temporal model-ing. 
+
+4.7. Hyperparameter Sensitivity 
+
+We analyze sensitivity to λinit , λmax , and the schedule slope 
+
+η using worst-client MAE under high heterogeneity ( αhet =10 ). Figure 6 presents the corresponding heatmaps. We observe stable performance under varying client counts K ∈ { 5, 10 , 15 , 20 , 25 , 50 }, indicating the robust-ness of our fairness scheduling strategy to partition granu-larity. Please see Appendix A.1 for detailed results. Overall, F 2STNet is stable across the evaluated range. The best observed configuration uses λinit = 0 .03 , λmax =0.2, and η = 0 .005 .
+
+Figure 6. Sensitivity analysis of λinit , λmax , and η with respect to worst-client MAE on PeMS04. 
+
+5. Analysis and Discussion 
+
+Comparison with Federated Methods. We compare F2STNet against federated algorithms—FedProx, FedOPT, FedProc, and FGGP—that address heterogeneity through proximal regularization, optimizer adaptation, or prototype matching. As shown in Table 2, F 2STNet obtains the best reported values under both heterogeneity settings, suggest-ing that loss-aware aggregation is complementary to these strategies. 
+
+Fairness-Aware Aggregation. Client heterogeneity is a central challenge in federated learning. Simple averaging methods like FedAvg tend to favor high-quality clients and exacerbate performance imbalance. Our Fairness-aware Federated Aggregation (FFA) reweights client updates via a loss-based scheme, gradually emphasizing fairness through a reverse-annealing schedule. This improves robustness without sacrificing convergence stability. As shown in Figure 7, F 2STNet achieves better training dynamics and fairness-aware behavior. It converges faster 70 10 20 30 40 50 
+
+> Communication Rounds
+> 0.50 0.75 1.00 1.25 1.50 1.75 2.00 2.25
+> Loss
+> FedAvg FedProx FedOPT FGGP F2STNet
+
+(a) Training loss 0 10 20 30 40 50  
+
+> Communication Round
+> 1.6 1.8 2.0 2.2 2.4
+> MAE
+> FedAvg FedProx FGGP F2STNet (FFA)
+
+(b) Worst-5 client MAE 0 10 20 30 40 50 
+
+> Communication Rounds
+> 0.7 0.8 0.9 1.0 1.1 1.2 1.3
+> Std of MAE
+> FedAvg FedProx FGGP F2STNet (FFA)
+
+(c) Client-wise MAE standard devi-ation 0 10 20 30 40 50   
+
+> Communication Rounds
+> 1.3 1.4 1.5 1.6 1.7 1.8 1.9 2.0 2.1
+> Worst-5 MAE
+> No Fairness ( = 0)
+> Fixed = 1
+> Reverse Annealing
+
+(d) λ schedules 
+
+Figure 7. Convergence and fairness analysis under high hetero-geneity ( αhet = 10 ) on PeMS04. (a) F 2STNet converges faster and more stably than baselines; (b) the proposed fairness strategy improves performance for disadvantaged clients; (c) client-wise MAE variance is consistently lower, indicating enhanced fairness; (d) reverse annealing outperforms fixed and naive λ schedules in worst-case MAE. FedAvg FedProx MOON FedOPT FedProc FedSage FedProto FGGP F2STNet (Ours) 
+
+> Method
+> 29.8 30.0 30.2 30.4 30.6 30.8 31.0
+> RMSE
+> = 5
+> FedAvg FedProx MOON FedOPT FedProc FedSage FedProto FGGP F2STNet (Ours)
+> Method
+> = 10
+
+Figure 8. Client-wise RMSE under moderate and high heterogene-ity on PeMS04. 
+
+and more stably than baselines, while also improving fair-ness, as reflected by lower client-wise MAE variance and stronger performance among worst-case clients. 
+
+Client-Wise Robustness. To understand client-level be-havior, we visualize the RMSE distribution across clients in Figure 8. F 2STNet exhibits lower median error and smaller variance under moderate ( αhet = 5) and high ( αhet =10 ) heterogeneity, suggesting more consistent performance across clients. 
+
+Efficiency Analysis F2STNet is designed with efficiency-aware considerations for federated deployment. Instead of relying on deep recurrent or transformer-based models, it adopts a streamlined architecture that integrates spec-tral pre-processing and lightweight temporal modeling. The spectral features are precomputed offline, incurring no run-time overhead, while the linear state-space encoder ensures per-node modeling with O(T ) temporal complexity. As shown in Table 3, compared with Transformer-based models with O(T 2) attention cost, this design reduces in-ference latency and computation, especially for long se-quences. The parameter count is under 1.2 million, reducing per-round communication volume. 
+
+Table 3. Model efficiency comparison. 
+
+Model Inference (ms) FLOPs (G) STAEformer 18.2 9.8 STG-Mamba 11.4 5.7 
+
+F2STNet (Ours) 5.6 2.1 
+
+These design choices collectively improve model ef-ficiency and robustness in bandwidth- and memory-constrained environments, and allow practical deployment on compact real-world edge devices. Efficiency is likewise a practical constraint in autonomous exploration, where few-shot detectors must run on low-powered robots [35]. For example, training and inference on a single NVIDIA A100 GPU require substantially fewer FLOPs and memory foot-print compared to attention-based models with similar pre-diction accuracy. 
+
+6. Conclusion 
+
+In this paper, we propose F 2STNet, a federated spatiotem-poral forecasting framework that integrates graph-Fourier representations, lightweight state-space temporal modeling, graph convolution, and fairness-aware aggregation. Exper-iments on three real-world datasets show favorable fore-casting accuracy relative to the evaluated baselines. On the federated PeMS04 setting, FFA also improves the reported worst-client and client-dispersion metrics. The method re-mains sensitive to noisy validation losses and outlier clients; robust, history-aware weighting is therefore an important direction for future work. 8References 
+
+[1] Yinghao Ai, Yukai Zhou, Ruoxi Jiang, Junyi An, Chao Qu, Zhijian Zhou, Shiyu Wang, Fenglei Cao, Zenglin Xu, Furao Shen, and Yuan Qi. Nested spatio-temporal time series fore-casting. In Proceedings of the 43rd International Conference on Machine Learning , 2026. 2 [2] Defu Cao, Yujing Wang, Juanyong Duan, Ce Zhang, Xia Zhu, Congrui Huang, Yunhai Tong, Bixiong Xu, Jing Bai, Jie Tong, et al. Spectral temporal graph neural network for multivariate time-series forecasting. In Advances in Neural Information Processing Systems (NeurIPS) , pages 17766– 17778, 2020. 1, 2 [3] Hao Chen, Zihan Wang, Ran Tao, Hongxin Wei, Xing Xie, Masashi Sugiyama, Bhiksha Raj, and Jindong Wang. Impact of noisy supervision in foundation model learning. IEEE Transactions on Pattern Analysis and Machine Intelligence ,47(7):5690–5707, 2025. 1 [4] Shengchao Chen, Guodong Long, Tao Shen, and Jing Jiang. Prompt federated learning for weather forecasting: Toward foundation models on meteorological data. In Proceedings of the 32nd International Joint Conference on Artificial In-telligence (IJCAI) , pages 3532–3540, 2023. 2 [5] Zheyu Chen, Jinfeng Xu, Hewei Wang, Shuo Yang, Zitong Wan, and Haibo Hu. Hypercomplex prompt-aware multi-modal recommendation. In Proceedings of the 34th ACM In-ternational Conference on Information and Knowledge Man-agement , pages 403–414. ACM, 2025. 2 [6] Shu-Ling Cheng, Chin-Yuan Yeh, Ting-An Chen, Eliana Pastor, and Min-Sheng Chen. FedGCR: Achieving perfor-mance and fairness for federated learning with distinct client types via group customization and reweighting. In Proceed-ings of the AAAI Conference on Artificial Intelligence , pages 11498–11506, 2024. 2 [7] Jeongwhan Choi, Hwangyong Choi, Jeehyun Hwang, and Noseong Park. Graph neural controlled differential equa-tions for traffic forecasting. In AAAI , 2022. 5 [8] Jinhyeok Choi, Heehyeon Kim, Minhyeong An, and Joyce Jiyoung Whang. SpoT-Mamba: Learning long-range dependency on spatio-temporal graphs with selective state spaces. arXiv preprint arXiv.2406.11244 , 2024. 5 [9] Yahya H. Ezzeldin, Shen Yan, Chaoyang He, Emilio Ferrara, and Salman A. Avestimehr. Fairfed: Enabling group fairness in federated learning. In Proceedings of the AAAI Conference on Artificial Intelligence , pages 7494–7502, 2023. 2 [10] Jin Fan, Wenchao Weng, Qikai Chen, Huifeng Wu, and Jia Wu. Pdg2seq: Periodic dynamic graph to sequence model for traffic flow prediction. Neural Netw. , 183(C), 2025. 5 [11] Seyed-Majid Hosseini, S. Mozhgan Rahmatinia, and Seyed-Amin Hosseini-Seno. Integrated spatio-temporal modeling with hybrid graph convolutions and the graph fourier neu-ral operator for traffic prediction. Scientific Reports , 16(1): 12945, 2026. 2 [12] Jiawei Jiang, Chengkai Han, Wayne Xin Zhao, and Jingyuan Wang. Pdformer: Propagation delay-aware dynamic long-range transformer for traffic flow prediction. In AAAI . AAAI Press, 2023. 5 [13] Weiwei Jiang, Jiayun Luo, Miao He, and Weixi Gu. Graph neural network for traffic forecasting: The research progress. 
+
+ISPRS International Journal of Geo-Information , 12(3), 2023. 1 [14] Koffka Khan. Fedgraph-fair: Federated learning with per-sonalization and fairness via dynamic graphs and distribu-tionally robust optimization. Information Sciences , 728: 122710, 2026. 2 [15] Zhichen Lai, Dalin Zhang, Huan Li, Christian S Jensen, Hua Lu, and Yan Zhao. Lightcts: A lightweight framework for correlated time series forecasting. Proceedings of the ACM on Management of Data , 1(2):1–26, 2023. 5 [16] Minho Lee, Yun Young Choi, Sun Woo Park, Seunghwan Lee, Joohwan Ko, and Jaeyoung Hong. Enhancing topolog-ical dependencies in spatio-temporal graphs with cycle mes-sage passing blocks. In The Third Learning on Graphs Con-ference , 2024. 2, 5 [17] Lincan Li, Hanchen Wang, Wenjie Zhang, and Adelle Coster. Stg-mamba: Spatial-temporal graph learning via selective state space model. arXiv preprint arXiv:2403.12418 , 2024. 2, 5 [18] Qinbin Li, Bingsheng He, and Dawn Song. Model-contrastive federated learning. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 10713–10722, 2021. 5 [19] Zhiqiu Lin, Siyuan Cen, Daniel Jiang, Jay Karhade, Hewei Wang, Chancharik Mitra, Yu Tong Tiffany Ling, Yuhan Huang, Rushikesh Zawar, Xue Bai, Yilun Du, Chuang Gan, and Deva Ramanan. Towards understanding camera motions in any video. In Advances in Neural Information Processing Systems: Datasets and Benchmarks Track , 2025. 1 [20] Zhiqiu Lin, Siyuan Cen, Chancharik Mitra, Isaac Li, Yuhan Huang, Yu Tong Tiffany Ling, Hewei Wang, Irene Pi, Shi-hang Zhu, Yili Han, Yilun Du, and Deva Ramanan. Building a precise video language with human-AI oversight. In Pro-ceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR) , pages 11334–11345, 2026. 1[21] Aoyu Liu and Yaying Zhang. A general spatio-temporal backbone with scalable contextual pattern bank for urban continual forecasting. In The Fourteenth International Con-ference on Learning Representations , 2026. 2 [22] Hangchen Liu, Zheng Dong, Renhe Jiang, Jiewen Deng, Jin-liang Deng, Quanjun Chen, and Xuan Song. Spatio-temporal adaptive embedding makes vanilla transformer sota for traf-fic forecasting. In Proceedings of the 32nd ACM Interna-tional Conference on Information and Knowledge Manage-ment , pages 4125–4129, 2023. 5 [23] Qian Liu, Sheng Sun, Yi Liang, et al. Personalized fed-erated learning for spatio-temporal forecasting: A dual se-mantic alignment-based contrastive approach. arXiv preprint arXiv:2404.03702 , 2024. 1 [24] Qingxiang Liu, Sheng Sun, Yuxuan Liang, Jingjing Xue, and Min Liu. Personalized federated learning for spatio-temporal forecasting: A dual semantic alignment-based contrastive ap-proach. In Proceedings of the AAAI Conference on Artificial Intelligence , pages 12192–12200, 2025. 2 
+
+9[25] Brendan McMahan, Eider Moore, Daniel Ramage, Seth Hampson, and Blaise Aguera y Arcas. Communication-Efficient Learning of Deep Networks from Decentralized Data. In Proceedings of the 20th International Conference on Artificial Intelligence and Statistics , pages 1273–1282. PMLR, 2017. 1, 5 [26] Xutong Mu, Yulong Shen, Ke Cheng, Xueli Geng, Jiaxuan Fu, Tao Zhang, and Zhiwei Zhang. Fedproc: Prototypical contrastive federated learning on non-iid data. arXiv preprint arXiv:2109.12273 , 2021. 5 [27] Noorain Mukhtiar, Adnan Mahmood, and Quan Sheng. Fair-ness in federated learning: Trends, challenges, and opportu-nities. Advanced Intelligent Systems , 2025. 1 [28] Tarun Mundada, Samruddhi Ramdhave, Sanyam Jain, and Saurav Gupta. Federated spatial-temporal traffic forecasting with vmd-enhanced graph attention and lstm. Scientific Re-ports , 16(1):8852, 2026. 2 [29] Vasileios Perifanis, Nikolaos Pavlidis, Rigas-Alexandros Koutsiamanis, and Pavlos S. Efraimidis. Federated learning for 5g base station traffic forecasting. Computer Networks ,235:109950, 2023. 2 [30] Sashank Reddi, Zachary Charles, Manzil Zaheer, Zachary Garrett, Keith Rush, Jakub Koneˇ cn` y, Sanjiv Kumar, and H Brendan McMahan. Adaptive federated optimization. 
+
+arXiv e-prints , pages arXiv–2003, 2020. 5 [31] Anit Kumar Sahu, Tian Li, Maziar Sanjabi, Manzil Zaheer, Ameet Talwalkar, and Virginia Smith. On the convergence of federated optimization in heterogeneous networks. arXiv preprint arXiv:1812.06127 , 2018. 5 [32] Siyi Tang, Jared Dunnmon, Liangqiong Qu, Khaled Kamal Saab, Tina Baykaner, Christopher Lee-Messer, and Daniel Rubin. Modeling multivariate biosignals with graph neural networks and structured state space. In ICLR 2023 Workshop on Time Series Representation Learning for Health , 2023. 1 [33] Guancheng Wan, Wenke Huang, and Mang Ye. Federated graph learning under domain shift with generalizable proto-types. In Proceedings of the AAAI Conference on Artificial Intelligence , pages 15429–15437, 2024. 5 [34] Feng Wang, Tianxiang Chen, Shuyue Wei, Qian Chu, Yi Zhang, Yifan Sun, and Zhiming Zheng. Unlocking dy-namic inter-client spatial dependencies: A federated spatio-temporal graph learning method for traffic flow forecasting. In Proceedings of the AAAI Conference on Artificial Intelli-gence , pages 1123–1131, 2026. 2 [35] Zihan Wang, Bowen Li, Chen Wang, and Sebastian Scherer. AirShot: Efficient few-shot detection for autonomous explo-ration. In 2024 IEEE/RSJ International Conference on In-telligent Robots and Systems (IROS) , pages 11654–11661, 2024. 8 [36] Wenchao Weng, Jin Fan, Huifeng Wu, Yujie Hu, Hao Tian, Fu Zhu, and Jia Wu. A decomposition dynamic graph con-volutional recurrent network for traffic forecasting. Pattern Recognition , page 109670, 2023. 5 [37] Jinfeng Xu, Zheyu Chen, Jinze Li, Shuo Yang, Hewei Wang, Yijie Li, Mengran Li, Puzhen Wu, and Edith C. H. Ngai. MDVT: Enhancing multimodal recommendation with model-agnostic multimodal-driven virtual triplets. In Pro-ceedings of the 31st ACM SIGKDD Conference on Knowl-edge Discovery and Data Mining V.2 , pages 3378–3389. ACM, 2025. 2 [38] Jinfeng Xu, Zheyu Chen, Shuo Yang, Jinze Li, Hewei Wang, and Edith C. H. Ngai. MENTOR: Multi-level self-supervised learning for multimodal recommendation. In Proceedings of the AAAI Conference on Artificial Intelligence , pages 12908– 12917, 2025. 2 [39] Jinjiang You, Hewei Wang, Yijie Li, Mingxiao Huo, Long Van Tran Ha, Mingyuan Ma, Jinfeng Xu, Jiayi Zhang, Puzhen Wu, Shubham Garg, and Wei Pu. Multi-cali any-thing: Dense feature multi-frame structure-from-motion for large-scale camera array calibration. In 2025 IEEE/RSJ In-ternational Conference on Intelligent Robots and Systems (IROS) , pages 16106–16113. IEEE, 2025. 1 [40] Chuanting Zhang, Shuping Dang, Basem Shihada, and Mohamed-Slim Alouini. Dual attention-based federated learning for wireless traffic prediction. In Proceedings of IEEE INFOCOM , pages 1–10, 2021. 2 [41] Ke Zhang, Carl Yang, Xiaoxiao Li, Lichao Sun, and Siu Ming Yiu. Subgraph federated learning with missing neighbor generation. In Thirty-Fifth Conference on Neural Information Processing Systems , 2021. 5 [42] Jie Zhou, Ganqu Cui, Shengding Hu, Zhengyan Zhang, Cheng Yang, Zhiyuan Liu, Lifeng Wang, Changcheng Li, and Maosong Sun. Graph neural networks: A review of methods and applications. arXiv preprint arXiv:1812.08434 ,2020. 1 [43] Dongcheng Zou, Senzhang Wang, Xuefeng Li, Hao Peng, Yuandong Wang, Chunyang Liu, Kehua Sheng, and Bo Zhang. Multispans: A multi-range spatial-temporal trans-former network for traffic forecast via structural entropy op-timization. In Proceedings of the 17th ACM International Conference on Web Search and Data Mining (WSDM) , pages 1032–1041, 2024. 5 
+
+10 A. Selective State-Space Algorithms 
+
+Algorithm 1: Selective state-space scan for one node sequence 
+
+Require: input u ∈ RB×T ×d; stable diagonal A ∈ Rdh ; input-dependent ∆, B, C; skip vector D
+
+Ensure: output y ∈ RB×T ×d 
+
+> 1:
+
+h ← 0 ∈ RB×dh 
+
+> 2:
+
+for t = 1 to T do  
+
+> 3:
+
+¯At ← exp( ∆t ⊙ A) 
+
+> 4:
+
+¯Bt ← ( ¯At − 1) ⊘ A ⊙ Bt 
+
+> 5:
+
+h ← ¯At ⊙ h + ¯Bt ⊙ ut 
+
+> 6:
+
+yt ← C⊤ 
+
+> t
+
+h + D ⊙ ut 
+
+> 7:
+
+end for  
+
+> 8:
+
+return y
+
+Algorithm 2: F 2STNet temporal block 
+
+Require: fused features z ∈ RB×T ×N ×d and learnable Alog , D
+
+Ensure: temporal features Htemp ∈ RB×N ×d 
+
+> 1:
+
+A ← − exp( Alog ) 
+
+> 2:
+
+for n = 1 to N do  
+
+> 3:
+
+(δ, B, C) ← split(InputProj( z:,:,n, :))  
+
+> 4:
+
+∆ ← softplus(DtProj( δ))  
+
+> 5:
+
+y ← SelectiveScan( z:,:,n, :, ∆, A, B, C, D) 
+
+> 6:
+
+Htemp :,n, : ← y:,T, : 
+
+> 7:
+
+end for  
+
+> 8:
+
+return Htemp 
+
+Sensitivity to Client Count 
+
+Table 4. Sensitivity of F 2STNet to varying client counts ( K) on PeMS04. Each row reports RMSE, MAE, MAPE, Max-RMSE, and Std-RMSE. Results show that performance is stable for moderate K, and degrades as K increases. Bold indicates the best result, and underline indicates the second best. 
+
+Clients ( K) RMSE ↓ MAE ↓ MAPE ↓ Max-RMSE ↓ Std-RMSE ↓
+
+5 29.65 18.51 12.10 30.58 0.76 10 29.50 18.21 11.90 30.40 0.75 
+
+15 29.73 18.39 12.05 30.56 0.77 20 29.96 18.62 12.24 30.88 0.81 25 30.21 18.89 12.40 31.23 0.84 50 30.65 19.34 12.82 31.79 0.90 To assess the impact of client count K on training behavior and fairness, we simulate and visualize the performance of F2 STN ET under varying numbers of participating clients ( K ∈ { 5, 10 , 15 , 20 , 25 , 50 }). As shown in Figure 9, all configura-tions achieve rapid loss decay during the early communication rounds. However, as K increases, the training curves exhibit larger fluctuations and slower convergence, which reflects the increased difficulty of optimization under highly non-IID con-ditions. More importantly, both the worst-5 client MAE and the standard deviation of client-wise MAE exhibit a clear upward trend with larger K, indicating reduced fairness and stability. Among all evaluated settings, K = 10 achieves the best trade-off between convergence speed, utility, and fairness, and is thus adopted as the default configuration in all main experiments. 11 0 20 40 60 80 100 
+
+> Communication Rounds
+> 0.5 1.0 1.5 2.0 2.5 3.0
+> Loss
+> (a) Training Loss
+> K=5 K=10 K=15 K=20 K=25 K=50
+
+(a) Training Loss 0 20 40 60 80 100  
+
+> Communication Rounds
+> 1.0 1.5 2.0 2.5 3.0 3.5 4.0 4.5
+> MAE
+> (b) Worst-5 Client MAE
+> K=5 K=10 K=15 K=20 K=25 K=50
+
+(b) Worst-5 Client MAE 0 20 40 60 80 100  
+
+> Communication Rounds
+> 0.00 0.25 0.50 0.75 1.00 1.25 1.50 1.75
+> Std of MAE
+> (c) Client-wise MAE Std
+> K=5 K=10 K=15 K=20 K=25 K=50
+
+(c) Client-wise MAE Std 
+
+Figure 9. Comparison of training behavior under varying client counts ( K ∈ { 5, 10 , 15 , 20 , 25 , 50 }). All setups show rapid loss drop within the first 10 rounds. Notably, K = 10 yields lower worst-5 MAE and smaller fairness variance (MAE Std), balancing utility and stability. We adopt K = 10 as the default in main experiments. 
+
+B. Additional Federated Results on HZMetro and KnowAir 
+
+Table 5. Comparison of state-of-the-art FL methods on HZMetro . Each row reports RMSE, MAE, MAPE, Max-RMSE, and Std-RMSE to assess performance and client-level fairness. 
+
+Methods Moderate Heterogeneity ( αhet = 5 ) High Heterogeneity ( αhet = 10 ) Fairness Metrics RMSE ↓ MAE ↓ MAPE ↓ RMSE ↓ MAE ↓ MAPE ↓ Max-RMSE ↓ Std-RMSE ↓
+
+FedAvg 31.152 19.782 13.051 31.998 20.485 13.691 33.80 1.14 FedProx 30.984 19.405 12.884 31.565 20.049 13.372 33.21 1.01 MOON 31.012 19.621 12.936 31.803 20.163 13.540 33.40 0.97 FedOPT 30.470 18.973 12.122 31.078 19.318 12.909 32.30 0.84 FedProc 30.761 19.112 12.436 31.392 19.740 13.118 32.74 0.90 FedSage 30.692 18.958 12.398 31.480 19.682 13.001 32.59 0.88 FedProto 30.903 19.221 12.777 31.734 20.008 13.410 33.00 0.94 FGGP 30.229 18.812 12.214 30.939 19.318 12.876 31.90 0.80 
+
+F2STNet (Ours) 30.001 18.591 11.842 30.627 19.104 12.110 30.58 0.73 
+
+We extend our evaluation of F 2STNet to two additional datasets: HZMetro , a sparse urban metro network, and KnowAir ,an air quality monitoring dataset with relatively fixed node topology and high variance. These datasets pose distinct structural and distributional challenges compared to PeMS04. Tables 5 and 6 summarize the performance of F 2STNet and baselines under moderate and high heterogeneity. Results include standard forecasting metrics (RMSE, MAE, MAPE) and client-dispersion indicators (Max-RMSE, Std-RMSE). Key observations are as follows: • On HZMetro , F 2STNet obtains the best reported values under both heterogeneity settings, including the lowest MAE and client-wise error variance. • On KnowAir , F 2STNet still ranks among the top, although the overall performance gain is marginal. The limited client diversity and high sensor noise lead to more fluctuating outcomes, which obscure the relative advantages between methods. These results highlight the robustness of our model under structurally diverse scenarios and confirm its ability to generalize across different temporal-graph settings. However, they also demonstrate the practical limitations of federated modeling when client partitions are inherently constrained or noisy (see Figure 10). 12 Table 6. Comparison of state-of-the-art FL methods on KnowAir . Each row reports RMSE, MAE, MAPE, Max-RMSE, and Std-RMSE to assess performance and client-level fairness. 
+
+Methods Moderate Heterogeneity ( αhet = 5 ) High Heterogeneity ( αhet = 10 ) Fairness Metrics RMSE ↓ MAE ↓ MAPE ↓ RMSE ↓ MAE ↓ MAPE ↓ Max-RMSE ↓ Std-RMSE ↓
+
+FedAvg 28.841 17.819 12.493 29.891 18.918 13.417 32.08 1.17 FedProx 28.760 17.581 12.150 29.448 18.512 13.129 31.62 1.03 MOON 28.956 17.703 12.272 29.701 18.639 13.287 31.80 0.96 FedOPT 28.362 17.191 11.509 29.121 18.104 12.921 30.95 0.82 FedProc 28.752 17.423 11.938 29.504 18.431 13.047 31.12 0.87 FedSage 28.618 17.229 11.911 29.416 18.297 12.970 30.96 0.85 FedProto 28.934 17.553 12.153 29.811 18.772 13.229 31.44 0.92 FGGP 28.099 17.078 11.361 28.924 18.097 12.715 30.35 0.78 
+
+F2STNet (Ours) 27.821 16.851 11.205 28.507 17.984 12.462 29.88 0.70 0 10 20 30 40 50 Communication Rounds 0.5 1.0 1.5 2.0 2.5 
+
+> Training Loss
+
+HZMETRO - Loss 
+
+> FedAvg FedProx MOON FedOPT FedProc FedSage FedProto F2STNet
+
+(a) HZMetro – Training Loss 0 10 20 30 40 50 Communication Rounds 0.5 1.0 1.5 2.0 2.5 
+
+> Worst-5 MAE
+
+HZMETRO - Worst5  
+
+> FedAvg FedProx MOON FedOPT FedProc FedSage FedProto F2STNet
+
+(b) HZMetro – Worst-5 Client MAE 0 10 20 30 40 50 Communication Rounds 0.4 0.6 0.8 1.0 1.2 1.4 1.6 
+
+> Std of MAE
+
+HZMETRO - Stdmae  
+
+> FedAvg FedProx MOON FedOPT FedProc FedSage FedProto F2STNet
+
+(c) HZMetro – Client-wise MAE Std 0 10 20 30 40 50 Communication Rounds 0.5 1.0 1.5 2.0 2.5 3.0 
+
+> Training Loss
+
+KNOWAIR - Loss 
+
+> FedAvg FedProx MOON FedOPT FedProc FedSage FedProto F2STNet
+
+(d) KnowAir – Training Loss 0 10 20 30 40 50 Communication Rounds 0.5 1.0 1.5 2.0 2.5 3.0 
+
+> Worst-5 MAE
+
+KNOWAIR - Worst5  
+
+> FedAvg FedProx MOON FedOPT FedProc FedSage FedProto F2STNet
+
+(e) KnowAir – Worst-5 Client MAE 0 10 20 30 40 50 Communication Rounds 0.2 0.4 0.6 0.8 1.0 1.2 1.4 1.6 1.8 
+
+> Std of MAE
+
+KNOWAIR - Stdmae  
+
+> FedAvg FedProx MOON FedOPT FedProc FedSage FedProto F2STNet
+
+(f) KnowAir – Client-wise MAE Std 
+
+Figure 10. Client-level training behavior comparison of different methods on HZMetro and KnowAir datasets. Each column corresponds to a different evaluation metric. 
+
+13
