@@ -1,0 +1,1042 @@
+Title: Retrieval-Corrected Conformal Prediction for Time Series
+
+URL Source: https://arxiv.org/pdf/2608.10553v1
+
+Published Time: Wed, 12 Aug 2026 00:41:08 GMT
+
+Number of Pages: 11
+
+Markdown Content:
+# Retrieval–Corrected Conformal Prediction for Time Series 
+
+# Sangjin Jin 
+
+sj.jin@unist.ac.kr Ulsan National Institute of Science and Technology Ulsan, Republic of Korea 
+
+# Kangmin Kim 
+
+kmin1015@unist.ac.kr Ulsan National Institute of Science and Technology Ulsan, Republic of Korea 
+
+# Junhyeong Lee 
+
+jun.lee@unist.ac.kr Ulsan National Institute of Science and Technology Ulsan, Republic of Korea 
+
+# Yongjae Lee ∗
+
+yongjaelee@unist.ac.kr Ulsan National Institute of Science and Technology Ulsan, Republic of Korea LinqAlpha New York, NY, USA 
+
+## Abstract 
+
+Conformal prediction (CP) provides distribution-free prediction intervals for fixed forecasters, but its standard calibration proce-dure is often inefficient for time series data, where forecast errors are temporally dependent and change across time and operating conditions. Recent time series CP methods improve local calibration using recent, weighted, or localized residuals. Yet local calibration can remain indirect, since broad residual weighting or additional adaptation procedures may dilute the evidence most relevant to the current prediction. This motivates a simple retrieval and cor-rection strategy that selects similar past residuals as local evidence and then corrects the coverage error left by retrieval. In this pa-per, we propose Retrieval–Corrected Conformal Prediction (RCCP), a retrieval-augmented calibration method for time series predic-tion intervals. RCCP builds an asymmetric interval from retrieved one-sided residuals and calibrates its normalized retrieval error with a scalar conformal correction. Thus, retrieval provides local residual evidence, while conformal correction determines the fi-nal scale needed for coverage. We provide a coverage-gap bound based on the stability of the normalized retrieval error distribu-tion. Across standard benchmarks and backbone forecasters, RCCP attains the target coverage in every setting and achieves the low-est Winkler scores, with fewer severe misses. RCCP also achieves low calibration and inference overhead, showing that retrieval-corrected calibration is an effective and scalable approach to uncer-tainty quantification in time series forecasting. Code is available at https://github.com/jinsaaang/rccp. 
+
+## CCS Concepts 
+
+• Computing methodologies → Artificial intelligence .
+
+## Keywords 
+
+Conformal prediction, Time series forecasting, Information retrieval, Uncertainty quantification 
+
+## 1 Introduction 
+
+Time series forecasting plays a central role in decision making across domains such as finance, traffic, and supply chain systems [7, 
+
+> ∗Corresponding author.
+> Accepted at the 35th ACM International Conference on Information and Knowledge Management (CIKM ’26), Rome, Italy.
+
+32, 35]. Modern deep forecasting models have improved point pre-diction accuracy across these settings [5, 15, 20], yet point accuracy alone is insufficient for decision making under uncertainty. Fore-cast users also need prediction intervals that quantify plausible deviations from the point forecast and attain the desired empirical coverage. An informative interval should be narrow when the local error scale is small, wider when current conditions imply larger errors, and calibrated to the target level. Probabilistic forecasting approaches estimate predictive distributions or conditional quan-tiles [19, 28], but their uncertainty estimates depend on the model class, training objective, and distributional assumptions. When these assumptions are misspecified or the test distribution differs from training, nominal uncertainty may not translate into reliable empirical coverage. This motivates predictive inference based on calibration for fixed forecasters. Conformal prediction (CP) provides a distribution free frame-work for constructing prediction intervals with a prescribed cov-erage level [2, 17, 34]. For a fixed regression forecaster, split CP computes nonconformity scores on a calibration set, often using ab-solute prediction residuals, and takes an empirical quantile of these scores as the interval threshold. Under exchangeability of calibra-tion and test scores, this procedure attains finite sample marginal coverage. Its appeal is that coverage is obtained from calibration scores rather than a correctly specified predictive distribution. In time series, however, the residual process is generally nonexchange-able. Forecast errors are temporally dependent, heteroskedastic, and affected by nonstationarity, distribution shifts, and horizon depen-dent uncertainty [10, 21, 36, 37, 39]. A global threshold computed from all calibration residuals therefore mixes errors from different temporal conditions. It can be conservative in stable periods and insufficient in volatile periods, which weakens the coverage and efficiency tradeoff required of prediction intervals. Recent time series CP methods address this mismatch by adapt-ing calibration to the current prediction context [4]. They either update calibration through recent errors or miscoverage feedback [1, 10, 11, 39], or construct weighted and localized empirical distribu-tions over conformity scores using temporal proximity, learned sim-ilarity, semantic features, or state representations [3, 6, 8, 16, 23, 33]. These methods avoid calibrating against the average residual be-havior of the entire calibration period. This direction is essential for arXiv:2608.10553v1 [cs.LG] 11 Aug 2026 CIKM ’26, November 7–11, 2026, Rome, Italy Sangjin Jin, Kangmin Kim, Junhyeong Lee, and Yongjae Lee 
+
+sharp intervals, since calibration should rely on residual informa-tion that reflects the current error distribution. A remaining limita-tion is that local thresholds are often obtained by softly weighting many calibration samples or by introducing an additional adapta-tion procedure. When only a smaller set of past errors is relevant to the current prediction, weakly related residuals can still affect the interval and reduce sharpness. Retrieval provides a more direct way to use residual evidence from similar past prediction contexts, but the resulting interval is not calibrated by itself. The key problem is therefore how to use retrieved residuals for a sharp local interval while correcting the coverage error that remains after retrieval. Motivated by this problem, we propose Retrieval–Corrected Con-formal Prediction (RCCP). The main idea is to separate residual retrieval from conformal correction. Retrieval augmented time se-ries forecasting has shown that similar historical windows or ref-erence trajectories can provide useful nonparametric information for prediction [12, 14, 22, 24, 38]. RCCP uses this principle for un-certainty estimation rather than point forecasting. Given a fixed forecaster, RCCP retrieves similar past prediction contexts and their realized residuals from a time ordered knowledge base, then builds an asymmetric local interval from positive and negative residuals. This interval captures local residual behavior without training an additional weighting model or relying on a global residual quantile. The retrieved interval is constructed from data dependent local evidence, so RCCP does not treat it as the final conformal interval. It instead evaluates the remaining retrieval error on calibration data by comparing the realized residual with the retrieved upper or lower scale. The resulting normalized retrieval error is calibrated into a scalar correction factor for test time intervals. As a result, retrieval determines the local asymmetric shape of the interval, while conformal correction determines the final scale needed for coverage. Section 3.3 formalizes this separation by first constructing retrieved residual quantiles and then correcting them through the normalized retrieval error. Our main contributions are summarized as follows. 
+
+• We apply residual retrieval to conformal prediction as a di-rect alternative to broad weighting over calibration samples and additional training procedures, selecting residuals from similar past prediction contexts as local evidence. 
+
+• We propose RCCP, a framework that combines asymmetric retrieved intervals with scalar conformal correction. 
+
+• Theoretical results establish a coverage gap bound and an asymptotic coverage result for the RCCP interval, based on stability of the normalized retrieval error distribution. 
+
+• Empirical results show that RCCP improves the coverage and interval efficiency tradeoff with fewer large misses while keeping calibration cost low. 
+
+## 2 Related Work 
+
+Conformal prediction for time series forecasting. Conformal prediction provides a general framework for constructing predic-tion sets with coverage guarantees under exchangeability, and has been widely studied as a model-agnostic approach to uncertainty quantification [2, 17, 31, 34]. However, time series forecasting vi-olates exchangeability assumption due to temporal dependency, heteroskedasticity, and distribution shifts. Prior sequential confor-mal prediction for time series forecasting address this issue through residual-set updates [36], adaptive miscoverage control [10], or fu-ture residual-quantile modeling [37], including EnbPI, ACI, and SPCI. Another branch of time series conformal methods localizes calibration around the current test point. NexCP [4] follows this view by constructing a test-dependent weighted residual distribu-tion, assigning larger influence to temporally closer available errors when computing the conformal quantile. Recent local methods further improve efficiency by selecting calibration residuals accord-ing to their relevance to the current forecasting context, rather than relying only on temporal proximity. HopCPT [3] uses Mod-ern Hopfield Networks for similarity-based sample reweighting, ResCP [23] uses reservoir-state similarity to reweight residuals, KOWCPI [16] adapts Reweighted Nadaraya–Watson estimation for weighted quantile regression on dependent scores, and CT-SSF [6] learns dynamic weights in a semantic feature space. These methods demonstrate the value of local calibration, but they largely focus on estimating a test-specific conformal quantile. Consequently, their coverage behavior may become sensitive to the quality and effective support of the retrieved or weighted calibration examples. 
+
+Retrieval-augmented time series forecasting. In recent years, retrieval-augmented generation (RAG) has been widely used in lan-guage models to complement parametric knowledge with relevant external context retrieved at inference time [9, 18, 26]. Motivated by this paradigm, retrieval augmentation has been introduced to time series forecasting as an external memory mechanism. Re-Time [14] shows that retrieving relevant reference time series can reduce forecasting uncertainty, especially for long-horizon predic-tion. RAFT [12] further retrieves historical candidates with input patterns similar to the query and uses their future trajectories as pre-dictive inductive bias. Beyond deterministic forecasting, RATD [22] uses retrieved references to guide the denoising process in diffusion-based forecasting. TS-RAG [24] extends the same principle to time series foundation models by retrieving semantically relevant seg-ments from a knowledge base and fusing them with model rep-resentations for zero-shot forecasting. These studies suggest that retrieval can provide external historical patterns that are difficult to fully capture through parametric training alone. 
+
+## 3 Retrieval–Corrected Conformal Prediction 
+
+In this section, we present Retrieval-Corrected Conformal Prediction 
+
+(RCCP). RCCP separates local residual evidence from the conformal correction needed for coverage. We first introduce the problem setting and then formalize the retrieval and correction steps. 
+
+## 3.1 Problem Definition 
+
+We consider a time series regression setting with observations 
+
+{( 𝑋 𝑡 , 𝑌 𝑡 )} 𝑇 𝑡 =1 indexed by time. At prediction time 𝑡 , the input 𝑋 𝑡 ∈X contains information available before the response 𝑌 𝑡 ∈ R is revealed, such as a lookback window, known exogenous variables, calendar features, or model states computable at prediction time. A base forecaster 𝑓 : X → R is trained on a proper training period and then fixed during calibration and testing, producing the point prediction b𝑌 𝑡 = 𝑓 (𝑋 𝑡 ). For a miscoverage level 𝛼 ∈ ( 0, 1), the goal is to construct a prediction interval 𝐶 𝛼 𝑡 (𝑋 𝑡 ) satisfying the marginal Retrieval–Corrected Conformal Prediction for Time Series CIKM ’26, November 7–11, 2026, Rome, Italy Forecaster  𝑓 
+
+Input Window 
+
+𝑋 𝑡 = 𝑥 𝑡−𝐿:𝑡−1 
+
+> time
+
+Calibration Windows 
+
+2) Define Retrieved Interval 
+
+3) Retrieval-Corrected Calibration          
+
+> Normalized Retrieval Error
+> 𝐵 𝑗 = 𝑚𝑎𝑥 𝑌 𝑗 − ෠ 𝑌 𝑗 +
+> ෨𝑅 𝑗 +,
+> ෠𝑌 𝑗 − 𝑌 𝑗 +
+> ෨𝑅 𝑗 −
+> Correction Factor
+> መ𝐶 = 𝒬 1−𝛼 𝐵 𝑗 : 𝑗 ∈ ℐ 𝑐𝑎𝑙
+
+Point Prediction 
+
+෡𝑌 𝑡 = 𝑓  𝑋 𝑡 
+
+TS Embedding  𝑍 𝑡 
+
+> …
+
+Knowledge Base 
+
+1) Construct Retrieval Knowledge Base 
+
+> Retrieval Query
+
+: Top-K Retrieval           
+
+> 𝑋 1𝑐𝑎𝑙
+> 𝑋 𝑛 𝑐𝑎𝑙
+> Weighted Upper Quantile
+> ෨𝑅 𝑡 += 𝒬 1−𝛼/2 𝑤 𝑡 𝑒 𝑖 +: 𝑖 ∈ 𝒩 𝐾 𝑡
+> Weighted Lower Quantile
+> ෨𝑅 𝑡 −= 𝒬 1−𝛼/2 𝑤 𝑡 𝑒 𝑖 −: 𝑖 ∈ 𝒩 𝐾 𝑡
+> Retrieved Interval: ሚ𝐶 = ෠𝑌 𝑡 − ෨ 𝑅 𝑡 −, ෠ 𝑌 𝑡 + ෨ 𝑅 𝑡 +
+
+Corrected Interval:  𝑪 𝒕 𝑹𝑪𝑪𝑷  𝜶 = ෡𝒀 𝒕 − ො 𝒄෩ 𝑹 𝒕 −, ෡ 𝒀 𝒕 + ො 𝒄෩ 𝑹 𝒕 +    
+
+> #TS Embedding 𝑒 −𝑒 +𝑑𝑖𝑠𝑡
+> 1
+> 2
+> 3
+> n
+> 𝑒 1−
+> 𝑒 2−
+> 𝑒 3−
+> 𝑒 𝑛
+> −
+> 𝑒 1+
+> 𝑒 2+
+> 𝑒 3+
+> 𝑒 𝑛 +
+> 𝑤
+> 0.32
+> 0.78
+> 0.28
+> 0.65
+> 0.23
+> 0
+> 0.25
+> 0
+> …
+
+Figure 1: Overview of Retrieval–Corrected Conformal Prediction. RCCP builds a retrieval knowledge base from evaluated prediction contexts, forms an asymmetric retrieved interval from one-sided residuals of similar contexts, and calibrates the interval with a scalar correction estimated from normalized retrieval errors. 
+
+coverage criterion 
+
+P  𝑌 𝑡 ∈ 𝐶 𝛼 𝑡 (𝑋 𝑡 ) ≥ 1 − 𝛼 . (1) After the forecaster is fixed, calibration uses only held-out residu-als. We assess validity by coverage and efficiency by interval length. 
+
+Split conformal prediction. The observations are divided in time order into a proper training period Dtrain , a calibration period Dcal ,and a test period Dtest , with calibration and test indices Ical and 
+
+Itest . For regression, the standard split conformal score is the ab-solute residual 𝑆 𝑡 = |𝑌 𝑡 − b𝑌 𝑡 | for 𝑡 ∈ I cal . Split conformal predic-tion estimates the forecast-error scale by the empirical quantile 
+
+b𝑞 𝛼 = 𝑄 1−𝛼 ({ 𝑆 𝑡 : 𝑡 ∈ I cal }) , where 𝑄 1−𝛼 denotes the conformal empirical quantile under the standard finite-sample convention. The corresponding interval is 
+
+𝐶 split  
+
+> 𝑡
+
+(𝛼 ) = [b𝑌 𝑡 − b𝑞 𝛼 , b𝑌 𝑡 + b𝑞 𝛼 ]. (2) Under exchangeability of the calibration and test scores, Eq. (2) satisfies the coverage objective in Eq. (1). For time series forecasting, the residual sequence is temporally dependent and the error distribution can change over time. Conse-quently, a single global residual quantile may be poorly matched to the uncertainty at a particular test time. Weighted and localized conformal methods address this by assigning nonuniform influence to calibration residuals or by conditioning residual quantiles on re-cent observations, temporal states, or learned features [4, 6, 16, 23]. RCCP follows the same motivation for local adaptivity, but sep-arates the construction of local residual evidence from the final coverage calibration. It first constructs a local interval from re-trieved residuals and then calibrates the remaining error of that interval. 
+
+## 3.2 Retrieval-Augmented Local Interval 
+
+The retrieval stage provides the local residual evidence used by RCCP. The current prediction context is encoded as a retrieval key, matched against a time-ordered knowledge base of evaluated residuals, and summarized through asymmetric residual quantiles. The goal of this stage is local adaptivity, not coverage certification. 
+
+Retrieval knowledge base construction. To construct the retrieval knowledge base, RCCP encodes each prediction context into a retrieval key 𝑧 𝑡 before 𝑌 𝑡 is observed. The key can be derived from an input-window embedding, a forecaster representation, point prediction features, exogenous variables, or their concatenation. We write 𝑧 𝑡 = 𝜓 𝑓 (𝑋 𝑡 , b𝑌 𝑡 ), where 𝜓 𝑓 may use any predictable forecaster features. Once the response at time 𝑖 is observed, RCCP appends the key together with the realized one-sided residuals, 𝑒 + 
+
+> 𝑖
+
+= (𝑌 𝑖 − b𝑌 𝑖 )+
+
+and 𝑒 − 
+
+> 𝑖
+
+= (b𝑌 𝑖 − 𝑌 𝑖 )+. The two residuals are stored separately to allow different upper and lower tail behavior. Before time 𝑡 , the knowledge base is K𝑡 −1 = {( 𝑧 𝑖 , 𝑒 + 
+
+> 𝑖
+
+, 𝑒 − 
+
+> 𝑖
+
+) : 𝑖 < 𝑡 }. This ordering ensures that the interval at time 𝑡 uses only past residuals. 
+
+Residual retrieval. RCCP forms a local residual set by comparing the query 𝑧 𝑡 with the keys stored in K𝑡 −1. Let 𝑑 (𝑧 𝑡 , 𝑧 𝑖 ) denote a retrieval distance between the current context and a past context, where smaller values indicate closer contexts. In our experiments, we instantiate 𝑑 as Euclidean distance. We denote the retrieval op-eration by N𝐾 (𝑡 ) = KNN 𝐾 (𝑧 𝑡 , K𝑡 −1, 𝑑 ), which returns the 𝐾 past indices with the smallest distances to 𝑧 𝑡 . This step localizes calibra-tion to residuals associated with similar past prediction contexts. State-based time series CP uses an analogous principle by reweight-ing residuals according to proximity in a learned or constructed state space [23]. In RCCP, this neighborhood determines only the local interval, and the coverage correction is computed separately. The retrieved residuals may be treated uniformly or assigned distance-based weights. In the weighted case, 
+
+𝑤 𝑖 (𝑡 ) = exp (− 𝑑 (𝑧 𝑡 , 𝑧 𝑖 )/ 𝜏 )
+
+Í𝑗 ∈ N 𝐾 (𝑡 ) exp (− 𝑑 (𝑧 𝑡 , 𝑧 𝑗 )/ 𝜏 ) , 𝑖 ∈ N 𝐾 (𝑡 ), (3) where 𝜏 > 0 controls the concentration of the local empirical distribution. Uniform weights recover the hard top-𝐾 case. In both CIKM ’26, November 7–11, 2026, Rome, Italy Sangjin Jin, Kangmin Kim, Junhyeong Lee, and Yongjae Lee 
+
+cases, 𝑤 𝑡 specifies the empirical distribution used to compute local residual quantiles. 
+
+Asymmetric retrieved interval. RCCP summarizes the retrieved residuals separately on the upper and lower sides. This avoids imposing symmetry on the forecast error and allows the interval to adapt differently to positive and negative deviations. The retrieved quantiles are 
+
+e𝑅 + 
+
+> 𝑡
+
+= 𝑄 𝑤 𝑡  
+
+> 1−𝛼 /2
+
+{𝑒 + 
+
+> 𝑖
+
+: 𝑖 ∈ N 𝐾 (𝑡 )} ,
+
+e𝑅 − 
+
+> 𝑡
+
+= 𝑄 𝑤 𝑡  
+
+> 1−𝛼 /2
+
+{𝑒 − 
+
+> 𝑖
+
+: 𝑖 ∈ N 𝐾 (𝑡 )} , (4) and they define the retrieved interval 
+
+e𝐶 𝑡 = [b𝑌 𝑡 − e𝑅 − 
+
+> 𝑡
+
+, b𝑌 𝑡 + e𝑅 + 
+
+> 𝑡
+
+]. (5) This construction is related to adaptive lower and upper interval estimates in conformalized quantile regression, but the interval here is obtained from retrieved residuals rather than learned conditional quantile functions [27]. 
+
+Need for conformal correction. The retrieved interval can be lo-cally adaptive because it uses residuals from contexts close to the current prediction. In conformal prediction, however, locality alone does not imply calibration. The retrieved set is finite and data-dependent, and its quantiles can be unstable when the effective support is small or biased when proximity in the key space does not match future error behavior. RCCP therefore evaluates Eq. (5) on calibration data and corrects its remaining error, rather than using it as the final conformal interval. 
+
+## 3.3 Retrieval-Corrected Calibration 
+
+After retrieval has produced a local interval, the correction step calibrates its remaining error. Rather than calibrating raw residual magnitudes, RCCP calibrates residuals after normalization by the interval produced by retrieval. This makes the correction depend on how well retrieval estimated the local scale, instead of discarding the local information and returning to a global residual threshold. 
+
+Normalized retrieval error and correction. For each calibration in-dex 𝑗 ∈ I cal , the retrieved interval e𝐶 𝑗 is computed before observing 
+
+𝑌 𝑗 . Once 𝑌 𝑗 is revealed, RCCP computes 
+
+𝐵 𝑗 = max 
+
+( (𝑌 𝑗 − b𝑌 𝑗 )+
+
+e𝑅 +
+
+> 𝑗
+
+, (b𝑌 𝑗 − 𝑌 𝑗 )+
+
+e𝑅 −
+
+> 𝑗
+
+)
+
+. (6) The first ratio measures the positive residual relative to the retrieved upper scale, while the second ratio measures the negative residual relative to the retrieved lower scale. Thus, 𝐵 𝑗 is a scalar noncon-formity score for the asymmetric interval. RCCP then estimates a scalar correction from the empirical distribution of these scores. Let 
+
+𝑞 = 1 − 𝛼 , and let 𝑞 𝑛 denote the finite-sample conformal quantile level. The correction is b𝑐 = b𝐹 −1cal (𝑞 𝑛 ) = 𝑄 1−𝛼 ({ 𝐵 𝑗 : 𝑗 ∈ I cal }) , and the final interval is 
+
+𝐶 RCCP  
+
+> 𝑡
+
+(b𝑐 ) = [b𝑌 𝑡 − b𝑐 e𝑅 − 
+
+> 𝑡
+
+, b𝑌 𝑡 + b𝑐 e𝑅 + 
+
+> 𝑡
+
+]. (7) Values of b𝑐 above one indicate that retrieved intervals tend to be too narrow on calibration data, while values below one indicate conservative retrieved intervals. Direct retrieval corresponds to fixing this multiplier at one, whereas RCCP estimates it from Eq. (6). 
+
+Algorithm 1 Retrieval-Corrected Conformal Prediction  
+
+> 1:
+
+Input: forecaster 𝑓 , key map 𝜓 𝑓 , distance 𝑑 , knowledge base 
+
+K, indices Ical , Itest , level 𝛼 , neighbors 𝐾  
+
+> 2:
+
+Output: prediction intervals 𝐶 RCCP  
+
+> 𝑡
+
+(𝛼 ) 
+
+> 3:
+
+B ← ∅  
+
+> 4:
+
+for each 𝑗 ∈ I cal in increasing order do  
+
+> 5:
+
+b𝑌 𝑗 ← 𝑓 (𝑋 𝑗 ) and compute 𝑧 𝑗 = 𝜓 𝑓 (𝑋 𝑗 , b𝑌 𝑗 ) 
+
+> 6:
+
+N𝐾 ( 𝑗 ) ← KNN 𝐾 (𝑧 𝑗 , K, 𝑑 ) 
+
+> 7:
+
+compute e𝑅 + 
+
+> 𝑗
+
+and e𝑅 − 
+
+> 𝑗
+
+by Eq. (4)  
+
+> 8:
+
+observe 𝑌 𝑗 and compute 𝑒 + 
+
+> 𝑗
+
+, 𝑒 − 
+
+> 𝑗
+
+, and 𝐵 𝑗 by Eq. (6)  
+
+> 9:
+
+B ← B ∪ { 𝐵 𝑗 } 
+
+> 10:
+
+K ← K ∪ {( 𝑧 𝑗 , 𝑒 + 
+
+> 𝑗
+
+, 𝑒 − 
+
+> 𝑗
+
+)}  
+
+> 11:
+
+end for  
+
+> 12:
+
+b𝑐 ← 𝑄 1−𝛼 (B)  
+
+> 13:
+
+for each 𝑡 ∈ I test in increasing order do  
+
+> 14:
+
+b𝑌 𝑡 ← 𝑓 (𝑋 𝑡 ) and compute 𝑧 𝑡 = 𝜓 𝑓 (𝑋 𝑡 , b𝑌 𝑡 ) 
+
+> 15:
+
+N𝐾 (𝑡 ) ← KNN 𝐾 (𝑧 𝑡 , K, 𝑑 ) 
+
+> 16:
+
+compute e𝑅 + 
+
+> 𝑡
+
+and e𝑅 − 
+
+> 𝑡
+
+by Eq. (4)  
+
+> 17:
+
+output 𝐶 RCCP  
+
+> 𝑡
+
+(𝛼 ) by Eq. (7)  
+
+> 18:
+
+observe 𝑌 𝑡 and compute 𝑒 + 
+
+> 𝑡
+
+and 𝑒 − 
+
+> 𝑡
+> 19:
+
+K ← K ∪ {( 𝑧 𝑡 , 𝑒 + 
+
+> 𝑡
+
+, 𝑒 − 
+
+> 𝑡
+
+)}  
+
+> 20:
+
+end for 
+
+Implementation. Algorithm 1 summarizes the procedure. During calibration, RCCP constructs retrieved intervals, records normalized retrieval errors, and estimates b𝑐 . During testing, the same retrieval rule constructs a retrieved interval for each new point and scales it by b𝑐 . The knowledge base is updated only after the target is observed. Retrieval-based scores are computed only after the knowledge base contains at least 𝐾 evaluated residuals. 
+
+## 3.4 Theoretical Analysis 
+
+We analyze the coverage behavior of RCCP without relying on exchangeability between calibration and test scores, which is unre-alistic in time series settings [4]. Instead, we establish a coverage-gap bound under stability conditions on the normalized retrieval error distribution, adapting standard non-exchangeable confor-mal prediction assumptions to our retrieval-normalized score set-ting [25, 30, 36]. Theorem 1 decomposes the coverage error into calibration-test score mismatch and empirical correction error. Corollary 1 shows that RCCP approaches the target coverage 1 − 𝛼 
+
+when the normalized retrieval error is stable and the empirical correction is consistent. 
+
+Notation. Let 𝐹 cal (𝑐 ) = Pcal (𝐵 ≤ 𝑐 ) and 𝐹 test (𝑐 ) = Ptest (𝐵 ≤ 𝑐 )
+
+denote the calibration and test CDFs of the normalized retrieval error. Set 𝑞 = 1 − 𝛼 , and let 𝑐 ∗ be the target calibration multiplier satisfying 𝐹 cal (𝑐 ∗) = 𝑞 . We define the empirical calibration error and the finite-sample quantile-level error as 
+
+𝑒 𝑛 = sup 
+
+> 𝑐
+
+|b𝐹 cal (𝑐 ) − 𝐹 cal (𝑐 )| , 𝑟 𝑛 = |𝑞 𝑛 − 𝑞 |, (8) where 𝑞 𝑛 is the finite-sample quantile level used to compute the empirical correction. Assumption 1 (Calibration-test score stability). There ex-ists 𝜌 𝑛 ≥ 0 such that 
+
+|𝐹 test (𝑐 ∗) − 𝐹 cal (𝑐 ∗)| ≤ 𝜌 𝑛 .Retrieval–Corrected Conformal Prediction for Time Series CIKM ’26, November 7–11, 2026, Rome, Italy 
+
+This assumption imposes calibration-test stability at the target multiplier 𝑐 ∗ for the normalized retrieval error distribution. The term 𝜌 𝑛 captures the residual mismatch remaining after retrieval-based normalization. Assumption 2 (Local identifiability of the calibration score qantile). There exist constants 𝑚 > 0 and 𝛿 cal > 0 such that 𝐹 cal (𝑐 ∗) = 𝑞 , and for every 𝑢 ∈ [ 0, 𝛿 cal ],
+
+𝐹 cal (𝑐 ∗ + 𝑢 ) ≥ 𝑞 + 𝑚𝑢, 𝐹 cal (𝑐 ∗ − 𝑢 ) ≤ 𝑞 − 𝑚𝑢. 
+
+This assumption keeps b𝑐 close to 𝑐 ∗, with 𝑚 controlling the local separation of the calibration CDF near the target quantile. Assumption 3 (Local Lipschitzness of the test score CDF). 
+
+There exist constants 𝐿 < ∞ and 𝛿 test > 0 such that, for every 𝑐 
+
+satisfying |𝑐 − 𝑐 ∗ | ≤ 𝛿 test ,
+
+|𝐹 test (𝑐 ) − 𝐹 test (𝑐 ∗)| ≤ 𝐿 |𝑐 − 𝑐 ∗ |.
+
+Local smoothness of the test score CDF converts multiplier error near 𝑐 ∗ into a test coverage-gap bound. The constant 𝐿 controls the local sensitivity of test coverage to multiplier perturbations. Assumption 4 (Empirical calibration accuracy). The em-pirical calibration error and the finite-sample quantile-level error satisfy 
+
+𝑒 𝑛 + 𝑟 𝑛 ≤ 𝑚𝛿 0
+
+2 .
+
+Here, 𝛿 0 = min {𝛿 𝑐𝑎𝑙 , 𝛿 𝑡𝑒𝑠𝑡 } is the local radius around 𝑐 ∗ over which the regularity assumptions hold. The condition ensures that calibration error is small enough to keep b𝑐 within this neighborhood, with 𝑒 𝑛 and 𝑟 𝑛 capturing empirical CDF error and finite-sample quantile adjustment, respectively. Lemma 1 (Score-event eqivalence). For any 𝑐 ≥ 0,
+
+𝑌 𝑡 ∈ 𝐶 𝑡 (𝑐 ) ⇐⇒ 𝐵 𝑡 ≤ 𝑐. 
+
+This equivalence reduces coverage analysis to the scalar score distribution 𝐹 test , and the full proof is provided in Appendix A. Theorem 1 (Coverage gap bound of RCCP). Suppose Assump-tions 1–4 hold, and let 
+
+𝑢 𝑛 := 2(𝑒 𝑛 + 𝑟 𝑛 )
+
+𝑚 .
+
+If 𝑢 𝑛 < 𝛿 0, then 
+
+Ptest {𝑌 𝑡 ∈ 𝐶 𝑡 (b𝑐 )} − 𝑞 ≤ 𝜌 𝑛 + 2𝐿 𝑚 (𝑒 𝑛 + 𝑟 𝑛 ).
+
+The bound separates calibration-test score mismatch from em-pirical correction error. Retrieval affects the interval through the sharpness and stability of e𝐶 𝑡 , while coverage is controlled through the normalized retrieval error 𝐵 𝑡 . The full proof is provided in Appendix A. Corollary 1 (Asymptotic Coverage of RCCP). Suppose As-sumptions 1–4 hold with fixed constants 𝑚 > 0, 𝐿 < ∞, and 𝛿 0 > 0.If 𝜌 𝑛 → 0, 𝑒 𝑛 → 0, and 𝑟 𝑛 → 0, then 
+
+|Ptest {𝑌 𝑡 ∈ 𝐶 𝑡 (b𝑐 )} − 𝑞 | → 0.
+
+The corollary follows directly from the coverage-gap bound: as the calibration-test score mismatch and empirical correction error vanish, 𝐶 𝑡 (b𝑐 ) attains the target coverage asymptotically. The full proof is provided in Appendix A. 
+
+## 4 Experiments 
+
+We evaluate RCCP on time-series conformal prediction benchmarks against representative split, adaptive, and localized conformal base-lines. Section 4.1 describes the experimental setup. Section 4.2 re-ports the main benchmark results and further analyses, and Sec-tion 4.3 presents ablation studies. 
+
+## 4.1 Experimental Setup 
+
+Datasets. Our evaluation covers four benchmark datasets com-mon in time series forecasting and conformal prediction studies, summarized in Table 1. For multi-location datasets, each location is treated as a separate series.                     
+
+> Table 1: Dataset statistics after preprocessing. Length denotes time points per series.
+> Dataset Frequency Target Length # Loc. Air [40] Hourly PM 10 35,064 12 Solar [29] Hourly DHI 26,304 50 Electricity [13] 30-min Transfer 3,444 1Wind [36] Hourly MWH 13,870 1
+
+Time series forecasters. We evaluate each conformal method with LSTM and Transformer backbones. For each dataset, observations are chronologically split into training, calibration, and test periods with proportions 40%, 40%, and 20%, respectively. We train one global forecaster per dataset on the training period and keep it fixed during calibration and testing [3]. Calibration observations are used only for conformal calibration, and all conformal methods are evaluated on the same frozen forecasts. Unless otherwise stated, both backbones use hidden dimension 128 and batch size 256, and are trained for 150 epochs with Adam using learning rate 10 −3.
+
+Baselines. We compare RCCP with representative conformal baselines for time series. The baselines include split conformal prediction (SCP) [34], online or adaptive methods such as EnbPI [36] and SPCI [37], and localized methods such as NexCP [4], HopCPT [3], and ResCP [23]. All methods use the same temporal partitions, frozen point forecasts, and random seeds, with hyperparameters selected on the calibration split when needed. 
+
+Evaluation metrics. For each test point, let [𝐿 𝑡 , 𝑈 𝑡 ] denote the reported prediction interval. We report empirical coverage, signed coverage gap, PI-Width, Winkler score, and Calibration Time. Em-pirical coverage measures validity, 
+
+dCov = 1
+
+|I test |∑︁ 𝑡 ∈ I test 
+
+1{𝑌 𝑡 ∈ [ 𝐿 𝑡 , 𝑈 𝑡 ]} . (9) The signed coverage gap is reported in percentage points, 
+
+ΔCov = 100 
+
+ dCov − ( 1 − 𝛼 )
+
+
+
+, (10) CIKM ’26, November 7–11, 2026, Rome, Italy Sangjin Jin, Kangmin Kim, Junhyeong Lee, and Yongjae Lee 
+
+Table 2: Performance across datasets and backbone forecasters at 𝛼 = 0.1. Values are mean ± standard deviation over 5 seeds after hyperparameter selection. For ΔCov , values closer to zero are better, and lower values are better for PI-Width, Winkler, and Calibration Time. Calibration Time measures conformal calibration and test interval construction after forecasts are available. Shaded Winkler cells mark the lowest value, underlined Winkler values mark the second-lowest value, and shaded ΔCov cells indicate severe undercoverage cases with ΔCov < −2% .
+
+Dataset Backbone Metric SCP EnbPI SPCI NexCP HopCPT ResCP RCCP (Ours) 
+
+Air LSTM 
+
+ΔCov 0.16 ± 0.22 −6.36 ± 0.11 −0.83 ± 1.10 −1.06 ± 0.07 −0.19 ± 0.17 −0.14 ± 0.25 0.43 ± 0.16 
+
+PI-Width 62 .72 ± 0.58 53 .39 ± 0.44 63 .09 ± 2.94 63 .72 ± 0.31 62 .47 ± 0.79 61 .35 ± 0.73 60 .20 ± 0.57 
+
+Winkler 112 .55 ± 0.63 110 .67 ± 0.61 109 .45 ± 0.34 103 .91 ± 0.21 111 .66 ± 0.93 101 .57 ± 0.48 92 .44 ± 0.35 
+
+Time 35 .28 ± 0.26 143 .38 ± 0.80 664 .91 ± 2.89 35 .52 ± 0.45 262 .74 ± 0.54 102 .75 ± 6.07 70 .94 ± 0.55 
+
+Transf 
+
+ΔCov 0.37 ± 0.15 −6.43 ± 0.16 −0.51 ± 0.66 −1.69 ± 0.08 −0.46 ± 0.39 −0.28 ± 0.11 0.20 ± 0.09 
+
+PI-Width 63 .88 ± 0.90 53 .33 ± 1.08 64 .72 ± 1.48 65 .43 ± 1.02 62 .04 ± 1.15 61 .45 ± 1.45 60 .94 ± 1.22 
+
+Winkler 116 .96 ± 2.75 111 .67 ± 3.05 109 .64 ± 2.57 102 .71 ± 1.50 115 .88 ± 3.29 102 .21 ± 1.82 92 .51 ± 1.44 
+
+Time 35 .34 ± 1.55 143 .78 ± 1.23 658 .39 ± 7.32 35 .14 ± 1.22 247 .23 ± 1.89 98 .77 ± 0.90 72 .45 ± 0.50 
+
+Solar LSTM 
+
+ΔCov 1.50 ± 0.09 −1.84 ± 0.06 0.75 ± 0.76 −0.79 ± 0.08 1.26 ± 2.20 1.14 ± 0.14 0.42 ± 0.24 
+
+PI-Width 35 .24 ± 1.36 22 .43 ± 1.04 27 .42 ± 3.07 26 .18 ± 0.90 29 .37 ± 8.77 20 .10 ± 1.28 18 .31 ± 0.38 
+
+Winkler 62 .87 ± 2.09 55 .08 ± 1.95 54 .86 ± 1.71 51 .19 ± 1.60 39 .02 ± 7.87 38 .90 ± 1.43 26 .08 ± 0.67 
+
+Time 90 .14 ± 1.11 443 .45 ± 5.51 1964 .26 ± 19 .29 96 .13 ± 0.42 862 .02 ± 111 .56 323 .09 ± 1.10 167 .27 ± 0.90 
+
+Transf 
+
+ΔCov 1.14 ± 0.06 −1.61 ± 0.16 1.48 ± 0.30 −1.02 ± 0.31 0.39 ± 0.81 1.94 ± 0.48 1.77 ± 0.52 
+
+PI-Width 31 .39 ± 2.30 23 .96 ± 1.80 24 .19 ± 1.88 28 .87 ± 1.62 28 .37 ± 4.54 20 .69 ± 0.78 21 .02 ± 1.05 
+
+Winkler 58 .85 ± 1.94 54 .76 ± 1.11 44 .57 ± 3.89 52 .26 ± 1.53 43 .27 ± 8.91 38 .41 ± 0.43 29 .29 ± 1.70 
+
+Time 89 .40 ± 2.39 433 .94 ± 3.78 1925 .61 ± 25 .64 94 .98 ± 1.89 764 .09 ± 58 .11 317 .41 ± 10 .46 186 .28 ± 1.12 
+
+Wind LSTM 
+
+ΔCov 0.23 ± 0.15 −2.31 ± 0.10 −1.95 ± 2.81 −0.06 ± 0.05 2.25 ± 2.04 1.56 ± 0.15 0.62 ± 0.49 
+
+PI-Width 63 .42 ± 0.66 59 .54 ± 0.36 58 .34 ± 8.97 62 .60 ± 0.49 73 .20 ± 10 .36 63 .36 ± 0.55 58 .75 ± 1.11 
+
+Winkler 96 .29 ± 0.09 97 .92 ± 0.33 99 .55 ± 1.73 94 .50 ± 0.25 99 .06 ± 3.03 89 .75 ± 0.47 83 .79 ± 0.43 
+
+Time 0.72 ± 0.02 4.49 ± 0.07 19 .32 ± 0.34 0.86 ± 0.02 8.89 ± 0.20 4.05 ± 0.01 1.50 ± 0.01 
+
+Transf 
+
+ΔCov −0.50 ± 0.81 −2.06 ± 0.14 −0.40 ± 1.84 0.37 ± 0.18 −0.64 ± 3.77 1.49 ± 0.42 1.52 ± 0.15 
+
+PI-Width 65 .28 ± 1.49 60 .86 ± 1.62 64 .50 ± 6.10 67 .65 ± 2.65 66 .32 ± 6.82 64 .83 ± 1.81 63 .52 ± 1.41 
+
+Winkler 101 .35 ± 2.17 100 .25 ± 1.59 100 .79 ± 1.87 100 .68 ± 1.60 99 .09 ± 3.22 93 .41 ± 2.33 87 .78 ± 1.02 
+
+Time 0.71 ± 0.01 4.50 ± 0.13 19 .03 ± 0.37 0.84 ± 0.03 8.62 ± 0.53 3.87 ± 0.08 1.52 ± 0.01 
+
+Electricity LSTM 
+
+ΔCov 5.18 ± 1.29 −3.12 ± 0.19 4.13 ± 0.94 1.09 ± 0.91 4.28 ± 1.52 1.23 ± 0.19 0.54 ± 0.72 
+
+PI-Width 0.21 ± 0.02 0.15 ± 0.01 0.19 ± 0.02 0.17 ± 0.01 0.20 ± 0.02 0.16 ± 0.01 0.16 ± 0.01 
+
+Winkler 0.25 ± 0.02 0.24 ± 0.02 0.24 ± 0.02 0.23 ± 0.02 0.25 ± 0.02 0.23 ± 0.01 0.22 ± 0.01 
+
+Time 0.20 ± 0.03 1.18 ± 0.04 4.41 ± 0.03 0.24 ± 0.00 4.36 ± 0.65 1.77 ± 0.20 0.23 ± 0.00 
+
+Transf 
+
+ΔCov 5.33 ± 3.12 −5.98 ± 0.65 −0.11 ± 2.30 2.61 ± 1.14 4.75 ± 0.36 1.96 ± 0.56 1.99 ± 1.61 
+
+PI-Width 0.30 ± 0.03 0.16 ± 0.01 0.19 ± 0.02 0.25 ± 0.02 0.28 ± 0.02 0.20 ± 0.01 0.20 ± 0.03 
+
+Winkler 0.35 ± 0.02 0.31 ± 0.03 0.28 ± 0.01 0.32 ± 0.04 0.34 ± 0.03 0.29 ± 0.02 0.27 ± 0.02 
+
+Time 0.18 ± 0.00 1.11 ± 0.01 4.32 ± 0.12 0.23 ± 0.01 3.77 ± 0.13 1.87 ± 0.63 0.27 ± 0.01 
+
+so negative values indicate undercoverage. PI-Width measures av-erage interval length, PI-Width = 1
+
+|I test |∑︁ 𝑡 ∈ I test 
+
+(𝑈 𝑡 − 𝐿 𝑡 ). (11) To jointly assess interval length and miscoverage, we report the Winkler score, 
+
+𝑊 𝑡 = (𝑈 𝑡 −𝐿 𝑡 )+ 2
+
+𝛼 (𝐿 𝑡 −𝑌 𝑡 )1{𝑌 𝑡 < 𝐿 𝑡 }+ 2
+
+𝛼 (𝑌 𝑡 −𝑈 𝑡 )1{𝑌 𝑡 > 𝑈 𝑡 }, (12) and average it over the test period. Calibration Time is the post-forecasting time needed to calibrate each conformal method and construct test intervals. For RCCP, it also includes serialization of retrieval keys for knowledge-base construction. 
+
+## 4.2 Results & Analysis 
+
+Across all datasets and backbone forecasters, Table 2 shows that RCCP avoids empirical undercoverage at 𝛼 = 0.1 and achieves the best or tied-best Winkler scores. Computationally simple baselines Interval width Miss penalty SCP EnbPI SPCI NexCP HopCPT ResCP RCCP 050 100 
+
+> Winkler score
+
+(a) Air SCP EnbPI SPCI NexCP HopCPT ResCP RCCP 020 40 60  
+
+> Winkler score
+
+(b) Solar Figure 2: Winkler-score decomposition into interval width and miss penalty on Air and Solar. 
+
+such as SCP and NexCP have low Calibration Time because they rely on global or weighted calibration rules, but this simplicity of-ten comes with weaker coverage or larger Winkler scores. EnbPI and SPCI adapt to recent residuals, yet their intervals remain less effective when the error scale changes over time. HopCPT is closer in spirit to RCCP because it uses learned local information, but it Retrieval–Corrected Conformal Prediction for Time Series CIKM ’26, November 7–11, 2026, Rome, Italy SCP EnbPI SPCI NexCP HopCPT ResCP RCCP (Ours) Target coverage 1 2 3 4 5 6 7 8 9 10          
+
+> Absolute error decile
+> 60 80 100 120
+> Interval width
+> 12345678910
+> Absolute error decile
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coverage
+
+(a) Air 1 2 3 4 5 6 7 8 9 10           
+
+> Absolute error decile
+> 020 40 60 80 100
+> Interval width
+> 12345678910
+> Absolute error decile
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Coverage
+
+(b) Solar Figure 3: Interval width and empirical coverage stratified by realized error decile. Higher deciles correspond to larger realized errors and test whether intervals adapt to difficult points. 
+
+requires substantially larger Calibration Time and shows variable interval quality across settings. These results support the main design choice of RCCP, where retrieval improves local interval allo-cation and correction prevents the retrieved interval from becoming an uncalibrated local threshold. Calibration Time should be interpreted conservatively, since it is measured after forecasts are available and includes method-specific calibration and test interval construction. For RCCP, it also includes serializing the forecast-state keys used for retrieval, so the reported time includes retrieval memory construction. Although SCP and NexCP are computationally cheaper by construction, RCCP is more efficient than more expensive adaptive or learned local baselines while delivering stronger coverage and Winkler performance. Re-sults for additional miscoverage levels are reported in Appendix C. Winkler reflects interval length and coverage violations, so the analysis first decomposes this score. A lower Winkler score can result from shorter intervals, smaller violations, or both. Figure 2 separates interval width from the penalty incurred by miscovered points. RCCP’s advantage does not come from producing the nar-rowest intervals, but from reducing the miscoverage penalty. This indicates that targets outside the interval tend to be less severe violations, consistent with the correction mechanism that adjusts the retrieved interval scale without uniformly inflating intervals. 
+
+Table 3: Width adaptivity ratio across datasets. Values are Decile 10 width divided by Decile 1 width. 
+
+Dataset SCP EnbPI SPCI NexCP HopCPT ResCP RCCP Air 1.00 1.45 1.36 1.66 1.04 1.77 2.30 Solar 1.00 1.22 1.42 1.50 6.27 2.74 20.86 
+
+The decile analysis explains how the penalty is reduced. Figure 3 stratifies test points by realized error decile and compares interval width with empirical coverage. RCCP widens intervals in high-error deciles and maintains stronger coverage where prediction errors are largest. This pattern is summarized by the width adaptivity ratio in Table 3, defined as the Decile 10 width divided by the Decile 1 width. RCCP reaches 2.30 on Air and 20.86 on Solar, exceeding all baselines. Thus, RCCP reallocates interval width toward high-error regions rather than widening intervals uniformly. The distribution of violation sizes further supports this interpre-tation. Figure 4 plots the CDF of the distance from each miscovered SCP EnbPI SPCI NexCP HopCPT ResCP RCCP (Ours) 0 20 40 60 80 
+
+> Miss distance
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Cumulative probability
+
+(a) Air 0 10 20 30 40 50  
+
+> Miss distance
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Cumulative probability
+
+(b) Solar Figure 4: CDF of miscoverage distance for uncovered test points. Higher curves indicate smaller coverage violations. 
+
+target to the nearest interval boundary, where curves concentrated near zero indicate smaller violations and heavier tails indicate se-vere misses. RCCP rises fastest across datasets, showing that even when coverage fails, the realized value usually remains close to the reported interval. 
+
+## 4.3 Ablation Studies 
+
+The ablation study examines the interval components, correction across target miscoverage levels, retrieval key construction and met-ric, and retrieval size. These analyses clarify which design choices affect coverage, interval efficiency, and robustness. 
+
+Table 4: Component ablation. The table isolates how asymmetric residuals and correction affect coverage and Winkler score.                                         
+
+> Dataset Backbone Metric Org. RCCP w/o Asym. w/o Corr. w/o Both Air LSTM ΔCov +0.43 ±0.16 +0.44 ±0.13 −1.35 ±0.23 −0.89 ±0.13
+> Winkler 92 .44 ±0.35 96 .42 ±0.21 92 .91 ±0.32 95 .95 ±0.20
+> Transf. ΔCov +0.20 ±0.09 +0.49 ±0.23 −3.01 ±0.10 −2.60 ±0.20
+> Winkler 92 .51 ±1.44 97 .26 ±1.04 93 .16 ±1.27 97 .63 ±1.02
+> Solar LSTM ΔCov +0.42 ±0.24 +0.03 ±0.22 −1.66 ±0.13 −3.10 ±0.62
+> Winkler 26 .08 ±0.67 28 .17 ±1.35 26 .03 ±0.75 28 .05 ±1.38
+> Transf. ΔCov +1.77 ±0.52 +1.31 ±0.62 +0.51 ±0.51 −2.31 ±0.62
+> Winkler 29 .29 ±1.70 35 .93 ±3.94 29 .56 ±1.80 35 .85 ±3.98
+
+Component-wise ablation. Table 4 separates the roles of the two design choices introduced in Sections 3.2 and 3.3: asymmetric resid-ual scaling and conformal correction. First, conformal correction mainly controls coverage. Removing it worsens ΔCov and leads to undercoverage in most settings, since locally retrieved residuals CIKM ’26, November 7–11, 2026, Rome, Italy Sangjin Jin, Kangmin Kim, Junhyeong Lee, and Yongjae Lee Direct (̂ c = 1) RCCP (̂ c) Target coverage 0.05 0.10 0.15            
+
+> α
+> 0.84 0.88 0.92 0.96
+> Coverage
+> 0.05 0.10 0.15
+> α
+> 50 60 70 80 90
+> Interval width
+> 0.05 0.10 0.15
+> α
+> 80 90 100 110 120
+> Winkler score
+> (a) Air 0.05 0.10 0.15
+> α
+> 0.84 0.88 0.92 0.96
+> Coverage
+> 0.05 0.10 0.15
+> α
+> 15 18 21 24
+> Interval width
+> 0.05 0.10 0.15
+> α
+> 21 24 27 30 33
+> Winkler score (b) Solar
+
+Figure 5: Coverage, interval width, and Winkler score for direct retrieval and corrected intervals across target miscoverage levels. The dotted line marks target coverage, showing how correction affects calibration and interval efficiency as 𝛼 varies. 
+
+need not match the test-time normalized error distribution. Second, asymmetric residual scaling mainly controls efficiency. Removing it keeps coverage closer to the target but increases Winkler scores, because a symmetric interval cannot adapt to directional error imbalance. One-sided residuals avoid this waste by shaping the up-per and lower widths separately. Therefore, the results justify the full design: correction ensures reliable coverage, while asymmetry improves interval efficiency. 
+
+Correction across target levels. The correction factor is evaluated across multiple target miscoverage levels. This comparison tests whether retrieval needs calibration after it has produced a locally adaptive interval. Figure 5 compares direct retrieval, which fixes 
+
+b𝑐 = 1, with the corrected RCCP interval at 𝛼 ∈ { 0.05 , 0.10 , 0.15 }.Across target levels, correction moves empirical coverage toward the desired level with only modest changes in interval width and Winkler score. This indicates that the correction repairs residual coverage error left by retrieval rather than simply inflating intervals. 
+
+Table 5: Retrieval key and metric ablation. The table compares em-bedding keys and raw-window keys across distance metrics.                                         
+
+> Dataset Backbone Metric Org. RCCP Emb.-Cos RawTS-L2 RawTS-Cos Air LSTM ΔCov +0.43 ±0.16 +0.37 ±0.18 +0.21 ±0.21 +0.08 ±0.22
+> Winkler 92 .44 ±0.35 93 .47 ±0.39 96 .30 ±0.77 96 .64 ±0.66
+> Transf. ΔCov +0.20 ±0.09 +0.31 ±0.15 −0.09 ±0.11 −0.22 ±0.11
+> Winkler 92 .51 ±1.44 92 .62 ±1.30 95 .96 ±1.20 97 .40 ±1.63
+> Solar LSTM ΔCov +0.42 ±0.24 +0.75 ±0.23 −0.03 ±0.19 +0.27 ±0.09
+> Winkler 26 .08 ±0.67 26 .06 ±0.69 28 .42 ±0.76 28 .75 ±0.71
+> Transf. ΔCov +1.77 ±0.52 +1.64 ±0.58 +0.70 ±0.25 +0.89 ±0.26
+> Winkler 29 .29 ±1.70 29 .54 ±1.80 29 .05 ±0.84 29 .49 ±0.81
+
+Retrieval key construction and metric. Table 5 tests whether per-formance depends on retrieval key construction and the distance metric, separating retrieval choices from the correction step. The main RCCP setting is compared with embedding or raw-window keys under Euclidean distance or cosine similarity. Coverage re-mains stable across variants, suggesting that conformal correction is robust to retrieval choices. Winkler scores are more sensitive to key construction, with embedding keys generally yielding sharper corrected intervals. 
+
+Retrieval size sensitivity. The final ablation varies the neighbor-hood size 𝐾 and reports interval width, coverage, and Winkler score in Figure 6. Small neighborhoods can make retrieved intervals variable, while very large neighborhoods dilute local information. Across a broad range of 𝐾 , coverage remains stable and Winkler LSTM Transformer 0.00 0.15 0.30 0.45          
+
+> Coverage gap (%)
+> 16 32 64 128
+> Neighborhood size K
+> 92 96 100 104 108
+> Winkler score
+> (a) Air 0.0 0.5 1.0 1.5 2.0
+> Coverage gap (%)
+> 16 32 64 128
+> Neighborhood size K
+> 26 28 30 32
+> Winkler score (b) Solar
+
+Figure 6: Sensitivity to retrieval size 𝐾 . The figure reports interval width, coverage, and Winkler score across neighborhood sizes. 
+
+changes smoothly, suggesting that the conformal correction ab-sorbs much of the retrieval variability. The default 𝐾 = 64 provides a stable balance between local adaptivity and interval quality. 
+
+## 5 Conclusion 
+
+In this paper we introduce RCCP, a retrieval–corrected calibration method for time series prediction intervals. Existing time series CP methods improve local calibration by reusing recent, weighted, or localized residuals, but broad weighting or additional adaptation procedures can make the interval less direct and more costly. RCCP addresses this issue by retrieving residuals from similar past predic-tion contexts and using one-sided residuals to construct an asym-metric local interval. Because the retrieved interval is not a coverage guarantee on its own, RCCP calibrates the remaining normalized retrieval error with a scalar conformal correction. This separates local evidence construction from the final coverage correction. The theoretical analysis characterizes this corrected interval through the normalized retrieval error distribution and gives a coverage gap bound with an asymptotic coverage result. Across benchmark datasets and backbone forecasters, RCCP maintained reliable empir-ical coverage, improved interval efficiency, reduced severe misses, and kept calibration overhead low. Ablations also showed that retrieval, asymmetry, and correction contribute complementary benefits. These results suggest that retrieval and correction provide a simple and scalable route to locally informative and calibrated uncertainty estimates for time series forecasting. Retrieval–Corrected Conformal Prediction for Time Series CIKM ’26, November 7–11, 2026, Rome, Italy 
+
+## 6 Limitations 
+
+A key limitation of RCCP is its dependence on the quality of the retrieval representation. Because the retrieval key is derived from the fixed forecaster and its representations, interval efficiency may degrade when the embedding does not capture error-relevant simi-larity. Future work should also study retrieval–corrected calibration for high-dimensional observations, multivariate targets, and multi-step horizons, where residuals are structured and uncertainty can vary across dimensions and horizons. 
+
+## Generative AI Usage Disclosure 
+
+Generative AI tools were used during the preparation of this man-uscript for editorial assistance, literature organization, drafting support, and minor code-editing support. These tools were not used to generate datasets, produce experimental results, conduct statistical analyses, or determine scientific claims. All technical content, citations, algorithms, code, experimental results, and con-clusions were reviewed and verified by the authors, who take full responsibility for the final manuscript. 
+
+## References 
+
+[1] Anastasios Angelopoulos, Emmanuel Candes, and Ryan J Tibshirani. 2023. Con-formal pid control for time series prediction. Advances in neural information processing systems 36 (2023), 23047–23074. [2] Anastasios N Angelopoulos and Stephen Bates. 2023. Conformal prediction: A gentle introduction. Foundations and Trends in Machine Learning 16, 4 (2023), 494–591. [3] Andreas Auer, Martin Gauch, Daniel Klotz, and Sepp Hochreiter. 2023. Conformal prediction for time series with modern hopfield networks. Advances in neural information processing systems 36 (2023), 56027–56074. [4] Rina Foygel Barber, Emmanuel J Candes, Aaditya Ramdas, and Ryan J Tibshirani. 2023. Conformal prediction beyond exchangeability. The Annals of Statistics 51, 2 (2023), 816–845. [5] Konstantinos Benidis, Syama Sundar Rangapuram, Valentin Flunkert, Yuyang Wang, Danielle Maddix, Caner Turkmen, Jan Gasthaus, Michael Bohlke-Schneider, David Salinas, Lorenzo Stella, et al. 2022. Deep learning for time series forecasting: Tutorial and literature survey. Comput. Surveys 55, 6 (2022), 1–36. [6] Baiting Chen, Zhimei Ren, and Lu Cheng. 2024. Conformalized time series with semantic features. Advances in Neural Information Processing Systems 37 (2024), 121449–121474. [7] Sunil Chopra and Peter Meindl. 2019. Supply chain management. Strategy, plan-ning & operation. In Das Summa Summarum des Management: Die 25 wichtigsten Werke für Strategie, Führung und Veränderung . Springer, 265–275. [8] Andrea Cini, Alexander Jenkins, Danilo Mandic, Cesare Alippi, and Filippo Maria Bianchi. 2025. Relational Conformal Prediction for Correlated Time Series. In 
+
+International Conference on Machine Learning . PMLR, 10949–10965. [9] Wenqi Fan, Yujuan Ding, Liangbo Ning, Shijie Wang, Hengyun Li, Dawei Yin, Tat-Seng Chua, and Qing Li. 2024. A survey on rag meeting llms: Towards retrieval-augmented large language models. In Proceedings of the 30th ACM SIGKDD conference on knowledge discovery and data mining . 6491–6501. [10] Isaac Gibbs and Emmanuel Candes. 2021. Adaptive conformal inference under distribution shift. Advances in Neural Information Processing Systems 34 (2021), 1660–1672. [11] Isaac Gibbs and Emmanuel J Candès. 2024. Conformal inference for online prediction with arbitrary distribution shifts. Journal of Machine Learning Research 
+
+25, 162 (2024), 1–36. [12] Sungwon Han, Seungeon Lee, Meeyoung Cha, Sercan O Arik, and Jinsung Yoon. 2025. Retrieval Augmented Time Series Forecasting. In International Conference on Machine Learning . PMLR, 21774–21797. [13] Michael Harries, New South Wales, et al. 1999. Splice-2 comparative evaluation: Electricity pricing. (1999). [14] Baoyu Jing, Si Zhang, Yada Zhu, Bin Peng, Kaiyu Guan, Andrew Margenot, and Hanghang Tong. 2022. Retrieval based time series forecasting. arXiv preprint arXiv:2209.13525 (2022). [15] Jongseon Kim, Hyungjoon Kim, HyunGi Kim, Dongjun Lee, and Sungroh Yoon. 2025. A comprehensive survey of deep learning for time series forecasting: architectural diversity and open challenges. Artificial Intelligence Review 58, 7 (2025), 216. [16] Jonghyeok Lee, Chen Xu, and Yao Xie. 2025. Kernel-based optimally weighted conformal time-series prediction. In The Thirteenth International Conference on Learning Representations .[17] Jing Lei, Max G’Sell, Alessandro Rinaldo, Ryan J Tibshirani, and Larry Wasserman. 2018. Distribution-free predictive inference for regression. J. Amer. Statist. Assoc. 
+
+113, 523 (2018), 1094–1111. [18] Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich Küttler, Mike Lewis, Wen-tau Yih, Tim Rocktäschel, et al. 2020. Retrieval-augmented generation for knowledge-intensive nlp tasks. 
+
+Advances in neural information processing systems 33 (2020), 9459–9474. [19] Bryan Lim, Sercan Ö Arık, Nicolas Loeff, and Tomas Pfister. 2021. Temporal fusion transformers for interpretable multi-horizon time series forecasting. International journal of forecasting 37, 4 (2021), 1748–1764. [20] Bryan Lim and Stefan Zohren. 2021. Time-series forecasting with deep learning: a survey. Philosophical transactions of the royal society a: mathematical, physical and engineering sciences 379, 2194 (2021). [21] Zhen Lin, Shubhendu Trivedi, and Jimeng Sun. 2022. Conformal prediction with temporal quantile adjustments. Advances in Neural Information Processing Systems 35 (2022), 31017–31030. [22] Jingwei Liu, Ling Yang, Hongyan Li, and Shenda Hong. 2024. Retrieval-augmented diffusion models for time series forecasting. Advances in Neural Information Processing Systems 37 (2024), 2766–2786. [23] Roberto Neglia, Andrea Cini, Michael M. Bronstein, and Filippo Maria Bianchi. 2026. ResCP: Reservoir Conformal Prediction for Time Series Forecasting. In 
+
+The Fourteenth International Conference on Learning Representations . https: //openreview.net/forum?id=WGqibe5H3W [24] Kanghui Ning, Zijie Pan, Yu Liu, Yushan Jiang, James Zhang, Kashif Rasul, An-derson Schneider, Lintao Ma, Yuriy Nevmyvaka, and Dongjin Song. 2026. Ts-rag: Retrieval-augmented generation based time series foundation models are stronger zero-shot forecaster. Advances in Neural Information Processing Systems 38 (2026), 163170–163199. [25] Roberto I Oliveira, Paulo Orenstein, Thiago Ramos, and Joao Vitor Romano. 2024. Split conformal prediction and non-exchangeable data. Journal of Machine Learning Research 25, 225 (2024), 1–38. [26] Ori Ram, Yoav Levine, Itay Dalmedigos, Dor Muhlgay, Amnon Shashua, Kevin Leyton-Brown, and Yoav Shoham. 2023. In-context retrieval-augmented language models. Transactions of the Association for Computational Linguistics 11 (2023), 1316–1331. [27] Yaniv Romano, Evan Patterson, and Emmanuel Candes. 2019. Conformalized quantile regression. Advances in neural information processing systems 32 (2019). [28] David Salinas, Valentin Flunkert, Jan Gasthaus, and Tim Januschowski. 2020. DeepAR: Probabilistic forecasting with autoregressive recurrent networks. Inter-national journal of forecasting 36, 3 (2020), 1181–1191. [29] Manajit Sengupta, Yu Xie, Anthony Lopez, Aron Habte, Galen Maclaurin, and James Shelby. 2018. The national solar radiation data base (NSRDB). Renewable and sustainable energy reviews 89 (2018), 51–60. [30] Matteo Sesia and Emmanuel J Candès. 2020. A comparison of some conformal quantile regression methods. Stat 9, 1 (2020), e261. [31] Glenn Shafer and Vladimir Vovk. 2008. A tutorial on conformal prediction. 
+
+Journal of machine learning research 9, 3 (2008). [32] Yihong Tang, Ao Qu, Andy HF Chow, William HK Lam, Sze Chun Wong, and Wei Ma. 2022. Domain adversarial spatial-temporal network: A transferable framework for short-term traffic forecasting across cities. In Proceedings of the 31st ACM international conference on information & knowledge management . 1905– 1915. [33] Ryan J Tibshirani, Rina Foygel Barber, Emmanuel Candes, and Aaditya Ramdas. 2019. Conformal prediction under covariate shift. Advances in neural information processing systems 32 (2019). [34] Vladimir Vovk, Alexander Gammerman, and Glenn Shafer. 2005. Algorithmic learning in a random world . Springer. [35] Sheng Xiang, Dawei Cheng, Chencheng Shang, Ying Zhang, and Yuqi Liang. 2022. Temporal and heterogeneous graph neural network for financial time series prediction. In Proceedings of the 31st ACM international conference on information & knowledge management . 3584–3593. [36] Chen Xu and Yao Xie. 2021. Conformal prediction interval for dynamic time-series. In International Conference on Machine Learning . PMLR, 11559–11569. [37] Chen Xu and Yao Xie. 2023. Sequential predictive conformal inference for time series. In International Conference on Machine Learning . PMLR, 38707–38727. [38] Silin Yang, Dong Wang, Haoqi Zheng, and Ruochun Jin. 2025. Timerag: Boosting llm time series forecasting via retrieval-augmented generation. In ICASSP 2025-2025 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP) . IEEE, 1–5. [39] Margaux Zaffran, Olivier Féron, Yannig Goude, Julie Josse, and Aymeric Dieuleveut. 2022. Adaptive conformal predictions for time series. In International conference on machine learning . PMLR, 25834–25866. [40] Shuyi Zhang, Bin Guo, Anlan Dong, Jing He, Ziping Xu, and Song Xi Chen. 2017. Cautionary tales on air-quality improvement in Beijing. Proceedings of the Royal Society A: Mathematical, Physical and Engineering Sciences 473, 2205 (2017). CIKM ’26, November 7–11, 2026, Rome, Italy Sangjin Jin, Kangmin Kim, Junhyeong Lee, and Yongjae Lee 
+
+## A Proof 
+
+Lemma 1 (Score-event eqivalence). For any 𝑐 ≥ 0,
+
+𝑌 𝑡 ∈ 𝐶 𝑡 (𝑐 ) ⇐⇒ 𝐵 𝑡 ≤ 𝑐. 
+
+Proof. Fix any 𝑐 ≥ 0. By the definition of the asymmetric pre-diction interval, 
+
+𝑌 𝑡 ∈ 𝐶 𝑡 (𝑐 ) ⇐⇒ b𝑌 𝑡 − 𝑐 ˜𝑅 − 
+
+> 𝑡
+
+≤ 𝑌 𝑡 ≤ b𝑌 𝑡 + 𝑐 ˜𝑅 + 
+
+> 𝑡
+
+.
+
+Equivalently, 
+
+𝑒 + 
+
+> 𝑡
+
+≤ 𝑐 ˜𝑅 + 
+
+> 𝑡
+
+, 𝑒 − 
+
+> 𝑡
+
+≤ 𝑐 ˜𝑅 − 
+
+> 𝑡
+
+,
+
+where 𝑒 + 
+
+> 𝑡
+
+= (𝑌 𝑡 − b𝑌 𝑡 )+ and 𝑒 − 
+
+> 𝑡
+
+= (b𝑌 𝑡 − 𝑌 𝑡 )+. Since ˜ 𝑅 + 
+
+> 𝑡
+
+, ˜𝑅 − 
+
+> 𝑡
+
+> 0, this is equivalent to max 
+
+( 𝑒 +
+
+> 𝑡
+
+˜𝑅 +
+
+> 𝑡
+
+, 𝑒 −
+
+> 𝑡
+
+˜𝑅 −
+
+> 𝑡
+
+)
+
+≤ 𝑐. 
+
+The left-hand side is precisely the normalized asymmetric score 𝐵 𝑡 .Therefore, the above event is equivalent to 𝐵 𝑡 ≤ 𝑐 . □
+
+Theorem 1 (Coverage gap bound of RCCP). Suppose Assump-tions 1–4 hold. Let 
+
+𝑢 𝑛 := 2(𝑒 𝑛 + 𝑟 𝑛 )
+
+𝑚 .
+
+If 𝑢 𝑛 < 𝛿 0, then 
+
+|Ptest {𝑌 𝑡 ∈ 𝐶 𝑡 (b𝑐 )} − 𝑞 | ≤ 𝜌 𝑛 + 2𝐿 𝑚 (𝑒 𝑛 + 𝑟 𝑛 ).
+
+Proof. For the upper deviation, 
+
+b𝐹 cal (𝑐 ∗ + 𝑢 𝑛 ) ≥ 𝐹 cal (𝑐 ∗ + 𝑢 𝑛 ) − 𝑒 𝑛 
+
+≥ 𝑞 + 𝑚𝑢 𝑛 − 𝑒 𝑛 
+
+= 𝑞 + 𝑒 𝑛 + 2𝑟 𝑛 
+
+≥ 𝑞 𝑛 .
+
+Hence b𝑐 ≤ 𝑐 ∗ + 𝑢 𝑛 .For the lower deviation, take any 𝑐 < 𝑐 ∗ − 𝑢 𝑛 . Choose 
+
+𝑢 ∈ ( 𝑢 𝑛 , min {𝑐 ∗ − 𝑐, 𝛿 0 }] .
+
+Then 𝑐 ≤ 𝑐 ∗ − 𝑢 , and 
+
+b𝐹 cal (𝑐 ) ≤ 𝐹 cal (𝑐 ) + 𝑒 𝑛 
+
+≤ 𝐹 cal (𝑐 ∗ − 𝑢 ) + 𝑒 𝑛 
+
+≤ 𝑞 − 𝑚𝑢 + 𝑒 𝑛 
+
+< 𝑞 − 𝑚𝑢 𝑛 + 𝑒 𝑛 
+
+= 𝑞 − 𝑒 𝑛 − 2𝑟 𝑛 
+
+≤ 𝑞 𝑛 .
+
+Thus no 𝑐 < 𝑐 ∗ − 𝑢 𝑛 reaches level 𝑞 𝑛 , so 
+
+b𝑐 ≥ 𝑐 ∗ − 𝑢 𝑛 .
+
+Combining the two inequalities yields 
+
+|b𝑐 − 𝑐 ∗ | ≤ 𝑢 𝑛 = 2(𝑒 𝑛 + 𝑟 𝑛 )
+
+𝑚 .
+
+By Lemma 1, 
+
+|Ptest {𝑌 𝑡 ∈ 𝐶 𝑡 (b𝑐 )} − 𝑞 | = |𝐹 test (b𝑐 ) − 𝑞 |≤ | 𝐹 test (b𝑐 ) − 𝐹 test (𝑐 ∗)| + | 𝐹 test (𝑐 ∗) − 𝑞 |≤ 𝐿 |b𝑐 − 𝑐 ∗ | + 𝜌 𝑛 
+
+≤ 𝜌 𝑛 + 2𝐿 𝑚 (𝑒 𝑛 + 𝑟 𝑛 ).
+
+□
+
+Corollary 1 (Asymptotic coverage of RCCP). Suppose As-sumptions 1–4 hold with fixed constants 𝑚 > 0, 𝐿 < ∞, and 𝛿 0 > 0.If 𝜌 𝑛 → 0, 𝑒 𝑛 → 0, and 𝑟 𝑛 → 0, then 
+
+|Ptest {𝑌 𝑡 ∈ 𝐶 𝑡 (b𝑐 )} − 𝑞 | → 0.
+
+Proof. Since 𝑒 𝑛 + 𝑟 𝑛 → 0, for all sufficiently large 𝑛 ,2(𝑒 𝑛 + 𝑟 𝑛 )
+
+𝑚 < 𝛿 0.
+
+Therefore, Theorem 1 applies. Hence, 0 ≤ | Ptest {𝑌 𝑡 ∈ 𝐶 𝑡 (b𝑐 )} − 𝑞 | ≤ 𝜌 𝑛 + 2𝐿 𝑚 (𝑒 𝑛 + 𝑟 𝑛 ) → 0.
+
+□
+
+## B Experimental Details B.1 Hyperparameter Selection 
+
+Following prior time series CP benchmarks [3, 23], model selection is performed on the validation split using the selection seed, and the selected configuration is reused for all 5 evaluation seeds. Table 6 summarizes the grids and fixed settings. 
+
+Table 6: Hyperparameter grids and detailed settings for baselines.                                                                           
+
+> Method Grid or fixed setting SCP No method-specific hyperparameter EnbPI Past residual window 𝑤 ∈ { 10 ,50 ,100 ,150 ,200 }
+> SPCI Past residual window 𝑤 =100
+> NexCP Decay parameter 𝜌 ∈ { 0.9,0.95 ,0.99 ,0.999 }
+> HopCPT Learning rate 𝜂 ∈ { 10 −2,10 −3}, dropout 𝑝 ∈ { 0,0.3}, positional encoding
+> ∈ { none ,relative }
+> ResCP 𝜌 ESN ∈ { 0.5,0.75 ,0.9,0.99 ,1.1,1.5},ℓ∈ { 0.5,0.7,0.8,0.9,0.95 ,1.0}
+> 𝑠 in ∈ { 0.1,0.25 ,0.5,0.75 ,1.0,2.0},𝜏 ∈ { 0.01 ,0.05 ,0.1,0.25 ,0.5,1.0,2.0}
+> 𝑤 ∈ { 250 ,500 ,1000 ,2000 ,4000 ,8000 ,all }
+> RCCP Neighborhood size 𝐾 ∈{32 ,64 ,128 }and retrieval temperature 𝜏 ∈{0.75 ,1.0,1.25 }
+
+For most conformal prediction baselines, the calibration period is split evenly, with one half used for hyperparameter selection and the other half used to construct intervals during selection. ResCP follows its original validation protocol and uses 10% of the cali-bration period for validation. For SPCI, fitting a quantile random forest at each time step is computationally limiting at our bench-mark scale. We therefore use the implementation adopted in prior benchmarks with a past residual window of 100. HopCPT is trained with AdamW for up to 3,000 epochs and validated every 5 epochs. To keep runtime bounded, early stopping with patience 100 is used. For Air and Solar, ResCP uses the recommended settings from the original implementation. Retrieval–Corrected Conformal Prediction for Time Series CIKM ’26, November 7–11, 2026, Rome, Italy 
+
+Table 7: Performance comparison across datasets and significance levels for the LSTM forecaster. Values are mean ± standard deviation over random seeds. For ΔCov, values closer to zero are better; lower is better for PI-Width, Winkler, and Time. Shaded Winkler cells mark the lowest value, underlined Winkler values mark the second-lowest value, and shaded ΔCov cells indicate severe undercoverage cases with ΔCov < −2% .
+
+𝛼 Dataset Metric SCP EnbPI SPCI NexCP HopCPT ResCP RCCP (Ours) 
+
+> 𝛼  = 0.05
+
+Air 
+
+ΔCov 0.12 ± 0.02 −5.45 ± 0.08 −0.94 ± 0.50 −1.09 ± 0.03 −0.18 ± 0.08 −0.35 ± 0.11 0.18 ± 0.06 
+
+PI-Width 89 .99 ± 0.46 70 .59 ± 0.46 86 .72 ± 3.12 87 .79 ± 0.21 89 .19 ± 1.06 84 .23 ± 0.98 80 .57 ± 0.61 
+
+Winkler 152 .00 ± 0.59 149 .76 ± 0.35 145 .75 ± 0.92 134 .62 ± 0.23 149 .60 ± 1.31 134 .25 ± 0.58 117 .40 ± 0.36 
+
+Time 36 .41 ± 0.73 145 .17 ± 2.56 664 .27 ± 1.23 35 .47 ± 0.45 264 .84 ± 2.22 100 .78 ± 1.80 71 .08 ± 0.43 
+
+Solar 
+
+ΔCov 0.71 ± 0.07 −1.80 ± 0.02 −0.22 ± 0.33 −0.90 ± 0.03 0.61 ± 0.91 0.54 ± 0.04 0.33 ± 0.10 
+
+PI-Width 57 .72 ± 1.96 37 .91 ± 1.29 44 .11 ± 2.72 41 .22 ± 1.18 39 .16 ± 10 .21 30 .65 ± 1.52 25 .08 ± 0.30 
+
+Winkler 88 .49 ± 2.28 78 .73 ± 2.11 77 .89 ± 1.27 70 .43 ± 1.82 50 .26 ± 9.56 53 .32 ± 1.49 32 .65 ± 0.54 
+
+Time 90 .22 ± 1.29 450 .55 ± 3.71 1964 .12 ± 22 .33 98 .87 ± 1.75 869 .47 ± 137 .85 318 .53 ± 5.12 167 .64 ± 0.93 
+
+Wind 
+
+ΔCov 0.25 ± 0.29 −1.68 ± 0.15 −2.66 ± 2.14 −0.16 ± 0.11 1.29 ± 0.30 0.75 ± 0.11 0.27 ± 0.18 
+
+PI-Width 86 .26 ± 1.72 78 .25 ± 0.25 75 .75 ± 10 .87 83 .61 ± 0.21 99 .20 ± 5.51 85 .39 ± 0.50 76 .97 ± 1.22 
+
+Winkler 120 .47 ± 0.42 122 .76 ± 0.69 131 .00 ± 5.98 118 .67 ± 0.51 125 .34 ± 3.43 111 .03 ± 0.45 102 .66 ± 0.41 
+
+Time 0.73 ± 0.03 4.66 ± 0.12 19 .32 ± 0.34 0.87 ± 0.03 10 .16 ± 1.92 4.23 ± 0.28 1.51 ± 0.01 
+
+Electricity 
+
+ΔCov 3.33 ± 0.22 −2.28 ± 0.19 2.43 ± 0.96 0.58 ± 0.22 2.86 ± 0.54 0.80 ± 0.27 −0.36 ± 0.79 
+
+PI-Width 0.30 ± 0.02 0.18 ± 0.01 0.27 ± 0.03 0.21 ± 0.01 0.28 ± 0.02 0.22 ± 0.01 0.21 ± 0.01 
+
+Winkler 0.32 ± 0.02 0.29 ± 0.02 0.31 ± 0.02 0.28 ± 0.02 0.32 ± 0.02 0.29 ± 0.02 0.29 ± 0.02 
+
+Time 0.21 ± 0.01 1.36 ± 0.06 4.40 ± 0.07 0.25 ± 0.00 4.36 ± 0.23 1.90 ± 0.43 0.23 ± 0.00 
+
+> 𝛼  = 0.15
+
+Air 
+
+ΔCov 0.07 ± 0.20 −6.68 ± 0.12 −0.89 ± 1.00 −0.88 ± 0.11 −0.25 ± 0.20 −0.00 ± 0.28 0.56 ± 0.21 
+
+PI-Width 49 .49 ± 0.39 43 .83 ± 0.35 49 .97 ± 1.88 51 .51 ± 0.28 49 .46 ± 0.63 49 .43 ± 0.46 49 .32 ± 0.45 
+
+Winkler 93 .42 ± 0.49 91 .87 ± 0.49 91 .16 ± 0.25 87 .60 ± 0.23 92 .89 ± 0.57 85 .43 ± 0.38 79 .49 ± 0.22 
+
+Time 37 .97 ± 1.28 146 .43 ± 2.89 667 .99 ± 8.91 35 .69 ± 0.44 265 .47 ± 1.66 99 .54 ± 2.34 70 .89 ± 0.13 
+
+Solar 
+
+ΔCov 2.02 ± 0.08 −1.66 ± 0.10 1.43 ± 0.64 −0.62 ± 0.10 1.60 ± 3.21 1.53 ± 0.19 1.15 ± 0.21 
+
+PI-Width 23 .01 ± 0.42 14 .83 ± 0.66 18 .31 ± 1.73 18 .50 ± 0.60 23 .97 ± 6.13 15 .06 ± 0.87 15 .18 ± 0.32 
+
+Winkler 48 .69 ± 1.11 42 .87 ± 1.36 42 .72 ± 1.15 41 .03 ± 1.12 32 .97 ± 5.25 31 .73 ± 1.08 22 .74 ± 0.59 
+
+Time 90 .88 ± 1.44 450 .11 ± 5.88 1980 .33 ± 15 .93 98 .42 ± 1.32 835 .57 ± 72 .30 321 .50 ± 3.83 168 .72 ± 0.77 
+
+Wind 
+
+ΔCov 0.16 ± 0.20 −2.17 ± 0.30 −0.65 ± 2.05 0.14 ± 0.17 3.38 ± 2.56 2.05 ± 0.25 0.90 ± 0.23 
+
+PI-Width 51 .13 ± 0.73 48 .62 ± 0.44 48 .71 ± 4.76 50 .90 ± 0.51 57 .87 ± 6.37 50 .86 ± 0.52 48 .57 ± 0.74 
+
+Winkler 83 .04 ± 0.13 83 .67 ± 0.25 84 .32 ± 0.65 81 .50 ± 0.17 83 .02 ± 2.39 78 .58 ± 0.27 73 .03 ± 0.22 
+
+Time 0.72 ± 0.01 4.54 ± 0.01 19 .20 ± 0.04 0.86 ± 0.01 9.02 ± 0.23 4.01 ± 0.23 1.51 ± 0.01 
+
+Electricity 
+
+ΔCov 5.83 ± 1.60 −2.54 ± 0.70 4.13 ± 1.32 1.74 ± 0.43 5.00 ± 1.09 0.69 ± 0.63 0.22 ± 1.05 
+
+PI-Width 0.17 ± 0.01 0.13 ± 0.01 0.15 ± 0.01 0.14 ± 0.01 0.16 ± 0.01 0.14 ± 0.01 0.13 ± 0.01 
+
+Winkler 0.21 ± 0.01 0.21 ± 0.02 0.20 ± 0.01 0.20 ± 0.01 0.21 ± 0.02 0.20 ± 0.01 0.19 ± 0.01 
+
+Time 0.19 ± 0.00 1.21 ± 0.06 4.53 ± 0.13 0.24 ± 0.01 4.00 ± 0.38 1.58 ± 0.05 0.23 ± 0.01 
+
+## C Additional Results C.1 Additional Miscoverage Levels 
+
+Table 7 reports results at 𝛼 = 0.05 and 𝛼 = 0.15 using the global LSTM forecaster. This evaluation checks whether the correction remains reliable beyond the main 𝛼 = 0.1 setting. RCCP achieves the best Winkler score on the most datasets at both target levels and keeps coverage gaps close to the nominal level, with gaps that are often smaller than those in the main setting. The results show that RCCP is not tuned to a single miscoverage level. As 𝛼 changes, baseline methods show larger fluctuations in Winkler score because interval width and coverage violations move together. RCCP remains stable across target levels, maintaining calibrated coverage while producing intervals with competitive width. 
+
+## C.2 Coverage and Efficiency Tradeoff 
+
+Figure 7 summarizes the main 𝛼 = 0.1 results averaged over the four datasets by plotting Winkler score against |ΔCov | and Calibration SCP EnbPI SPCI NexCP HopCPT ResCP RCCP (Ours) 1 2 3 4
+
+> |ΔCov|
+> 50 55 60 65 70
+> Winkler score
+
+(a) |ΔCov | and Winkler 20 50 100 200 500 1000  
+
+> Calibration Time
+> 50 55 60 65 70
+> Winkler score
+
+(b) Calibration Time and Winkler 
+
+Figure 7: Average tradeoff across four datasets at 𝛼 = 0.1. The plots compare Winkler score with |ΔCov | and Calibration Time. 
+
+Time. Methods near the lower-left region achieve stronger joint performance across interval quality, coverage, and computation. This frontier view highlights the practical value of RCCP, show-ing that retrieval-corrected calibration resolves the central tradeoff by producing sharper calibrated intervals without the computa-tional burden of heavier adaptive baselines.

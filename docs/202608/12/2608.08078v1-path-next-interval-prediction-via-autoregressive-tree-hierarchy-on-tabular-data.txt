@@ -1,0 +1,1075 @@
+Title: PATH: Next-Interval Prediction via Autoregressive Tree Hierarchy on Tabular Data
+
+URL Source: https://arxiv.org/pdf/2608.08078v1
+
+Published Time: Tue, 11 Aug 2026 00:38:36 GMT
+
+Number of Pages: 47
+
+Markdown Content:
+# PATH: Next-Interval Prediction via Autoregressive Tree Hierarchy on Tabular Data 
+
+## Pengxiang Cai 1∗, Wanchen Lian 1∗, Chenyang Liu 1, Xiaohan Li 1,Qingyuan Zeng 1, Jinhong Wang 2, Jintai Chen 1†
+
+1The Hong Kong University of Science and Technology (Guangzhou) 
+
+2Ant Group jintaiCHEN@hkust-gz.edu.cn 
+
+Abstract 
+
+Interval prediction aims to achieve a target coverage level while producing intervals that are as short as possible. Many conformal regression pipelines first predict an uncertainty sur-rogate and then convert it into an interval through calibration or selection. This separation supports coverage calibration, but post hoc rules largely determine the final interval and do not fully use the learned output distribution. We observe that the resulting intervals have inherently hierarchical geometry: an interval can be recursively refined into nested subinter-vals, and binary trees naturally represent this structure. We formulate this hierarchy as next-interval prediction and pro-pose PATH, which learns how probability mass flows from each interval to its next nested subintervals. PATH predicts a base leaf distribution and uses an autoregressive decoder to refine branch probabilities. Matching the distribution to the interval hierarchy aligns learning with extraction: PATH accumulates probability over adjacent output intervals and re-turns the shortest contiguous range reaching a selected mass. We compare PATH with 24 baselines for interval prediction on PATHBench, comprising 56 OpenML regression datasets. PATH substantially shortens the resulting intervals, achieving the lowest mean normalized length, 0.1473 , while maintaining mean coverage of 0.9144 . These results establish hierarchical output modeling as an effective approach for compact inter-val prediction on tabular data. Code is publicly available at https://github.com/pxcai/PATH. 
+
+## 1 Introduction 
+
+Interval prediction turns a tabular regressor from a point pre-dictor into a tool for decision support. In applications such as risk assessment, demand forecasting, and scientific mod-eling, users need both a predicted value and an uncertainty range for possible outcomes. The central performance goal is interval length under a coverage constraint: intervals should reach the desired coverage level, and among intervals that do so, shorter intervals are more informative. Figure 1 provides an overview of the PATH prediction pipeline. Conformal prediction provides a general way to construct reliable sets under exchangeability. At a high level, many conformal regression methods share a common division of labor: a learned predictor or partition defines an uncertainty 
+
+> ∗
+
+These authors contributed equally. 
+
+> †
+
+Corresponding author. e1 Tabular Input → Context 2 Interval Tree Representation  
+
+> 3
+
+Autoregressive Refinement 4 Shortest-Mass Interval                   
+
+> Encode tabular features into context representations. Autoregressively traverse the tree to refine probability mass from coarse to fine.
+> Refined distribution
+> ★Shortest contiguous interval with predictive mass ≥ M
+> Find the shortest contiguous interval whose predictive mass is at least M.
+> −∞ +∞ 𝐀 ℓ∗𝐀 𝐀 ∗+1
+> 123 A
+> Data In
+> ··· ···
+> Key Components
+> Context Memory Feature Encoding
+> FT-Transformer Backbone Tabular Features
+> FT-Transformer
+> Context Memory H
+> Continuous Target
+> −∞ ··· +∞
+> ···
+> 0101··· 101
+> Key Concepts
+> Space Partition Interval Tree
+> 010··· Binary Trace
+> Key Mechanisms
+> Base Prior Tree Decoder
+> (Auto regressive)
+> Probability Flow
+> Base Prior
+> ···
+> Tree Decoding
+> ···
+> Refined Distribution
+> ··· ···
+> Key Steps
+> Mass Accumulation Coverage Target (M) Shortest Interval
+> PATH
+> Target Hierarchy Probability Refinement Interval Selection
+> Discretize the target range with a hierarchical interval tree.
+
+Figure 1: Overview of the PATH prediction pipeline. surrogate, and a calibration or interval selection rule converts that surrogate into an output interval. Split conformal predic-tion calibrates residual scores from a point predictor (Vovk, Gammerman, and Shafer 2005; Lei et al. 2018; Angelopou-los and Bates 2023). Conformalized quantile regression cal-ibrates lower and upper conditional quantiles (Koenker and Bassett 1978; Romano, Patterson, and Candes 2019). More recent methods improve efficiency by using conditional his-tograms, thresholding interquantile regions, selecting con-ditional interquantile intervals, localizing calibration with trees or forests, or applying conformal set construction after response discretization (Sesia and Romano 2021; Luo and Zhou 2025; Guo, Luo, and Zhou 2026; Cabezas et al. 2024; Guha et al. 2023). The surrogate differs across methods, but the interval itself is usually shaped by a rule applied after training around the learned object. This structure is effective for coverage, but it leaves an output-side opportunity. The final prediction object is a short contiguous segment with hierarchical geometry: any inter-val can be recursively divided into nested subintervals, from coarse uncertainty regions to precise boundaries. Standard surrogate objectives do not explicitly expose this hierarchy to the model. We ask whether a model can instead learn a distribution aligned with extracting short contiguous inter-vals. arXiv:2608.08078v1 [cs.AI] 8 Aug 2026 Binary trees naturally capture this structure. A tree over the target range recursively splits coarse intervals into finer in-tervals, and each target value is represented by the path to its leaf. At each level, the model predicts how probability mass flows from the current interval to its next nested subintervals; we call this formulation next-interval prediction . Coarse un-certainty and fine boundary placement therefore become part of the same distribution, directly aligning the model output with compact interval extraction. We propose PATH, a tree autoregressive model for in-terval prediction on tabular data. The continuous target is discretized into ordered leaves of a complete binary tree, and each training value is represented by the binary path to its leaf. A tabular transformer predicts a base distribution over leaves. An autoregressive decoder reads prefixes in the inter-val tree and predicts residual branch logits that refine how much mass is assigned to the left and right child branches at each node. Enumerating the tree yields a refined probability distribution over ordered output intervals. At inference time, PATH sums probabilities over adjacent output intervals and returns the shortest contiguous target interval whose total mass exceeds a validation-selected threshold. We evaluate PATH against 24 baselines for interval pre-diction on PATHBench, a benchmark assembled from 56 OpenML regression datasets. The main comparison is re-peated with 10 random seeds for each dataset. PATH achieves the shortest mean normalized interval length among all com-pared methods while maintaining mean coverage above the nominal 0.9 target. Depth and model-design ablations fur-ther show that finer interval hierarchies and autoregressive refinement improve interval efficiency. We make three main contributions: 
+
+• We formulate interval prediction on tabular data as next-interval prediction: recursive coarse-to-fine refinements are represented by a binary interval tree, matching the learned distribution to the compact contiguous intervals extracted at inference time. 
+
+• We propose PATH, a tree-autoregressive method that en-codes continuous targets as binary traces, predicts a base leaf distribution, refines branch probabilities with autore-gressive residual logits, and constructs intervals by accu-mulating probability mass over adjacent output intervals. 
+
+• We provide a systematic evaluation of tree-structured in-terval modeling on PATHBench against 24 interval base-lines, repeating the main comparison with 10 random seeds for each dataset. PATH achieves the shortest mean normalized interval length among all compared meth-ods while maintaining empirical mean coverage above the nominal 0.9 target, and the ablations measure depth scaling, validation-target behavior, and the contribution of autoregressive refinement. 
+
+## 2 Related Work 
+
+Conformal and adaptive intervals. Split conformal pre-diction calibrates held-out residuals under exchangeability, while conformalized quantile regression calibrates condi-tional quantile endpoints (Vovk, Gammerman, and Shafer 2005; Lei et al. 2018; Angelopoulos and Bates 2023; Koenker and Bassett 1978; Romano, Patterson, and Candes 2019). Both pair naturally with XGBoost, LightGBM, CatBoost, random forests, and quantile regression forests (Chen and Guestrin 2016; Ke et al. 2017; Prokhorenkova et al. 2018; Breiman 2001; Meinshausen 2006). More adaptive meth-ods estimate conditional histograms, threshold candidate re-gions, select conditional interquantile intervals, localize cali-bration with trees or forests, or discretize regression as classi-fication (Sesia and Romano 2021; Luo and Zhou 2025; Guo, Luo, and Zhou 2026; Cabezas et al. 2024; Guha et al. 2023). These approaches motivate our baseline suite and establish localization and response discretization as effective routes to shorter intervals. 
+
+Neural tabular and structured-output models. Deep tabular models improve representations through feature se-lection, contextual embeddings, differentiable trees, feature tokenization, and pretrained language models (Arik and Pfis-ter 2021; Huang et al. 2020; Popov, Morozov, and Babenko 2019; Somepalli et al. 2021; Gorishniy et al. 2021; Yan et al. 2024). Neural uncertainty methods use ensembles, direct in-terval losses, evidential learning, mixture densities, or distri-butional regression (Lakshminarayanan, Pritzel, and Blun-dell 2017; Pearce et al. 2018; Amini et al. 2020; Bishop 1994; Rügamer et al. 2023). Structured regression outputs include ordinal labels, CDF targets, and predictive distribu-tions (Cao, Mirjalili, and Raschka 2020; Fu et al. 2018; Li, Reich, and Bondell 2021; Izbicki, Shimizu, and Stern 2021; Vovk et al. 2017). PATH builds on this output-side perspec-tive by organizing probability over nested target intervals, re-fining tree-prefix probabilities, and extracting adjacent mass directly as the final interval. 
+
+## 3 Method 
+
+PATH learns a structured distribution in the output space, refines it with an autoregressive interval hierarchy, and ex-tracts compact intervals by accumulating probability mass over adjacent output intervals. Figure 2 illustrates the com-plete PATH architecture. The construction has three parts. First, the training target range is organized as a complete binary tree whose leaves are ordered target intervals. Sec-ond, a tabular encoder predicts a base distribution over these leaves, and an autoregressive decoder refines branch proba-bilities associated with tree prefixes. Third, validation data select a small set of inference parameters, after which pre-diction accumulates probability mass over adjacent output intervals and returns the shortest contiguous interval whose total mass reaches the selected threshold. 
+
+3.1 Target Tree Encoding 
+
+Let (xi, y i) be a tabular regression dataset with scalar target 
+
+yi. For depth D, we define B = 2 D ordered leaf intervals by fitting boundaries on the training target range: 
+
+eb = ytr min + bB
+
+ ytr max − ytr min 
+
+ , b = 0 , . . . , B. (1) Uniform boundaries are used because the evaluation target is interval length in the original target units. With equal-width leaves, a contiguous set of leaves has a direct length A Target Interval Tree 
+
+> Each target value corresponds to one root-to-leaf path leaf-probability vectoxxr p(b | x)
+> Tree
+> p(b|x)
+
+1. Equal-width bins (leaves) ε           
+
+> 0.40 0.55 | 0.45
+> 12345678
+> 0.45 | 0.55 0.70 0.60 | 0.40 0.50 | 0.50
+> 0.55
+> each node: left | right branch prob
+
+highlighted path: s = (0, 1, 0) → bin 3 Branch probabilities are refined in Module B 
+
+1 2 3 4 5 6 7 8       
+
+> 𝐀 𝐀 𝐀 𝐀
+> 𝐀 𝐀 = 𝐀 𝐀𝐀𝐀 +𝐀/𝐀 𝐀 𝐀𝐀𝐀 − 𝐀 𝐀𝐀𝐀 𝐀 = 2 𝐀 , 𝐀 ↔ 𝐀𝐀𝐀𤠀𝐀𣠀 𝐀𝐀𝐀𤠀ℎ
+
+2. Vertical binary tree (depth D = 3) 3. leaf distribution ( product of branch probabilities )     
+
+> 𝐀 𝐀𣰀𝐀 3|𝐀 = 0.40 ∗ 0.70 ∗ 0.55 ≈ 0.15 𝐀 𝐀|𝐀 =𝐀=1 𝐀 𝐀 𝐀 𝐀 ,𝐀 𝐀
+
+1 2 3 4 5 6 7 8
+
+Encoder + Autoregressive Refinement 
+
+> amber box = the only new operator
+
+B1. Encoder  
+
+> Tabular features x
+> (num + cat )
+> FT-Transformer Encoder
+> Multi-Head Attn Feed-Forward
+> Context memory H
+
+2. Base Branch Mass 4. Refined leaf distribution          
+
+> 12345678
+> 𝐀𝐀, 𝐀 𝐀|𝐀
+> mass over all B = 2𝐀 leaves
+
+3. Autoregressive Refinement  
+
+> Residual branch-logit correction
+> ε
+> 0.60 0.40
+
+𝐀 𝐀 ,𝐀 
+
+> 1
+> Base prob
+
++
+
+> Residual logit
+
+𝐀𝐀 𝐀,𝐀 /𝐀  
+
+> 0.85 0.15
+> ε
+
+𝐀 𝐀𝐀𝐀     
+
+> Refined prob
+> 𝐀 𝐀,𝐀 = 𝐀 𝐀𦐀𝐀𣰀𤠀 𝐀 𝐀 ,𝐀 0+ 𝐀𝐀 𝐀,𝐀 /𝐀
+> 𝐀: 𝐀𝐀𣠀𣰀𝐀𨀀𝐀𝐀 𣠀𤠀𝐀𝐀𝐀𝐀𤠀ℎ 𝐀: 𤠀𝐀𝐀𝐀𝐀𝐀𝐀𤠀𨀀𝐀𝐀
+> The only new operator
+> bin index b = 1...B
+> full distribution over B leaves
+> From base leaf distribution
+> 𝐀 𝐀,𝐀 0= 𝐀𣰀𝐀ℎ𤠀 − 𝐀ℎ𣰀𝐀𝐀 𝐀𝐀𣠀𣠀/ 𝐀 + 𝐀 𝐀 𝐀 = 𣠀𦐀𝐀𤠀𝐀𝐀𝐀 ℎ/𝐀 𝐀𦐀𝐀𝐀𝐀 𝐀, 𝐀𣰀𝐀ℎ 𝐀 → 𣠀ℎ𝐀𝐀𝐀𝐀𝐀 𝐀
+> Branch mass
+
+Shortest-Mass Interval + Output 
+
+> select tightest window with total mass ≥ M
+
+1. Leaves in target order   
+
+> scan contiguous windows of pλ,T(b | x)
+> 𝐀 ℓ∗𝐀 𝐀 ∗+1 𝐀 ℓ∗𝐀 𝐀 ∗+1
+> predictive mass ≥ M, t hen minimize width
+
+C2. Selection rule 3. Output ( interval + point)        
+
+> ℓ∗, 𨀀 ∗= 𝐀𝐀𝐀min
+> ℓ,𨀀 𝐀 𝐀+1 − 𝐀 𝐀
+> 𝐀 = 𝐀 𝐀 𝐀 𝐀,𝐀 𝐀|𝐀 𝐀 𝐀 = [𝐀 ℓ∗, 𝐀 𝐀 ∗+1 ]
+> Predictive mass ≥ M
+
+Figure 2: PATH architecture. A binary interval tree defines ordered leaves, an FT-Transformer predicts base probabilities, autoregressive residual logits refine branches, and adjacent probability mass yields the shortest selected interval. interpretation and each tree level corresponds to a geometric refinement of the target range. Quantile boundaries are useful when class balance is the main objective, but their nonuni-form widths separate class frequency from interval length. The benchmark therefore uses uniform boundaries to align target resolution with interval efficiency. Each target is assigned to a clipped leaf index 
+
+zi = min 
+
+
+
+B − 1, max 
+
+
+
+0,
+
+ B(yi − ytr min )
+
+ytr max − ytr min 
+
+ 
+
+. (2) The binary expansion of zi gives a trace si =(si, 1, . . . , s i,D ). For a prefix a ∈ { 0, . . . , 2t − 1} at depth t,the corresponding target region covers the leaves 
+
+Ct(a) = {b : a2D−t ≤ b < (a + 1)2 D−t}. (3) The trace records which child interval contains the target at every refinement step. This representation preserves the scalar target ordering while exposing coarse-to-fine interval structure to the model. 
+
+3.2 Base Distribution and Autoregressive Residuals 
+
+The tabular encoder maps features to a memory sequence 
+
+H = fθ (x). Numeric features are tokenized with affine em-beddings for each feature, categorical features use learned embeddings, and a CLS token summarizes the row. Our default implementation follows the FT-Transformer de-sign (Gorishniy et al. 2021). The output side then combines a direct leaf distribution with autoregressive corrections de-fined on the interval tree. The direct leaf head produces base logits hleaf (x) ∈ RB .At inference temperature T , the base target distribution is 
+
+qT (b | x) = exp( hleaf 
+
+b (x)/T )
+
+PB−1
+
+b′=0 exp( hleaf 
+
+b′ (x)/T ) . (4) For each tree node Ct(a), let Lt(a) and Rt(a) be its left and right child leaf sets. The base probability of the right branch is 
+
+π0
+
+t,a (x) = 
+
+P
+
+b∈Rt(a) qT (b | x)
+
+P
+
+b∈Lt(a)∪Rt(a) qT (b | x) . (5) The decoder receives [SOS] followed by the prefix bits of node a and attends to H. It outputs a residual branch logit 
+
+ρt,a (x), which corrects the base branch probability: 
+
+πλt,a (x) = σ  logit  π0
+
+t,a (x) + λ ρ t,a (x)/T  , (6) where λ controls the strength of the autoregressive correc-tion. Enumerating every tree prefix yields the refined leaf distribution 
+
+pλ,T (b | x) = 
+
+D−1Y
+
+t=0 
+
+
+
+πλt,a t(b)(x)
+
+st+1 (b)
+
+×
+
+
+
+1 − πλt,a t(b)(x)
+
+1−st+1 (b)
+
+.
+
+(7) When λ = 0 , the model falls back to the direct leaf distribu-tion up to numerical clamping. The decoder is therefore an autoregressive distributional correction rather than a greedy path generator, and all leaves remain available when the final interval is extracted. 
+
+3.3 Training Objective 
+
+During training, temperature scaling is disabled and the residual branch uses λtrain = 1 ; temperature is selected only at evaluation time. Let q denote the direct leaf distribution and p the autoregressively refined distribution. We super-vise both distributions with three losses defined over output intervals. The leaf loss is standard cross entropy: 
+
+Lleaf (r) = − 1
+
+n
+
+> n
+
+X
+
+> i=1
+
+log r(zi | xi), r ∈ { q, p }. (8) The prefix loss encourages probability mass to remain inside the true region at each level of refinement: 
+
+Lprefix (r) = − 1
+
+n(D − 1) 
+
+> n
+
+X
+
+> i=1
+> D−1
+
+X
+
+> t=1
+
+log X
+
+> b∈C t(ai,t )
+
+r(b | xi).
+
+(9) The CDF loss supervises the ordered cumulative distribution using binary labels over thresholds: 
+
+Lcdf (r) = − 1
+
+n(B − 1) 
+
+> n
+
+X
+
+> i=1
+> B−2
+
+X
+
+> k=0
+
+h
+
+1[k ≥ zi] log Fr (k | xi)+ 1[k < z i] log(1 − Fr (k | xi)) 
+
+i
+
+,
+
+(10) where Fr (k | x) = P 
+
+> b≤k
+
+r(b | x). The final objective is 
+
+L = 0 .5
+
+
+
+Lleaf (q) + Lprefix (q) + Lcdf (q)
+
+
+
++ Lleaf (p) + Lprefix (p) + Lcdf (p)+ 0 .01 Lres .
+
+(11) where Lres is a squared penalty on residual logits, weighted by node mass. The direct leaf terms anchor the global distri-bution, while the autoregressive terms train the refined tree distribution used at inference time. 
+
+3.4 Interval Extraction and Validation Selection 
+
+For a test point, PATH obtains pλ,T (b | x), a probability distribution over ordered output intervals. The point pre-diction is the posterior mean over leaf centers. For interval prediction, given mass M , the model sums probabilities over adjacent output intervals and selects the shortest contiguous target interval with total probability mass at least M :
+
+(ℓ∗, u ∗) = arg min 
+
+> 0≤ℓ≤u<B
+
+(eu+1 − eℓ)s.t.
+
+> u
+
+X
+
+> b=ℓ
+
+pλ,T (b | x) ≥ M. (12) The interval is I(x) = [ eℓ∗ , e u∗+1 ].The inference parameters T , M , and λ are selected on the validation split. For a selection target η, we enumerate a fixed grid and first retain candidates whose validation coverage is at least η. Among those candidates, we choose the one with the shortest validation interval. If no candidate reaches η, we choose the candidate closest to the target coverage and use length to break ties. The main setting uses η = 0 .905 , and the selected interval is then evaluated on the test split. Appendix B summarizes the full pipeline in pseudocode, with each operation tied to the corresponding equation above. <1K(n=10)1K-10K(n=15)>=10K(n=31)PATHBench 56 datasets Categorical feature ratio     
+
+> 0% 25% 50% 75% 100%
+
+Figure 3: Composition of PATHBench. Arc span shows dataset count by sample-size group; radial-bar length and color encode feature count (square-root scale) and categorical-feature proportion. Appendix A records basic properties of this construction: the refined tree distribution is normalized, λ = 0 recovers the direct leaf distribution, shortest-mass extraction is the exact optimizer over contiguous leaf intervals, the discretization er-ror of grid-aligned interval extraction decreases with depth, and finite-grid validation selection admits a standard concen-tration bound. 
+
+## 4 Experiments 
+
+The experiments evaluate four aspects of PATH. We first compare its interval compactness with 24 baselines un-der matched empirical coverage requirements. We then test whether the advantage persists at the nominal 0.900 cover-age level and across repeated data splits. Finally, we examine scaling with tree depth and isolate the contributions of struc-tured output modeling and autoregressive refinement. 
+
+4.1 Experimental Protocol 
+
+Datasets and splits. PATHBench comprises 56 OpenML regression datasets (Vanschoren et al. 2014). Figure 3 sum-marizes its variation in sample size, input dimensionality, and feature composition. The main comparison uses ran-dom seeds 0, . . . , 9, each defining an independent 60/20/20 train/validation/test split, producing 560 evaluations per method. Preprocessing parameters and target boundaries are fitted independently on each training split. Numeric features are standardized using training statistics, while categorical features use ordinal encoding with a reserved unknown cat-egory. The model-design ablation uses the same 10 random seeds. Depth, validation-target, and distributional analyses use the representative split unless stated otherwise. PATH configuration. The main configuration uses D = 8 ,yielding 256 ordered leaf intervals with uniform bound-aries over the training target range. The encoder is an FT-Transformer with dmodel = 64 , four attention heads, two lay-ers, dropout 0.1, and ReGLU feed-forward layers. We train for 60 epochs using AdamW with learning rate 10 −3 and weight decay 10 −4. Validation loss under teacher forcing se-lects the checkpoint. For interval selection, we evaluate the following inference grid on the validation set: 
+
+M ∈ { 0.40 , 0.45 , . . . , 0.90 , 0.92 , 0.95 },T ∈ { 0.7, 0.8, 0.9, 1.0, 1.2, 1.5},λ ∈ { 0, 0.25 , 0.5, 0.75 , 1.0}.
+
+Here M denotes the accumulated probability mass, T con-trols inference-time distribution sharpness, and λ scales the autoregressive residual. Among settings reaching validation coverage η, we select the one with the shortest mean inter-val. The main setting uses η = 0 .905 . The scaling anal-ysis additionally considers η ∈ { 0.905 , 0.910 , 0.915 } and 
+
+D ∈ { 4, 5, 6, 7, 8}.
+
+Baselines. We compare PATH with 24 baselines for in-terval prediction. The suite includes split conformal predic-tion (Vovk, Gammerman, and Shafer 2005; Lei et al. 2018; Angelopoulos and Bates 2023) using CatBoost, XGBoost, LightGBM, random forests, and MLPs (Prokhorenkova et al. 2018; Chen and Guestrin 2016; Ke et al. 2017; Breiman 2001). It also includes conformalized quantile re-gression (Koenker and Bassett 1978; Romano, Patterson, and Candes 2019) using boosted trees, quantile regression forests (Meinshausen 2006), and MLPs. Further compar-isons cover QRF- and MLP-based CHR, CTI, CIR, and CIR+ (Sesia and Romano 2021; Luo and Zhou 2025; Guo, Luo, and Zhou 2026), MLP-R2CCP (Guha et al. 2023), RF-TreeQuantile-CQR, and LOCART-family methods (Cabezas et al. 2024). Every method uses identical random seeds and evaluation metrics. 
+
+Metrics and comparison rule. We report empirical cov-erage, mean and median interval length normalized by the training target range, mean rank, and wins. A method is valid on an evaluation when test coverage reaches 0.885 , allowing a 
+
+0.015 tolerance below the nominal 0.900 target. Valid meth-ods are ranked by normalized length. Remaining methods follow by coverage error and then length. This rule measures compactness only among methods satisfying the empirical coverage requirement. 
+
+4.2 Main Comparison 
+
+Table 1 summarizes the 560-evaluation main comparison. PATH reaches mean coverage 0.9144 , above the nominal 
+
+0.900 target. It also achieves the shortest mean and median normalized lengths, 0.1473 and 0.0547 , respectively. These intervals translate into the best mean rank, 5.25 , and the largest win count, 163. QRF-CTI ranks second with 130 wins, but its mean normalized length is 0.2017 , 36 .9% longer than that of PATH. Thus, the repeated-split comparison estab-lishes a substantial interval-length advantage at comparable mean coverage. Table 1: Main 10-seed comparison on PATHBench against 24 baselines. PATH uses D = 8 and η = 0 .905 ; ranking requires coverage ≥ 0.885 before interval length. SplitCP: split conformal prediction; TQ: TreeQuantile.                                                                                                                                     
+
+> Method Cov. Mean len/rng ↓
+> Median len/rng ↓Rank ↓Wins ↑
+> PATH 0.9144 0.1473 0.0547 5.25 163
+> QRF-CTI 0.9201 0.2017 0.1215 8.38 130 QRF-CHR 0.9046 0.2110 0.0856 9.03 12 QRF-CIR 0.8995 0.1800 0.0741 9.45 9XGBoost-CQR 0.9047 0.2120 0.0937 9.96 6CatBoost-CQR 0.9038 0.1786 0.0817 10.03 9LightGBM-CQR 0.9059 0.2002 0.0833 10.29 7QRF-CIR+ 0.8951 0.1760 0.0738 10.73 32 CatBoost-SplitCP 0.9034 0.1967 0.1298 11.94 26 MLP-CTI 0.9009 0.2900 0.2041 12.67 49 XGBoost-SplitCP 0.9035 0.2162 0.1372 12.77 27 QRF-CQR 0.9222 0.2159 0.0963 12.99 0LightGBM-SplitCP 0.9042 0.2242 0.1407 13.91 14 RF-SplitCP 0.9043 0.2277 0.1549 14.08 2MLP-R2CCP 0.8586 0.1953 0.1009 14.51 40 RF-A-LOCART 0.9043 0.2649 0.1664 14.65 4RF-TQ-CQR 0.9241 0.2431 0.1295 14.83 2MLP-CHR 0.8750 0.2533 0.1702 14.92 12 RF-A-LOFOREST 0.9001 0.2668 0.1738 15.32 0MLP-CIR+ 0.8643 0.2626 0.1170 15.48 12 RF-LOCART 0.9090 0.2682 0.1683 15.78 0MLP-CIR 0.9149 0.3330 0.1964 15.90 1MLP-SplitCP 0.9031 0.3869 0.1838 16.24 2RF-LOFOREST 0.8988 0.2700 0.1741 16.80 0MLP-CQR 0.9037 0.3646 0.2334 19.09 1
+
+Table 2: Strict 0.900 -coverage comparison over 560 evalua-tions. Valid methods rank by normalized length; the remain-der rank by coverage error and length. Wins are first-place finishes.                               
+
+> Method Cov. ≥.900 (%) ↑Rank@.900 ↓Wins@.900 ↑
+> PATH 76.6 6.46 177
+> QRF-CTI 70.7 9.36 121 QRF-CQR 74.5 11.45 11 LightGBM-CQR 62.3 11.77 14 CatBoost-CQR 55.9 12.37 14 QRF-CIR 48.8 13.35 13 QRF-CIR+ 38.6 15.62 16
+
+Table 2 reports PATH and six strong baselines under the nominal 0.900 coverage requirement. PATH attains this level on 76 .6% of evaluations, the highest rate among the listed methods. Across the complete ranking, it also records the best mean rank, 6.46 , and the most wins, 177. The compact-ness advantage therefore remains when intervals must meet the nominal target directly. Appendix E.5 provides complete counts and metrics. Figure 4 measures how often each method approaches the shortest valid interval. For each evaluation, L∗ is the minimum length among methods reaching 0.900 coverage. A method succeeds at tolerance δ when its length is at most 
+
+(1 + δ)L∗. PATH has the highest success fraction throughout the profile. It lies within 10% and 25% of L∗ on 47 .1% and 
+
+53 .6% of evaluations. The corresponding QRF-CTI rates are 
+
+36 .4% and 43 .9% . The advantage therefore reflects frequent 0 10 20 30 40 50 
+
+Allowed excess over best valid length (%) 
+
+> 010 20 30 40 50 60
+> Evaluations within tolerance (%)
+> PATH
+> QRF-CTI
+> PATH QRF Boosted CQR SplitCP MLP Local RF RF quantile
+
+Figure 4: Coverage-constrained profiles over 560 evaluations. Success at tolerance δ requires coverage ≥ 0.900 and length 
+
+≤ (1 + δ)L∗, where L∗ is the shortest valid interval. 0 .025 .050 .075 .100 
+
+Mean length/range gain (baseline - PATH)        
+
+> QRF-CTI CatBoost-CQR QRF-CIR+ QRF-CIR LightGBM-CQR QRF-CQR
+> Reduction Shorter (/56)
+> 27.0% 36/56 17.5% 46/56 16.3% 42/56 18.2% 47/56 26.4% 49/56 31.8% 54/56
+
+Figure 5: Paired interval-length gains over six strong base-lines. Dataset means average 10 seeds; points and lines show baseline-minus-PATH gains and 95% bootstrap intervals from 10,000 resamples. Positive values favor PATH; right columns report overall reduction and positive-gain datasets. near-optimal performance, not only isolated wins. Figure 5 quantifies both the magnitude and prevalence of the gain against six strong baselines. We first average normal-ized length over 10 seeds within each dataset, then compute paired baseline-minus-PATH differences. Aggregate reduc-tions range from 16 .3% to 31 .8% , and PATH is shorter on 36 to 54 of 56 datasets. All 95% dataset-bootstrap inter-vals remain above zero. The interval-length improvement is therefore broadly distributed across datasets, including the comparison with QRF-CTI. Figure 6 examines whether compactness is obtained at the expense of overall interval score. PATH occupies the shortest-length end of the lower-left performance frontier. CatBoost-CQR and QRF-CTI achieve slightly lower scores, but require substantially longer mean intervals. The plot therefore identifies PATH’s distinguishing advantage as inter-val compactness under the empirical coverage requirement. Appendix D reports all interval-score values. 0.15 0.20 0.25 0.30 0.35 0.40 0.25 0.30 0.35 0.40 0.45 0.50 0.55 
+
+> Mean interval score / range Mean length / range Mean interval score / range
+> PATH RF-A-LOFOREST RF-A-LOCART RF-LOFOREST LGBM-Split Cat-Split XGB-Split RF-LOCART LGBM-CQR QRF-CIR+ RF-Split QRF-CTI QRF-CHR QRF-CIR XGB-CQR Cat-CQR MLP-CTI QRF-CQR MLP-R2CCP RF-TQ-CQR MLP-Split MLP-CIR+ MLP-CIR MLP-CQR
+
+Figure 6: Interval score versus normalized length over 10 splits; lower-left is better. Colors denote method families, and larger markers indicate lower scores. MLP-CHR is omitted as an outlier (length/range = 0 .2533 , score/range = 0 .8616 ). 4 5 6 7 8Depth D 0.150 0.155 0.160 0.165 0.170 Mean length / range         
+
+> a
+> target 0.905 target 0.91 target 0.915
+> 45678Depth D 0.915 0.920 0.925 0.930 Mean coverage
+> b
+> 45678Depth D 6810 12 Mean rank
+> c
+
+Figure 7: Depth and validation-target scaling on the repre-sentative split: (a) mean normalized length, (b) mean test coverage, and (c) coverage-constrained mean rank. 
+
+4.3 Depth and Validation Target Analysis 
+
+Tree depth D determines output resolution, while valida-tion target η controls the coverage level used for inter-val selection. Figure 7 evaluates D ∈ { 4, 5, 6, 7, 8} and 
+
+η ∈ { 0.905 , 0.910 , 0.915 } on the representative split. Ap-pendix E.1 provides the numerical results. Figure 7 shows the same depth trend at all three validation targets. At η = 0 .905 , increasing D from 4 to 8 reduces mean length/range from 0.1687 to 0.1467 . Mean rank improves from 11 .46 to 5.86 , while coverage remains above 0.914 .The trends remain consistent at η = 0 .910 and 0.915 . At 
+
+D = 8 , increasing η from 0.905 to 0.915 raises coverage from 0.9141 to 0.9252 . The corresponding length increase is limited, from 0.1467 to 0.1527 . These results establish depth as an effective scaling dimension for interval resolution and support D = 8 , η = 0 .905 as the main compact setting. 
+
+4.4 Modeling Ablation 
+
+Table 3 isolates hierarchical output modeling and autoregres-sive refinement on PATHBench over 10 seeds. All variants use D = 8 , η = 0 .905 , and identical selection and extrac-tion. PATH w/o AR retains the hierarchy, whereas Direct Transformer predicts leaves directly. All variants maintain mean coverage above 0.914 . Re-moving autoregressive refinement raises mean length/range 0.80 0.85 0.90 0.95 1.00 
+
+> Coverage
+
+a
+
+> 10 −3
+> 10 −2
+> 10 −1
+> 10 0
+> 10 1
+> Length / range
+
+b
+
+> 0.0 0.2 0.4 0.6 0.8 1.0
+> Target-quartile gap
+
+c
+
+> PATH-D4 PATH-D5 PATH-D6 PATH-D7 PATH-D8 QRF-CTI QRF-CHR QRF-CIR+ QRF-CIR XGB-CQR LGBM-CQR Cat-CQR Cat-SplitCP MLP-CTI QRF-CQR XGB-SplitCP LGBM-SplitCP RF-SplitCP RF-A-LOCART MLP-R2CCP MLP-CHR RF-TQ-CQR RF-A-LOFOREST MLP-CIR+ RF-LOCART MLP-SplitCP MLP-CIR RF-LOFOREST MLP-CQR
+> 10 0
+> 10 1
+> 10 2
+> 10 3
+> 10 4
+> Runtime (s)
+
+dFigure 8: Representative-split distributions for PATH depths D = 4 , . . . , 8 and 24 baselines: coverage, normalized length, target-quartile coverage gap, and runtime. Shading marks PATH; length and runtime use logarithmic scales. Table 3: 10-seed modeling ablation on PATHBench at D =8, η = 0 .905 . Shorter (/56) counts datasets where PATH has lower seed-averaged length.                 
+
+> Method Cov. Mean len/rng ↓
+> Median len/rng ↓
+> PATH shorter datasets ↑
+> PATH 0.9144 0.1473 0.0547 –PATH w/o AR 0.9197 0.1506 0.0566 42/56 Direct Transformer 0.9195 0.1623 0.0625 52/56
+
+from 0.1473 to 0.1506 , and direct leaf prediction raises it to 
+
+0.1623 . Full PATH is shorter on 42/56 and 52/56 datasets, with mean reductions of 2.2% and 8.7% . The hierarchy pro-vides the larger gain, while autoregression adds a consistent improvement. 
+
+4.5 Distributional Diagnostics 
+
+Figure 8 compares coverage, normalized length, target-quartile gap (maximum minus minimum quartile coverage), and runtime. Greater depth shortens PATH intervals while preserving near-target coverage and comparable gaps, at in-creased runtime. 
+
+4.6 Further Analysis 
+
+Appendix D gives aggregate and interval-score results. Ap-pendix E.1 confirms depth and target scaling. Appendix E.2 measures validation-to-test transfer. Appendix E.3 favors di-rect extraction over scalar expansion. Appendix E.4 gives all-baseline pairwise comparisons. Appendix E.5 confirms gains under strict coverage. Appendix E.6 covers dataset fac-tors, conditional coverage, and runtime. Appendix F lists per-dataset records. 
+
+## 5 Conclusion 
+
+Interval prediction often shapes final intervals after training from a surrogate. PATH instead models their inherent hierar-chical geometry. We formulate this structure as next-interval prediction: at each depth, the model predicts probability flow from a coarse interval to nested subintervals, linking broad uncertainty to boundary placement. Across PATHBench, 10 random seeds, and 24 baselines, PATH attains the short-est mean normalized intervals while mean coverage remains above 0.9. Ablations confirm the benefits of finer hierarchies and autoregressive refinement. This establishes hierarchical geometry as a principle for compact intervals. References 
+
+Amini, A.; Schwarting, W.; Soleimany, A.; and Rus, D. 2020. Deep Evidential Regression. In Advances in Neural Information Process-ing Systems , volume 33, 14927–14937. Angelopoulos, A. N.; and Bates, S. 2023. Conformal Prediction: A Gentle Introduction. Foundations and Trends in Machine Learning ,16(4): 494–591. Arik, S. Ö.; and Pfister, T. 2021. TabNet: Attentive Interpretable Tabular Learning. Proceedings of the AAAI Conference on Artificial Intelligence , 35(8): 6679–6687. Bishop, C. M. 1994. Mixture Density Networks. https://publications.aston.ac.uk/id/eprint/373/. Breiman, L. 2001. Random Forests. Machine Learning , 45(1): 5–32. Cabezas, L. M. C.; Otto, M. P.; Izbicki, R.; and Stern, R. B. 2024. Regression Trees for Fast and Adaptive Prediction Intervals. arXiv preprint arXiv:2402.07357 .Cao, W.; Mirjalili, V.; and Raschka, S. 2020. Rank Consistent Ordinal Regression for Neural Networks with Application to Age Estimation. Pattern Recognition Letters , 140: 325–331. Chen, T.; and Guestrin, C. 2016. XGBoost: A Scalable Tree Boost-ing System. In Proceedings of the 22nd ACM SIGKDD Inter-national Conference on Knowledge Discovery and Data Mining ,785–794. Fu, H.; Gong, M.; Wang, C.; Batmanghelich, K.; and Tao, D. 2018. Deep Ordinal Regression Network for Monocular Depth Estima-tion. In Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition , 2002–2011. Gorishniy, Y.; Rubachev, I.; Khrulkov, V.; and Babenko, A. 2021. Revisiting Deep Learning Models for Tabular Data. In Advances in Neural Information Processing Systems , volume 34, 18932–18943. Guha, E. K.; Natarajan, S.; Möllenhoff, T.; Khan, M. E.; and Ndiaye, E. 2023. Conformal Prediction via Regression-as-Classification. In 
+
+The Twelfth International Conference on Learning Representations .Guo, N.; Luo, R.; and Zhou, Z. 2026. Fast Conformal Predic-tion Using Conditional Interquantile Intervals. arXiv preprint arXiv:2601.02769 .Huang, X.; Khetan, A.; Cvitkovic, M.; and Karnin, Z. 2020. Tab-Transformer: Tabular Data Modeling Using Contextual Embed-dings. arXiv preprint arXiv:2012.06678 .Izbicki, R.; Shimizu, G.; and Stern, R. B. 2021. CD-Split and HPD-Split: Efficient Conformal Regions in High Dimensions. arXiv preprint arXiv:2007.12778 .Ke, G.; Meng, Q.; Finley, T.; Wang, T.; Chen, W.; Ma, W.; Ye, Q.; and Liu, T.-Y. 2017. LightGBM: A Highly Efficient Gradient Boost-ing Decision Tree. In Advances in Neural Information Processing Systems , volume 30. Koenker, R.; and Bassett, G. 1978. Regression Quantiles. Econo-metrica , 46(1): 33–50. Lakshminarayanan, B.; Pritzel, A.; and Blundell, C. 2017. Simple and Scalable Predictive Uncertainty Estimation Using Deep En-sembles. In Advances in Neural Information Processing Systems ,volume 30. Lei, J.; G’Sell, M.; Rinaldo, A.; Tibshirani, R. J.; and Wasserman, L. 2018. Distribution-Free Predictive Inference for Regression. 
+
+Journal of the American Statistical Association , 113(523): 1094– 1111. Li, R.; Reich, B. J.; and Bondell, H. D. 2021. Deep Distribution Re-gression. Computational Statistics & Data Analysis , 159: 107203. Luo, R.; and Zhou, Z. 2025. Conformal Thresholded Intervals for Efficient Regression. Proceedings of the AAAI Conference on Artificial Intelligence , 39(18): 19216–19223. Meinshausen, N. 2006. Quantile Regression Forests. The Journal of Machine Learning Research , 7: 983–999. Pearce, T.; Brintrup, A.; Zaki, M.; and Neely, A. 2018. High-Quality Prediction Intervals for Deep Learning: A Distribution-Free, En-sembled Approach. In Proceedings of the 35th International Con-ference on Machine Learning , 4075–4084. Popov, S.; Morozov, S.; and Babenko, A. 2019. Neural Oblivious Decision Ensembles for Deep Learning on Tabular Data. arXiv preprint arXiv:1909.06312 .Prokhorenkova, L.; Gusev, G.; Vorobev, A.; Dorogush, A. V.; and Gulin, A. 2018. CatBoost: Unbiased Boosting with Categorical Features. In Advances in Neural Information Processing Systems ,volume 31. Romano, Y.; Patterson, E.; and Candes, E. 2019. Conformalized Quantile Regression. In Advances in Neural Information Processing Systems , volume 32. Rügamer, D.; Kolb, C.; Fritz, C.; et al. 2023. Deepregression: A Flexible Neural Network Framework for Semi-Structured Deep Distributional Regression. Journal of Statistical Software , 105: 1–31. Sesia, M.; and Romano, Y. 2021. Conformal Prediction Using Con-ditional Histograms. In Advances in Neural Information Processing Systems , volume 34, 6304–6315. Somepalli, G.; Goldblum, M.; Schwarzschild, A.; Bruss, C. B.; and Goldstein, T. 2021. SAINT: Improved Neural Networks for Tabular Data via Row Attention and Contrastive Pre-Training. arXiv preprint arXiv:2106.01342 .Vanschoren, J.; van Rijn, J. N.; Bischl, B.; and Torgo, L. 2014. OpenML: Networked Science in Machine Learning. ACM SIGKDD Explorations Newsletter , 15(2): 49–60. Vovk, V.; Gammerman, A.; and Shafer, G. 2005. Algorithmic Learn-ing in a Random World . Springer. Vovk, V.; Shen, J.; Manokhin, V.; and Xie, M.-g. 2017. Nonpara-metric Predictive Distributions Based on Conformal Prediction. In 
+
+Proceedings of the Sixth Workshop on Conformal and Probabilistic Prediction and Applications , 82–102. Yan, J.; Zheng, B.; Xu, H.; Zhu, Y.; Chen, D.; Sun, J.; Wu, J.; and Chen, J. 2024. Making Pre-Trained Language Models Great on Tabular Prediction. International Conference on Learning Repre-sentations , 2024: 23570–23593. Appendix 
+
+Overview 
+
+This appendix supports the next-interval prediction formulation with the theoretical properties and algorithm, the complete evaluation protocol, numerical ablations, interval-score and strict-coverage results, validation-selection diagnostics, dataset-level analyses, runtime comparisons, and per-dataset records. The main comparison and model-design ablation average results on PATHBench over 10 random seeds, while depth/target sweeps and detailed diagnostics use the representative split unless stated otherwise. The accompanying arXiv package also includes the code and reproducibility assets , comprising the training and evaluation scripts, the OpenML dataset manifest, and the random-seed protocol. 
+
+## A Basic Properties of the Construction 
+
+At each tree depth, next-interval prediction models how probability mass flows from a current interval to its nested children. This section records properties used to interpret the resulting PATH construction. They establish that the tree decoder defines a valid target distribution, that the non-autoregressive setting is an exact special case, and that depth controls the grid approximation of contiguous interval extraction. 
+
+Proposition A.1 (Normalized tree distribution) . Fix x, T , and λ. If every branch probability πλt,a (x) lies in [0 , 1] , then the refined leaf distribution defined by the tree product satisfies 
+
+pλ,T (b | x) ≥ 0 for all b, 
+
+> B−1
+
+X
+
+> b=0
+
+pλ,T (b | x) = 1 .
+
+Proof. Assign mass m0(∅) = 1 to the root. For a node a at depth t, assign its left and right child masses as 
+
+mt+1 (a0) = mt(a) 1 − πλt,a (x), mt+1 (a1) = mt(a)πλt,a (x).
+
+Both child masses are nonnegative, and their sum is mt(a). By induction over levels, the total mass over all nodes at depth t
+
+is one for every t. At depth D, each node corresponds to one leaf, and the recursive mass assigned to that leaf is exactly the product defining pλ,T (b | x). Therefore the leaf probabilities are nonnegative and sum to one. 
+
+Proposition A.2 (Direct distribution as a special case) . Assume the base leaf distribution satisfies qT (b | x) > 0 for all leaves. When λ = 0 , the refined distribution equals the direct leaf distribution: 
+
+p0,T (b | x) = qT (b | x), b = 0 , . . . , B − 1.
+
+Proof. For any tree node Ct(a), the branch probability π0
+
+> t,a
+
+(x) is the conditional probability under qT that the target leaf lies in the right child, given that it lies in the parent node. The left branch probability is the corresponding conditional probability for the left child. For a leaf b, multiplying these conditional probabilities along its root-to-leaf path gives 
+
+> D−1
+
+Y
+
+> t=0
+
+qT (Ct+1 (at+1 (b)) | C t(at(b)) , x ) = qT ({b} | x),
+
+because the intermediate parent masses telescope and the root mass is one. This product is p0,T (b | x), so p0,T (b | x) = qT (b |
+
+x).
+
+Proposition A.3 (Optimal contiguous extraction and grid error) . For a fixed discrete distribution p(b | x) and mass M , the interval extraction rule in the main text returns a shortest interval among all contiguous leaf intervals whose mass is at least 
+
+M . Moreover, let P be any distribution on a bounded target range of length R, and let L∗(M ) be the shortest length of any continuous interval with P -mass at least M . Let L∗ 
+
+> D
+
+(M ) be the shortest length among intervals whose endpoints are restricted to a uniform grid with B = 2 D cells and width ∆ = R/ 2D . Then 
+
+L∗(M ) ≤ L∗ 
+
+> D
+
+(M ) ≤ L∗(M ) + 2∆ .
+
+Proof. The first statement follows directly from enumerating the feasible set of contiguous leaf intervals and minimizing their endpoint distance. For the grid approximation, every grid-aligned interval is also a continuous interval, so L∗(M ) ≤ L∗ 
+
+> D
+
+(M ). Conversely, let 
+
+[u, v ] be a continuous interval with P ([ u, v ]) ≥ M and length arbitrarily close to L∗(M ). Choose grid points ei and ej such that ei ≤ u < e i+1 and ej−1 < v ≤ ej . Then [ei, e j ] is grid-aligned, contains [u, v ], and therefore has mass at least M . Its length is at most (v − u) + 2∆ . Taking [u, v ] arbitrarily close to optimal gives L∗ 
+
+> D
+
+(M ) ≤ L∗(M ) + 2∆ .Algorithm B.1 Pseudocode for PATH. Each operation is linked to the corresponding equation in the main text.  
+
+> 1:
+
+Fit uniform target boundaries eb on the training split using Eq. (1).  
+
+> 2:
+
+Encode each target as a clipped leaf index zi using Eq. (2).  
+
+> 3:
+
+Map each tree prefix to its target region Ct(a) using Eq. (3).  
+
+> 4:
+
+Predict the base leaf distribution qT (b | x) using Eq. (4).  
+
+> 5:
+
+Convert base leaf mass into branch probabilities π0
+
+> t,a
+
+(x) using Eq. (5).  
+
+> 6:
+
+Refine branch probabilities with residual autoregression using Eq. (6).  
+
+> 7:
+
+Enumerate root-to-leaf paths to obtain pλ,T (b | x) using Eq. (7).  
+
+> 8:
+
+Train the direct and refined distributions with Eqs. (8)–(11).  
+
+> 9:
+
+Extract the shortest contiguous mass interval using Eq. (12).  
+
+> 10:
+
+Select T , M , and λ on validation by evaluating intervals from Eq. (12). 
+
+Proposition A.4 (Finite-grid validation concentration) . Condition on a fixed trained model and a fixed finite inference grid A
+
+of size K. For each candidate a ∈ A , let ca = P{Y ∈ Ia(X)} be its population coverage and let ˆca be its empirical coverage on an independent validation set of size nval . Then, with probability at least 1 − δ,
+
+max  
+
+> a∈A
+
+|ˆca − ca| ≤ 
+
+s
+
+log(2 K/δ )2nval 
+
+.
+
+Proof. For a fixed candidate a, the coverage indicators 1{Yi ∈ Ia(Xi)} are bounded Bernoulli variables with mean ca.Hoeffding’s inequality gives 
+
+P{| ˆca − ca| > ϵ } ≤ 2 exp( −2nval ϵ2).
+
+Applying a union bound over the K grid candidates and setting the right-hand side to δ yields the stated bound. 
+
+## B PATH Algorithm 
+
+Algorithm B.1 summarizes next-interval prediction in the complete training and inference pipeline. Each operation points to the corresponding equation in the main text. Algorithm B.1 is the procedural counterpart of the method section. It separates the construction into target encoding, distribution prediction, autoregressive refinement, training, interval extraction, and validation selection, making clear that PATH returns an interval only after the distributional model and the validation-selected inference parameters have been fixed. 
+
+## C Evaluation Protocol 
+
+Data splits. The main comparison uses random seeds 0, . . . , 9, each defining an independent 60/20/20 train/validation/test split. The training split fits preprocessing and target bin edges, the validation split selects checkpoints or inference parameters, and the fixed choices are then evaluated on the test split. The model-design ablation uses the same 10 random seeds; depth/target ablations and diagnostic sections use the representative split unless stated otherwise. 
+
+Computing environment. Experiments were executed on 64-bit Linux cluster nodes (kernel 5.15). GPU workloads used NVIDIA A800 or H800 accelerators with 80 GB memory, while CPU-only baselines ran on Intel Xeon Platinum-class processors; a representative CPU node contained two Intel Xeon Platinum 8468 processors with 96 physical cores in total. The primary software environment used Python 3.10.18, PyTorch 2.6.0 with CUDA 11.8, NumPy 2.1.2, pandas 2.3.0, scikit-learn 1.7.0, SciPy 1.15.3, CatBoost 1.2.10, XGBoost 2.1.4, LightGBM 3.3.5, Matplotlib 3.10.3, and Seaborn 0.13.2. The anonymous code package provides the complete Python dependency list in requirements.txt .
+
+OpenML dataset manifest. Table C.1 lists the exact OpenML data identifiers and target columns used in the 56-dataset benchmark. Dataset names follow the aliases used throughout the paper, while the data IDs uniquely identify the corresponding OpenML sources. Table C.1: OpenML dataset manifest. Rows and features refer to the full dataset before the split protocol is applied.                         
+
+> Dataset ID Target Rows Feat. Allstate_Claims_Severity 42571 loss 188,318 130 BNG(lowbwt) 1193 class 31,104 9Bike_Sharing_Demand 44000 count 17,379 6Brazilian_houses 42688 total_(BRL) 10,692 12 CPMP-2015-regression 41700 runtime 2,108 26 Continued on next page
+
+Table C.1: OpenML manifest, continued. Dataset ID Target Rows Feat. CPS1988 43963 wage 28,155 6Job_Profitability 44311 Jobs_Gross_Margin_Percentage 14,480 29 Meta_Album_MD_5_BIS_Mini 44296 CATEGORY 28,240 38 Meta_Album_MD_6_Mini 44310 CATEGORY 28,120 46 Meta_Album_MD_MIX_Mini 44287 CATEGORY 28,240 68 Minneapolis-Air-Quality-Survey 43747 Results 4,790 17 Moneyball 41021 RS 1,232 14 NASA_PHM2008 42821 class 45,918 21 OnlineNewsPopularity 4545 shares 39,644 60 Titanic 41265 Fare 1,307 7aids2 46158 time 2,814 5appliances_energy_prediction 46283 Appliances 19,735 27 arsenic-female-lung 513 events 559 4arsenic-male-bladder 482 events 559 4arsenic-male-lung 536 events 559 4beijing_pm 46285 pm2.5 41,757 11 bengaluru_real_estate_price 46284 price 13,320 7black_friday 41540 Purchase 166,821 9cat_adoption 47176 time 2,257 19 check_times 47177 time 13,626 23 cholesterol 204 chol 303 13 chscase_vine2 689 col_3 468 2climate_change_impact_on_ agriculture_2024 46726 Economic_Impact_ Million_USD 10,000 14 colrec 46145 time 5,578 6cpu 561 class 209 7delays_zurich_transport 42495 delay 27,327 17 diamonds 42225 price 53,940 9flchain 46161 time 4,000 8forest_fires 42363 area 517 12 fps_benchmark 44992 FPS 24,624 43 grace 46168 time 1,000 7hdfail 46167 time 52,410 6health_insurance 44993 whrswk 22,272 11 house_16H 574 price 22,784 16 house_8L 218 price 22,784 8houses 537 median_house_value 20,640 8kings_county 44989 price 21,613 21 laser 42364 Output 993 4meta 566 class 528 21 metabric 46142 time 1,903 10 munich-rent-index-1999 46772 rent 3,082 8nafld1 46164 time 12,588 6pol 201 foo 15,000 48 rainfall_bangladesh 41539 Rainfall 16,755 3sarcos 44976 V22 48,933 21 seoul_bike_sharing_demand 46297 13 8,760 13 seoul_bike_sharing_demand_cat 46328 rented_bike_count 8,760 17 socmob 541 counts_for_sons_ current_occupation 1,156 5stock_fardamento02 42545 qts 6,277 6video_transcoding 44974 utime 68,784 18 visualizing_galaxy 690 velocity 323 4
+
+The manifest contains 56 unique OpenML data IDs and spans 1,216,045 observations. Dataset sizes range from 209 to 188,318 rows and from 2 to 130 input features. Reporting the identifiers and target columns fixes the benchmark source independently of local dataset naming. Table D.1: Supplementary interval-score summary for the 10-split main comparison. Score/rng is the mean interval score normalized by the training target range. Rank and wins follow the coverage-constrained length rule in Table 1.                                                                                                                                       
+
+> Method mean cov mean len/rng ↓score/rng ↓rank ↓wins ↑
+> PATH 0.9144 0.1473 0.2627 5.25 163 QRF-CTI 0.9201 0.2017 0.2578 8.38 130 QRF-CHR 0.9046 0.2110 0.3339 9.03 12 QRF-CIR 0.8995 0.1800 0.3243 9.45 9XGBoost-CQR 0.9047 0.2120 0.2936 9.96 6CatBoost-CQR 0.9038 0.1786 0.2571 10.03 9LightGBM-CQR 0.9059 0.2002 0.2698 10.29 7QRF-CIR+ 0.8951 0.1760 0.3264 10.73 32 CatBoost-SplitCP 0.9034 0.1967 0.3116 11.94 26 MLP-CTI 0.9009 0.2900 0.4135 12.67 49 XGBoost-SplitCP 0.9035 0.2162 0.3363 12.77 27 QRF-CQR 0.9222 0.2159 0.2914 12.99 0LightGBM-SplitCP 0.9042 0.2242 0.3452 13.91 14 RF-SplitCP 0.9043 0.2277 0.3605 14.08 2MLP-R2CCP 0.8586 0.1953 0.4833 14.51 40 RF-A-LOCART 0.9043 0.2649 0.3894 14.65 4RF-TQ-CQR 0.9241 0.2431 0.2911 14.83 2MLP-CHR 0.8750 0.2533 0.8616 14.92 12 RF-A-LOFOREST 0.9001 0.2668 0.3901 15.32 0MLP-CIR+ 0.8643 0.2626 0.5237 15.48 12 RF-LOCART 0.9090 0.2682 0.3944 15.78 0MLP-CIR 0.9149 0.3330 0.4430 15.90 1MLP-SplitCP 0.9031 0.3869 0.5340 16.24 2RF-LOFOREST 0.8988 0.2700 0.3962 16.80 0MLP-CQR 0.9037 0.3646 0.4644 19.09 1
+
+Main PATH setting. The main setting is D = 8 with validation selection target η = 0 .905 . The checkpoint is selected by validation loss. The inference grid is the mass, temperature, and autoregressive residual strength grid stated in the main text. Validation selects T , M , and λ, and the resulting shortest interval satisfying the selected mass is evaluated directly on the test split. 
+
+Ranking rule. For each dataset, methods are ranked by the following deterministic rule: 1. Methods with empirical test coverage at least 0.885 are valid under the coverage rule. 2. Valid methods are ranked by average interval length normalized by the training target range, with shorter intervals preferred. 3. Methods with coverage below 0.885 are ranked after all valid methods by coverage error to the valid threshold and then length. 4. Wins count first-place finishes under this rule for the relevant evaluation. 
+
+Reporting boundary. The depth and validation-target ablation characterizes target resolution and coverage operating points. The main text uses D = 8 , η = 0 .905 as the compact high-resolution setting and presents larger validation targets as more conservative alternatives. Each experiment fixes depth and validation target before test evaluation and applies the same setting to every dataset. 
+
+## D Aggregate Diagnostics 
+
+This section reports the aggregate metrics omitted from the main tables. All values average PATHBench over 10 random seeds unless stated otherwise. The representative-split distributional boxplots appear in Figure 8 of the main paper. Figure D.1 compares length, coverage, and interval score for all 25 methods under the 10-split protocol. PATH attains the shortest mean normalized length, 0.1473 , while maintaining mean coverage 0.9144 . The next shortest method has mean length 
+
+0.1760 , so PATH reduces normalized length by 16 .3% relative to this closest length competitor. Several baselines achieve greater mean coverage, but only by returning substantially longer intervals. The three panels therefore show that PATH occupies the most compact region without falling below the nominal mean coverage target. Table D.1 places interval score beside coverage-constrained interval efficiency. CatBoost-CQR and QRF-CTI obtain the two lowest score/rng values, 0.2571 and 0.2578 . The PATH score, 0.2627 , is within 2.2% of the best value, while its intervals are 
+
+17 .5% shorter than CatBoost-CQR and 27 .0% shorter than QRF-CTI in aggregate. PATH also retains the best rank and largest win count. Thus, its large compactness gain is achieved while remaining close to the strongest interval-score methods. 0.0 0.1 0.2 0.3 0.4 
+
+> Mean length / range
+> PATH QRF-CTI QRF-CHR QRF-CIR XGB-CQR Cat-CQR LGBM-CQR QRF-CIR+ Cat-Split MLP-CTI XGB-Split QRF-CQR LGBM-Split RF-Split MLP-R2CCP RF-A-LOCART RF-TQ-CQR MLP-CHR RF-A-LOFOREST MLP-CIR+ RF-LOCART MLP-CIR MLP-Split RF-LOFOREST MLP-CQR
+
+a   
+
+> 0.86 0.88 0.90 0.92
+> Mean coverage
+
+b    
+
+> 0.0 0.2 0.4 0.6 0.8
+> Interval score / range
+
+cFigure D.1: Aggregate main metric summary over all 25 concrete methods and 10 random seeds, ordered as in Table 1. (a) Mean interval length normalized by the training target range. (b) Mean empirical coverage, with the nominal 0.9 target and the coverage threshold marked. (c) Mean interval score normalized by the training target range. Lower is better in panels (a) and (c). 
+
+## E Additional Diagnostics 
+
+This section expands the main experiments through numerical depth and validation-target results, validation-selection diag-nostics, scalar-margin compatibility, pairwise robustness tests, conditional coverage analysis, and runtime comparisons. Unless explicitly identified as a 10-split aggregate, results use the representative split. 
+
+E.1 Depth and Validation-Target Results 
+
+Table E.1 provides the numerical values underlying Figure 7. Increasing depth from D = 4 to D = 8 reduces mean normalized length by 11 .6% –13 .0% across the three validation targets. Mean rank improves at the same time, while every setting retains mean coverage above 0.914 . The shortest configuration is D = 8 , η = 0 .905 , whereas D = 8 , η = 0 .910 gives the best mean rank with only a 2.6% length increase. The consistent trend establishes that finer interval hierarchies improve output resolution rather than benefiting from a single target choice. Table E.2 isolates validation-target selection at D = 8 . Raising η from 0.905 to 0.915 increases mean coverage from 0.9141 Table E.1: Representative-split depth and validation-target ablation corresponding to Figure 7. Rank follows the coverage-constrained length rule; lower is better. 
+
+target D mean cov valid len/rng ↓ rank ↓ score/rng ↓
+
+0.905 4 0.9278 52/56 0.1687 11.46 0.3047 0.905 5 0.9239 52/56 0.1557 9.27 0.2799 0.905 6 0.9178 53/56 0.1512 6.59 0.2754 0.905 7 0.9149 52/56 0.1506 5.75 0.2843 0.905 8 0.9141 51/56 0.1467 5.86 0.2647 0.910 4 0.9307 54/56 0.1702 11.13 0.3021 0.910 5 0.9274 53/56 0.1586 9.20 0.2781 0.910 6 0.9220 53/56 0.1539 7.30 0.2762 0.910 7 0.9176 52/56 0.1536 6.43 0.2806 0.910 8 0.9201 53/56 0.1505 5.61 0.2626 0.915 4 0.9332 54/56 0.1735 11.71 0.2973 0.915 5 0.9325 56/56 0.1620 9.05 0.2759 0.915 6 0.9267 53/56 0.1569 7.61 0.2741 0.915 7 0.9229 52/56 0.1567 7.32 0.2783 0.915 8 0.9252 53/56 0.1527 6.54 0.2593 
+
+Table E.2: Representative-split tradeoff for the main D = 8 setting. Increasing the validation selection target gives a more conservative operating point and slightly lengthens intervals. 
+
+target mean cov median cov valid strict len/rng ↓ score/rng ↓ rank ↓
+
+0.905 0.9141 0.9083 51/56 44/56 0.1467 0.2647 5.86 0.910 0.9201 0.9139 53/56 48/56 0.1505 0.2626 5.61 
+
+0.915 0.9252 0.9171 53/56 50/56 0.1527 0.2593 6.54 
+
+to 0.9252 and strict-valid datasets from 44/56 to 50/56. Mean length/range increases by only 4.1% , from 0.1467 to 0.1527 . The main η = 0 .905 setting therefore provides the most compact operating point, while the higher targets offer predictable coverage increases at modest length cost. 
+
+E.2 Validation Selection Diagnostics 
+
+Figure E.1 examines how validation selection adapts the interval extractor across datasets. Panel (a) shows that selected mass and temperature values span the candidate grid rather than collapsing to one global setting. Panel (b) shows a clear validation-to-test relationship, although several datasets exhibit transfer gaps. Panel (c) places these gaps against interval length; 51/56 datasets satisfy the paper’s coverage threshold at the selected D = 8 , η = 0 .905 operating point. The result shows that dataset-specific selection is actively used and generally transfers compact intervals to the test split. 0.7 0.8 0.9 1 1.2 1.5 Temperature 0.4 0.45 0.55 0.6 0.65 0.7 0.75 0.8 0.85 0.9 0.92 0.95 Initial mass              
+
+> 6111121111132131533215145
+
+a 
+
+> 0.95 1.00 Validation coverage 0.80 0.85 0.90 0.95 1.00 Test coverage
+
+b  
+
+> 0.8 0.9 1.0 Test coverage 0.0 0.2 0.4 0.6 Length / range
+
+c
+
+> 0123456
+> 0.2 0.4 0.6 len/r
+
+Figure E.1: Representative-split validation selection diagnostics for the main D = 8 , η = 0 .905 setting. (a) Counts of initial mass and temperature pairs selected on validation data across datasets. (b) Validation coverage versus test coverage, colored by normalized test length. (c) Test coverage versus normalized interval length; blue points satisfy the coverage threshold. Table E.3: Supplementary comparison between the main PATH setting and a calibration-expanded variant on PATHBench over 10 random seeds. Valid counts require coverage at least 0.885 ; strict counts require coverage at least 0.900 .                     
+
+> Method mean cov valid strict mean len/rng ↓med len/rng ↓score/rng ↓
+> PATH 0.9144 515/560 429/560 0.1473 0.0547 0.2627 Calibration-expanded PATH 0.9075 493/560 282/560 0.1404 0.0585 0.2825
+
+Table E.4: Additional representative-split depth sweep at validation target 0.900 using the initial selection grid.                                       
+
+> Dmean cov median cov valid strict len/rng ↓score/rng ↓
+> 40.9341 0.9143 54/56 45/56 0.1708 0.2992 50.9245 0.9124 51/56 40/56 0.1551 0.2770 60.9219 0.9100 51/56 43/56 0.1520 0.2781 70.9205 0.9089 51/56 39/56 0.1502 0.2819 80.9161 0.9059 49/56 39/56 0.1451 0.2636
+
+E.3 Calibration-expanded PATH 
+
+PATH can also be combined with a final scalar expansion after interval construction. This supplementary experiment uses the same model architecture, depth D = 8 , training schedule, random seeds, and inference grid over M , T , and λ as the main PATH run. Its validation-selection rule applies scalar expansion to every candidate. For each validation candidate, PATH first forms the raw shortest-mass interval I0(x) = [ L0(x), U 0(x)] by Eq. (12). It then computes the validation scores 
+
+si = max {L0(xi) − yi, y i − U0(xi), 0},
+
+sets q to the higher empirical quantile at level ⌈(nval + 1)0 .90 ⌉/n val , and evaluates the expanded interval 
+
+Iq (x) = [ L0(x) − q, U 0(x) + q].
+
+Candidates whose validation coverage is within 0.015 of the 0.90 target are preferred, and among them we choose the shortest validation interval; if no candidate is within tolerance, we choose the candidate with the smallest coverage error and use length to break ties. The selected M , T , λ, and q are then applied to the test split. This gives a two-stage interval construction: PATH determines the data-dependent interval shape through the learned target distribution, and scalar expansion adds a validation-estimated margin around that interval. The experiment evaluates this scalar margin on top of the same learned distribution, architecture, and training configuration. Table E.3 tests a scalar margin on top of the learned interval shape. Joint selection lowers mean length/range from 0.1473 
+
+to 0.1404 , but mean coverage falls from 0.9144 to 0.9075 . The direct PATH interval also yields 22 more valid evaluations, 147 more strict-valid evaluations, and a lower score/rng ( 0.2627 versus 0.2825 ). These results favor direct distribution-based extraction as the main design: the learned interval shape provides substantially stronger coverage transfer and overall interval quality than joint scalar-margin selection. Table E.4 reports an additional representative-split depth sweep at validation target 0.900 using the initial selection grid. This experiment tests whether the depth trend depends on the main 0.905 target. Its D = 8 setting achieves mean length/range 0.1451 
+
+with 49/56 valid datasets, while the main D = 8 , η = 0 .905 setting obtains 0.1467 with 51/56 valid datasets. Table E.4 reproduces the depth pattern at validation target 0.900 . Increasing D from 4 to 8 reduces mean length/range by 
+
+15 .0% , from 0.1708 to 0.1451 , while mean coverage remains 0.9161 at D = 8 . Relative to this target, the main 0.905 setting recovers two additional valid datasets for only a 1.1% length increase. The result confirms stable depth scaling and supports the selected validation target. 
+
+E.4 Pairwise Baseline Comparisons 
+
+We compare PATH directly with every individual baseline on the representative split to measure dataset-level rank, length, and interval-score differences. These analyses use the same frozen test results and coverage-based ranking rule as the main table. Table E.5 gives the numerical pairwise view behind the aggregate ranking. Across all 24 baselines, the mean valid-pair length ratio ranges from 0.36 to 0.80 , and PATH is shorter on a majority of jointly valid datasets in every comparison. It also ranks better on 32–50 of 56 datasets. QRF-CTI remains the closest competitor, yet PATH is still shorter on 31/50 jointly valid datasets with mean length ratio 0.69 . The pairwise results show that the aggregate advantage is not tied to one baseline family. Figure E.2 visualizes the same comparisons across rank, valid-pair length, interval score, and mean length ratio. The broad concentration of favorable rank and length cells shows that PATH’s advantage extends across boosted trees, QRF variants, local random-forest methods, and neural baselines. Interval-score comparisons are more mixed against QRF-CTI, consistent with the aggregate score table, but the length ratio remains favorable for every baseline. The figure therefore localizes the main gain to robust coverage-constrained compactness. Rank better (/56) Shorter (valid pairs) Score better (/56) Mean length ratio 
+
+MLP-Split MLP-R2CCP MLP-CQR RF-TQ-CQR RF-Split RF-LOCART RF-A-LOCART RF-A-LOFOREST RF-LOFOREST MLP-CIR MLP-CIR+ QRF-CQR LGBM-CQR MLP-CHR Cat-CQR XGB-CQR XGB-Split LGBM-Split Cat-Split QRF-CHR QRF-CIR QRF-CIR+ MLP-CTI QRF-CTI 50/56 47/49 55/56 0.36x 50/56 40/44 54/56 0.73x 49/56 48/50 44/56 0.39x 49/56 48/50 28/56 0.60x 48/56 45/49 54/56 0.66x 47/56 45/50 51/56 0.56x 47/56 45/50 50/56 0.57x 47/56 44/49 51/56 0.56x 47/56 43/48 51/56 0.56x 47/56 42/46 45/56 0.47x 47/56 38/42 46/56 0.60x 46/56 45/51 33/56 0.69x 46/56 45/50 27/56 0.72x 46/56 39/44 46/56 0.55x 
+
+45/56 43/50 33/56 0.80x 
+
+44/56 42/49 33/56 0.67x 44/56 41/48 54/56 0.64x 43/56 39/48 54/56 0.68x 42/56 39/48 51/56 0.74x 40/56 38/50 39/56 0.67x 39/56 35/48 40/56 0.79x 
+
+39/56 34/47 40/56 0.80x 
+
+38/56 35/50 44/56 0.50x 
+
+32/56 31/50 22/56 0.69x 
+
+Darker blue means more datasets where PATH is better. In the length-ratio column, green means shorter than the baseline and red means longer. Figure E.2: Pairwise comparison heatmap between PATH and each individual baseline on the representative split. Rank better counts datasets where PATH has a better rank under the coverage rule; shorter counts datasets where both methods satisfy the coverage threshold and PATH has shorter intervals; score better counts datasets with lower interval score; mean length ratio is the mean PATH length divided by the mean baseline length on valid pairs, where values below one indicate shorter PATH intervals. Table E.5: Pairwise comparison between PATH and individual baselines on the representative split of PATHBench. Rank and score counts are reported out of 56 datasets, while shorter counts are reported over the datasets where both methods satisfy the coverage threshold. Length ratio is the mean PATH interval length divided by the mean baseline interval length on the same both-valid subset.                                                                                                                                                            
+
+> Baseline rank better ↑rank worse ↓both valid shorter ↑len ratio ↓score better ↑
+> MLP-SplitCP 50/56 6/56 49/56 47/49 0.36 55/56 MLP-R2CCP 50/56 6/56 44/56 40/44 0.73 54/56 MLP-CQR 49/56 7/56 50/56 48/50 0.39 44/56 RF-TQ-CQR 49/56 7/56 50/56 48/50 0.60 28/56 RF-SplitCP 48/56 8/56 49/56 45/49 0.66 54/56 RF-A-LOCART 47/56 9/56 50/56 45/50 0.57 50/56 RF-LOCART 47/56 9/56 50/56 45/50 0.56 51/56 RF-A-LOFOREST 47/56 9/56 49/56 44/49 0.56 51/56 RF-LOFOREST 47/56 9/56 48/56 43/48 0.56 51/56 MLP-CIR 47/56 9/56 46/56 42/46 0.47 45/56 MLP-CIR+ 47/56 9/56 42/56 38/42 0.60 46/56 LightGBM-CQR 46/56 10/56 50/56 45/50 0.72 27/56 QRF-CQR 46/56 10/56 51/56 45/51 0.69 33/56 MLP-CHR 46/56 10/56 44/56 39/44 0.55 46/56 CatBoost-CQR 45/56 11/56 50/56 43/50 0.80 33/56 XGBoost-CQR 44/56 12/56 49/56 42/49 0.67 33/56 XGBoost-SplitCP 44/56 12/56 48/56 41/48 0.64 54/56 LightGBM-SplitCP 43/56 13/56 48/56 39/48 0.68 54/56 CatBoost-SplitCP 42/56 14/56 48/56 39/48 0.74 51/56 QRF-CHR 40/56 16/56 50/56 38/50 0.67 39/56 QRF-CIR 39/56 17/56 48/56 35/48 0.79 40/56 QRF-CIR+ 39/56 17/56 47/56 34/47 0.80 40/56 MLP-CTI 38/56 18/56 50/56 35/50 0.50 44/56 QRF-CTI 32/56 24/56 50/56 31/50 0.69 22/56
+
+Figure E.3 shows the complete evaluation-level rank distribution rather than only its mean. The PATH distribution is concentrated toward lower ranks and accompanies the largest win count, 163. Its mean rank of 5.25 improves on QRF-CTI’s 
+
+8.38 , while the remaining methods rank lower still. The distribution confirms that PATH’s aggregate lead reflects repeated high placement across datasets and splits. Figure E.4 relates performance to leaf ordering quality, validation-to-test coverage transfer, sample size, and target discreteness. Shorter intervals and stronger ranks occur more often when the learned distribution orders nearby output regions accurately. Coverage failures align more directly with validation-to-test shifts than with sample size or target uniqueness alone. These relationships support the central mechanism: useful ordering in the output space enables compact intervals, while transfer quality governs whether the selected operating point remains valid. Figure E.5 examines the internal choices made by PATH after training. Selected mass and autoregressive residual strength vary across datasets, confirming that validation selection uses both the extraction and refinement controls rather than collapsing to one setting. The tail-miss panel isolates the asymmetric errors identified in Table E.8, while the runtime panel shows predictable scaling with test-set size. The diagnostics link adaptive interval construction to both the observed compactness and the small number of transfer failures. Figure E.6 compares median runtime with mean rank over the complete 10-split evaluation. PATH achieves the best aggregate rank despite using more computation than the fastest tree baselines. It remains faster than several boosted-tree, neural, and TreeQuantile alternatives that obtain worse ranks. The plot therefore places PATH at the strongest rank operating point among methods with comparable or greater computational cost. Figure E.7 expresses the same comparison in interval-length terms. PATH occupies the shortest-interval position across all 25 methods. Faster tree baselines return longer intervals, while several slower neural and boosted-tree alternatives also fail to match its compactness. The interval-length advantage therefore remains visible after computational cost is included explicitly. Figure E.8 shows how increasing the tree depth shortens the extracted intervals while increasing computation. Moving from 
+
+D = 4 to D = 8 reaches the most compact setting, with the additional runtime providing finer interval resolution. 
+
+E.5 Strict-Coverage and Paired Bootstrap Analysis 
+
+We evaluate interval efficiency at the nominal 0.900 coverage requirement over all 560 dataset–split evaluations. Methods reaching the target are ranked by normalized interval length within each evaluation. Remaining methods follow by coverage error and then length. Table E.6 reports strict-valid counts, aggregate metrics, ranks, and wins for PATH and six strong baselines. Table E.6 shows that PATH satisfies the strict target on 429/560 evaluations, exceeding QRF-CQR by 12 evaluations and 5 10 15 20 25 
+
+Per-evaluation rank 
+
+> PATH QRF-CTI QRF-CHR QRF-CIR XGB-CQR Cat-CQR LGBM-CQR QRF-CIR+ Cat-Split MLP-CTI XGB-Split QRF-CQR LGBM-Split RF-Split MLP-R2CCP RF-A-LOCART RF-TQ-CQR MLP-CHR RF-A-LOFOREST MLP-CIR+ RF-LOCART MLP-CIR MLP-Split RF-LOFOREST MLP-CQR
+
+a        
+
+> 020 40 60 80 100 120 140 160
+
+Wins 
+
+> 163 130 12 969732 26 49 27 14 240 4212 12 121
+
+bFigure E.3: Rank distribution for all 25 compared methods over 10 random seeds. (a) Boxplots of ranks across the 560 evaluations; lower is better. (b) Wins for the same methods. Table E.6: Strict-coverage comparison over 560 evaluations. Methods reaching coverage 0.900 are ranked by normalized interval length; the remaining methods follow by coverage error and length. Wins count first-place finishes under this rule. 
+
+Method strict len/rng ↓ score/rng ↓ rank ↓ wins ↑
+
+PATH 429/560 0.1473 0.2627 6.46 177 
+
+QRF-CTI 396/560 0.2017 0.2578 9.36 121 QRF-CQR 417/560 0.2159 0.2914 11.45 11 LightGBM-CQR 349/560 0.2002 0.2698 11.77 14 CatBoost-CQR 313/560 0.1786 0.2571 12.37 14 QRF-CIR 273/560 0.1800 0.3243 13.35 13 QRF-CIR+ 216/560 0.1760 0.3264 15.62 16 0 10 20 30 40 50 60 70 80 Mean true-bin rank 10 −2 
+
+> 10 −1
+> Length / range
+
+a     
+
+> 0.00 0.02 0.04 0.06 0.08 0.10 Validation-test coverage gap 0.80 0.85 0.90 0.95 1.00 Test coverage
+
+b  
+
+> 10 310 410 5
+> Rows 0510 15 20 25 PATH rank
+
+c   
+
+> 10 −3 10 −2 10 −1 10 0
+> Target unique ratio 10 0
+> 10 1
+> Length ratio to best baseline
+
+dFigure E.4: Representative-split dataset factor diagnostics for the main PATH setting. Colors distinguish datasets by the paper’s coverage threshold. (a) Direct leaf ranking quality versus interval length. (b) Gap between validation and test coverage versus test coverage. (c) Sample size versus rank on each dataset. (d) Ratio of unique target values versus length ratio to the best baseline. 0.4 0.55 0.65 0.75 0.85 0.92 Mass 00.25 0.5 0.75 1Residual strength \(\lambda\)                            
+
+> 51212111311122211111121111113355
+
+a
+
+0.00 0.05 0.10 0.15 Lower miss rate 0.00 0.05 0.10 0.15 Upper miss rate 
+
+b
+
+10 2 10 3 10 4
+
+Test samples 10 2
+
+10 3
+
+> Total seconds
+
+c
+
+012345
+
+0.2 0.4 0.6 len/r 
+
+Figure E.5: Additional representative-split diagnostics for the main PATH setting. (a) Mass selected on validation data and autoregressive residual strength. (b) Miss rates on the lower versus upper side, colored by coverage group. (c) Runtime scaling with test set size, colored by normalized interval length. 3 10^1 10^2 10^3 Median seconds per evaluation 6810 12 14 16 18 20 Mean rank Median seconds per evaluation Mean rank 
+
+> PATH RF-A-LOFOREST RF-A-LOCART RF-LOFOREST LGBM-Split Cat-Split XGB-Split MLP-R2CCP RF-TQ-CQR RF-LOCART MLP-Split LGBM-CQR QRF-CIR+ RF-Split MLP-CIR+ QRF-CTI QRF-CHR QRF-CIR XGB-CQR Cat-CQR MLP-CTI QRF-CQR MLP-CHR MLP-CIR MLP-CQR
+
+Figure E.6: Runtime and rank tradeoff across all 25 compared methods over 10 random seeds. Each circle is one labeled method; larger circles indicate lower aggregate score/rng. The compressed logarithmic horizontal coordinate reports median runtime per evaluation, and the vertical coordinate reports mean rank under the coverage-based ranking rule; lower rank is better. Table E.7: Paired dataset bootstrap for mean normalized length gain. Gain is baseline length/range minus PATH length/range; positive values indicate shorter PATH intervals. 
+
+Baseline gain ↑ 95% CI shorter datasets ↑ sign p ↓
+
+QRF-CTI 0.0544 [0.0156, 0.1005] 36/56 0.044 CatBoost-CQR 0.0313 [0.0192, 0.0453] 46/56 1.2×10 −6
+
+QRF-CIR+ 0.0287 [0.0147, 0.0467] 42/56 2.3×10 −4
+
+QRF-CIR 0.0327 [0.0173, 0.0523] 47/56 2.6×10 −7
+
+LightGBM-CQR 0.0529 [0.0288, 0.0848] 49/56 < 10 −8
+
+QRF-CQR 0.0686 [0.0480, 0.0920] 54/56 < 10 −8
+
+QRF-CTI by 33. It simultaneously achieves the shortest mean length/range ( 0.1473 ), best mean rank ( 6.46 ), and most wins (177). The main advantage therefore persists when the nominal coverage requirement is enforced directly rather than through the 0.885 tolerance. We perform paired bootstrap over datasets for the mean normalized length difference between each strong baseline and PATH. For each dataset, we first average length/range over the 10 random seeds, then resample the 56 datasets with replacement and calculate the mean difference for each resample. Positive values in Table E.7 indicate shorter PATH intervals. The table reports 
+
+95% percentile bootstrap intervals and two-sided exact sign tests over dataset-level comparisons. All bootstrap intervals in Table E.7 are strictly positive, and every exact sign test rejects equality at the 0.05 level. Against QRF-CTI, the closest competitor by aggregate rank, PATH gains 0.0544 mean length/range with a 95% interval of [0 .0156 , 0.1005] .3 10^1 10^2 10^3 Median seconds per evaluation 0.15 0.20 0.25 0.30 0.35 0.40 Mean length / range Median seconds per evaluation Mean length / range 
+
+> PATH RF-A-LOFOREST RF-A-LOCART RF-LOFOREST LGBM-Split Cat-Split XGB-Split MLP-R2CCP RF-TQ-CQR RF-LOCART MLP-Split LGBM-CQR QRF-CIR+ RF-Split MLP-CIR+ QRF-CTI QRF-CHR QRF-CIR XGB-CQR Cat-CQR MLP-CTI QRF-CQR MLP-CHR MLP-CIR MLP-CQR
+
+Figure E.7: Runtime and length tradeoff across all 25 compared methods over 10 random seeds. Each circle is one labeled method; larger circles indicate lower aggregate score/rng. The compressed logarithmic horizontal coordinate reports median runtime per evaluation, and the inverted vertical coordinate reports mean normalized interval length, so shorter intervals appear higher. Table E.8: Representative-split dataset-level coverage diagnostics for the main D = 8 , η = 0 .905 setting. 
+
+Dataset cov val cov gap ↓ len/rng ↓ lower miss ↓ upper miss ↓ M T rank ↓
+
+laser 0.8040 0.9095 0.1055 0.0574 0.1407 0.0553 0.55 1.20 23 forest_fires 0.8462 0.9135 0.0673 0.0270 0.0000 0.1538 0.60 1.50 18 meta 0.8679 0.9057 0.0377 0.0055 0.0189 0.1132 0.70 0.70 22 Titanic 0.8740 0.9084 0.0344 0.0793 0.0573 0.0687 0.90 0.90 21 socmob 0.8836 0.9351 0.0514 0.0586 0.0086 0.1078 0.65 1.50 24 
+
+The gain is positive on 36/56 datasets despite this being the most difficult pairwise comparison. Against the remaining strong baselines, PATH is shorter on 42–54 datasets with substantially smaller p-values. These paired results confirm that the aggregate compactness advantage is supported across datasets. Table E.8 isolates the five representative-split datasets below the 0.885 threshold; the remaining 51/56 datasets are valid. The failures coincide with validation-to-test coverage losses of 0.0344 –0.1055 and, in four cases, strongly asymmetric tail misses. Their normalized lengths remain small, showing that the issue is selection transfer rather than uniformly wide or degenerate 4 5 6 7 8Depth D 0.14 0.15 0.16 0.17 0.18 0.19 Mean length / range  best baseline (QRF-CIR+)  
+
+> D4 D5 D6 D7 D8
+
+a    
+
+> 45678Depth D 2345678Runtime (min/dataset)
+
+b
+
+> median mean
+
+Figure E.8: Supplementary representative-split tradeoff between depth and runtime for PATH at validation target η = 0 .905 . (a) Mean normalized interval length by depth, with the dashed line marking the best non-PATH baseline in the representative-split comparison pool. (b) Median and mean runtime per dataset. Table E.9: Representative-split dataset factor summary for the main PATH setting. Strata are quartiles by total sample size and by the ratio of unique target values.                                                          
+
+> Stratum datasets mean rank ↓wins ↑valid len/rng ↓mean cov sample=small 14 10.50 19/14 0.1396 0.9037 sample=medium 14 4.57 514/14 0.2289 0.9129 sample=large 14 5.36 614/14 0.1174 0.9118 sample=xlarge 14 3.00 314/14 0.1009 0.9282 unique=low 14 5.64 114/14 0.0746 0.9388 unique=mid-low 14 3.07 614/14 0.1685 0.9037 unique=mid-high 14 7.86 310/14 0.1315 0.8899 unique=high 14 6.86 513/14 0.2122 0.9242
+
+intervals. The analysis localizes the principal coverage failures to a small set of distribution-shifted datasets. 
+
+E.6 Dataset Factors, Conditional Coverage, and Runtime 
+
+Table E.9 summarizes these relationships by sample-size and target-uniqueness quartiles. All 42 datasets in the medium, large, and extra-large sample strata satisfy the coverage threshold. The extra-large stratum achieves mean rank 3.00 and mean length/range 0.1009 . The low and mid-low target-uniqueness strata are also valid on all 28 datasets. Coverage failures concentrate in the smallest sample and mid-high uniqueness groups, indicating where validation selection is least stable. Overall, PATH is strongest when sufficient data support interval selection, while remaining compact across every sample-size stratum. Table E.10 compares conditional coverage and runtime across every method on the representative split. The PATH validation-to-test gap is 0.0113 , comparable to the strongest baselines. Its target-quartile gap, 0.1802 , improves on QRF-CTI, QRF-CHR, QRF-CIR, and QRF-CIR+, while its length-tertile gap 0.0507 remains among the lower values. Runtime is higher than the fastest tree methods but below several neural, boosted-tree, and TreeQuantile alternatives. These diagnostics show that the shortest intervals are obtained with competitive conditional coverage variation and moderate computation. 
+
+## F Per-Dataset Details 
+
+Table F.1 provides frozen records for every method and dataset on the representative split. It exposes coverage, normalized length, validity, and rank under the same rule as the main comparison; coverage error is omitted because it is determined directly by coverage and the nominal target. The table therefore permits direct verification of both PATH wins and datasets where strong baselines remain competitive. Table E.10: Representative-split supplementary diagnostics for all compared methods. Gaps are macro averages over datasets; runtime is median total seconds per dataset. 
+
+Method lower miss 
+
+↓
+
+upper miss 
+
+↓
+
+val/test gap 
+
+↓
+
+target quartile gap 
+
+↓
+
+length tertile gap 
+
+↓ sec ↓
+
+PATH 0.0273 0.0586 0.0113 0.1802 0.0507 294.2 QRF-CTI 0.0094 0.0196 0.0107 0.2040 0.0897 88.8 QRF-CHR 0.0238 0.0669 0.0127 0.1957 0.0511 358.4 QRF-CIR+ 0.0290 0.0710 0.0134 0.2051 0.0574 87.2 QRF-CIR 0.0296 0.0674 0.0134 0.1996 0.0587 86.4 XGBoost-CQR 0.0382 0.0548 0.0107 0.1785 0.0872 1304.2 LightGBM-CQR 0.0365 0.0537 0.0122 0.1652 0.0760 1083.5 CatBoost-CQR 0.0422 0.0513 0.0118 0.1408 0.0606 5.3 CatBoost-SplitCP 0.0395 0.0539 0.0128 0.2246 0.0853 3.1 MLP-CTI 0.0099 0.0583 0.0116 0.2729 0.1249 233.3 QRF-CQR 0.0359 0.0416 0.0112 0.1465 0.0560 83.4 XGBoost-SplitCP 0.0456 0.0523 0.0132 0.2364 0.0577 895.4 LightGBM-SplitCP 0.0453 0.0507 0.0115 0.2207 0.0896 1654.2 RF-SplitCP 0.0397 0.0563 0.0118 0.2388 0.0551 448.1 RF-A-LOCART 0.0321 0.0592 0.0079 0.1990 0.0406 77.8 MLP-R2CCP 0.0835 0.0505 0.0112 0.2938 0.1433 984.1 MLP-CHR 0.0485 0.0738 0.0108 0.2582 0.0901 506.7 RF-TQ-CQR 0.0386 0.0349 0.0120 0.1747 0.0654 699.6 RF-A-LOFOREST 0.0439 0.0575 0.0090 0.2058 0.0509 78.9 MLP-CIR+ 0.0228 0.1154 0.0108 0.2699 0.1178 232.0 RF-LOCART 0.0322 0.0585 0.0090 0.1982 0.0399 80.2 MLP-SplitCP 0.0339 0.0612 0.0135 0.2460 0.0531 122.4 MLP-CIR 0.0229 0.0663 0.0102 0.2231 0.0914 233.9 RF-LOFOREST 0.0595 0.0562 0.0127 0.2126 0.0525 78.9 MLP-CQR 0.0402 0.0547 0.0101 0.2091 0.0759 231.4 
+
+Table F.1: Representative-split per-dataset test records for the 56-dataset comparison pool. PATH uses D = 8 and validation selection target 0.905 . Valid indicates empirical coverage at least 0.885 ; rank follows the coverage-based ranking rule. 
+
+Dataset Method cov len/rng valid rank Allstate_Claims_Severity MLP-CTI 0.8994 0.0377 yes 1
+
+Allstate_Claims_Severity PATH 0.9109 0.0384 yes 2Allstate_Claims_Severity LightGBM-CQR 0.9001 0.0387 yes 3Allstate_Claims_Severity QRF-CIR+ 0.8901 0.0389 yes 4Allstate_Claims_Severity XGBoost-CQR 0.8994 0.0390 yes 5Allstate_Claims_Severity QRF-CHR 0.8988 0.0394 yes 6Allstate_Claims_Severity QRF-CIR 0.8969 0.0396 yes 7Allstate_Claims_Severity CatBoost-CQR 0.8991 0.0402 yes 8Allstate_Claims_Severity QRF-CTI 0.9024 0.0404 yes 9Allstate_Claims_Severity MLP-CHR 0.8975 0.0409 yes 10 Allstate_Claims_Severity MLP-CIR+ 0.9070 0.0420 yes 11 Allstate_Claims_Severity MLP-CIR 0.9077 0.0420 yes 12 Allstate_Claims_Severity RF-A-LOCART 0.9007 0.0423 yes 13 Allstate_Claims_Severity RF-LOCART 0.9018 0.0426 yes 14 Allstate_Claims_Severity RF-A-LOFOREST 0.9112 0.0429 yes 15 Allstate_Claims_Severity RF-LOFOREST 0.9115 0.0430 yes 16 Allstate_Claims_Severity LightGBM-SplitConformal 0.8969 0.0430 yes 17 Allstate_Claims_Severity XGBoost-SplitConformal 0.8987 0.0430 yes 18 Allstate_Claims_Severity RF-SplitConformal 0.8977 0.0430 yes 19 Allstate_Claims_Severity CatBoost-SplitConformal 0.8991 0.0432 yes 20 Allstate_Claims_Severity QRF-CQR 0.9004 0.0434 yes 21 Allstate_Claims_Severity RF-TreeQuantile-CQR 0.9009 0.0444 yes 22 Allstate_Claims_Severity MLP-SplitConformal 0.8982 0.0444 yes 23 Allstate_Claims_Severity MLP-CQR 0.8988 0.0464 yes 24 Allstate_Claims_Severity MLP-R2CCP 0.8997 0.0583 yes 25 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank BNG(lowbwt) PATH 0.9111 0.3183 yes 1
+
+BNG(lowbwt) QRF-CIR+ 0.8941 0.3207 yes 2BNG(lowbwt) QRF-CIR 0.9024 0.3263 yes 3BNG(lowbwt) QRF-CHR 0.9079 0.3310 yes 4BNG(lowbwt) QRF-CTI 0.9066 0.3353 yes 5BNG(lowbwt) QRF-CQR 0.9082 0.3368 yes 6BNG(lowbwt) RF-TreeQuantile-CQR 0.9098 0.3369 yes 7BNG(lowbwt) CatBoost-CQR 0.9071 0.3374 yes 8BNG(lowbwt) LightGBM-CQR 0.9068 0.3379 yes 9BNG(lowbwt) XGBoost-CQR 0.9084 0.3382 yes 10 BNG(lowbwt) LightGBM-SplitConformal 0.9045 0.3439 yes 11 BNG(lowbwt) CatBoost-SplitConformal 0.9084 0.3446 yes 12 BNG(lowbwt) RF-LOCART 0.9095 0.3461 yes 13 BNG(lowbwt) RF-SplitConformal 0.9081 0.3475 yes 14 BNG(lowbwt) RF-LOFOREST 0.9114 0.3479 yes 15 BNG(lowbwt) RF-A-LOFOREST 0.9103 0.3487 yes 16 BNG(lowbwt) XGBoost-SplitConformal 0.9064 0.3492 yes 17 BNG(lowbwt) MLP-SplitConformal 0.9090 0.3501 yes 18 BNG(lowbwt) RF-A-LOCART 0.9142 0.3507 yes 19 BNG(lowbwt) MLP-CTI 0.9042 0.3928 yes 20 BNG(lowbwt) MLP-CHR 0.9055 0.3930 yes 21 BNG(lowbwt) MLP-CIR+ 0.9145 0.4167 yes 22 BNG(lowbwt) MLP-CIR 0.9150 0.4180 yes 23 BNG(lowbwt) MLP-CQR 0.9015 0.4241 yes 24 BNG(lowbwt) MLP-R2CCP 0.9007 0.4658 yes 25 Bike_Sharing_Demand PATH 0.8895 0.2505 yes 1
+
+Bike_Sharing_Demand QRF-CTI 0.8915 0.2557 yes 2Bike_Sharing_Demand LightGBM-CQR 0.8967 0.2582 yes 3Bike_Sharing_Demand XGBoost-CQR 0.9002 0.2624 yes 4Bike_Sharing_Demand QRF-CIR+ 0.8878 0.2682 yes 5Bike_Sharing_Demand QRF-CIR 0.8930 0.2692 yes 6Bike_Sharing_Demand QRF-CHR 0.8950 0.2716 yes 7Bike_Sharing_Demand CatBoost-CQR 0.9002 0.2771 yes 8Bike_Sharing_Demand QRF-CQR 0.9036 0.2871 yes 9Bike_Sharing_Demand MLP-R2CCP 0.8938 0.3025 yes 10 Bike_Sharing_Demand RF-TreeQuantile-CQR 0.8959 0.3056 yes 11 Bike_Sharing_Demand RF-A-LOFOREST 0.9042 0.3373 yes 12 Bike_Sharing_Demand RF-LOFOREST 0.9051 0.3393 yes 13 Bike_Sharing_Demand CatBoost-SplitConformal 0.8941 0.3405 yes 14 Bike_Sharing_Demand RF-SplitConformal 0.8979 0.3417 yes 15 Bike_Sharing_Demand LightGBM-SplitConformal 0.9002 0.3472 yes 16 Bike_Sharing_Demand XGBoost-SplitConformal 0.8976 0.3476 yes 17 Bike_Sharing_Demand RF-A-LOCART 0.8976 0.3526 yes 18 Bike_Sharing_Demand RF-LOCART 0.8976 0.3526 yes 19 Bike_Sharing_Demand MLP-SplitConformal 0.8976 0.3588 yes 20 Bike_Sharing_Demand MLP-CTI 0.8938 0.3668 yes 21 Bike_Sharing_Demand MLP-CHR 0.8953 0.3706 yes 22 Bike_Sharing_Demand MLP-CIR+ 0.9010 0.3928 yes 23 Bike_Sharing_Demand MLP-CIR 0.9033 0.3949 yes 24 Bike_Sharing_Demand MLP-CQR 0.8970 0.4659 yes 25 Brazilian_houses XGBoost-SplitConformal 0.8906 0.0003 yes 1
+
+Brazilian_houses CatBoost-SplitConformal 0.8953 0.0007 yes 2Brazilian_houses QRF-CIR 0.8920 0.0010 yes 3Brazilian_houses QRF-CIR+ 0.8948 0.0010 yes 4Brazilian_houses QRF-CTI 0.9046 0.0011 yes 5Brazilian_houses RF-SplitConformal 0.8859 0.0011 yes 6Brazilian_houses XGBoost-CQR 0.8887 0.0012 yes 7Brazilian_houses QRF-CHR 0.8915 0.0014 yes 8Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank Brazilian_houses QRF-CQR 0.9130 0.0015 yes 9Brazilian_houses CatBoost-CQR 0.8939 0.0022 yes 10 Brazilian_houses MLP-SplitConformal 0.8981 0.0025 yes 11 Brazilian_houses RF-LOCART 0.8953 0.0031 yes 12 Brazilian_houses LightGBM-SplitConformal 0.8929 0.0031 yes 13 Brazilian_houses RF-LOFOREST 0.9313 0.0033 yes 14 Brazilian_houses RF-A-LOCART 0.9042 0.0033 yes 15 Brazilian_houses RF-A-LOFOREST 0.9079 0.0034 yes 16 Brazilian_houses MLP-CTI 0.9000 0.0036 yes 17 Brazilian_houses RF-TreeQuantile-CQR 0.9173 0.0037 yes 18 Brazilian_houses PATH 0.9794 0.0039 yes 19 Brazilian_houses MLP-CHR 0.8962 0.0047 yes 20 Brazilian_houses MLP-CIR+ 0.9032 0.0047 yes 21 Brazilian_houses MLP-CIR 0.9135 0.0048 yes 22 Brazilian_houses LightGBM-CQR 0.9079 0.0055 yes 23 Brazilian_houses MLP-CQR 0.9051 0.0068 yes 24 Brazilian_houses MLP-R2CCP 0.8929 0.0093 yes 25 CPMP-2015-regression PATH 0.9005 0.0811 yes 1
+
+CPMP-2015-regression QRF-CQR 0.9147 0.1802 yes 2CPMP-2015-regression CatBoost-CQR 0.8981 0.1935 yes 3CPMP-2015-regression XGBoost-SplitConformal 0.9123 0.2938 yes 4CPMP-2015-regression LightGBM-SplitConformal 0.9242 0.3089 yes 5CPMP-2015-regression CatBoost-SplitConformal 0.9218 0.3321 yes 6CPMP-2015-regression MLP-CTI 0.8910 0.4292 yes 7CPMP-2015-regression MLP-CIR 0.9052 0.5033 yes 8CPMP-2015-regression MLP-CIR+ 0.9052 0.5033 yes 9CPMP-2015-regression RF-TreeQuantile-CQR 0.9810 0.5187 yes 10 CPMP-2015-regression RF-SplitConformal 0.9194 0.5679 yes 11 CPMP-2015-regression MLP-SplitConformal 0.9265 0.5776 yes 12 CPMP-2015-regression QRF-CHR 0.9834 0.7323 yes 13 CPMP-2015-regression LightGBM-CQR 0.9005 0.7519 yes 14 CPMP-2015-regression XGBoost-CQR 0.8957 0.7914 yes 15 CPMP-2015-regression MLP-CQR 0.8934 0.9157 yes 16 CPMP-2015-regression QRF-CTI 1.0000 1.0000 yes 17 CPMP-2015-regression RF-A-LOCART 0.9052 1.2600 yes 18 CPMP-2015-regression RF-A-LOFOREST 0.9052 1.2600 yes 19 CPMP-2015-regression RF-LOCART 0.9052 1.2600 yes 20 CPMP-2015-regression RF-LOFOREST 0.9052 1.2600 yes 21 CPMP-2015-regression MLP-R2CCP 0.8768 0.1128 no 22 CPMP-2015-regression QRF-CIR 0.8744 0.0830 no 23 CPMP-2015-regression QRF-CIR+ 0.8626 0.0808 no 24 CPMP-2015-regression MLP-CHR 0.2820 0.0000 no 25 CPS1988 MLP-CTI 0.8979 0.0453 yes 1
+
+CPS1988 QRF-CIR 0.8871 0.0458 yes 2CPS1988 MLP-R2CCP 0.8965 0.0459 yes 3CPS1988 PATH 0.8981 0.0461 yes 4CPS1988 QRF-CHR 0.8931 0.0465 yes 5CPS1988 MLP-CIR+ 0.8927 0.0467 yes 6CPS1988 QRF-CTI 0.9030 0.0470 yes 7CPS1988 MLP-CHR 0.9006 0.0475 yes 8CPS1988 MLP-CIR 0.8988 0.0476 yes 9CPS1988 MLP-SplitConformal 0.8915 0.0482 yes 10 CPS1988 CatBoost-CQR 0.8918 0.0483 yes 11 CPS1988 XGBoost-CQR 0.8952 0.0486 yes 12 CPS1988 CatBoost-SplitConformal 0.8917 0.0486 yes 13 CPS1988 LightGBM-CQR 0.8895 0.0487 yes 14 CPS1988 RF-LOCART 0.9030 0.0488 yes 15 CPS1988 QRF-CQR 0.8924 0.0490 yes 16 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank CPS1988 RF-LOFOREST 0.9084 0.0491 yes 17 CPS1988 LightGBM-SplitConformal 0.8908 0.0492 yes 18 CPS1988 RF-A-LOFOREST 0.9064 0.0492 yes 19 CPS1988 RF-A-LOCART 0.9016 0.0493 yes 20 CPS1988 XGBoost-SplitConformal 0.8920 0.0496 yes 21 CPS1988 RF-SplitConformal 0.8929 0.0502 yes 22 CPS1988 RF-TreeQuantile-CQR 0.8913 0.0512 yes 23 CPS1988 MLP-CQR 0.8878 0.0514 yes 24 CPS1988 QRF-CIR+ 0.8810 0.0447 no 25 Job_Profitability MLP-CTI 0.9044 0.0002 yes 1
+
+Job_Profitability QRF-CIR+ 0.9037 0.0004 yes 2Job_Profitability QRF-CIR 0.9102 0.0004 yes 3Job_Profitability MLP-CIR 0.9002 0.0005 yes 4Job_Profitability MLP-CIR+ 0.8926 0.0005 yes 5Job_Profitability CatBoost-SplitConformal 0.9061 0.0007 yes 6Job_Profitability MLP-CHR 0.9088 0.0010 yes 7Job_Profitability QRF-CHR 0.9378 0.0010 yes 8Job_Profitability MLP-CQR 0.9071 0.0011 yes 9Job_Profitability RF-TreeQuantile-CQR 0.9910 0.0012 yes 10 Job_Profitability RF-SplitConformal 0.8930 0.0013 yes 11 Job_Profitability CatBoost-CQR 0.9009 0.0015 yes 12 Job_Profitability LightGBM-CQR 0.8971 0.0020 yes 13 Job_Profitability XGBoost-SplitConformal 0.8885 0.0020 yes 14 Job_Profitability RF-A-LOCART 0.9157 0.0022 yes 15 Job_Profitability QRF-CQR 0.9827 0.0022 yes 16 Job_Profitability XGBoost-CQR 0.9099 0.0023 yes 17 Job_Profitability RF-A-LOFOREST 0.9251 0.0028 yes 18 Job_Profitability RF-LOFOREST 0.9406 0.0032 yes 19 Job_Profitability RF-LOCART 0.9206 0.0032 yes 20 Job_Profitability LightGBM-SplitConformal 0.9023 0.0034 yes 21 Job_Profitability PATH 0.9751 0.0039 yes 22 Job_Profitability MLP-SplitConformal 0.8878 0.0043 yes 23 Job_Profitability MLP-R2CCP 0.9026 0.0084 yes 24 Job_Profitability QRF-CTI 1.0000 0.5242 yes 25 Meta_Album_MD_5_BIS_Mini QRF-CTI 0.9816 0.0008 yes 1
+
+Meta_Album_MD_5_BIS_Mini PATH 1.0000 0.0039 yes 2Meta_Album_MD_5_BIS_Mini QRF-CHR 0.9008 0.0095 yes 3Meta_Album_MD_5_BIS_Mini CatBoost-SplitConformal 0.8941 0.0162 yes 4Meta_Album_MD_5_BIS_Mini RF-A-LOCART 0.9085 0.0165 yes 5Meta_Album_MD_5_BIS_Mini RF-A-LOFOREST 0.9180 0.0174 yes 6Meta_Album_MD_5_BIS_Mini RF-LOCART 0.9069 0.0175 yes 7Meta_Album_MD_5_BIS_Mini RF-LOFOREST 0.8991 0.0195 yes 8Meta_Album_MD_5_BIS_Mini QRF-CIR+ 0.9501 0.0205 yes 9Meta_Album_MD_5_BIS_Mini QRF-CIR 0.9541 0.0205 yes 10 Meta_Album_MD_5_BIS_Mini QRF-CQR 0.9727 0.0233 yes 11 Meta_Album_MD_5_BIS_Mini CatBoost-CQR 0.9037 0.0295 yes 12 Meta_Album_MD_5_BIS_Mini LightGBM-SplitConformal 0.8993 0.0597 yes 13 Meta_Album_MD_5_BIS_Mini MLP-R2CCP 0.9047 0.1115 yes 14 Meta_Album_MD_5_BIS_Mini XGBoost-CQR 0.8994 0.1694 yes 15 Meta_Album_MD_5_BIS_Mini RF-SplitConformal 0.8948 0.2138 yes 16 Meta_Album_MD_5_BIS_Mini LightGBM-CQR 0.8908 0.2264 yes 17 Meta_Album_MD_5_BIS_Mini MLP-SplitConformal 0.8991 0.2534 yes 18 Meta_Album_MD_5_BIS_Mini MLP-CIR+ 0.8867 0.2990 yes 19 Meta_Album_MD_5_BIS_Mini MLP-CIR 0.8941 0.3091 yes 20 Meta_Album_MD_5_BIS_Mini MLP-CTI 0.9003 0.3103 yes 21 Meta_Album_MD_5_BIS_Mini MLP-CHR 0.8961 0.3212 yes 22 Meta_Album_MD_5_BIS_Mini XGBoost-SplitConformal 0.9001 0.5254 yes 23 Meta_Album_MD_5_BIS_Mini RF-TreeQuantile-CQR 0.8991 0.5703 yes 24 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank Meta_Album_MD_5_BIS_Mini MLP-CQR 0.8962 0.5747 yes 25 Meta_Album_MD_6_Mini QRF-CTI 1.0000 0.0006 yes 1
+
+Meta_Album_MD_6_Mini QRF-CHR 0.9067 0.0016 yes 2Meta_Album_MD_6_Mini PATH 1.0000 0.0039 yes 3Meta_Album_MD_6_Mini RF-A-LOCART 0.9054 0.0083 yes 4Meta_Album_MD_6_Mini RF-LOCART 0.9054 0.0088 yes 5Meta_Album_MD_6_Mini RF-A-LOFOREST 0.9113 0.0094 yes 6Meta_Album_MD_6_Mini QRF-CIR+ 0.9427 0.0103 yes 7Meta_Album_MD_6_Mini QRF-CIR 0.9424 0.0103 yes 8Meta_Album_MD_6_Mini RF-LOFOREST 0.9351 0.0117 yes 9Meta_Album_MD_6_Mini QRF-CQR 0.9948 0.0127 yes 10 Meta_Album_MD_6_Mini CatBoost-SplitConformal 0.8995 0.0183 yes 11 Meta_Album_MD_6_Mini CatBoost-CQR 0.8903 0.0324 yes 12 Meta_Album_MD_6_Mini LightGBM-SplitConformal 0.9054 0.1006 yes 13 Meta_Album_MD_6_Mini MLP-SplitConformal 0.9020 0.1879 yes 14 Meta_Album_MD_6_Mini MLP-R2CCP 0.9097 0.1910 yes 15 Meta_Album_MD_6_Mini LightGBM-CQR 0.9045 0.2128 yes 16 Meta_Album_MD_6_Mini XGBoost-CQR 0.9059 0.2250 yes 17 Meta_Album_MD_6_Mini MLP-CTI 0.9050 0.3641 yes 18 Meta_Album_MD_6_Mini MLP-CHR 0.9227 0.4011 yes 19 Meta_Album_MD_6_Mini RF-SplitConformal 0.9059 0.4041 yes 20 Meta_Album_MD_6_Mini MLP-CQR 0.9031 0.5950 yes 21 Meta_Album_MD_6_Mini XGBoost-SplitConformal 0.9072 0.6206 yes 22 Meta_Album_MD_6_Mini RF-TreeQuantile-CQR 0.9015 0.6608 yes 23 Meta_Album_MD_6_Mini MLP-CIR+ 0.7993 0.2439 no 24 Meta_Album_MD_6_Mini MLP-CIR 0.7879 0.2401 no 25 Meta_Album_MD_MIX_Mini QRF-CTI 1.0000 0.0002 yes 1
+
+Meta_Album_MD_MIX_Mini QRF-CIR+ 0.8973 0.0002 yes 2Meta_Album_MD_MIX_Mini QRF-CIR 0.9056 0.0002 yes 3Meta_Album_MD_MIX_Mini QRF-CQR 1.0000 0.0004 yes 4Meta_Album_MD_MIX_Mini QRF-CHR 0.9239 0.0010 yes 5Meta_Album_MD_MIX_Mini RF-A-LOCART 0.8998 0.0012 yes 6Meta_Album_MD_MIX_Mini RF-A-LOFOREST 0.9201 0.0012 yes 7Meta_Album_MD_MIX_Mini RF-LOFOREST 0.9101 0.0012 yes 8Meta_Album_MD_MIX_Mini RF-LOCART 0.9012 0.0012 yes 9Meta_Album_MD_MIX_Mini LightGBM-SplitConformal 0.9053 0.0033 yes 10 Meta_Album_MD_MIX_Mini XGBoost-SplitConformal 0.8892 0.0035 yes 11 Meta_Album_MD_MIX_Mini PATH 1.0000 0.0039 yes 12 Meta_Album_MD_MIX_Mini MLP-R2CCP 0.8879 0.0187 yes 13 Meta_Album_MD_MIX_Mini CatBoost-CQR 0.8994 0.0329 yes 14 Meta_Album_MD_MIX_Mini LightGBM-CQR 0.8987 0.0461 yes 15 Meta_Album_MD_MIX_Mini XGBoost-CQR 0.8971 0.0483 yes 16 Meta_Album_MD_MIX_Mini MLP-SplitConformal 0.8941 0.0917 yes 17 Meta_Album_MD_MIX_Mini RF-SplitConformal 0.8892 0.1326 yes 18 Meta_Album_MD_MIX_Mini MLP-CTI 0.8939 0.3647 yes 19 Meta_Album_MD_MIX_Mini MLP-CIR+ 0.9001 0.3830 yes 20 Meta_Album_MD_MIX_Mini MLP-CIR 0.9108 0.3841 yes 21 Meta_Album_MD_MIX_Mini MLP-CHR 0.8860 0.4063 yes 22 Meta_Album_MD_MIX_Mini RF-TreeQuantile-CQR 0.8985 0.4270 yes 23 Meta_Album_MD_MIX_Mini MLP-CQR 0.8883 0.6337 yes 24 Meta_Album_MD_MIX_Mini CatBoost-SplitConformal 0.8803 0.0180 no 25 Minneapolis-Air-Quality-Survey QRF-CHR 0.8946 0.0105 yes 1
+
+Minneapolis-Air-Quality-Survey QRF-CTI 0.8904 0.0108 yes 2Minneapolis-Air-Quality-Survey MLP-CTI 0.8925 0.0113 yes 3Minneapolis-Air-Quality-Survey MLP-CHR 0.8946 0.0119 yes 4Minneapolis-Air-Quality-Survey QRF-CIR 0.8946 0.0129 yes 5Minneapolis-Air-Quality-Survey QRF-CIR+ 0.8967 0.0129 yes 6Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank Minneapolis-Air-Quality-Survey PATH 0.9228 0.0133 yes 7Minneapolis-Air-Quality-Survey MLP-CIR+ 0.9071 0.0155 yes 8Minneapolis-Air-Quality-Survey MLP-CIR 0.9113 0.0155 yes 9Minneapolis-Air-Quality-Survey MLP-R2CCP 0.9165 0.0185 yes 10 Minneapolis-Air-Quality-Survey RF-A-LOCART 0.8904 0.0222 yes 11 Minneapolis-Air-Quality-Survey QRF-CQR 0.9113 0.0243 yes 12 Minneapolis-Air-Quality-Survey XGBoost-CQR 0.8935 0.0251 yes 13 Minneapolis-Air-Quality-Survey RF-A-LOFOREST 0.9228 0.0265 yes 14 Minneapolis-Air-Quality-Survey RF-TreeQuantile-CQR 0.9186 0.0266 yes 15 Minneapolis-Air-Quality-Survey RF-LOCART 0.9071 0.0271 yes 16 Minneapolis-Air-Quality-Survey CatBoost-CQR 0.9228 0.0273 yes 17 Minneapolis-Air-Quality-Survey MLP-CQR 0.9050 0.0279 yes 18 Minneapolis-Air-Quality-Survey CatBoost-SplitConformal 0.9040 0.0283 yes 19 Minneapolis-Air-Quality-Survey RF-SplitConformal 0.8956 0.0292 yes 20 Minneapolis-Air-Quality-Survey RF-LOFOREST 0.9196 0.0297 yes 21 Minneapolis-Air-Quality-Survey XGBoost-SplitConformal 0.8883 0.0331 yes 22 Minneapolis-Air-Quality-Survey LightGBM-CQR 0.9019 0.0363 yes 23 Minneapolis-Air-Quality-Survey MLP-SplitConformal 0.9029 0.0385 yes 24 Minneapolis-Air-Quality-Survey LightGBM-SplitConformal 0.8935 0.0436 yes 25 Moneyball CatBoost-SplitConformal 0.9474 0.1397 yes 1
+
+Moneyball XGBoost-SplitConformal 0.8988 0.1424 yes 2Moneyball LightGBM-SplitConformal 0.9271 0.1488 yes 3Moneyball PATH 0.8988 0.1508 yes 4Moneyball LightGBM-CQR 0.9433 0.1610 yes 5Moneyball RF-TreeQuantile-CQR 0.8947 0.1667 yes 6Moneyball RF-SplitConformal 0.9393 0.1672 yes 7Moneyball XGBoost-CQR 0.9352 0.1744 yes 8Moneyball MLP-R2CCP 0.8988 0.1843 yes 9Moneyball CatBoost-CQR 0.9393 0.1939 yes 10 Moneyball QRF-CQR 0.9150 0.2246 yes 11 Moneyball QRF-CHR 0.9271 0.2344 yes 12 Moneyball QRF-CIR 0.9393 0.2364 yes 13 Moneyball QRF-CIR+ 0.9352 0.2377 yes 14 Moneyball MLP-CTI 0.9069 0.3006 yes 15 Moneyball RF-A-LOCART 0.9150 0.3471 yes 16 Moneyball RF-A-LOFOREST 0.9150 0.3471 yes 17 Moneyball RF-LOCART 0.9150 0.3471 yes 18 Moneyball RF-LOFOREST 0.9150 0.3471 yes 19 Moneyball MLP-SplitConformal 0.8947 0.6152 yes 20 Moneyball MLP-CQR 0.8947 0.6733 yes 21 Moneyball MLP-CIR 0.8826 0.2646 no 22 Moneyball QRF-CTI 0.8785 0.2108 no 23 Moneyball MLP-CHR 0.8785 0.2519 no 24 Moneyball MLP-CIR+ 0.8664 0.2605 no 25 NASA_PHM2008 QRF-CIR+ 0.8863 0.3247 yes 1
+
+NASA_PHM2008 PATH 0.9053 0.3266 yes 2NASA_PHM2008 QRF-CIR 0.8951 0.3337 yes 3NASA_PHM2008 LightGBM-CQR 0.9009 0.3373 yes 4NASA_PHM2008 XGBoost-CQR 0.9048 0.3380 yes 5NASA_PHM2008 QRF-CHR 0.9019 0.3421 yes 6NASA_PHM2008 CatBoost-CQR 0.9045 0.3482 yes 7NASA_PHM2008 QRF-CTI 0.9015 0.3527 yes 8NASA_PHM2008 QRF-CQR 0.8994 0.3553 yes 9NASA_PHM2008 RF-TreeQuantile-CQR 0.9070 0.3566 yes 10 NASA_PHM2008 MLP-CTI 0.9012 0.3585 yes 11 NASA_PHM2008 RF-LOCART 0.8975 0.3585 yes 12 NASA_PHM2008 MLP-CQR 0.9040 0.3593 yes 13 NASA_PHM2008 RF-A-LOFOREST 0.9098 0.3604 yes 14 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank NASA_PHM2008 RF-A-LOCART 0.8996 0.3608 yes 15 NASA_PHM2008 RF-LOFOREST 0.9109 0.3612 yes 16 NASA_PHM2008 MLP-SplitConformal 0.9033 0.3854 yes 17 NASA_PHM2008 RF-SplitConformal 0.9047 0.3860 yes 18 NASA_PHM2008 CatBoost-SplitConformal 0.9055 0.3863 yes 19 NASA_PHM2008 XGBoost-SplitConformal 0.9012 0.3890 yes 20 NASA_PHM2008 LightGBM-SplitConformal 0.9049 0.3899 yes 21 NASA_PHM2008 MLP-CHR 0.8995 0.3908 yes 22 NASA_PHM2008 MLP-CIR+ 0.9057 0.4170 yes 23 NASA_PHM2008 MLP-CIR 0.9114 0.4183 yes 24 NASA_PHM2008 MLP-R2CCP 0.9000 0.5706 yes 25 OnlineNewsPopularity MLP-CHR 0.8952 0.0070 yes 1
+
+OnlineNewsPopularity MLP-CIR+ 0.8997 0.0072 yes 2OnlineNewsPopularity MLP-CTI 0.8958 0.0072 yes 3OnlineNewsPopularity MLP-CIR 0.9004 0.0072 yes 4OnlineNewsPopularity QRF-CHR 0.8934 0.0074 yes 5OnlineNewsPopularity PATH 0.9018 0.0076 yes 6OnlineNewsPopularity QRF-CTI 0.8954 0.0080 yes 7OnlineNewsPopularity QRF-CIR+ 0.8966 0.0080 yes 8OnlineNewsPopularity QRF-CIR 0.8968 0.0081 yes 9OnlineNewsPopularity RF-A-LOFOREST 0.9163 0.0095 yes 10 OnlineNewsPopularity RF-A-LOCART 0.8948 0.0101 yes 11 OnlineNewsPopularity RF-LOFOREST 0.9205 0.0103 yes 12 OnlineNewsPopularity RF-LOCART 0.8994 0.0105 yes 13 OnlineNewsPopularity CatBoost-CQR 0.9039 0.0108 yes 14 OnlineNewsPopularity XGBoost-CQR 0.9018 0.0109 yes 15 OnlineNewsPopularity MLP-R2CCP 0.8918 0.0111 yes 16 OnlineNewsPopularity MLP-SplitConformal 0.8985 0.0126 yes 17 OnlineNewsPopularity LightGBM-CQR 0.9033 0.0128 yes 18 OnlineNewsPopularity CatBoost-SplitConformal 0.8963 0.0129 yes 19 OnlineNewsPopularity QRF-CQR 0.9039 0.0131 yes 20 OnlineNewsPopularity MLP-CQR 0.9011 0.0131 yes 21 OnlineNewsPopularity RF-TreeQuantile-CQR 0.9039 0.0139 yes 22 OnlineNewsPopularity RF-SplitConformal 0.8986 0.0143 yes 23 OnlineNewsPopularity XGBoost-SplitConformal 0.9011 0.0194 yes 24 OnlineNewsPopularity LightGBM-SplitConformal 0.8967 0.0262 yes 25 Titanic QRF-CTI 0.9313 0.0859 yes 1
+
+Titanic MLP-CTI 0.8893 0.0931 yes 2Titanic XGBoost-CQR 0.9046 0.1083 yes 3Titanic QRF-CHR 0.9008 0.1088 yes 4Titanic MLP-CIR+ 0.8969 0.1126 yes 5Titanic MLP-CHR 0.9084 0.1131 yes 6Titanic QRF-CIR 0.9046 0.1132 yes 7Titanic MLP-CIR 0.9008 0.1136 yes 8Titanic QRF-CIR+ 0.8969 0.1141 yes 9Titanic LightGBM-CQR 0.9008 0.1182 yes 10 Titanic CatBoost-CQR 0.9160 0.1192 yes 11 Titanic MLP-R2CCP 0.9160 0.1328 yes 12 Titanic MLP-CQR 0.9084 0.1361 yes 13 Titanic QRF-CQR 0.9313 0.1426 yes 14 Titanic RF-TreeQuantile-CQR 0.9466 0.1490 yes 15 Titanic RF-SplitConformal 0.9160 0.1820 yes 16 Titanic LightGBM-SplitConformal 0.8931 0.1939 yes 17 Titanic MLP-SplitConformal 0.9008 0.1952 yes 18 Titanic CatBoost-SplitConformal 0.9160 0.1981 yes 19 Titanic XGBoost-SplitConformal 0.9046 0.2116 yes 20 Titanic PATH 0.8740 0.0793 no 21 Titanic RF-A-LOCART 0.8359 0.1715 no 22 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank Titanic RF-A-LOFOREST 0.8359 0.1715 no 23 Titanic RF-LOCART 0.8359 0.1715 no 24 Titanic RF-LOFOREST 0.8359 0.1715 no 25 aids2 MLP-CTI 0.8970 0.3638 yes 1
+
+aids2 PATH 0.8917 0.3661 yes 2aids2 MLP-CIR+ 0.9076 0.3723 yes 3aids2 MLP-CHR 0.9023 0.3741 yes 4aids2 MLP-CIR 0.9094 0.3790 yes 5aids2 QRF-CHR 0.9005 0.3843 yes 6aids2 QRF-CIR+ 0.8970 0.3878 yes 7aids2 QRF-CIR 0.9094 0.3905 yes 8aids2 QRF-CTI 0.8952 0.3919 yes 9aids2 RF-A-LOCART 0.9005 0.4122 yes 10 aids2 RF-A-LOFOREST 0.9005 0.4122 yes 11 aids2 RF-LOCART 0.9005 0.4122 yes 12 aids2 RF-LOFOREST 0.9005 0.4122 yes 13 aids2 MLP-SplitConformal 0.8934 0.4125 yes 14 aids2 RF-SplitConformal 0.8952 0.4125 yes 15 aids2 CatBoost-CQR 0.9112 0.4152 yes 16 aids2 QRF-CQR 0.9112 0.4215 yes 17 aids2 RF-TreeQuantile-CQR 0.9201 0.4232 yes 18 aids2 XGBoost-CQR 0.8988 0.4234 yes 19 aids2 MLP-R2CCP 0.8934 0.4304 yes 20 aids2 CatBoost-SplitConformal 0.9094 0.4333 yes 21 aids2 MLP-CQR 0.9130 0.4337 yes 22 aids2 LightGBM-SplitConformal 0.8934 0.4548 yes 23 aids2 LightGBM-CQR 0.9112 0.4620 yes 24 aids2 XGBoost-SplitConformal 0.9023 0.4873 yes 25 appliances_energy_prediction QRF-CIR+ 0.8931 0.1161 yes 1
+
+appliances_energy_prediction QRF-CIR 0.8969 0.1182 yes 2appliances_energy_prediction PATH 0.9014 0.1186 yes 3appliances_energy_prediction QRF-CHR 0.8971 0.1286 yes 4appliances_energy_prediction QRF-CTI 0.9141 0.1314 yes 5appliances_energy_prediction MLP-R2CCP 0.8885 0.1333 yes 6appliances_energy_prediction MLP-CHR 0.9052 0.1351 yes 7appliances_energy_prediction MLP-CIR+ 0.9052 0.1377 yes 8appliances_energy_prediction LightGBM-CQR 0.8913 0.1382 yes 9appliances_energy_prediction MLP-CIR 0.9083 0.1444 yes 10 appliances_energy_prediction XGBoost-CQR 0.8984 0.1448 yes 11 appliances_energy_prediction CatBoost-CQR 0.8966 0.1537 yes 12 appliances_energy_prediction MLP-CTI 0.9020 0.1560 yes 13 appliances_energy_prediction RF-SplitConformal 0.8997 0.1611 yes 14 appliances_energy_prediction RF-TreeQuantile-CQR 0.9473 0.1634 yes 15 appliances_energy_prediction XGBoost-SplitConformal 0.8969 0.1664 yes 16 appliances_energy_prediction CatBoost-SplitConformal 0.8969 0.1743 yes 17 appliances_energy_prediction LightGBM-SplitConformal 0.8974 0.1747 yes 18 appliances_energy_prediction RF-A-LOFOREST 0.8959 0.1774 yes 19 appliances_energy_prediction RF-LOFOREST 0.9055 0.1805 yes 20 appliances_energy_prediction RF-A-LOCART 0.8900 0.1807 yes 21 appliances_energy_prediction RF-LOCART 0.8944 0.1887 yes 22 appliances_energy_prediction QRF-CQR 0.9372 0.1972 yes 23 appliances_energy_prediction MLP-SplitConformal 0.8989 0.1993 yes 24 appliances_energy_prediction MLP-CQR 0.9012 0.2127 yes 25 arsenic-female-lung QRF-CIR+ 0.9554 0.0037 yes 1
+
+arsenic-female-lung QRF-CIR 0.9554 0.0041 yes 2arsenic-female-lung QRF-CTI 0.9732 0.0045 yes 3arsenic-female-lung MLP-CTI 0.9018 0.0051 yes 4Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank arsenic-female-lung PATH 0.9643 0.0053 yes 5arsenic-female-lung CatBoost-SplitConformal 0.9643 0.0091 yes 6arsenic-female-lung MLP-CIR+ 0.9196 0.0098 yes 7arsenic-female-lung MLP-CIR 0.9375 0.0101 yes 8arsenic-female-lung XGBoost-SplitConformal 0.9643 0.0105 yes 9arsenic-female-lung QRF-CHR 0.9643 0.0109 yes 10 arsenic-female-lung MLP-CHR 0.9464 0.0110 yes 11 arsenic-female-lung CatBoost-CQR 0.9732 0.0121 yes 12 arsenic-female-lung MLP-SplitConformal 0.9821 0.0134 yes 13 arsenic-female-lung XGBoost-CQR 0.9643 0.0141 yes 14 arsenic-female-lung QRF-CQR 0.9821 0.0200 yes 15 arsenic-female-lung RF-A-LOCART 0.9732 0.0220 yes 16 arsenic-female-lung RF-A-LOFOREST 0.9732 0.0220 yes 17 arsenic-female-lung RF-LOCART 0.9732 0.0220 yes 18 arsenic-female-lung RF-SplitConformal 0.9286 0.0234 yes 19 arsenic-female-lung MLP-CQR 0.9643 0.0237 yes 20 arsenic-female-lung RF-TreeQuantile-CQR 0.9732 0.0409 yes 21 arsenic-female-lung LightGBM-CQR 0.9732 0.0627 yes 22 arsenic-female-lung LightGBM-SplitConformal 0.9286 0.0866 yes 23 arsenic-female-lung RF-LOFOREST 0.1250 0.0220 no 24 arsenic-female-lung MLP-R2CCP 0.0982 0.0071 no 25 arsenic-male-bladder MLP-CTI 0.9107 0.0034 yes 1
+
+arsenic-male-bladder QRF-CTI 0.9554 0.0070 yes 2arsenic-male-bladder PATH 0.9107 0.0070 yes 3arsenic-male-bladder QRF-CIR+ 0.9464 0.0072 yes 4arsenic-male-bladder QRF-CIR 0.9464 0.0073 yes 5arsenic-male-bladder MLP-CIR+ 0.9018 0.0080 yes 6arsenic-male-bladder MLP-CIR 0.9018 0.0081 yes 7arsenic-male-bladder QRF-CQR 0.9464 0.0087 yes 8arsenic-male-bladder QRF-CHR 0.9375 0.0097 yes 9arsenic-male-bladder MLP-R2CCP 0.9196 0.0103 yes 10 arsenic-male-bladder MLP-CHR 0.9107 0.0104 yes 11 arsenic-male-bladder CatBoost-SplitConformal 0.9554 0.0199 yes 12 arsenic-male-bladder CatBoost-CQR 0.9286 0.0202 yes 13 arsenic-male-bladder MLP-CQR 0.9464 0.0203 yes 14 arsenic-male-bladder RF-A-LOCART 0.9643 0.0228 yes 15 arsenic-male-bladder RF-LOCART 0.9643 0.0228 yes 16 arsenic-male-bladder XGBoost-SplitConformal 0.9375 0.0231 yes 17 arsenic-male-bladder XGBoost-CQR 0.9375 0.0245 yes 18 arsenic-male-bladder MLP-SplitConformal 0.9464 0.0270 yes 19 arsenic-male-bladder RF-TreeQuantile-CQR 0.9643 0.0344 yes 20 arsenic-male-bladder RF-SplitConformal 0.9375 0.0505 yes 21 arsenic-male-bladder LightGBM-CQR 0.9732 0.0682 yes 22 arsenic-male-bladder LightGBM-SplitConformal 0.9554 0.0859 yes 23 arsenic-male-bladder RF-A-LOFOREST 0.0893 0.0228 no 24 arsenic-male-bladder RF-LOFOREST 0.0893 0.0228 no 25 arsenic-male-lung QRF-CIR+ 0.9018 0.0009 yes 1
+
+arsenic-male-lung QRF-CIR 0.9018 0.0009 yes 2arsenic-male-lung QRF-CTI 0.9732 0.0012 yes 3arsenic-male-lung QRF-CHR 0.9018 0.0015 yes 4arsenic-male-lung MLP-CTI 0.9018 0.0023 yes 5arsenic-male-lung QRF-CQR 0.9375 0.0024 yes 6arsenic-male-lung CatBoost-SplitConformal 0.9196 0.0031 yes 7arsenic-male-lung XGBoost-SplitConformal 0.9107 0.0039 yes 8arsenic-male-lung PATH 0.9732 0.0039 yes 9arsenic-male-lung XGBoost-CQR 0.9375 0.0048 yes 10 arsenic-male-lung CatBoost-CQR 0.9196 0.0057 yes 11 arsenic-male-lung MLP-CHR 0.9018 0.0077 yes 12 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank arsenic-male-lung MLP-CIR+ 0.8929 0.0086 yes 13 arsenic-male-lung MLP-CIR 0.8929 0.0087 yes 14 arsenic-male-lung MLP-SplitConformal 0.9286 0.0133 yes 15 arsenic-male-lung RF-SplitConformal 0.9286 0.0136 yes 16 arsenic-male-lung RF-A-LOCART 0.9732 0.0194 yes 17 arsenic-male-lung RF-A-LOFOREST 0.9732 0.0194 yes 18 arsenic-male-lung RF-LOCART 0.9732 0.0194 yes 19 arsenic-male-lung RF-LOFOREST 0.9732 0.0194 yes 20 arsenic-male-lung MLP-CQR 0.9107 0.0236 yes 21 arsenic-male-lung RF-TreeQuantile-CQR 0.9554 0.0345 yes 22 arsenic-male-lung LightGBM-CQR 0.9375 0.0634 yes 23 arsenic-male-lung LightGBM-SplitConformal 0.9464 0.0932 yes 24 arsenic-male-lung MLP-R2CCP 0.1339 0.0025 no 25 beijing_pm MLP-R2CCP 0.9022 0.0949 yes 1
+
+beijing_pm PATH 0.9145 0.1192 yes 2beijing_pm LightGBM-SplitConformal 0.9037 0.1368 yes 3beijing_pm XGBoost-SplitConformal 0.9025 0.1369 yes 4beijing_pm LightGBM-CQR 0.9061 0.1430 yes 5beijing_pm QRF-CIR+ 0.8950 0.1471 yes 6beijing_pm QRF-CIR 0.9004 0.1490 yes 7beijing_pm XGBoost-CQR 0.9083 0.1491 yes 8beijing_pm QRF-CTI 0.8980 0.1524 yes 9beijing_pm QRF-CHR 0.9066 0.1526 yes 10 beijing_pm RF-SplitConformal 0.9084 0.1549 yes 11 beijing_pm CatBoost-SplitConformal 0.8975 0.1584 yes 12 beijing_pm CatBoost-CQR 0.9030 0.1628 yes 13 beijing_pm MLP-SplitConformal 0.8958 0.1693 yes 14 beijing_pm QRF-CQR 0.9161 0.1762 yes 15 beijing_pm RF-TreeQuantile-CQR 0.9120 0.1766 yes 16 beijing_pm MLP-CTI 0.8949 0.1792 yes 17 beijing_pm MLP-CHR 0.8985 0.1803 yes 18 beijing_pm MLP-CIR+ 0.9017 0.1839 yes 19 beijing_pm MLP-CIR 0.9041 0.1852 yes 20 beijing_pm RF-A-LOCART 0.9057 0.1860 yes 21 beijing_pm RF-A-LOFOREST 0.9143 0.1861 yes 22 beijing_pm RF-LOCART 0.9126 0.1902 yes 23 beijing_pm RF-LOFOREST 0.9185 0.1905 yes 24 beijing_pm MLP-CQR 0.9022 0.2201 yes 25 bengaluru_real_estate_price QRF-CTI 0.9069 0.0313 yes 1
+
+bengaluru_real_estate_price CatBoost-CQR 0.8945 0.0317 yes 2bengaluru_real_estate_price XGBoost-CQR 0.8863 0.0320 yes 3bengaluru_real_estate_price LightGBM-CQR 0.8904 0.0327 yes 4bengaluru_real_estate_price CatBoost-SplitConformal 0.8945 0.0362 yes 5bengaluru_real_estate_price QRF-CIR 0.8983 0.0372 yes 6bengaluru_real_estate_price QRF-CIR+ 0.8960 0.0373 yes 7bengaluru_real_estate_price QRF-CHR 0.8979 0.0375 yes 8bengaluru_real_estate_price XGBoost-SplitConformal 0.8915 0.0399 yes 9bengaluru_real_estate_price LightGBM-SplitConformal 0.8911 0.0412 yes 10 bengaluru_real_estate_price MLP-CTI 0.9028 0.0415 yes 11 bengaluru_real_estate_price QRF-CQR 0.9069 0.0416 yes 12 bengaluru_real_estate_price RF-SplitConformal 0.8938 0.0416 yes 13 bengaluru_real_estate_price PATH 0.9054 0.0426 yes 14 bengaluru_real_estate_price RF-TreeQuantile-CQR 0.9073 0.0438 yes 15 bengaluru_real_estate_price MLP-R2CCP 0.8971 0.0439 yes 16 bengaluru_real_estate_price RF-A-LOFOREST 0.9182 0.0443 yes 17 bengaluru_real_estate_price RF-LOFOREST 0.9107 0.0443 yes 18 bengaluru_real_estate_price MLP-CIR+ 0.8975 0.0443 yes 19 bengaluru_real_estate_price RF-A-LOCART 0.9073 0.0453 yes 20 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank bengaluru_real_estate_price RF-LOCART 0.9073 0.0453 yes 21 bengaluru_real_estate_price MLP-CIR 0.9065 0.0456 yes 22 bengaluru_real_estate_price MLP-CHR 0.9088 0.0459 yes 23 bengaluru_real_estate_price MLP-SplitConformal 0.8915 0.0539 yes 24 bengaluru_real_estate_price MLP-CQR 0.9103 0.0620 yes 25 black_friday QRF-CTI 0.8996 0.1647 yes 1
+
+black_friday PATH 0.9084 0.4001 yes 2black_friday QRF-CHR 0.8961 0.4139 yes 3black_friday QRF-CIR 0.9013 0.4315 yes 4black_friday QRF-CIR+ 0.9022 0.4318 yes 5black_friday QRF-CQR 0.8987 0.4460 yes 6black_friday RF-A-LOCART 0.9005 0.4485 yes 7black_friday RF-LOCART 0.9002 0.4553 yes 8black_friday RF-A-LOFOREST 0.9074 0.4557 yes 9black_friday RF-LOFOREST 0.9054 0.4579 yes 10 black_friday RF-TreeQuantile-CQR 0.9041 0.4591 yes 11 black_friday XGBoost-CQR 0.9011 0.4621 yes 12 black_friday LightGBM-CQR 0.9014 0.4696 yes 13 black_friday CatBoost-CQR 0.9001 0.4789 yes 14 black_friday LightGBM-SplitConformal 0.8956 0.4818 yes 15 black_friday XGBoost-SplitConformal 0.8959 0.4822 yes 16 black_friday CatBoost-SplitConformal 0.8962 0.4846 yes 17 black_friday MLP-R2CCP 0.8978 0.4890 yes 18 black_friday RF-SplitConformal 0.8973 0.4907 yes 19 black_friday MLP-SplitConformal 0.8987 0.5106 yes 20 black_friday MLP-CHR 0.8961 0.6615 yes 21 black_friday MLP-CTI 0.8951 0.6619 yes 22 black_friday MLP-CQR 0.8963 0.6981 yes 23 black_friday MLP-CIR+ 0.9065 0.7227 yes 24 black_friday MLP-CIR 0.9076 0.7287 yes 25 cat_adoption PATH 0.8894 0.1491 yes 1
+
+cat_adoption MLP-CTI 0.8938 0.1541 yes 2cat_adoption QRF-CTI 0.8916 0.1572 yes 3cat_adoption MLP-CHR 0.8916 0.1586 yes 4cat_adoption MLP-CIR+ 0.8960 0.1641 yes 5cat_adoption MLP-CIR 0.8982 0.1661 yes 6cat_adoption LightGBM-CQR 0.8982 0.1843 yes 7cat_adoption RF-A-LOCART 0.9093 0.1915 yes 8cat_adoption RF-A-LOFOREST 0.9093 0.1915 yes 9cat_adoption RF-LOCART 0.9093 0.1915 yes 10 cat_adoption RF-LOFOREST 0.9093 0.1915 yes 11 cat_adoption RF-SplitConformal 0.8916 0.1934 yes 12 cat_adoption RF-TreeQuantile-CQR 0.9336 0.2069 yes 13 cat_adoption QRF-CQR 0.9093 0.2122 yes 14 cat_adoption MLP-CQR 0.9115 0.2197 yes 15 cat_adoption MLP-SplitConformal 0.8982 0.2251 yes 16 cat_adoption QRF-CIR+ 0.8827 0.1601 no 17 cat_adoption QRF-CIR 0.8827 0.1607 no 18 cat_adoption CatBoost-SplitConformal 0.8827 0.2001 no 19 cat_adoption CatBoost-CQR 0.8739 0.1818 no 20 cat_adoption LightGBM-SplitConformal 0.8695 0.2338 no 21 cat_adoption QRF-CHR 0.8673 0.1554 no 22 cat_adoption XGBoost-CQR 0.8628 0.1805 no 23 cat_adoption MLP-R2CCP 0.8451 0.2431 no 24 cat_adoption XGBoost-SplitConformal 0.8451 0.2196 no 25 check_times PATH 0.8988 0.0996 yes 1
+
+check_times QRF-CHR 0.8888 0.1021 yes 2Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank check_times QRF-CTI 0.8855 0.1027 yes 3check_times QRF-CIR+ 0.8907 0.1028 yes 4check_times LightGBM-CQR 0.8874 0.1032 yes 5check_times QRF-CIR 0.8947 0.1034 yes 6check_times MLP-CIR+ 0.8921 0.1051 yes 7check_times MLP-CIR 0.8962 0.1058 yes 8check_times XGBoost-CQR 0.8973 0.1075 yes 9check_times CatBoost-CQR 0.8881 0.1144 yes 10 check_times RF-A-LOCART 0.8899 0.1174 yes 11 check_times RF-LOCART 0.8852 0.1193 yes 12 check_times RF-LOFOREST 0.9072 0.1200 yes 13 check_times RF-A-LOFOREST 0.9054 0.1202 yes 14 check_times RF-TreeQuantile-CQR 0.8896 0.1302 yes 15 check_times QRF-CQR 0.8918 0.1307 yes 16 check_times XGBoost-SplitConformal 0.8907 0.1309 yes 17 check_times MLP-CQR 0.8852 0.1342 yes 18 check_times MLP-R2CCP 0.8988 0.1675 yes 19 check_times MLP-CHR 0.8841 0.0996 no 20 check_times LightGBM-SplitConformal 0.8833 0.1261 no 21 check_times MLP-CTI 0.8822 0.0986 no 22 check_times CatBoost-SplitConformal 0.8775 0.1166 no 23 check_times MLP-SplitConformal 0.8767 0.1186 no 24 check_times RF-SplitConformal 0.8731 0.1156 no 25 cholesterol QRF-CTI 0.9344 0.5466 yes 1
+
+cholesterol PATH 0.9508 0.5704 yes 2cholesterol CatBoost-SplitConformal 0.9016 0.5891 yes 3cholesterol QRF-CIR+ 0.9344 0.5942 yes 4cholesterol QRF-CIR 0.9344 0.6057 yes 5cholesterol RF-SplitConformal 0.9508 0.6101 yes 6cholesterol MLP-CTI 0.9344 0.6147 yes 7cholesterol QRF-CHR 0.9508 0.6210 yes 8cholesterol QRF-CQR 0.9672 0.6250 yes 9cholesterol RF-TreeQuantile-CQR 0.9508 0.6467 yes 10 cholesterol MLP-CHR 0.9180 0.6543 yes 11 cholesterol LightGBM-CQR 0.9508 0.6559 yes 12 cholesterol XGBoost-SplitConformal 0.9508 0.6748 yes 13 cholesterol MLP-CIR+ 0.9180 0.6822 yes 14 cholesterol RF-A-LOCART 0.9672 0.6867 yes 15 cholesterol RF-A-LOFOREST 0.9672 0.6867 yes 16 cholesterol RF-LOCART 0.9672 0.6867 yes 17 cholesterol RF-LOFOREST 0.9672 0.6867 yes 18 cholesterol MLP-CIR 0.9180 0.6886 yes 19 cholesterol XGBoost-CQR 0.9672 0.6964 yes 20 cholesterol MLP-R2CCP 0.9180 0.7123 yes 21 cholesterol MLP-CQR 0.9344 0.7273 yes 22 cholesterol LightGBM-SplitConformal 0.9672 0.7501 yes 23 cholesterol CatBoost-CQR 0.9672 0.7576 yes 24 cholesterol MLP-SplitConformal 0.8525 0.8835 no 25 chscase_vine2 CatBoost-SplitConformal 0.8936 0.2599 yes 1
+
+chscase_vine2 LightGBM-SplitConformal 0.9043 0.3296 yes 2chscase_vine2 CatBoost-CQR 0.9255 0.3623 yes 3chscase_vine2 PATH 0.9043 0.3898 yes 4chscase_vine2 LightGBM-CQR 0.9574 0.3917 yes 5chscase_vine2 RF-SplitConformal 0.9468 0.4161 yes 6chscase_vine2 XGBoost-CQR 0.9149 0.4512 yes 7chscase_vine2 RF-TreeQuantile-CQR 0.9574 0.4686 yes 8chscase_vine2 XGBoost-SplitConformal 0.9468 0.5040 yes 9chscase_vine2 QRF-CTI 0.9362 0.5958 yes 10 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank chscase_vine2 MLP-CTI 0.9362 0.6440 yes 11 chscase_vine2 MLP-CIR+ 0.9468 0.6516 yes 12 chscase_vine2 MLP-CQR 0.9681 0.6560 yes 13 chscase_vine2 MLP-CIR 0.9468 0.6597 yes 14 chscase_vine2 MLP-CHR 0.9362 0.6612 yes 15 chscase_vine2 QRF-CHR 0.9787 0.7186 yes 16 chscase_vine2 QRF-CIR+ 0.9787 0.7687 yes 17 chscase_vine2 QRF-CIR 0.9787 0.7704 yes 18 chscase_vine2 MLP-SplitConformal 0.9681 0.7883 yes 19 chscase_vine2 QRF-CQR 0.9787 0.8325 yes 20 chscase_vine2 RF-A-LOCART 0.9255 0.8836 yes 21 chscase_vine2 RF-A-LOFOREST 0.9255 0.8836 yes 22 chscase_vine2 RF-LOCART 0.9255 0.8836 yes 23 chscase_vine2 RF-LOFOREST 0.9255 0.8836 yes 24 chscase_vine2 MLP-R2CCP 0.8723 0.2518 no 25 climate_change_impact_on_agriculture_2024 QRF-CTI 0.8985 0.3509 yes 1
+
+climate_change_impact_on_agriculture_2024 QRF-CQR 0.9030 0.3549 yes 2climate_change_impact_on_agriculture_2024 CatBoost-CQR 0.9095 0.3551 yes 3climate_change_impact_on_agriculture_2024 LightGBM-CQR 0.9035 0.3561 yes 4climate_change_impact_on_agriculture_2024 QRF-CHR 0.9015 0.3565 yes 5climate_change_impact_on_agriculture_2024 QRF-CIR 0.9100 0.3596 yes 6climate_change_impact_on_agriculture_2024 RF-A-LOCART 0.9070 0.3600 yes 7climate_change_impact_on_agriculture_2024 RF-LOCART 0.9070 0.3600 yes 8climate_change_impact_on_agriculture_2024 QRF-CIR+ 0.9145 0.3602 yes 9climate_change_impact_on_agriculture_2024 RF-LOFOREST 0.9210 0.3658 yes 10 climate_change_impact_on_agriculture_2024 RF-A-LOFOREST 0.9210 0.3659 yes 11 climate_change_impact_on_agriculture_2024 PATH 0.9200 0.3692 yes 12 climate_change_impact_on_agriculture_2024 MLP-CHR 0.8915 0.3700 yes 13 climate_change_impact_on_agriculture_2024 MLP-CTI 0.9110 0.3754 yes 14 climate_change_impact_on_agriculture_2024 MLP-CIR+ 0.8950 0.3756 yes 15 climate_change_impact_on_agriculture_2024 MLP-CIR 0.8990 0.3772 yes 16 climate_change_impact_on_agriculture_2024 MLP-CQR 0.8945 0.3832 yes 17 climate_change_impact_on_agriculture_2024 RF-TreeQuantile-CQR 0.9055 0.3860 yes 18 climate_change_impact_on_agriculture_2024 RF-SplitConformal 0.8915 0.4189 yes 19 climate_change_impact_on_agriculture_2024 MLP-SplitConformal 0.8955 0.4297 yes 20 climate_change_impact_on_agriculture_2024 CatBoost-SplitConformal 0.8965 0.4299 yes 21 climate_change_impact_on_agriculture_2024 LightGBM-SplitConformal 0.8970 0.4363 yes 22 climate_change_impact_on_agriculture_2024 MLP-R2CCP 0.8925 0.5136 yes 23 climate_change_impact_on_agriculture_2024 XGBoost-CQR 0.8845 0.3498 no 24 climate_change_impact_on_agriculture_2024 XGBoost-SplitConformal 0.8825 0.4230 no 25 colrec PATH 0.9203 0.3657 yes 1
+
+colrec QRF-CIR+ 0.9032 0.3776 yes 2colrec QRF-CTI 0.9211 0.3786 yes 3colrec QRF-CIR 0.9032 0.3807 yes 4colrec QRF-CHR 0.9059 0.3826 yes 5colrec QRF-CQR 0.8987 0.4212 yes 6colrec CatBoost-CQR 0.9095 0.4247 yes 7colrec LightGBM-CQR 0.9211 0.4294 yes 8colrec XGBoost-CQR 0.9023 0.4295 yes 9colrec RF-TreeQuantile-CQR 0.9211 0.4602 yes 10 colrec RF-A-LOFOREST 0.8907 0.4702 yes 11 colrec MLP-R2CCP 0.9059 0.4731 yes 12 colrec RF-A-LOCART 0.9014 0.5136 yes 13 colrec RF-LOFOREST 0.9158 0.5282 yes 14 colrec RF-LOCART 0.9185 0.5486 yes 15 colrec MLP-CHR 0.9373 0.6033 yes 16 colrec CatBoost-SplitConformal 0.9310 0.6132 yes 17 colrec RF-SplitConformal 0.9373 0.6199 yes 18 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank colrec XGBoost-SplitConformal 0.9283 0.6370 yes 19 colrec MLP-CQR 0.9059 0.6412 yes 20 colrec LightGBM-SplitConformal 0.9283 0.6470 yes 21 colrec MLP-SplitConformal 0.9391 0.6479 yes 22 colrec MLP-CTI 0.9032 0.7208 yes 23 colrec MLP-CIR+ 0.9435 0.8486 yes 24 colrec MLP-CIR 0.9991 1.0000 yes 25 cpu MLP-CTI 0.9762 0.0416 yes 1
+
+cpu MLP-CHR 0.9524 0.0444 yes 2cpu MLP-CQR 0.9286 0.0459 yes 3cpu MLP-CIR+ 0.9524 0.0544 yes 4cpu MLP-CIR 0.9524 0.0545 yes 5cpu CatBoost-SplitConformal 0.9762 0.0858 yes 6cpu XGBoost-CQR 0.9524 0.0891 yes 7cpu PATH 0.9762 0.0927 yes 8cpu CatBoost-CQR 0.9524 0.1317 yes 9cpu LightGBM-CQR 1.0000 0.1590 yes 10 cpu RF-SplitConformal 0.9524 0.1608 yes 11 cpu RF-TreeQuantile-CQR 0.9762 0.1831 yes 12 cpu QRF-CIR+ 0.9048 0.2200 yes 13 cpu QRF-CTI 0.9762 0.2676 yes 14 cpu QRF-CHR 0.9524 0.2871 yes 15 cpu QRF-CIR 0.9286 0.2998 yes 16 cpu QRF-CQR 0.9524 0.3530 yes 17 cpu LightGBM-SplitConformal 0.9286 0.3741 yes 18 cpu MLP-SplitConformal 1.0000 0.3789 yes 19 cpu RF-A-LOCART 0.9762 0.5097 yes 20 cpu RF-A-LOFOREST 0.9762 0.5097 yes 21 cpu RF-LOCART 0.9762 0.5097 yes 22 cpu RF-LOFOREST 0.9762 0.5097 yes 23 cpu MLP-R2CCP 0.8810 0.0560 no 24 cpu XGBoost-SplitConformal 0.8810 0.0474 no 25 delays_zurich_transport MLP-CTI 0.8996 0.0706 yes 1
+
+delays_zurich_transport LightGBM-CQR 0.9052 0.0727 yes 2delays_zurich_transport QRF-CTI 0.8961 0.0729 yes 3delays_zurich_transport MLP-CHR 0.8983 0.0729 yes 4delays_zurich_transport XGBoost-CQR 0.9016 0.0743 yes 5delays_zurich_transport RF-LOFOREST 0.9056 0.0745 yes 6delays_zurich_transport RF-A-LOFOREST 0.9072 0.0746 yes 7delays_zurich_transport RF-A-LOCART 0.9023 0.0747 yes 8delays_zurich_transport QRF-CHR 0.8981 0.0748 yes 9delays_zurich_transport CatBoost-SplitConformal 0.9019 0.0749 yes 10 delays_zurich_transport RF-LOCART 0.8990 0.0749 yes 11 delays_zurich_transport MLP-SplitConformal 0.8994 0.0750 yes 12 delays_zurich_transport RF-SplitConformal 0.9043 0.0753 yes 13 delays_zurich_transport CatBoost-CQR 0.9014 0.0759 yes 14 delays_zurich_transport MLP-CIR+ 0.9027 0.0763 yes 15 delays_zurich_transport LightGBM-SplitConformal 0.9014 0.0764 yes 16 delays_zurich_transport MLP-CIR 0.9072 0.0773 yes 17 delays_zurich_transport PATH 0.9168 0.0774 yes 18 delays_zurich_transport XGBoost-SplitConformal 0.9078 0.0791 yes 19 delays_zurich_transport RF-TreeQuantile-CQR 0.9052 0.0795 yes 20 delays_zurich_transport MLP-CQR 0.8961 0.0799 yes 21 delays_zurich_transport QRF-CQR 0.9019 0.0800 yes 22 delays_zurich_transport QRF-CIR 0.9065 0.0806 yes 23 delays_zurich_transport QRF-CIR+ 0.9087 0.0809 yes 24 delays_zurich_transport MLP-R2CCP 0.8948 0.1340 yes 25 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank diamonds PATH 0.9101 0.0614 yes 1
+
+diamonds LightGBM-CQR 0.9027 0.0657 yes 2diamonds XGBoost-CQR 0.8998 0.0659 yes 3diamonds QRF-CTI 0.9070 0.0732 yes 4diamonds CatBoost-CQR 0.9031 0.0738 yes 5diamonds LightGBM-SplitConformal 0.9041 0.0743 yes 6diamonds XGBoost-SplitConformal 0.9046 0.0751 yes 7diamonds MLP-R2CCP 0.9029 0.0766 yes 8diamonds CatBoost-SplitConformal 0.9022 0.0768 yes 9diamonds QRF-CIR 0.9039 0.0851 yes 10 diamonds QRF-CIR+ 0.9019 0.0854 yes 11 diamonds QRF-CHR 0.9053 0.0865 yes 12 diamonds RF-SplitConformal 0.9022 0.0885 yes 13 diamonds RF-TreeQuantile-CQR 0.9074 0.0912 yes 14 diamonds QRF-CQR 0.9054 0.0967 yes 15 diamonds RF-A-LOCART 0.9066 0.1096 yes 16 diamonds RF-A-LOFOREST 0.9148 0.1098 yes 17 diamonds RF-LOFOREST 0.9167 0.1098 yes 18 diamonds RF-LOCART 0.9074 0.1106 yes 19 diamonds MLP-SplitConformal 0.9029 0.1583 yes 20 diamonds MLP-CTI 0.9003 0.1804 yes 21 diamonds MLP-CHR 0.8914 0.1881 yes 22 diamonds MLP-CIR 0.9051 0.1991 yes 23 diamonds MLP-CIR+ 0.9046 0.1991 yes 24 diamonds MLP-CQR 0.8993 0.2374 yes 25 flchain QRF-CTI 0.9000 0.3290 yes 1
+
+flchain PATH 0.9025 0.3371 yes 2flchain QRF-CHR 0.8888 0.3504 yes 3flchain LightGBM-CQR 0.8875 0.3903 yes 4flchain QRF-CIR 0.9087 0.3917 yes 5flchain QRF-CIR+ 0.9100 0.3965 yes 6flchain XGBoost-CQR 0.8900 0.4596 yes 7flchain CatBoost-CQR 0.8975 0.4624 yes 8flchain QRF-CQR 0.8925 0.4772 yes 9flchain RF-A-LOCART 0.9150 0.5175 yes 10 flchain RF-SplitConformal 0.9012 0.6538 yes 11 flchain RF-LOCART 0.9300 0.6538 yes 12 flchain MLP-R2CCP 0.9125 0.6555 yes 13 flchain CatBoost-SplitConformal 0.9000 0.6595 yes 14 flchain MLP-SplitConformal 0.9000 0.6720 yes 15 flchain LightGBM-SplitConformal 0.9062 0.6814 yes 16 flchain XGBoost-SplitConformal 0.9025 0.6957 yes 17 flchain RF-A-LOFOREST 0.9187 0.7016 yes 18 flchain RF-LOFOREST 0.9187 0.7016 yes 19 flchain MLP-CTI 0.9100 0.8035 yes 20 flchain MLP-CHR 0.8925 0.8350 yes 21 flchain MLP-CIR+ 0.9263 0.8624 yes 22 flchain MLP-CIR 0.9250 0.8641 yes 23 flchain MLP-CQR 0.9100 0.9715 yes 24 flchain RF-TreeQuantile-CQR 0.8738 0.5677 no 25 forest_fires MLP-CHR 0.8942 0.0745 yes 1
+
+forest_fires MLP-CIR+ 0.8942 0.0807 yes 2forest_fires MLP-CIR 0.8942 0.0808 yes 3forest_fires RF-TreeQuantile-CQR 0.9231 0.0811 yes 4forest_fires LightGBM-CQR 0.9135 0.1043 yes 5forest_fires LightGBM-SplitConformal 0.9135 0.1263 yes 6forest_fires XGBoost-SplitConformal 0.8942 0.1402 yes 7forest_fires XGBoost-CQR 0.8846 0.0690 no 8Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank forest_fires CatBoost-SplitConformal 0.8846 0.1081 no 9forest_fires MLP-CQR 0.8750 0.0774 no 10 forest_fires QRF-CQR 0.8750 0.0474 no 11 forest_fires RF-SplitConformal 0.8750 0.0769 no 12 forest_fires QRF-CTI 0.8654 0.0397 no 13 forest_fires RF-A-LOCART 0.8654 0.0450 no 14 forest_fires RF-A-LOFOREST 0.8654 0.0450 no 15 forest_fires RF-LOCART 0.8654 0.0450 no 16 forest_fires RF-LOFOREST 0.8654 0.0450 no 17 forest_fires PATH 0.8462 0.0270 no 18 forest_fires MLP-CTI 0.8462 0.0427 no 19 forest_fires MLP-SplitConformal 0.8462 0.0500 no 20 forest_fires CatBoost-CQR 0.8365 0.0858 no 21 forest_fires QRF-CHR 0.8269 0.0308 no 22 forest_fires QRF-CIR+ 0.8269 0.0293 no 23 forest_fires QRF-CIR 0.8269 0.0311 no 24 forest_fires MLP-R2CCP 0.4327 0.0342 no 25 fps_benchmark PATH 0.9011 0.0097 yes 1
+
+fps_benchmark XGBoost-SplitConformal 0.8991 0.0142 yes 2fps_benchmark LightGBM-SplitConformal 0.8938 0.0150 yes 3fps_benchmark MLP-R2CCP 0.8981 0.0213 yes 4fps_benchmark CatBoost-SplitConformal 0.8991 0.0221 yes 5fps_benchmark CatBoost-CQR 0.9103 0.0223 yes 6fps_benchmark XGBoost-CQR 0.8971 0.0633 yes 7fps_benchmark LightGBM-CQR 0.8885 0.0858 yes 8fps_benchmark QRF-CTI 0.8867 0.1242 yes 9fps_benchmark QRF-CIR+ 0.8851 0.1294 yes 10 fps_benchmark QRF-CIR 0.8877 0.1299 yes 11 fps_benchmark QRF-CHR 0.9007 0.1354 yes 12 fps_benchmark QRF-CQR 0.9013 0.1392 yes 13 fps_benchmark RF-LOCART 0.8922 0.2260 yes 14 fps_benchmark RF-LOFOREST 0.8924 0.2366 yes 15 fps_benchmark RF-A-LOCART 0.8964 0.2415 yes 16 fps_benchmark RF-A-LOFOREST 0.9107 0.2458 yes 17 fps_benchmark MLP-CIR+ 0.8883 0.3046 yes 18 fps_benchmark MLP-CHR 0.8956 0.3143 yes 19 fps_benchmark MLP-CTI 0.8958 0.3164 yes 20 fps_benchmark MLP-CIR 0.8962 0.3176 yes 21 fps_benchmark RF-SplitConformal 0.9017 0.3261 yes 22 fps_benchmark RF-TreeQuantile-CQR 0.8985 0.3502 yes 23 fps_benchmark MLP-SplitConformal 0.8991 0.3617 yes 24 fps_benchmark MLP-CQR 0.8973 0.4070 yes 25 grace QRF-CTI 0.8950 0.1624 yes 1
+
+grace MLP-CTI 0.8850 0.2056 yes 2grace PATH 0.8900 0.3371 yes 3grace MLP-R2CCP 0.8850 0.4941 yes 4grace MLP-SplitConformal 0.8900 0.6384 yes 5grace CatBoost-CQR 0.9000 0.6547 yes 6grace MLP-CQR 0.8950 0.6835 yes 7grace RF-TreeQuantile-CQR 0.9900 0.7362 yes 8grace QRF-CQR 0.9550 0.7746 yes 9grace XGBoost-CQR 0.9300 0.8856 yes 10 grace QRF-CHR 0.9350 0.9879 yes 11 grace CatBoost-SplitConformal 0.9000 1.0165 yes 12 grace LightGBM-SplitConformal 0.8850 1.0541 yes 13 grace XGBoost-SplitConformal 0.9050 1.0746 yes 14 grace RF-A-LOCART 0.9200 1.1610 yes 15 grace RF-A-LOFOREST 0.9200 1.1610 yes 16 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank grace RF-LOCART 0.9200 1.1610 yes 17 grace RF-LOFOREST 0.9200 1.1610 yes 18 grace MLP-CIR 0.8800 0.4538 no 19 grace MLP-CIR+ 0.8750 0.4520 no 20 grace LightGBM-CQR 0.8700 0.7502 no 21 grace RF-SplitConformal 0.8650 0.7705 no 22 grace MLP-CHR 0.7900 0.5940 no 23 grace QRF-CIR 0.6750 0.1577 no 24 grace QRF-CIR+ 0.6600 0.1578 no 25 hdfail QRF-CTI 0.9248 0.0290 yes 1
+
+hdfail PATH 0.9106 0.0337 yes 2hdfail QRF-CIR 0.9010 0.0379 yes 3hdfail QRF-CIR+ 0.8927 0.0379 yes 4hdfail QRF-CHR 0.8997 0.0390 yes 5hdfail LightGBM-CQR 0.9029 0.0410 yes 6hdfail QRF-CQR 0.9088 0.0414 yes 7hdfail XGBoost-CQR 0.9026 0.0414 yes 8hdfail MLP-R2CCP 0.8967 0.0449 yes 9hdfail RF-A-LOCART 0.9043 0.0455 yes 10 hdfail RF-LOCART 0.9067 0.0455 yes 11 hdfail RF-A-LOFOREST 0.9086 0.0465 yes 12 hdfail RF-LOFOREST 0.9026 0.0469 yes 13 hdfail XGBoost-SplitConformal 0.8952 0.0484 yes 14 hdfail LightGBM-SplitConformal 0.8956 0.0485 yes 15 hdfail CatBoost-SplitConformal 0.8970 0.0497 yes 16 hdfail RF-SplitConformal 0.8994 0.0506 yes 17 hdfail CatBoost-CQR 0.9080 0.0520 yes 18 hdfail RF-TreeQuantile-CQR 0.9477 0.0620 yes 19 hdfail MLP-SplitConformal 0.8966 0.0724 yes 20 hdfail MLP-CIR+ 0.8981 0.1148 yes 21 hdfail MLP-CIR 0.8997 0.1159 yes 22 hdfail MLP-CTI 0.9046 0.1178 yes 23 hdfail MLP-CHR 0.9017 0.1184 yes 24 hdfail MLP-CQR 0.9100 0.1416 yes 25 health_insurance QRF-CTI 0.9270 0.3116 yes 1
+
+health_insurance QRF-CIR 0.8923 0.3375 yes 2health_insurance QRF-CIR+ 0.8918 0.3378 yes 3health_insurance PATH 0.9093 0.3462 yes 4health_insurance QRF-CHR 0.9030 0.3564 yes 5health_insurance MLP-CTI 0.8961 0.3854 yes 6health_insurance CatBoost-CQR 0.8979 0.4002 yes 7health_insurance LightGBM-CQR 0.9003 0.4040 yes 8health_insurance XGBoost-CQR 0.9006 0.4048 yes 9health_insurance QRF-CQR 0.9360 0.4050 yes 10 health_insurance MLP-CHR 0.9024 0.4250 yes 11 health_insurance RF-TreeQuantile-CQR 0.9484 0.4270 yes 12 health_insurance MLP-CIR+ 0.9030 0.4281 yes 13 health_insurance MLP-CIR 0.9057 0.4293 yes 14 health_insurance RF-LOCART 0.9035 0.4899 yes 15 health_insurance RF-A-LOCART 0.9006 0.4929 yes 16 health_insurance RF-LOFOREST 0.9008 0.4973 yes 17 health_insurance RF-A-LOFOREST 0.8988 0.5005 yes 18 health_insurance MLP-CQR 0.8941 0.5100 yes 19 health_insurance RF-SplitConformal 0.8920 0.5341 yes 20 health_insurance CatBoost-SplitConformal 0.9006 0.5341 yes 21 health_insurance XGBoost-SplitConformal 0.8918 0.5459 yes 22 health_insurance MLP-SplitConformal 0.9017 0.5463 yes 23 health_insurance LightGBM-SplitConformal 0.8981 0.5482 yes 24 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank health_insurance MLP-R2CCP 0.6391 0.7253 no 25 house_16H PATH 0.9010 0.1035 yes 1
+
+house_16H XGBoost-CQR 0.8973 0.1129 yes 2house_16H LightGBM-CQR 0.8988 0.1137 yes 3house_16H QRF-CHR 0.8947 0.1187 yes 4house_16H CatBoost-CQR 0.8951 0.1199 yes 5house_16H QRF-CIR 0.9006 0.1238 yes 6house_16H QRF-CIR+ 0.9019 0.1244 yes 7house_16H MLP-R2CCP 0.8955 0.1503 yes 8house_16H RF-SplitConformal 0.9054 0.1525 yes 9house_16H QRF-CQR 0.9315 0.1532 yes 10 house_16H RF-TreeQuantile-CQR 0.9541 0.1550 yes 11 house_16H RF-A-LOFOREST 0.9142 0.1563 yes 12 house_16H LightGBM-SplitConformal 0.9094 0.1567 yes 13 house_16H XGBoost-SplitConformal 0.9052 0.1580 yes 14 house_16H RF-A-LOCART 0.9067 0.1617 yes 15 house_16H CatBoost-SplitConformal 0.9109 0.1619 yes 16 house_16H RF-LOFOREST 0.9289 0.1753 yes 17 house_16H RF-LOCART 0.9032 0.1780 yes 18 house_16H QRF-CTI 0.9555 0.1829 yes 19 house_16H MLP-SplitConformal 0.9102 0.2154 yes 20 house_16H MLP-CQR 0.9010 0.2929 yes 21 house_16H MLP-CHR 0.9868 0.4995 yes 22 house_16H MLP-CTI 0.8936 0.8275 yes 23 house_16H MLP-CIR 1.0000 1.0000 yes 24 house_16H MLP-CIR+ 0.7035 0.2649 no 25 house_8L LightGBM-CQR 0.8936 0.1113 yes 1
+
+house_8L XGBoost-CQR 0.8988 0.1114 yes 2house_8L PATH 0.9008 0.1117 yes 3house_8L CatBoost-CQR 0.8975 0.1136 yes 4house_8L QRF-CHR 0.8894 0.1137 yes 5house_8L QRF-CIR 0.8923 0.1164 yes 6house_8L QRF-CIR+ 0.8898 0.1166 yes 7house_8L RF-TreeQuantile-CQR 0.9476 0.1392 yes 8house_8L QRF-CQR 0.9285 0.1408 yes 9house_8L RF-SplitConformal 0.8964 0.1481 yes 10 house_8L RF-A-LOFOREST 0.9133 0.1495 yes 11 house_8L CatBoost-SplitConformal 0.8997 0.1499 yes 12 house_8L XGBoost-SplitConformal 0.8958 0.1523 yes 13 house_8L LightGBM-SplitConformal 0.8997 0.1530 yes 14 house_8L RF-LOFOREST 0.9210 0.1536 yes 15 house_8L RF-A-LOCART 0.8986 0.1538 yes 16 house_8L RF-LOCART 0.9107 0.1603 yes 17 house_8L MLP-R2CCP 0.8984 0.1649 yes 18 house_8L QRF-CTI 0.9548 0.1766 yes 19 house_8L MLP-SplitConformal 0.9019 0.1976 yes 20 house_8L MLP-CQR 0.9052 0.3315 yes 21 house_8L MLP-CHR 0.9868 0.4995 yes 22 house_8L MLP-CTI 0.9067 0.8890 yes 23 house_8L MLP-CIR 1.0000 1.0000 yes 24 house_8L MLP-CIR+ 0.5289 0.1794 no 25 houses LightGBM-SplitConformal 0.8968 0.2790 yes 1
+
+houses XGBoost-SplitConformal 0.8983 0.2806 yes 2houses PATH 0.9111 0.2820 yes 3houses LightGBM-CQR 0.8939 0.2927 yes 4houses CatBoost-SplitConformal 0.8966 0.2950 yes 5houses XGBoost-CQR 0.8900 0.2969 yes 6Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank houses CatBoost-CQR 0.9004 0.3208 yes 7houses QRF-CIR+ 0.8893 0.3238 yes 8houses QRF-CIR 0.8929 0.3246 yes 9houses RF-SplitConformal 0.8951 0.3254 yes 10 houses QRF-CTI 0.9026 0.3333 yes 11 houses QRF-CHR 0.8953 0.3430 yes 12 houses MLP-R2CCP 0.8968 0.3490 yes 13 houses QRF-CQR 0.9268 0.3920 yes 14 houses RF-TreeQuantile-CQR 0.8995 0.3945 yes 15 houses MLP-SplitConformal 0.8978 0.4059 yes 16 houses RF-A-LOCART 0.8946 0.4097 yes 17 houses RF-A-LOFOREST 0.9041 0.4120 yes 18 houses RF-LOFOREST 0.9021 0.4138 yes 19 houses RF-LOCART 0.9021 0.4264 yes 20 houses MLP-CTI 0.9026 0.9069 yes 21 houses MLP-CIR 1.0000 1.0000 yes 22 houses MLP-CQR 0.9004 1.4058 yes 23 houses MLP-CIR+ 0.1587 0.1870 no 24 houses MLP-CHR 0.0438 0.0000 no 25 kings_county PATH 0.9084 0.0361 yes 1
+
+kings_county CatBoost-CQR 0.9001 0.0364 yes 2kings_county XGBoost-CQR 0.9075 0.0364 yes 3kings_county LightGBM-CQR 0.9049 0.0364 yes 4kings_county LightGBM-SplitConformal 0.9079 0.0369 yes 5kings_county XGBoost-SplitConformal 0.9102 0.0372 yes 6kings_county CatBoost-SplitConformal 0.9056 0.0377 yes 7kings_county QRF-CIR+ 0.8864 0.0434 yes 8kings_county RF-SplitConformal 0.9077 0.0440 yes 9kings_county QRF-CIR 0.8971 0.0447 yes 10 kings_county QRF-CTI 0.9038 0.0447 yes 11 kings_county QRF-CHR 0.9038 0.0460 yes 12 kings_county RF-TreeQuantile-CQR 0.9045 0.0501 yes 13 kings_county MLP-R2CCP 0.8975 0.0509 yes 14 kings_county QRF-CQR 0.9061 0.0519 yes 15 kings_county RF-A-LOCART 0.8985 0.0542 yes 16 kings_county RF-LOCART 0.8987 0.0582 yes 17 kings_county RF-A-LOFOREST 0.9165 0.0590 yes 18 kings_county RF-LOFOREST 0.9223 0.0610 yes 19 kings_county MLP-SplitConformal 0.9077 0.0645 yes 20 kings_county MLP-CQR 0.9052 0.2160 yes 21 kings_county MLP-CHR 0.9995 0.6795 yes 22 kings_county MLP-CTI 0.9107 0.9159 yes 23 kings_county MLP-CIR 1.0000 1.0000 yes 24 kings_county MLP-CIR+ 0.0965 0.0944 no 25 laser QRF-CIR 0.9095 0.3083 yes 1
+
+laser QRF-CIR+ 0.9095 0.3098 yes 2laser RF-A-LOCART 0.8844 0.4772 no 3laser RF-A-LOFOREST 0.8844 0.4772 no 4laser RF-LOCART 0.8844 0.4772 no 5laser RF-LOFOREST 0.8844 0.4772 no 6laser LightGBM-CQR 0.8794 0.0928 no 7laser LightGBM-SplitConformal 0.8794 0.0724 no 8laser MLP-SplitConformal 0.8794 0.0859 no 9laser QRF-CHR 0.8693 0.2821 no 10 laser QRF-CTI 0.8643 0.2425 no 11 laser MLP-CQR 0.8643 0.1365 no 12 laser XGBoost-CQR 0.8593 0.1296 no 13 laser MLP-R2CCP 0.8593 0.0450 no 14 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank laser CatBoost-CQR 0.8492 0.0674 no 15 laser RF-TreeQuantile-CQR 0.8492 0.1581 no 16 laser RF-SplitConformal 0.8392 0.0710 no 17 laser XGBoost-SplitConformal 0.8392 0.0544 no 18 laser MLP-CIR+ 0.8291 0.0832 no 19 laser CatBoost-SplitConformal 0.8241 0.0374 no 20 laser MLP-CIR 0.8241 0.0828 no 21 laser MLP-CHR 0.8141 0.0900 no 22 laser PATH 0.8040 0.0574 no 23 laser QRF-CQR 0.8040 0.3285 no 24 laser MLP-CTI 0.7990 0.0789 no 25 meta QRF-CHR 0.8962 0.0051 yes 1
+
+meta MLP-CHR 0.8962 0.0082 yes 2meta QRF-CIR+ 0.9245 0.0093 yes 3meta QRF-CIR 0.9245 0.0094 yes 4meta MLP-SplitConformal 0.8962 0.0114 yes 5meta QRF-CQR 0.9057 0.0220 yes 6meta RF-A-LOCART 0.8868 0.0235 yes 7meta RF-A-LOFOREST 0.8868 0.0235 yes 8meta RF-LOCART 0.8868 0.0235 yes 9meta RF-LOFOREST 0.8868 0.0235 yes 10 meta XGBoost-CQR 0.9434 0.0357 yes 11 meta CatBoost-CQR 0.9151 0.0364 yes 12 meta MLP-CIR+ 0.9151 0.0389 yes 13 meta MLP-CIR 0.9151 0.0389 yes 14 meta CatBoost-SplitConformal 0.9340 0.0492 yes 15 meta MLP-CQR 0.8868 0.0744 yes 16 meta RF-TreeQuantile-CQR 0.9434 0.0767 yes 17 meta LightGBM-CQR 0.8868 0.1148 yes 18 meta QRF-CTI 0.8774 0.0057 no 19 meta MLP-CTI 0.8774 0.0072 no 20 meta XGBoost-SplitConformal 0.8774 0.0308 no 21 meta PATH 0.8679 0.0055 no 22 meta LightGBM-SplitConformal 0.8679 0.0705 no 23 meta RF-SplitConformal 0.8679 0.0278 no 24 meta MLP-R2CCP 0.8491 0.0162 no 25 metabric PATH 0.9081 0.5900 yes 1
+
+metabric QRF-CHR 0.9134 0.5966 yes 2metabric RF-TreeQuantile-CQR 0.9186 0.6037 yes 3metabric MLP-CTI 0.9160 0.6121 yes 4metabric MLP-CHR 0.9108 0.6162 yes 5metabric MLP-SplitConformal 0.9213 0.6165 yes 6metabric QRF-CTI 0.9055 0.6171 yes 7metabric QRF-CQR 0.9213 0.6188 yes 8metabric RF-SplitConformal 0.9160 0.6213 yes 9metabric QRF-CIR+ 0.9213 0.6226 yes 10 metabric LightGBM-CQR 0.9213 0.6232 yes 11 metabric MLP-CQR 0.9055 0.6257 yes 12 metabric CatBoost-SplitConformal 0.9134 0.6320 yes 13 metabric QRF-CIR 0.9291 0.6369 yes 14 metabric XGBoost-CQR 0.9160 0.6570 yes 15 metabric XGBoost-SplitConformal 0.9134 0.6617 yes 16 metabric MLP-CIR 0.9344 0.6698 yes 17 metabric MLP-CIR+ 0.9344 0.6700 yes 18 metabric LightGBM-SplitConformal 0.9029 0.6813 yes 19 metabric RF-A-LOCART 0.9265 0.6844 yes 20 metabric RF-A-LOFOREST 0.9265 0.6844 yes 21 metabric RF-LOCART 0.9265 0.6844 yes 22 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank metabric RF-LOFOREST 0.9265 0.6844 yes 23 metabric CatBoost-CQR 0.9291 0.7085 yes 24 metabric MLP-R2CCP 0.8950 0.7331 yes 25 munich-rent-index-1999 CatBoost-SplitConformal 0.9044 0.0133 yes 1
+
+munich-rent-index-1999 PATH 0.9076 0.0256 yes 2munich-rent-index-1999 MLP-R2CCP 0.9190 0.0271 yes 3munich-rent-index-1999 CatBoost-CQR 0.9190 0.0309 yes 4munich-rent-index-1999 XGBoost-SplitConformal 0.8882 0.0334 yes 5munich-rent-index-1999 LightGBM-CQR 0.9335 0.0488 yes 6munich-rent-index-1999 MLP-SplitConformal 0.8898 0.0575 yes 7munich-rent-index-1999 XGBoost-CQR 0.9060 0.0646 yes 8munich-rent-index-1999 QRF-CIR+ 0.8865 0.1062 yes 9munich-rent-index-1999 QRF-CIR 0.8898 0.1088 yes 10 munich-rent-index-1999 MLP-CTI 0.8898 0.1102 yes 11 munich-rent-index-1999 QRF-CHR 0.8898 0.1108 yes 12 munich-rent-index-1999 QRF-CQR 0.8979 0.1184 yes 13 munich-rent-index-1999 RF-SplitConformal 0.9109 0.1282 yes 14 munich-rent-index-1999 QRF-CTI 0.9254 0.1308 yes 15 munich-rent-index-1999 RF-A-LOFOREST 0.9076 0.1797 yes 16 munich-rent-index-1999 RF-LOFOREST 0.9076 0.1797 yes 17 munich-rent-index-1999 RF-A-LOCART 0.9125 0.2020 yes 18 munich-rent-index-1999 RF-LOCART 0.9125 0.2020 yes 19 munich-rent-index-1999 RF-TreeQuantile-CQR 0.9173 0.2122 yes 20 munich-rent-index-1999 MLP-CHR 0.8833 0.1106 no 21 munich-rent-index-1999 MLP-CQR 0.8817 0.1416 no 22 munich-rent-index-1999 MLP-CIR+ 0.8801 0.1074 no 23 munich-rent-index-1999 MLP-CIR 0.8752 0.1083 no 24 munich-rent-index-1999 LightGBM-SplitConformal 0.8703 0.0265 no 25 nafld1 QRF-CIR+ 0.8852 0.6161 yes 1
+
+nafld1 QRF-CIR 0.8900 0.6270 yes 2nafld1 QRF-CHR 0.9007 0.6338 yes 3nafld1 PATH 0.9095 0.6377 yes 4nafld1 MLP-CTI 0.9007 0.6427 yes 5nafld1 MLP-CHR 0.9035 0.6538 yes 6nafld1 LightGBM-CQR 0.8975 0.6607 yes 7nafld1 MLP-SplitConformal 0.9091 0.6626 yes 8nafld1 XGBoost-CQR 0.9075 0.6641 yes 9nafld1 RF-LOFOREST 0.9142 0.6675 yes 10 nafld1 RF-A-LOFOREST 0.9170 0.6689 yes 11 nafld1 CatBoost-SplitConformal 0.9091 0.6690 yes 12 nafld1 RF-A-LOCART 0.9122 0.6698 yes 13 nafld1 CatBoost-CQR 0.9055 0.6699 yes 14 nafld1 RF-SplitConformal 0.9019 0.6707 yes 15 nafld1 RF-TreeQuantile-CQR 0.9035 0.6711 yes 16 nafld1 MLP-CIR+ 0.9134 0.6720 yes 17 nafld1 RF-LOCART 0.9162 0.6733 yes 18 nafld1 QRF-CQR 0.8956 0.6748 yes 19 nafld1 MLP-CIR 0.9142 0.6766 yes 20 nafld1 QRF-CTI 0.9098 0.6768 yes 21 nafld1 LightGBM-SplitConformal 0.9067 0.6938 yes 22 nafld1 XGBoost-SplitConformal 0.9003 0.6985 yes 23 nafld1 MLP-CQR 0.9019 0.7034 yes 24 nafld1 MLP-R2CCP 0.9106 0.7407 yes 25 pol PATH 0.9303 0.0041 yes 1
+
+pol MLP-CIR+ 0.9060 0.0304 yes 2pol MLP-CIR 0.9087 0.0312 yes 3pol MLP-R2CCP 0.8953 0.0337 yes 4Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank pol QRF-CIR+ 0.8930 0.0399 yes 5pol QRF-CIR 0.8953 0.0410 yes 6pol MLP-CTI 0.8967 0.0800 yes 7pol MLP-CHR 0.9033 0.0836 yes 8pol MLP-SplitConformal 0.8940 0.0988 yes 9pol LightGBM-SplitConformal 0.8917 0.1290 yes 10 pol XGBoost-SplitConformal 0.8973 0.1375 yes 11 pol CatBoost-SplitConformal 0.8907 0.1668 yes 12 pol QRF-CQR 0.9973 0.2038 yes 13 pol CatBoost-CQR 0.8863 0.2186 yes 14 pol RF-SplitConformal 0.8960 0.2591 yes 15 pol RF-TreeQuantile-CQR 0.9983 0.2793 yes 16 pol RF-A-LOFOREST 0.9303 0.3079 yes 17 pol RF-A-LOCART 0.9143 0.3087 yes 18 pol RF-LOCART 0.9027 0.3943 yes 19 pol RF-LOFOREST 0.9120 0.3953 yes 20 pol MLP-CQR 0.9103 0.4353 yes 21 pol LightGBM-CQR 0.9167 0.6626 yes 22 pol QRF-CHR 0.9957 0.7015 yes 23 pol XGBoost-CQR 0.8973 0.9305 yes 24 pol QRF-CTI 1.0000 1.0000 yes 25 rainfall_bangladesh QRF-CTI 0.9042 0.1581 yes 1
+
+rainfall_bangladesh PATH 0.9161 0.1584 yes 2rainfall_bangladesh XGBoost-CQR 0.9114 0.1593 yes 3rainfall_bangladesh MLP-R2CCP 0.9027 0.1630 yes 4rainfall_bangladesh LightGBM-CQR 0.9164 0.1803 yes 5rainfall_bangladesh QRF-CIR 0.9212 0.1803 yes 6rainfall_bangladesh QRF-CIR+ 0.9215 0.1809 yes 7rainfall_bangladesh XGBoost-SplitConformal 0.9087 0.1836 yes 8rainfall_bangladesh QRF-CHR 0.9176 0.1846 yes 9rainfall_bangladesh QRF-CQR 0.9269 0.1882 yes 10 rainfall_bangladesh CatBoost-CQR 0.9132 0.1894 yes 11 rainfall_bangladesh RF-A-LOCART 0.9206 0.2082 yes 12 rainfall_bangladesh RF-A-LOFOREST 0.9212 0.2119 yes 13 rainfall_bangladesh RF-SplitConformal 0.9090 0.2123 yes 14 rainfall_bangladesh LightGBM-SplitConformal 0.9090 0.2126 yes 15 rainfall_bangladesh RF-LOFOREST 0.9218 0.2163 yes 16 rainfall_bangladesh CatBoost-SplitConformal 0.8979 0.2178 yes 17 rainfall_bangladesh RF-TreeQuantile-CQR 0.9621 0.2178 yes 18 rainfall_bangladesh RF-LOCART 0.9209 0.2194 yes 19 rainfall_bangladesh MLP-SplitConformal 0.9078 0.2738 yes 20 rainfall_bangladesh MLP-CIR+ 0.9138 0.2761 yes 21 rainfall_bangladesh MLP-CHR 0.9161 0.2801 yes 22 rainfall_bangladesh MLP-CIR 0.9200 0.2833 yes 23 rainfall_bangladesh MLP-CTI 0.9147 0.2949 yes 24 rainfall_bangladesh MLP-CQR 0.9111 0.3397 yes 25 sarcos MLP-R2CCP 0.9007 0.0357 yes 1
+
+sarcos PATH 0.9157 0.0383 yes 2sarcos XGBoost-SplitConformal 0.9036 0.0414 yes 3sarcos LightGBM-SplitConformal 0.8988 0.0424 yes 4sarcos MLP-SplitConformal 0.8966 0.0434 yes 5sarcos CatBoost-SplitConformal 0.9031 0.0503 yes 6sarcos CatBoost-CQR 0.8997 0.0525 yes 7sarcos XGBoost-CQR 0.9104 0.0545 yes 8sarcos RF-SplitConformal 0.9039 0.0548 yes 9sarcos LightGBM-CQR 0.9050 0.0562 yes 10 sarcos MLP-CQR 0.8900 0.0587 yes 11 sarcos MLP-CIR+ 0.8894 0.0588 yes 12 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank sarcos MLP-CIR 0.8917 0.0602 yes 13 sarcos MLP-CHR 0.8966 0.0614 yes 14 sarcos MLP-CTI 0.8959 0.0617 yes 15 sarcos QRF-CIR+ 0.9045 0.0718 yes 16 sarcos QRF-CIR 0.9058 0.0718 yes 17 sarcos QRF-CHR 0.9060 0.0732 yes 18 sarcos RF-TreeQuantile-CQR 0.9101 0.0733 yes 19 sarcos QRF-CQR 0.9059 0.0767 yes 20 sarcos QRF-CTI 0.9031 0.0788 yes 21 sarcos RF-A-LOCART 0.8983 0.0956 yes 22 sarcos RF-A-LOFOREST 0.9069 0.0959 yes 23 sarcos RF-LOFOREST 0.9061 0.0960 yes 24 sarcos RF-LOCART 0.8997 0.0964 yes 25 seoul_bike_sharing_demand PATH 0.9081 0.1422 yes 1
+
+seoul_bike_sharing_demand LightGBM-CQR 0.8990 0.1547 yes 2seoul_bike_sharing_demand XGBoost-CQR 0.8933 0.1665 yes 3seoul_bike_sharing_demand LightGBM-SplitConformal 0.8916 0.1679 yes 4seoul_bike_sharing_demand XGBoost-SplitConformal 0.8864 0.1700 yes 5seoul_bike_sharing_demand MLP-R2CCP 0.8927 0.1819 yes 6seoul_bike_sharing_demand CatBoost-CQR 0.8910 0.1853 yes 7seoul_bike_sharing_demand CatBoost-SplitConformal 0.9024 0.1908 yes 8seoul_bike_sharing_demand QRF-CTI 0.9047 0.2085 yes 9seoul_bike_sharing_demand RF-SplitConformal 0.8944 0.2196 yes 10 seoul_bike_sharing_demand QRF-CHR 0.9081 0.2296 yes 11 seoul_bike_sharing_demand QRF-CIR+ 0.9144 0.2337 yes 12 seoul_bike_sharing_demand QRF-CIR 0.9172 0.2353 yes 13 seoul_bike_sharing_demand QRF-CQR 0.9013 0.2828 yes 14 seoul_bike_sharing_demand MLP-SplitConformal 0.9087 0.2960 yes 15 seoul_bike_sharing_demand MLP-CTI 0.9144 0.2973 yes 16 seoul_bike_sharing_demand MLP-CHR 0.9081 0.3180 yes 17 seoul_bike_sharing_demand MLP-CIR+ 0.8995 0.3183 yes 18 seoul_bike_sharing_demand RF-A-LOFOREST 0.9081 0.3217 yes 19 seoul_bike_sharing_demand MLP-CQR 0.9024 0.3232 yes 20 seoul_bike_sharing_demand RF-A-LOCART 0.9007 0.3240 yes 21 seoul_bike_sharing_demand RF-TreeQuantile-CQR 0.9053 0.3246 yes 22 seoul_bike_sharing_demand RF-LOCART 0.8898 0.3260 yes 23 seoul_bike_sharing_demand RF-LOFOREST 0.8955 0.3264 yes 24 seoul_bike_sharing_demand MLP-CIR 0.9092 0.3295 yes 25 seoul_bike_sharing_demand_cat LightGBM-SplitConformal 0.8881 0.1040 yes 1
+
+seoul_bike_sharing_demand_cat PATH 0.9053 0.1059 yes 2seoul_bike_sharing_demand_cat XGBoost-SplitConformal 0.8893 0.1070 yes 3seoul_bike_sharing_demand_cat CatBoost-SplitConformal 0.8944 0.1339 yes 4seoul_bike_sharing_demand_cat MLP-R2CCP 0.9075 0.1440 yes 5seoul_bike_sharing_demand_cat LightGBM-CQR 0.9001 0.1484 yes 6seoul_bike_sharing_demand_cat XGBoost-CQR 0.8927 0.1554 yes 7seoul_bike_sharing_demand_cat CatBoost-CQR 0.8893 0.1767 yes 8seoul_bike_sharing_demand_cat RF-SplitConformal 0.8893 0.1954 yes 9seoul_bike_sharing_demand_cat QRF-CTI 0.9144 0.2084 yes 10 seoul_bike_sharing_demand_cat QRF-CHR 0.8961 0.2297 yes 11 seoul_bike_sharing_demand_cat QRF-CIR+ 0.9104 0.2370 yes 12 seoul_bike_sharing_demand_cat QRF-CIR 0.9132 0.2373 yes 13 seoul_bike_sharing_demand_cat RF-TreeQuantile-CQR 0.9035 0.2514 yes 14 seoul_bike_sharing_demand_cat QRF-CQR 0.8927 0.2815 yes 15 seoul_bike_sharing_demand_cat MLP-SplitConformal 0.9013 0.2937 yes 16 seoul_bike_sharing_demand_cat MLP-CTI 0.9155 0.3064 yes 17 seoul_bike_sharing_demand_cat RF-A-LOFOREST 0.9092 0.3213 yes 18 seoul_bike_sharing_demand_cat RF-A-LOCART 0.9024 0.3243 yes 19 seoul_bike_sharing_demand_cat RF-LOFOREST 0.8961 0.3265 yes 20 Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank seoul_bike_sharing_demand_cat RF-LOCART 0.8944 0.3265 yes 21 seoul_bike_sharing_demand_cat MLP-CQR 0.9018 0.3287 yes 22 seoul_bike_sharing_demand_cat MLP-CHR 0.9058 0.3292 yes 23 seoul_bike_sharing_demand_cat MLP-CIR 0.9058 0.3416 yes 24 seoul_bike_sharing_demand_cat MLP-CIR+ 0.9030 0.3430 yes 25 socmob MLP-CTI 0.9138 0.0668 yes 1
+
+socmob CatBoost-CQR 0.9267 0.0785 yes 2socmob XGBoost-CQR 0.9095 0.0796 yes 3socmob LightGBM-CQR 0.9181 0.0800 yes 4socmob QRF-CTI 0.9310 0.0824 yes 5socmob XGBoost-SplitConformal 0.9267 0.0849 yes 6socmob MLP-CHR 0.9181 0.0962 yes 7socmob MLP-CIR+ 0.9224 0.0989 yes 8socmob MLP-CIR 0.9310 0.0991 yes 9socmob QRF-CHR 0.9224 0.1003 yes 10 socmob LightGBM-SplitConformal 0.9267 0.1006 yes 11 socmob QRF-CIR+ 0.9224 0.1027 yes 12 socmob QRF-CIR 0.9181 0.1027 yes 13 socmob CatBoost-SplitConformal 0.9353 0.1032 yes 14 socmob MLP-CQR 0.9267 0.1107 yes 15 socmob RF-TreeQuantile-CQR 0.9397 0.1112 yes 16 socmob QRF-CQR 0.9397 0.1238 yes 17 socmob MLP-SplitConformal 0.9138 0.1397 yes 18 socmob RF-SplitConformal 0.9310 0.1409 yes 19 socmob RF-A-LOCART 0.9353 0.2789 yes 20 socmob RF-A-LOFOREST 0.9353 0.2789 yes 21 socmob RF-LOCART 0.9353 0.2789 yes 22 socmob RF-LOFOREST 0.9353 0.2789 yes 23 socmob PATH 0.8836 0.0586 no 24 socmob MLP-R2CCP 0.6681 0.0662 no 25 stock_fardamento02 QRF-CTI 0.9291 0.0124 yes 1
+
+stock_fardamento02 MLP-CTI 0.9156 0.0134 yes 2stock_fardamento02 MLP-R2CCP 0.9220 0.0137 yes 3stock_fardamento02 QRF-CIR+ 0.8925 0.0149 yes 4stock_fardamento02 QRF-CIR 0.9021 0.0154 yes 5stock_fardamento02 XGBoost-CQR 0.9084 0.0157 yes 6stock_fardamento02 CatBoost-CQR 0.8901 0.0167 yes 7stock_fardamento02 QRF-CHR 0.9084 0.0169 yes 8stock_fardamento02 PATH 0.9156 0.0174 yes 9stock_fardamento02 CatBoost-SplitConformal 0.9092 0.0183 yes 10 stock_fardamento02 XGBoost-SplitConformal 0.9084 0.0183 yes 11 stock_fardamento02 MLP-CIR+ 0.9092 0.0183 yes 12 stock_fardamento02 MLP-CIR 0.9140 0.0185 yes 13 stock_fardamento02 MLP-CHR 0.9037 0.0187 yes 14 stock_fardamento02 MLP-SplitConformal 0.9140 0.0219 yes 15 stock_fardamento02 RF-A-LOCART 0.9212 0.0223 yes 16 stock_fardamento02 LightGBM-SplitConformal 0.9124 0.0228 yes 17 stock_fardamento02 RF-SplitConformal 0.9140 0.0234 yes 18 stock_fardamento02 RF-TreeQuantile-CQR 0.9562 0.0240 yes 19 stock_fardamento02 QRF-CQR 0.9506 0.0242 yes 20 stock_fardamento02 LightGBM-CQR 0.8997 0.0249 yes 21 stock_fardamento02 MLP-CQR 0.9013 0.0260 yes 22 stock_fardamento02 RF-A-LOFOREST 0.9156 0.0270 yes 23 stock_fardamento02 RF-LOCART 0.9188 0.0270 yes 24 stock_fardamento02 RF-LOFOREST 0.9268 0.0303 yes 25 video_transcoding PATH 0.9083 0.0113 yes 1
+
+video_transcoding LightGBM-SplitConformal 0.9032 0.0152 yes 2Continued on next page Table F.1: Per-dataset records, continued. Dataset Method cov len/rng valid rank video_transcoding MLP-R2CCP 0.8953 0.0176 yes 3video_transcoding XGBoost-SplitConformal 0.8995 0.0183 yes 4video_transcoding CatBoost-SplitConformal 0.9006 0.0206 yes 5video_transcoding QRF-CTI 0.8993 0.0212 yes 6video_transcoding MLP-SplitConformal 0.8974 0.0223 yes 7video_transcoding CatBoost-CQR 0.8953 0.0275 yes 8video_transcoding LightGBM-CQR 0.8969 0.0277 yes 9video_transcoding XGBoost-CQR 0.8976 0.0277 yes 10 video_transcoding QRF-CIR+ 0.8919 0.0296 yes 11 video_transcoding QRF-CHR 0.8997 0.0296 yes 12 video_transcoding QRF-CIR 0.8972 0.0299 yes 13 video_transcoding QRF-CQR 0.9041 0.0338 yes 14 video_transcoding MLP-CTI 0.9032 0.0402 yes 15 video_transcoding RF-SplitConformal 0.8956 0.0404 yes 16 video_transcoding RF-LOCART 0.9026 0.0431 yes 17 video_transcoding RF-LOFOREST 0.9266 0.0438 yes 18 video_transcoding RF-A-LOFOREST 0.9178 0.0461 yes 19 video_transcoding RF-A-LOCART 0.9040 0.0462 yes 20 video_transcoding MLP-CHR 0.8979 0.0509 yes 21 video_transcoding MLP-CIR 0.9278 0.0565 yes 22 video_transcoding MLP-CIR+ 0.9287 0.0566 yes 23 video_transcoding RF-TreeQuantile-CQR 0.9006 0.0680 yes 24 video_transcoding MLP-CQR 0.8976 0.0873 yes 25 visualizing_galaxy PATH 0.9077 0.1691 yes 1
+
+visualizing_galaxy LightGBM-SplitConformal 0.9385 0.1776 yes 2visualizing_galaxy RF-SplitConformal 0.9385 0.1971 yes 3visualizing_galaxy MLP-R2CCP 0.9846 0.2038 yes 4visualizing_galaxy LightGBM-CQR 0.9692 0.2195 yes 5visualizing_galaxy CatBoost-SplitConformal 1.0000 0.2218 yes 6visualizing_galaxy XGBoost-SplitConformal 0.9692 0.2246 yes 7visualizing_galaxy XGBoost-CQR 0.9846 0.2317 yes 8visualizing_galaxy CatBoost-CQR 0.9846 0.2395 yes 9visualizing_galaxy RF-TreeQuantile-CQR 1.0000 0.2425 yes 10 visualizing_galaxy QRF-CTI 0.9846 0.5161 yes 11 visualizing_galaxy QRF-CIR 0.9385 0.5248 yes 12 visualizing_galaxy QRF-CHR 0.9538 0.5277 yes 13 visualizing_galaxy QRF-CIR+ 0.9692 0.5355 yes 14 visualizing_galaxy QRF-CQR 0.9692 0.5428 yes 15 visualizing_galaxy MLP-CTI 0.9231 0.7688 yes 16 visualizing_galaxy MLP-CQR 0.9538 2.7363 yes 17 visualizing_galaxy MLP-SplitConformal 0.9231 7.5879 yes 18 visualizing_galaxy RF-A-LOCART 0.8769 0.8714 no 19 visualizing_galaxy RF-A-LOFOREST 0.8769 0.8714 no 20 visualizing_galaxy RF-LOCART 0.8769 0.8714 no 21 visualizing_galaxy RF-LOFOREST 0.8769 0.8714 no 22 visualizing_galaxy MLP-CHR 0.8615 0.5405 no 23 visualizing_galaxy MLP-CIR 0.8000 0.4644 no 24 visualizing_galaxy MLP-CIR+ 0.7846 0.4621 no 25 
+
+Table F.1 shows that PATH is valid on 51/56 datasets and ranks first on 15 datasets in the representative split, the largest win count in that comparison. Its wins span datasets with markedly different target scales, sample sizes, and feature structures. The remaining rows identify the settings where QRF-CTI and other strong baselines are competitive. These records confirm that the aggregate advantage is distributed across heterogeneous regression tasks rather than driven by a small set of datasets.

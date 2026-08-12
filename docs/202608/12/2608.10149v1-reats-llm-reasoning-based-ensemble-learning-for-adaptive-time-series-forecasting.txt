@@ -1,0 +1,1577 @@
+Title: REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting
+
+URL Source: https://arxiv.org/pdf/2608.10149v1
+
+Published Time: Wed, 12 Aug 2026 00:16:31 GMT
+
+Number of Pages: 29
+
+Markdown Content:
+# REATS: LLM R EASONING -BASED ENSEMBLE LEARNING FOR 
+
+# ADAPTIVE TIME SERIES FORECASTING 
+
+Xu Zhang ∗
+
+Fudan University Shanghai, China 
+
+xuzhang@alu.fudan.edu.cn 
+
+Chang Xu †
+
+Microsoft Research Beijing, China 
+
+chanx@microsoft.com 
+
+Hui Sun 
+
+Nankai University Tianjin, China 
+
+sunh@nbjl.nankai.edu.cn 
+
+Nan Ma 
+
+Microsoft Research Cambridge, USA 
+
+nama1@microsoft.com 
+
+Zijian Zhang 
+
+Jilin University Jilin, China 
+
+zhangzijian@jlu.edu.cn 
+
+Peng Wang 
+
+Fudan University Shanghai, China 
+
+pengwang5@fudan.edu.cn 
+
+Wei Wang 
+
+Fudan University Shanghai, China 
+
+weiwang1@fudan.edu.cn 
+
+Li Zhao †
+
+Microsoft Research Beijing, China 
+
+lizo@microsoft.com 
+
+ABSTRACT 
+
+Recent advances in time series forecasting (TSF) have led to the development of numerous powerful models, each characterized by distinct design principles and strengths in capturing temporal dynamics. However, due to the diversity of real-world time series, relying on a single model often makes it diffi-cult to effectively handle the complexity patterns exhibited by different samples. Ensemble learning offers a promising solution by combining the complementary strengths of multiple forecasting models. However, existing methods rely on fixed rules or black-box models based solely on numerical inputs, failing to leverage LLM reasoning to improve ensemble effectiveness or explain weighting decisions. In this paper, we propose REATS, which leverages LLM reasoning capabilities as an intelligent ensemble router that jointly processes textual temporal pattern descriptions and numerical features to produce interpretable, sample-adaptive ensemble weights through chain-of-thought reasoning. To enable effective LLM-based ensembling, we study its key design choices and propose: (i) a structured input pipeline that transforms raw time series into hybrid textual numerical representations with fixed token cost regardless of input length, facilitating LLM reasoning and enabling rule-based chain-of-thought construction without API dependency, augmented with retrieved similar-sample priors; (ii) a diverse multi-row weight supervision scheme to enrich training signals, coupled with a token-efficient percentage-table format that reduces numerical complexity and mitigates LLM hallucinations; and (iii) a two-stage fine-tuning framework combining SFT for structured reasoning acquisition and GRPO with a reciprocal reward mapping that transforms the continuous unbounded reward range into bounded signals with amplified near-oracle sensitivity, addressing the uniform sensitivity and outlier-dominated advantage compression in mixed-quality rollout groups inherent in naive reward designs for regression-based GRPO. Experiments on eight benchmarks demonstrate that REATS outperforms competitive ensemble baselines on foundation model and small model candidate groups respectively, while providing natural language explanations for its decisions and demonstrating strong transfer learning capability and out-of-domain generalization to unseen candidate models. 
+
+> ∗
+
+Work done by Xu Zhang during his research internship at Microsoft Research Asia. 
+
+> †
+
+Corresponding authors: Chang Xu and Li Zhao. arXiv:2608.10149v1 [cs.LG] 10 Aug 2026 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting 
+
+1 Introduction 
+
+Time series forecasting has wide applications in fields such as energy management [1], financial analysis [2], and transportation planning [3]. In recent years, a large number of deep learning-based forecasting models have been proposed, including methods based on different architectures such as Transformers [2], linear models [4, 5], and convolutional networks [6]. Different models are designed with distinct approaches to address various characteristics of time series. Intuitively, no single model can consistently achieve optimal performance across all datasets and forecasting scenarios. However, essentially, they all attempt to use a single modeling strategy to handle all samples, which limits the forecasting performance. Fortunately, ensemble learning can adequately address this issue to further improve the forecasting accuracy, with its core challenge being how to dynamically assign appropriate model weights for different time series samples. Traditional ensemble methods typically adopt fixed weights or static strategies based on validation errors [7, 8], making it difficult to adapt to the complex and dynamic temporal patterns in time series data. Some studies attempt to train small neural networks to achieve dynamic weight allocation [9], but such approaches can only utilize numerical inputs without leveraging textual semantic understanding, limiting the expressiveness of their ensemble decisions. Moreover, they need to be retrained when the candidate models change, resulting in limited flexibility. Table 1 summarizes the key differences among existing ensemble paradigms and our proposed LLM-based approach. Table 1: Design-property comparison of ensemble-routing paradigms for time series forecasting. Check marks indicate whether the method explicitly supports the property by design.                 
+
+> Method Multimodal input Sample-adaptive Unseen model generalization Human-readable reasoning
+> Static ensemble ✗✗✗✗
+> NN-based ensemble ✗✓✗✗
+> LLM ensemble (REATS) ✓✓✓✓
+
+The rapid development of Large Language Models (LLMs) provides a new perspective for addressing these limitations. Compared with existing ensemble approaches, LLMs offer three key advantages for time series ensembling: (1) 
+
+Multimodal information fusion : LLMs can integrate textual descriptions of temporal patterns (such as trends, seasonality, and volatility) with numerical data for comprehensive reasoning, unlike neural networks limited to numerical inputs. (2) Flexible scalability : by modifying model descriptions in the prompts, candidate models can be flexibly adjusted without retraining. (3) Inherent interpretability : LLMs can generate natural language explanations clarifying why certain models are more suitable for the given temporal characteristics, facilitating human-in-the-loop collaboration. However, applying LLMs to time series ensemble learning poses three key challenges: (1) raw time series incur token costs that scale linearly with length, requiring a fixed-budget representation that preserves temporal semantics; (2) constructing scalable and informative supervision is challenging: relying on LLM API calls to generate CoT for massive samples is prohibitively expensive and demands a scalable alternative, while a single optimal weight vector provides limited supervision diversity and less informative training signal feedback; and (3) typical GRPO applications [10] employ verifiable binary or bounded rewards (e.g., correct/incorrect), which are inadequate for continuous MSE-based optimization, where the naive mapping r= − δ provides uniform sensitivity that struggles to discriminate near-optimal candidates, and its unbounded range allows a single outlier generation to dominate group variance, compressing the reward gaps among the remaining good candidates. Crucially, this compression persists in GRPO’s advantage normalization: since the outlier inflates the group standard deviation σr, the relative spacing among near-optimal candidates collapses, requiring a nonlinear bounded mapping that reshapes the within-group reward geometry. Based on the above insights, we propose REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting. Our contributions are as follows: • We propose an ensemble learning framework, REATS, that leverages the reasoning capabilities of LLMs for TSF, and study the key techniques that make this paradigm effective: how to represent time series for an LLM router, how to construct reasoning and weight supervision at scale, and how to adapt GRPO to a continuous forecasting objective. The framework includes a systematic sample construction pipeline (e.g., retrieval-augmented prior knowledge, diverse weight supervision, and token-efficient weight table format) and a two-stage fine-tuning process, achieving strong performance in both accuracy and interpretability. • We design a hybrid textual–numerical input representation with fixed token cost that activates semantic reasoning and enables rule-based CoT construction without API dependency. The rule-based CoT significantly enhances both in-domain and out-of-domain ensemble performance, demonstrating that expensive API-generated CoT is not always 2REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting necessary for effective LLM fine-tuning. Besides, the designed multi-row weight supervision enriches fine-tuning signals during SFT and GRPO stages. • We design a reciprocal reward mapping function that adapts GRPO to continuous regression tasks by addressing two limitations of the naive r= − δ: uniform sensitivity that struggles to discriminate near-optimal candidates, and unbounded range that allows outlier-dominated advantage compression in mixed-quality rollout groups. The resulting bounded, nonlinear mapping enables effective late-stage policy refinement. This reward-level solution outperforms several recent GRPO algorithmic variants that target reward sparsity through optimization modifications. • Experiments on eight benchmarks show that REATS consistently surpasses the competitive baselines while demon-strating robust OOD generalization and enhanced transfer learning. 
+
+2 Related work 
+
+We focus our discussion on ensemble learning for time series forecasting, as it is most relevant to our work. Acomprehensive review of individual forecasting models is provided in Appendix A.1. Recent ensemble learning research has increasingly focused on NLP and LLM-centered scenarios [11, 12], e.g., multiple LLM-generated textual responses are ranked or fused to improve generation quality [13]. Such text-oriented ensemble mechanisms are difficult to directly apply to time series forecasting, where candidate models output continuous numerical trajectories rather than natural language responses. For numerical forecasting models, ensemble learning still largely relies on traditional strategies. The first is traditional machine learning-based methods , which adopt fixed or static weighting strategies based on training or validation performance [14, 7, 8], such as inverse-error weighting or uniform averaging. These methods are simple and efficient but lack adaptability to varying input patterns. The second is neural network based methods , which employ neural networks to extract temporal features and leverage reinforcement learning algorithms to learn ensemble weights through forecasting-oriented reward signals [9], offering dynamic adaptability to input-specific patterns. However, despite the demonstrated reasoning capabilities of LLMs in various domains, their potential for ensemble learning in time series forecasting has yet to be fully investigated, leaving considerable room for integrating powerful reasoning abilities into adaptive model combination. 
+
+3 LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting 
+
+3.1 Problem definition 
+
+Given a univariate historical time series X = [ x1, x 2, . . . , x T ] and forecast horizon H, a set of N candidate base forecasting models M = {M1, M 2, . . . , M N } each produces a prediction ˆYi = Mi(X) = [ˆ yiT +1 , . . . , ˆyiT +H ]. The final ensemble prediction is obtained by: 
+
+ˆY =
+
+> N
+
+X
+
+> i=1
+
+wi · ˆYi, s.t. 
+
+> N
+
+X
+
+> i=1
+
+wi = 1 , w i ≥ 0 (1) where w = [ w1, w 2, . . . , w N ] denotes the ensemble weights. Our goal is to fine-tune an LLM that, given a structured prompt constructed from temporal pattern features, retrieved similar series, and candidate model descriptions, can produce ensemble weights through explicit chain-of-thought reasoning to minimize the forecasting error. 
+
+3.2 Overview 
+
+Figure 1 illustrates the overall framework of REATS, which consists of four design components: (1) Structured Input Construction transforms raw time series into hybrid textual–numerical descriptions augmented with retrieved similar-sample priors. (2) Supervision Signal Enhancement constructs chain-of-thought reasoning and diverse weight supervision. (3) Token-Efficient Weight Representation formats weights as integer percentage tables. (4) Two-Stage Fine-Tuning performs SFT for structured reasoning, followed by GRPO with a reciprocal reward mapping that extends it to unbounded regression task for direct forecasting optimization. Components (1)–(3) are detailed in Section 3.3 and component (4) in Section 3.4. 
+
+3.3 Structured LLM finetuning data construction 
+
+Figure 2 illustrates the overall data construction pipeline, covering input construction (feature extraction and retrieval augmentation) and output construction (CoT reasoning, diverse weights, and weight table format). 3REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting 
+
+Figure 1: Overall framework of REATS. 
+
+Hybrid textual–numerical feature extraction. How to effectively represent time series for LLM-based reasoning is a key design choice. Directly tokenizing raw values as text causes token counts to grow linearly with series length (e.g., 1656 →7480 from length 96 to 512) and increases hallucination risk, while encoding series through a separate MLP projector sacrifices interpretability and OOD generalization (Table 10). We transform raw time series into structured textual–numerical descriptions rather than feeding high-precision numerical sequences directly into LLMs. Given a historical time series X, we extract eight groups of temporal pattern features Φ( X) = {ϕsta , ϕ noise , ϕ trend , ϕ sea , ϕ ac , ϕ stat ,ϕout , ϕ dist }, covering stationarity, noise, trend, seasonality, autocorrelation, statistical properties, IQR-based outliers, and distribution (details in Appendix Table 13). Each feature group uses a two-level structure: an outer group header (e.g., “[trend]”) followed by inner key-value pairs (e.g., “Trend slope: -0.00454”, “Trend strength: Strong”), preserving numerical information while providing semantic interpretations. All values are rounded to three significant figures to reduce token consumption. Our hybrid representation addresses both issues: (1) the token count is fixed regardless of input length, activating the LLM’s textual reasoning to improve ensemble effectiveness; (2) the structured format supports rule-based CoT construction, where each feature group serves as an explicit reasoning anchor, achieving comparable quality to GPT-generated CoT without API dependency (Table 6(a)). 
+
+Retrieval-augmented prior knowledge construction. We construct a knowledge pool P = {(Xj , wj )}|P|  
+
+> j=1
+
+from training set samples only, where wj ∈ RN stores the optimal ensemble weights. Given a query series X, we retrieve the top-K most similar samples (excluding the query itself during training to prevent label leakage): 
+
+R(X) = arg min -K
+
+> j∈P
+
+∥X − Xj ∥2 (2) The retrieved samples provide a reference weight distribution ¯w = 1
+
+> K
+
+P 
+
+> j∈R
+
+wj and are averaged at the raw series level into a single prototype, which is then converted into the same hybrid representation as the query. This aggregation avoids K-fold token expansion while capturing representative temporal patterns of the local neighborhood. The retrieved prior knowledge grounds the LLM’s reasoning in empirical model performance, strengthening its reasoning quality and improving ensemble accuracy. 
+
+Chain-of-Thought reasoning construction. We construct CoT supervision signals following a four-step format: (1) identify dominant temporal features; (2) analyze each candidate model’s suitability; (3) interpret retrieved similar-sample weights; (4) justify the final weight allocation. The CoT is wrapped in <think>...</think> followed by ensemble weights, forming a “reason-then-decide” output. Note that Rule-CoT is constructed only during training-time data preparation using training set oracle weights. At inference time, the fine-tuned LLM autonomously generates its own CoT reasoning and weights from input features alone, without access to any oracle information. Instead of relying on expensive GPT API calls to generate CoT, we propose a lightweight rule-based generation approach that achieves comparable quality without API dependency (validated in Table 6(a)). The process follows: known oracle weights 
+
+→ reverse-engineer plausible explanations via rule-matching between temporal features and tool category (candidate model) strengths → generate natural language through template variants. The overview is given in Algorithm 1, and the detailed version with category-specific rule examples is provided in Appendix Algorithm 2. A complete generated CoT example is shown in Appendix A.8 “Model output” Part. 
+
+Diverse ensemble weight construction. We first derive the optimal (oracle) weight vector w∗ by minimizing ensemble MSE = w⊤Gw (where Gij = 1
+
+> T
+
+P 
+
+> t
+
+ei,t ej,t ) subject to P 
+
+> i
+
+wi = 1 and wi ≥ 0. Without the non-negativity constraint, 4REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting 
+
+Algorithm 1: Rule-Based Chain-of-Thought Generation (Detailed in the Appendix Algorithm 2) 
+
+Input: Temporal features Φ( X), candidate models M (termed tools in the prompt) with model category labels, oracle weights w∗, RAG reference Φ( Xrag ), wrag 
+
+Output: CoT text  
+
+> 1
+
+¯w ← average of K′ oracle weight rows; 
+
+// Step 1: Key patterns  
+
+> 2
+
+s1 ← template phrases for each parsed attribute of Φ( X);
+
+// Step 2: Oracle-guided tool matching  
+
+> 3
+
+foreach tool ti sorted by ¯wi descending do  
+
+> 4
+
+Match tool category against temporal attributes via rules;  
+
+> 5
+
+Select fit-level template guided by ¯wi: high ( >0.35) / mid ( >0.15) / low;  
+
+> 6
+
+end  
+
+> 7
+
+s2 ← join tool-match sentences; 
+
+// Step 3: RAG reference comparison  
+
+> 8
+
+s3 ← template noting agreement/divergence between ¯w and wrag ;
+
+// Step 4: Allocation conclusion  
+
+> 9
+
+s4 ← conclusion template naming dominant/moderate/minor tools;  
+
+> 10
+
+return s1 ⊕ s2 ⊕ s3 ⊕ s4;
+
+Figure 2: Structured LLM fine-tuning data construction pipeline. the closed-form solution is: 
+
+w∗ = G−111⊤G−11 (3) The full derivation is shown in Appendix A.6. In practice, we solve the full simplex-constrained quadratic program 
+
+w∗ = arg min w≥0, 1⊤w=1 w⊤(G + ϵI)w to obtain the exact non-negative oracle weights. To avoid overfitting to a single supervision target, we further generate 9 diverse weight vectors via Dirichlet sampling and multi-objective greedy selection, combined with the oracle (placed as the first row) to form K′=10 rows per sample (Appendix A.7). The diverse rows serve as training-time auxiliary tasks. (1) During SFT, producing multiple valid allocations forces the CoT to capture broader temporal pattern understanding rather than memorizing a single solution. (2) During GRPO, they provide additional reward signals that mitigate reward sparsity and encourage diverse exploration in weight space. 
+
+Token-efficient weight representation. We represent weights as integer percentages formatted as a compact comma-separated table, e.g., CARD,SEMixer,TimeXer,LSINet (header) / 35,25,20,20 (row 1) / 30,30,15,25 (row 2). This reduces numerical hallucination and lowers token consumption (empirically validated in Table 3(b) and (c)). 
+
+3.4 Two-Stage Fine-Tuning with SFT and GRPO 
+
+We adopt a two-stage strategy to train a lightweight LLM (1.7B parameters): supervised fine-tuning (SFT) for structured reasoning imitation, followed by Group Relative Policy Optimization (GRPO) to directly optimize forecasting MSE. 
+
+Stage 1: Supervised Fine-Tuning. We fine-tune the LLM using next-token prediction on the constructed dataset. Each sample pairs an input prompt Q with a target output: a CoT block in <think>...</think> tags followed by a 
+
+K′-row weight table. SFT teaches the model to (1) follow the “reason-then-decide” format, (2) produce pattern-aware 5REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting reasoning, and (3) learn coarse weight allocations by imitating the oracle weight distribution. However, token-level loss does not directly optimize downstream MSE, leaving the weights suboptimal. 
+
+Stage 2: Group Relative Policy Optimization. We further fine-tune using GRPO [10] with a composite reward. For each prompt, the policy generates G candidate outputs, each parsed into K′ weight rows. The reward consists of: 
+
+Relative MSE Reward. Let L(w) denote the ensemble forecasting MSE under weight w, and δi = L(wi) − L (w∗ 
+
+> i
+
+) be the MSE gap between the i-th predicted row and its oracle. 
+
+Oracle Proximity Reward. Computes weight-space MSE between predicted and oracle vectors, serving as auxiliary gradient when MSE signals are sparse. 
+
+Format Penalty. A negative penalty activated only upon format violations (negative weights or sum ̸ = 100%). Standard GRPO applications (e.g., math, code) use binary or bounded rewards (correct/wrong) that naturally provide well-separated signals for advantage computation. However, our task produces a continuous MSE gap δ ≥ 0 as the raw signal. The most direct adaptation, r = −δ, is unbounded: a single outlier generation with large δ inflates the group standard deviation σr , causing the normalized advantages ˆAi=( ri−μr )/σ r among near-optimal candidates to collapse to near-identical values, preventing GRPO from distinguishing better from best. These issues require a dedicated reward mapping (Section 4.3). While recent GRPO variants (e.g., DAPO [15], DrGRPO [16], GSPO [17], SAPO [18]) attempt to mitigate reward sparsity through modifications to the policy optimization procedure (e.g., reward normalization, sample filtering, and soft advantage computation), they do not address the reward signal itself and thus remain limited when the underlying reward is continuous and unbounded (see Section 4.3). We adopt a reciprocal mapping r = 1 /(1 + kδ ), which compresses δ into [0 , 1] while concentrating sensitivity near the oracle: in early training it distinguishes “poor” from “worse” (avoiding reward collapse when all generations are far from oracle), and in later training it distinguishes “good” from “better” (avoiding saturation when generations converge near the oracle). Crucially, because the reciprocal is a nonlinear bounded transformation, it reshapes the relative spacing of rewards within a group, compressing outlier gaps while amplifying near-oracle differences in mixed-quality rollout groups, and this geometric change in relative reward positions is preserved after advantage normalization 
+
+ˆAi=( ri−μr )/σ r, unlike a simple linear rescaling which would be canceled. Detailed discussions and comparisons with alternative mappings are in Section 4.3 and Appendix A.5.1–A.5.4. The overall reward is: 
+
+r = λ1 · rmse + λ2 · ragg + λ3 · roracle + pformat (4) where rmse = 1
+
+> K′
+
+PK′  
+
+> i=1 11+ k·δi
+
+, roracle = 1
+
+> K′
+
+PK′   
+
+> i=1 11+ k·MSE (wi,w∗
+> i)
+
+, and ragg = 11+ k·MSE( P    
+
+> j¯wjˆyj,y)
+
+with ¯w =
+
+> 1
+> K′
+
+P 
+
+> i
+
+wi.This two-stage design is complementary: SFT provides a strong initialization with structured reasoning, format compliance, and coarse ensemble weights, while GRPO further refines the weight allocation by directly optimizing forecasting accuracy through MSE reward-driven exploration beyond the imitation targets. 
+
+4 Experiments and results 
+
+4.1 Experimental settings Datasets and metrics. We evaluate on eight benchmarks [19, 20, 5]: ETTh1/h2, ETTm1/m2, Exchange, Weather, Electricity, and Traffic, covering energy, finance, meteorology, and transportation domains. All experiments are conducted on standard univariate time series forecasting, and both input and prediction length are 96, with train/val/test split ratio of 7:1:2. We report MSE and MAE. Dataset statistics are summarized in Appendix Table 7. 
+
+Candidate model pool for ensemble. We construct a diverse pool of forecasting models spanning two categories: (1) 
+
+Small specialized models : TimeXer [21], LSINet [5], CARD [22], TimeMixer [23], ModernTCN [24], SEMixer [19], DLinear [25], PDF [26], PatchTST [20], and MLF [2]; (2) Foundation models : MOMENT [27], Sundial [28], Timer [29], TIME-MOE [30], TimesFM [31], MOIRAI [32], TimerXL [33] and Chronos [34]. These models also serve as individual baselines. The corresponding pre-trained weight sources are provided in Appendix A.3. 
+
+Ensemble baselines. We compare against four categories of ensemble methods: (1) Heuristic : uniform averaging and random weighting; (2) Error-based : inverse MSE weighting and optimal fixed weighting (OptW), where OptW is obtained by solving the same non-negative simplex-constrained quadratic program used for REATS oracle construction. The subscripts tr/val indicate whether the fixed weights are estimated on the training or validation set and then applied to all test samples; (3) Neural network-based : RLMC [9], which follows its original setup using raw historical series while 6REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting sharing the same data splits, candidate forecasts, and oracle supervision as REATS; (4) Prompt-based : LLM zero-shot ensemble without fine-tuning (GPT-5.2/5.5, Codex, DeepSeek-V3.2, Grok-4), using the same prompt components (temporal features, tool descriptions, and RAG references) and reason-then-decide output format as REATS for fair comparison. Additionally, to validate our reward mapping design, we compare against four recent GRPO algorithmic variants (DAPO [15], DrGRPO [16], GSPO [17], SAPO [18]) that address reward sparsity through optimization-level modifications (Section 4.3). 
+
+Implementation details. We use Qwen3-1.7B as the base LLM. Retrieval uses K=3 similar samples, with K′=10 
+
+weight rows per sample (1 oracle + 9 diverse). Default ensemble size is 4 candidates (scalability to 2/6/8 also evaluated). For the reciprocal reward mapping, we set k=20 (chosen to jointly ensure non-vanishing far-range rewards and strong near-oracle discrimination; see Appendix A.5.1), (λ1, λ 2, λ 3)=(0 .8, 0, 0.2) , and format penalty −0.5. At inference, only the first output row is used as the final ensemble weights, since it is trained against the QP oracle and receives the strongest optimization pressure. Training is on NVIDIA A100 GPUs. All oracle weights used for SFT supervision and GRPO reward computation are derived from training set ground truth only. 
+
+4.2 Comparison of ensemble forecasting performance Foundation model candidates. As shown in Table 2(a), no single foundation model dominates across all datasets, confirming the necessity of ensemble learning. Zero-shot LLM ensembles (e.g., Codex: 0.1594) perform comparably to the best traditional baselines (OptW val : 0.1597). REATS-GRPO achieves the lowest average MSE of 0.1384 , reducing error by 13.3% over OptW val and winning on all eight datasets. The consistent SFT →GRPO gain (0.1455 →0.1384) confirms that MSE-based reward effectively refines weights beyond imitation learning. 
+
+Small model candidates. Table 2(b) presents a more challenging setting where individual models exhibit extreme variance (e.g., TimeXer avg MSE 1.6664), causing naive averaging (0.3173) to underperform the best single model. Notably, zero-shot LLM ensembles (best: Codex at 0.1709) fall behind traditional baselines (OptW tr : 0.1352), indicating that without fine-tuning, LLMs struggle to handle highly heterogeneous candidates. REATS-GRPO achieves 
+
+0.1080 , reducing error by 20.1% over OptW tr , demonstrating that fine-tuned LLM reasoning can effectively identify complementary strengths even among weak and unreliable models. 
+
+Statistical significance. REATS-GRPO achieves the lowest average MSE in both model groups, with per-dataset win rates statistically significant under the sign test ( p< 0.05 ). 
+
+Generalization to unseen candidate models. We train REATS on small model candidates and evaluate on unseen foundation models (Table 3). In OOD settings, the RAG knowledge pool and candidate descriptions are reconstructed for the new candidate models using their training-set predictions, without access to test labels. REATS-GRPO achieves 
+
+0.1442 , outperforming the best traditional baseline (OptW val : 0.1564) by 7.8% and the best zero-shot LLM (DeepSeek-V3.2: 0.1626) by 11.3%. REATS also consistently achieves the best overall performance across additional OOD settings reported in the appendix, including generalization to mixed candidates from both small and foundation model pools (Table 12) and within-group generalization in small-to-unseen-small and foundation-to-unseen-foundation settings (Table 16). These results suggest that REATS learns transferable reasoning about temporal characteristics rather than memorizing specific model identities. 
+
+Generalization to different numbers of candidate models. We evaluate REATS with N=2, 4, 6, and 8 foundation model candidates. As shown in Figure 3, REATS generally achieves the lowest average MSE across all settings, with the advantage tending to increase as more candidates are available. 
+
+4.3 Discussion of GRPO reward mapping Comparison of bounded mapping functions. We compare four reward mapping functions, including three bounded mappings (reciprocal r = 1 /(1 + kδ ), exponential r = exp( −kδ ), and linear r = max(0 , 1 − kδ )) along with the naive unbounded baseline r = −δ, and analyze them from both empirical and theoretical perspectives. Since GRPO generates diverse candidates within each group, the reward mapping must provide adequate signal across the full δ range to avoid gradient vanishing. Under this constraint, the reciprocal mapping (with polynomial decay) maintains effective sensitivity across a wide range while also achieving strong discrimination when δ is small (i.e., when the predicted weights are close to optimal), making it well-suited for GRPO optimization, as shown in Figure 5(a). Crucially, since 
+
+r= − δ is unbounded, a single outlier generation with large δ inflates the group standard deviation σr, compressing the normalized advantages ˆAi=( ri−μr )/σ r among near-optimal candidates to near-identical values. The reciprocal mapping addresses this through two mechanisms. (1) Boundedness , where outlier rewards are compressed near zero, limiting the influence of any single generation on σr. (2) Nonlinear curvature , where it reshapes the relative spacing 7REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting Table 2: Ensemble forecasting results (MSE ↓). Dataset abbreviations: Exch=Exchange, H1/H2=ETTh1/ETTh2, M1/M2=ETTm1/ETTm2, Wea=Weather, Elec=Electricity, Traf=Traffic. The MAE results are shown in appendix Table 14. 
+
+(a) Foundation Model Candidates 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+MOIRAI .1675 .2161 .2413 .1273 .3164 .0269 .5908 .1489 .2294 MOMENT .3037 .1966 .2765 .1124 .1707 .5683 .7635 .9884 .4225 TimeMoE .2359 .1768 .1996 .0997 .1416 .0752 .3902 .0831 .1753 TimesFM .1845 .1712 .2212 .1112 .2862 .0039 .4770 .0864 .1927 
+
+Traditional Ensemble 
+
+Ens avg .1932 .1624 .2077 .0944 .1771 .0766 .4593 .1508 .1902 Ens rand .1990 .1680 .2132 .0979 .1875 .0939 .4786 .1857 .2030 InvMSE tr .1831 .1621 .2061 .0940 .1605 .0560 .4383 .0831 .1729 InvMSE val .1915 .1621 .2062 .0940 .1602 .0082 .4379 .0825 .1678 NN RLM C .1864 .1617 .2047 .0915 .1615 .0032 .3900 .0821 .1602 OptW tr .1703 .1613 .1988 .0929 .1429 .0433 .3932 .0821 .1606 OptW val .1967 .1618 .2013 .0928 .1429 .0069 .3930 .0823 .1597 
+
+LLM-based Ensemble 
+
+GPT-5.2 .1617 .1491 .1936 .0874 .1579 .0237 .4095 .0942 .1596 Codex .1605 .1471 .1924 .0860 .1490 .0424 .4064 .0914 .1594 GPT-5.5 .1650 .1529 .1973 .0890 .1644 .0745 .4191 .1036 .1707 DS-V3.2 .1535 .1448 .1919 .0852 .1506 .0392 .4086 .1084 .1603 Grok-4 .1681 .1521 .1986 .0897 .1626 .0836 .4337 .1143 .1753 
+
+REATS (Ours) 
+
+REATS-SFT .1466 .1403 .1864 .0831 .1381 .0050 .3839 .0806 .1455 
+
+REATS-GRPO .1368 .1336 .1763 .0806 .1320 .0030 .3688 .0760 .1384 
+
+(b) Small Model Candidates 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+CARD .1690 .1647 .1944 .0979 .1147 .4372 .4442 .0667 .2111 LSINet .5319 .1558 .1839 .0815 .0839 1.2352 .2607 2.1674 .5875 PDF .6344 .1515 .1825 .0748 .0729 .8325 .1472 2.1738 .5337 TimeXer 1.4382 1.9124 1.9351 1.8879 1.9464 .4429 1.6963 2.0720 1.6664 
+
+Traditional Ensemble 
+
+Ens avg .3146 .2420 .2730 .1753 .1892 .1926 .3168 .8353 .3173 Ens rand .3918 .3127 .3439 .2476 .2636 .3026 .3813 .9927 .4045 InvMSE tr .1879 .1517 .1810 .0781 .0783 .2081 .1757 .0750 .1420 InvMSE val .3064 .1591 .2058 .0866 .0783 .1932 .1869 .0733 .1612 RLMC .3875 .1572 .3029 .0970 .0838 .1666 .1549 .0666 .1771 OptW tr .1561 .1549 .1795 .0753 .0740 .2072 .1486 .0859 .1352 OptW val .2629 .1599 .1911 .0928 .0733 .1928 .1540 .0858 .1516 
+
+LLM-based Ensemble 
+
+GPT-5.2 .2497 .1857 .2112 .1103 .1140 .1130 .2127 .2889 .1857 Codex .2397 .1724 .2014 .0994 .1059 .1240 .2016 .2231 .1709 GPT-5.5 .2574 .1904 .2155 .1150 .1182 .1378 .2255 .3821 .2052 DS-V3.2 .2435 .1708 .2008 .1050 .1077 .1168 .1943 .2439 .1729 Grok-4 .2617 .1862 .2191 .1164 .1253 .1809 .2232 .4550 .2210 
+
+REATS (Ours) 
+
+REATS-SFT .1888 .1492 .1769 .0785 .0792 .0424 .1605 .0925 .1210 
+
+REATS-GRPO .1587 .1409 .1700 .0725 .0720 .0206 .1476 .0819 .1080 
+
+Table 3: Left: Trained on small model candidates from Table 2(b), evaluated on 4 unseen foundation models (mapping in Appendix Table 11). Right: Ablation study on small model candidates. Default REATS uses CoT + RAG + integer percentage table. ID = in-distribution, OOD = out-of-distribution. MAE results are in appendix Table 15. Other OOD results with similar conclusions are in Table 16. 
+
+(a) OOD to Foundation Models (MSE ↓)
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+Model 1 .3037 .1966 .2765 .1124 .1707 .5683 .7635 .9884 .4225 Model 2 .2359 .1742 .2022 .0987 .1229 .4397 .3740 .0893 .2171 Model 3 .1845 .1712 .2212 .1112 .1416 .0752 .5569 .1800 .2052 Model 4 .1675 .2161 .2413 .1273 .3164 .0039 .5908 .0831 .2183 
+
+Traditional Ensemble 
+
+Ens avg .1930 .1618 .2090 .0946 .1391 .1670 .4765 .1725 .2017 Ens rand .1994 .1674 .2141 .0981 .1489 .1837 .4957 .2056 .2141 InvMSE tr .1831 .1615 .2076 .0943 .1290 .1083 .4485 .0906 .1779 InvMSE val .1915 .1615 .2079 .0943 .1291 .0072 .4481 .0896 .1662 RLMC .1697 .1619 .2106 .0902 .1228 .2903 .3740 .0795 .1874 OptW tr .1703 .1608 .2013 .0930 .1182 .0761 .3797 .0839 .1604 OptW val .1967 .1619 .2067 .0927 .1184 .0109 .3797 .0842 .1564 
+
+LLM-based Ensemble 
+
+GPT-5.2 .1656 .1486 .1965 .0881 .1152 .0771 .4158 .1122 .1649 Codex .1598 .1453 .1952 .0862 .1126 .0973 .4157 .1013 .1642 GPT-5.5 .1710 .1546 .2035 .0912 .1260 .1157 .4356 .1259 .1779 DeepSeek-V3.2 .1587 .1449 .1940 .0860 .1080 .1047 .4032 .1011 .1626 Grok-4 .1734 .1531 .2021 .0897 .1258 .1641 .4438 .1353 .1859 
+
+REATS (Ours) 
+
+REATS-GRPO .1388 .1350 .1821 .0854 .1043 .0062 .3613 .1409 .1442 
+
+(b) Component & Format Ablation (MSE ↓)
+
+Cat. Variant Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+> CoT
+
+REATS-SFT (ID) .1888 .1492 .1769 .0785 .0792 .0424 .1605 .0925 .1210 
+
+w/o CoT (ID) .2415 .1587 .1886 .0833 .0839 .0447 .1582 .0929 .1315 REATS-SFT (OOD) .1881 .2125 .3408 .1051 .1705 .0653 .2001 .0924 .1719 
+
+w/o CoT (OOD) .2412 .2639 .3689 .2070 .7563 .0292 .1809 .0926 .2675 
+
+> RAG
+
+REATS-SFT (ID) .1888 .1492 .1769 .0785 .0792 .0424 .1605 .0925 .1210 
+
+w/o RAG (ID) .2388 .1532 .1815 .0790 .0792 .1464 .1629 .0935 .1418 REATS-SFT (OOD) .1881 .2125 .3408 .1051 .1705 .0653 .2001 .0924 .1719 
+
+w/o RAG (OOD) .3499 .2378 .7690 .3823 .3524 .1413 .4445 .0990 .3470 
+
+> Weight Fmt
+
+REATS-SFT (ID) .1888 .1492 .1769 .0785 .0792 .0424 .1605 .0925 .1210 
+
+Decimal (ID) .2182 .1511 .1776 .0769 .0779 .0429 .1597 .0931 .1247 Dict (ID) .2060 .1487 .1775 .0781 .0786 .0567 .1613 .0933 .1250 Array (ID) .2236 .1500 .1788 .0779 .0785 .0309 .1575 .0926 .1237 REATS-SFT (OOD) .1881 .2125 .3408 .1051 .1705 .0653 .2001 .0924 .1719 Decimal (OOD) .1950 .2164 .3043 .1034 .1682 .0720 .2069 .0979 .1705 
+
+Dict (OOD) .1905 .2223 .3293 .1165 .1481 .0737 .2105 .0947 .1732 Array (OOD) .2797 .1966 .3595 .2233 .2627 .0511 .2061 .0925 .2089 
+
+(c) Token Efficiency & Inference Speed (s/sample) 
+
+Format Example Row Tokens vs Table Infer vs Table 
+
+Table 40,30,20,10 103 — 1.10 —Array [40, 30, 20, 10],..., 132 +28% 1.21 +10% Decimal 0.40,0.30,0.20,0.10,..., 182 +77% 1.42 +29% Dict {"CARD":40, "LSINet":30,..., 292 +183% 2.05 +86% of rewards within a group, and this geometric change in relative positions is preserved after advantage normalization (unlike a linear rescaling, which would be canceled). Details on selecting the recommended k are provided in Appendix A.5.1. Appendix A.5.2 analyzes reward sensitivity, including why dR/ dδ serves as a reliable sensitivity measure. Appendix A.5.3 provides theoretical proofs that the reciprocal mapping maintains adequate sensitivity across a wide δ range. Figure 5(b)(c) confirms that the reciprocal mapping consistently achieves the lowest MSE across both datasets, while the naive r= − δ performs comparably to or worse than the bounded alternatives. Beyond the uniform sensitivity visible in (a), the unbounded range of r= − δ
+
+also allows outlier generations with large δ to dominate group variance σr , compressing normalized advantages among near-optimal candidates in mixed-quality rollout groups (detailed analysis in Appendix A.5.4). 
+
+Comparison with GRPO variants. 
+
+8REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting Reward signal sparsity is a recognized challenge in GRPO, and several recent variants (DAPO [15], DrGRPO [16], GSPO [17], and SAPO [18]) address it through optimization-level modifications, such as reward normalization, sample filtering, and soft advantage computation. To compare reward-level and optimization-level solutions, we evaluate standard GRPO equipped with our reciprocal mapping against these variants, each using the shared naive reward 
+
+r= − δ. As shown in Figure 5(d), standard GRPO with our reciprocal mapping consistently outperforms the evaluated optimization-level variants, suggesting that when rewards are continuous and unbounded, directly improving the reward signal quality is also a promising direction worth exploring (full results in Appendix Table 8). 
+
+Figure 3: Scalability to different numbers of candidate models. N=4 results correspond to Table 2(a). Full results for other N values are in Appendix Table 18 (MSE) and Table 19 (MAE). Table 4: Effectiveness of the diverse weight table, where K′
+
+denotes the number of weight rows. Exch H1 H2 M1 M2 Wea Elec Traf Avg         
+
+> K′=1 .1753 .1410 .1785 .0740 .0739 .0745 .1491 .0855 .1190
+> K′=10 .1587 .1409 .1700 .0725 .0720 .0206 .1476 .0819 .1080
+
+Figure 4: Transfer learning comparison (zero-shot model group, MSE ↓). Each source dataset (X-axis) is used for training, and the average MSE across the other 7 target datasets (Y-axis) is re-ported. Baselines are the best method from each category. 
+
+Figure 5: Reward mapping analysis. (a) Raw reward sensitivity |dr/dδ | of four mappings. (b)(c) Empirical MSE on Exchange and Electricity under different reward mappings. (d) Comparison with recent GRPO variants (all using naive 
+
+r= − δ). Full results in Appendix Table 8. 
+
+4.4 Ablation study 
+
+We ablate three design choices in REATS-SFT using the small model candidates (Table 3(b)). 
+
+Chain-of-Thought (CoT). CoT activates the LLM’s reasoning capability by requiring it to explicitly analyze temporal patterns and candidate model suitability before deciding weights (“reason-then-decide”). On ID data, CoT improves over direct prediction (MSE: 0.1210 vs. 0.1315, +8.7%). On OOD data, reasoning becomes more critical: without CoT, MSE degrades from 0.1719 to 0.2675 (+55.6%). This is because when facing unseen candidates, the model must reason about input series characteristics, retrieved references, and each candidate’s design properties . Without CoT, the model can only rely on memorized input-weight mappings that fail to generalize to unseen candidates. 
+
+Retrieval-Augmented Generation (RAG). RAG retrieves historically similar forecasting cases as reference anchors for weight allocation. Removing RAG degrades both ID and OOD performance, with particularly large OOD degradation, suggesting that retrieved examples help the model ground its reasoning in unfamiliar scenarios. 
+
+Weight output format. We compare four formats: integer percentage table, decimal, dictionary, and array. The integer table achieves the best ID accuracy (0.1210 vs. 0.1247 for decimal) and near-best OOD accuracy (0.1719 vs. 0.1705 for decimal), while being the most token-efficient (103 vs. 292 tokens for Dict) and fastest at inference (1.10 vs. 2.05 9REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting Table 5: RAG top-k analysis (MSE ↓, small model group). Exch H1 H2 M1 M2 Wea Elec Traf Avg             
+
+> k=25 .2132 .1508 .1805 .0780 .0791 .0535 .1612 .0935 .1262
+> k=3 .1888 .1492 .1769 .0785 .0792 .0424 .1605 .0925 .1210
+
+Figure 6: GRPO reward coefficient sensitivity across datasets. G1–G6 correspond to (λ1, λ 2, λ 3) = (0.8,0,0.2), (0.5,0,0.5), (0,0.8,0.2), (0.3,0.3,0.4), (1,0,0), (0,1,0). Table 6: Further analysis on CoT (MSE ↓). The settings are same in Table 2. 
+
+(a) Rule-CoT vs GPT-CoT on SFT.                          
+
+> Group Method Exch H1 H2 M1 M2 Wea Elec Traf Avg
+> Small GPT-CoT .2152 .1591 .1822 .0793 .0815 .0294 .1589 .1025 .1260 Rule-CoT .1888 .1492 .1769 .0785 .0792 .0424 .1605 .0925 .1210
+> TSFM GPT-CoT .1486 .1406 .1866 .0828 .1359 .0045 .3851 .0805 .1456 Rule-CoT .1466 .1403 .1864 .0831 .1381 .0050 .3839 .0806 .1455
+
+(b) Effectiveness of CoT on GRPO                 
+
+> Group Method Exch H1 H2 M1 M2 Wea Elec Traf Avg
+> Small w/o CoT .1936 .1424 .1704 .0725 .0735 .0359 .1491 .0835 .1151 w/ CoT .1587 .1409 .1700 .0725 .0720 .0206 .1476 .0819 .1080
+
+s/sample). Considering the combined advantage in accuracy, efficiency, and parsing simplicity, integer table is our default format, as shown in Table 3(b). 
+
+Number of supervision weight rows K′. Table 4 ablates the diverse weight table during GRPO. Reducing K′ from 10 to 1 (oracle row only) raises the average MSE from 0.1080 to 0.1190 (+10.2%), degrading on all eight datasets. The reason is that rmse = 1
+
+> K′
+
+P 
+
+> i
+
+1/(1+ kδ i) evaluates each rollout on K′ allocations rather than one, which mitigates reward sparsity and yields better-separated rewards within a rollout group. Moreover, the K′ rows form a neighborhood in weight space, where the first row targets the oracle weights w∗ and the remaining K′−1 rows spread over diverse near-optimal allocations. The reward therefore reflects the quality of a whole region of the weight simplex, and the gradient indicates which direction around the oracle is preferable, giving GRPO a richer learning signal than a single-row comparison. 
+
+Input representation. We compare three input formats: hybrid textual–numerical (ours), raw time series as text, and raw series via MLP encoder (Table 10). Across all input-representation variants, we keep the model backbone, CoT, and weight supervision, and training configuration unchanged, modifying only the input representation. On ID data, textual–numerical and the MLP encoder achieve comparable best accuracy, both outperforming raw-TS text. On OOD data, textual–numerical generalizes best, as textual descriptions activate the LLM’s semantic reasoning rather than relying on position-dependent numerical patterns. Additionally, textual–numerical uses a fixed token budget (1085 tokens) regardless of input length, while raw-TS scales linearly (e.g., 1656 →7480 from length 96 to 512, Table 9). Crucially, only the structured textual format enables rule-based CoT construction (Section 3.3), which is key to enhance ensemble performance. 
+
+4.5 Discussion on hyperparameters Number of neighbors in Retrieval-Augmented Generation (RAG). We compare k=3 and k=25 retrieved neighbors in Table 5. The smaller k=3 achieves lower average MSE (0.1210 vs. 0.1262), suggesting that a few highly similar reference cases provide more precise anchoring than many less-relevant ones, which may introduce noise into the reasoning process. 
+
+GRPO reward coefficients. We compare six configurations in Figure 6. Key findings: (1) Per-row rmse evaluates each of the K′ weight rows independently, providing implicit reward augmentation with finer-grained feedback, while ragg 
+
+aggregates all rows before computing a single reward. G5 (pure rmse ) achieves lower MSE than G6 (pure ragg ) across all datasets, confirming per-row evaluation is more effective. (2) roracle helps stabilize early training on small datasets (Exchange: G1 outperforms G5), but on larger datasets (Electricity, Weather), pure rmse (G5) yields the best results without conflicting objectives. Excessive oracle weight (G2) consistently hurts. (3) Combining all three (G4) degrades performance by inheriting the less effective ragg and the limiting roracle . Our default G1 ( λ1=0 .8, λ 3=0 .2) balances MSE optimization with oracle guidance across varying dataset sizes. 
+
+4.6 Discussion on CoT Rule CoT VS LLM CoT. Both Rule-CoT and GPT-CoT are constructed using the same temporal features, candidate-model information, RAG references, and explicitly provided oracle weights. They differ only in how the reasoning text is generated. As shown in Table 6(a), Rule-CoT outperforms GPT-CoT on 6/8 datasets in the small group (avg 0.1210 vs. 0.1260) and achieves near-identical results in the TSFM group (0.1455 vs. 0.1456). Rule-CoT produces structurally 10 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting consistent reasoning that is easier for SFT to learn, whereas GPT-CoT may introduce hallucinated or inconsistent analysis across similar inputs. Given comparable or better performance at zero API cost, we adopt Rule-CoT as default. 
+
+Impact of CoT on GRPO. Table 6(b) shows that CoT improves GRPO across all 8 datasets, reducing average MSE from 0.1151 to 0.1080 (6.2% relative gain). CoT forces the model to produce explicit reasoning before outputting weights; during GRPO sampling, different reasoning paths (e.g., emphasizing trend vs. seasonality) naturally lead to diverse weight assignments, enriching exploration and yielding richer reward signals. Without CoT, the model directly generates weight vectors that lack diversity, resulting in sparse reward variance. 
+
+Interpretability and GRPO reasoning improvement. A key advantage of REATS over traditional ensemble methods is its inherent interpretability: the model generates structured chain-of-thought reasoning (series pattern analysis →
+
+tool-to-pattern matching → RAG reference → allocation conclusion) before producing weights, enabling users to understand why specific tools receive higher allocations. Furthermore, GRPO improves not only ensemble accuracy but also reasoning quality: on the Weather dataset, SFT defaults to PDF (periodicity-based) for an autocorrelation-dominated series, while GRPO correctly identifies CARD (attention-based) as the primary tool with new reasoning paths, aligning with oracle weights. A detailed case study is provided in Appendix A.9. 
+
+4.7 Transfer learning comparison 
+
+To evaluate cross-dataset transferability, we train REATS on a single source dataset and test on the remaining 7 target datasets. As shown in Figure 4 (zero-shot model group), REATS-SFT generally achieves the lowest average MSE across source datasets. Traditional baselines rely solely on numerical inputs (raw forecasts and statistics), making their learned weight mappings tightly coupled to source-domain patterns and prone to overfitting. REATS, in contrast, combines textual descriptions of temporal features with numerical inputs and leverages the LLM’s unique CoT reasoning capability, which provides a more transferable representation: the text-based reasoning generalizes across datasets because it operates on semantic-level temporal characteristics (e.g., trend strength, seasonality type) rather than dataset-specific numerical distributions. Results on the small model group show a similar trend (Appendix Figure 7). 
+
+4.8 Efficiency analysis 
+
+Compared to general-purpose LLMs such as GPT, Grok, and DeepSeek, REATS uses a 1.7B model that can be fully fine-tuned and deployed on a single lightweight GPU. To further reduce costs, we replace LLM-generated CoT with rule-based CoT, which significantly lowers dataset construction and training overhead without sacrificing accuracy (Table 6(a)). The integer percentage weight table additionally reduces token consumption and inference latency (Table 3(c)). While REATS is not as fast as traditional ensemble methods, it leverages LLM reasoning to achieve higher ensemble learning accuracy and interpretability, offering a favorable trade-off between efficiency and performance. 
+
+5 Conclusion 
+
+We presented REATS, a framework that repurposes LLM reasoning for ensemble learning and TSF, with a study of the key techniques this paradigm requires, spanning input representation, scalable CoT and weight supervision, output format, and reward design. By proposing hybrid textual–numerical inputs, chain-of-thought reasoning, and a two-stage SFT-to-GRPO fine-tuning pipeline, REATS enables a lightweight 1.7B LLM to produce sample-adaptive, interpretable ensemble weights that generally outperform both traditional and zero-shot LLM ensemble baselines across the evaluated settings. Key empirical findings include: (1) GRPO with reciprocal reward mapping effectively refines weights beyond SFT imitation, and outperforms recent GRPO algorithmic variants in the continuous unbounded reward setting, with multi-row diverse weight supervision providing a denser reward signal that is complementary to the mapping; (2) rule-based CoT achieves comparable or better performance than API-generated CoT at zero cost, and is critical for OOD generalization, enabling the model to reason about unseen candidates rather than relying on memorized patterns; and (3) LLM-based semantic reasoning enables superior transfer learning across datasets compared to numerical-only baselines. 
+
+References 
+
+[1] Niko Uremovi´ c, Marko Bizjak, Primož Sukiˇ c, Gorazd Štumberger, Borut Žalik, and Niko Lukaˇ c. A new framework for multivariate time series forecasting in energy management system. IEEE Transactions on Smart Grid , 14(4):2934–2947, 2022. 11 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting [2] Xu Zhang, Zhengang Huang, Yunzhi Wu, Xun Lu, Erpeng Qi, Yunkai Chen, Zhongya Xue, Qitong Wang, Peng Wang, and Wei Wang. Multi-period learning for financial time series forecasting. In Proceedings of the 31st ACM SIGKDD Conference on Knowledge Discovery and Data Mining V. 1 , pages 2848–2859, 2025. [3] Martin Wachs. Forecasts in urban transportation planning: Uses, methods, and dilemmas. Climatic Change ,11(1):61–80, 1987. [4] Yuntong Liu, Chunna Zhao, and Yaqun Huang. A combined model for multivariate time series forecasting based on mlp-feedforward attention-lstm. IEEE Access , 10:88644–88654, 2022. [5] Xu Zhang, Qitong Wang, Peng Wang, and Wei Wang. A lightweight sparse interaction network for time series forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, pages 13304–13312, 2025. [6] Yuzhen Zhu, Shaojie Luo, Di Huang, Weiyan Zheng, Fang Su, and Beiping Hou. Drcnn: decomposing residual convolutional neural networks for time series forecasting. Scientific Reports , 13(1):15901, 2023. [7] Shikun Chen and Nguyen Manh Luc. Rrmse voting regressor: A weighting function based improvement to ensemble regression. arXiv preprint arXiv:2207.04837 , 2022. [8] Susan Gruber, Roger W Logan, Inmaculada Jarrín, Susana Monge, and Miguel A Hernán. Ensemble learning of inverse probability weights for marginal structural modeling in large observational datasets. Statistics in medicine ,34(1):106–117, 2015. [9] Yuwei Fu, Di Wu, and Benoit Boulet. Reinforcement learning based dynamic model combination for time series forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 36, pages 6639–6647, 2022. [10] Zhihong Shao, Peiyi Wang, Qihao Zhu, Runxin Xu, Junxiao Song, Xiao Bi, Haowei Zhang, Mingchuan Zhang, YK Li, Yang Wu, et al. Deepseekmath: Pushing the limits of mathematical reasoning in open language models. 
+
+arXiv preprint arXiv:2402.03300 , 2024. [11] Bo Lv, Nayu Liu, Chen Tang, Xin Liu, Yue Yu, and Ping Luo. Specfuse: Ensembling large language models via next-segment prediction. arXiv preprint arXiv:2412.07380 , 2024. [12] Heecheol Yun, Kwangmin Ki, Junghyun Lee, and Eunho Yang. When to ensemble: Identifying token-level points for stable and fast llm ensembling. arXiv preprint arXiv:2510.15346 , 2025. [13] Dongfu Jiang, Xiang Ren, and Bill Yuchen Lin. Llm-blender: Ensembling large language models with pairwise ranking and generative fusion. In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers) , pages 14165–14178, 2023. [14] Dimitris Bertsimas and Leonard Boussioux. Ensemble modeling for time series forecasting: an adaptive robust optimization approach. arXiv preprint arXiv:2304.04308 , 2023. [15] Qiying Yu, Zheng Zhang, Ruofei Zhu, Yufeng Yuan, Xiaochen Zuo, Yu Yue, Weinan Dai, Tiantian Fan, Gaohong Liu, Lingjun Liu, et al. Dapo: An open-source llm reinforcement learning system at scale. Advances in Neural Information Processing Systems , 38:113222–113244, 2026. [16] Zichen Liu, Changyu Chen, Wenjun Li, Penghui Qi, Tianyu Pang, Chao Du, Wee Sun Lee, and Min Lin. Understanding r1-zero-like training: A critical perspective. In Second Conference on Language Modeling .[17] Chujie Zheng, Shixuan Liu, Mingze Li, Xiong-Hui Chen, Bowen Yu, Chang Gao, Kai Dang, Yuqiong Liu, Rui Men, An Yang, et al. Group sequence policy optimization. arXiv preprint arXiv:2507.18071 , 2025. [18] Chang Gao, Chujie Zheng, Xiong-Hui Chen, Kai Dang, Shixuan Liu, Bowen Yu, An Yang, Shuai Bai, Jingren Zhou, and Junyang Lin. Soft adaptive policy optimization. arXiv preprint arXiv:2511.20347 , 2025. [19] Xu Zhang, Qitong Wang, Peng Wang, and Wei Wang. Semixer: Semantics enhanced mlp-mixer for multiscale mixing and long-term time series forecasting. In Proceedings of the ACM Web Conference 2026 , pages 5636–5647, 2026. [20] Yuqi Nie, Nam H Nguyen, Phanwadee Sinthong, and Jayant Kalagnanam. A time series is worth 64 words: Long-term forecasting with transformers. arXiv preprint arXiv:2211.14730 , 2022. [21] Yuxuan Wang, Haixu Wu, Jiaxiang Dong, Guo Qin, Haoran Zhang, Yong Liu, Yunzhong Qiu, Jianmin Wang, and Mingsheng Long. Timexer: Empowering transformers for time series forecasting with exogenous variables. In 
+
+The Thirty-eighth Annual Conference on Neural Information Processing Systems .[22] Tian Zhou, Qingsong Wen, Jinyang Gao, Bolin Ding, Rong Jin, et al. Card: Channel aligned robust blend transformer for time series forecasting. In International conference on learning representations , volume 2024, pages 11245–11283, 2024. 12 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting [23] Shiyu Wang, Haixu Wu, Xiaoming Shi, Tengge Hu, Huakun Luo, Lintao Ma, James Y Zhang, and JUN ZHOU. Timemixer: Decomposable multiscale mixing for time series forecasting. In The Twelfth International Conference on Learning Representations , 2024. [24] Donghao Luo and Xue Wang. Moderntcn: A modern pure convolution structure for general time series analysis. In The twelfth international conference on learning representations , pages 1–43, 2024. [25] Ailing Zeng, Muxi Chen, Lei Zhang, and Qiang Xu. Are transformers effective for time series forecasting? In 
+
+Proceedings of the AAAI conference on artificial intelligence , volume 37, pages 11121–11128, 2023. [26] Tao Dai, Beiliang Wu, Peiyuan Liu, Naiqi Li, Jigang Bao, Yong Jiang, and Shu-Tao Xia. Periodicity decoupling framework for long-term series forecasting. In The twelfth international conference on learning representations ,2024. [27] Mononito Goswami, Konrad Szafer, Arjun Choudhry, Yifu Cai, Shuo Li, and Artur Dubrawski. Moment: a family of open time-series foundation models. In Proceedings of the 41st International Conference on Machine Learning ,pages 16115–16152, 2024. [28] Yong Liu, Guo Qin, Zhiyuan Shi, Zhi Chen, Caiyin Yang, Xiangdong Huang, Jianmin Wang, and Mingsheng Long. Sundial: A family of highly capable time series foundation models. arXiv preprint arXiv:2502.00816 ,2025. [29] Yong Liu, Haoran Zhang, Chenyu Li, Xiangdong Huang, Jianmin Wang, and Mingsheng Long. Timer: generative pre-trained transformers are large time series models. In Proceedings of the 41st International Conference on Machine Learning , pages 32369–32399, 2024. [30] Xiaoming Shi, Shiyu Wang, Yuqi Nie, Dianqi Li, Zhou Ye, Qingsong Wen, and Ming Jin. Time-moe: Billion-scale time series foundation models with mixture of experts. In International conference on learning representations ,volume 2025, pages 34635–34667, 2025. [31] Abhimanyu Das, Weihao Kong, Rajat Sen, and Yichen Zhou. A decoder-only foundation model for time-series forecasting. In Forty-first International Conference on Machine Learning , pages 10148–10167. PMLR, 2024. [32] Gerald Woo, Chenghao Liu, Akshat Kumar, Caiming Xiong, Silvio Savarese, and Doyen Sahoo. Unified training of universal time series forecasting transformers. 2024. [33] Yong Liu, Guo Qin, Xiangdong Huang, Jianmin Wang, and Mingsheng Long. Timer-xl: Long-context transformers for unified time series forecasting. arXiv preprint arXiv:2410.04803 , 2024. [34] Abdul Fatir Ansari, Lorenzo Stella, Caner Turkmen, Xiyuan Zhang, Pedro Mercado, Huibin Shen, Oleksandr Shchur, Syama Syndar Rangapuram, Sebastian Pineda Arango, Shubham Kapoor, Jasper Zschiegner, Danielle C. Maddix, Michael W. Mahoney, Kari Torkkola, Andrew Gordon Wilson, Michael Bohlke-Schneider, and Yuyang Wang. Chronos: Learning the language of time series. Transactions on Machine Learning Research , 2024. 13 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting 
+
+A Appendices 
+
+Algorithm 2: Rule-Based Chain-of-Thought Generation (Detailed) 
+
+Input: Temporal features Φ( X), tool set T = {t1, ..., t N } each with category 
+
+ci ∈ { linear, transformer, FFT, decomp., CNN, foundation }, oracle weights w∗ ∈ RK×N , RAG features 
+
+Φ( Xrag ) and weights wrag ∈ RK′×N
+
+Output: Chain-of-thought text CoT  
+
+> 1
+
+¯w ← 1
+
+> K′
+
+PK′ 
+
+> k=1
+
+w∗ 
+
+> k
+
+; // Average oracle weights across K′ rows // Step 1: Summarize key temporal patterns  
+
+> 2
+
+Parse Φ( X) into: trend strength/direction, noise level, ACF value, seasonality (yes/no), stationarity, outliers, distribution type;  
+
+> 3
+
+foreach attribute a do  
+
+> 4
+
+Sample phrase from predefined template pool Pa ; // e.g., (strong, upward) → “pronounced upward drift”  
+
+> 5
+
+end  
+
+> 6
+
+s1 ← “Key patterns: ” + concatenate all sampled phrases; 
+
+// Step 2: Oracle-guided tool-to-pattern matching  
+
+> 7
+
+foreach tool ti in descending order of ¯wi do  
+
+> 8
+
+Retrieve category ci and its strength descriptors; 
+
+// Category-specific rule matching  
+
+> 9
+
+if ci = linear and trend is strong then  
+
+> 10
+
+reason ← “strong trend favors linear decomposition”;  
+
+> 11
+
+else if ci = FFT and seasonality detected then  
+
+> 12
+
+reason ← “FFT decomposition captures periodic structure”;  
+
+> 13
+
+else if ci = transformer and ACF is high then  
+
+> 14
+
+reason ← “attention can exploit autocorrelation structure”;  
+
+> 15
+
+end 
+
+// ... (other category-attribute rules)  
+
+> 16
+
+if ¯wi > 0.35 then  
+
+> 17
+
+sent i ← sample from high-fit templates with reason ; // “{tool} fits best because ...”  
+
+> 18
+
+else if ¯wi > 0.15 then  
+
+> 19
+
+sent i ← sample from mid-fit templates ; // “{tool} adds complementary value via ...”  
+
+> 20
+
+else  
+
+> 21
+
+sent i ← sample from low-fit templates with mismatch reason ; // “{tool} has limited relevance ...”  
+
+> 22
+
+end  
+
+> 23
+
+end  
+
+> 24
+
+s2 ← “Tool match: ” + join all sent i;
+
+// Step 3: Compare with RAG reference  
+
+> 25
+
+¯wrag ← 1
+
+> K
+
+P 
+
+> k
+
+wrag ,k ; 
+
+> 26
+
+tdom ← arg max i ¯wi; trag ← arg max i ¯wrag ,i ; 
+
+> 27
+
+if tdom = trag then  
+
+> 28
+
+s3 ← “consistent with the current allocation direction”;  
+
+> 29
+
+else  
+
+> 30
+
+Compare Φ( X) vs Φ( Xrag ) to identify feature differences;  
+
+> 31
+
+s3 ← “similar-series ensembles lean toward trag , but current series differs in {differences}, shifting preference toward tdom ”;  
+
+> 32
+
+end  
+
+> 33
+
+s3 ← “Reference: ” + s3;
+
+// Step 4: State allocation conclusion  
+
+> 34
+
+dom ← { ti : ¯ wi > 0.35 }; mid ← { ti : 0 .12 < ¯wi ≤ 0.35 }; minor ← rest;  
+
+> 35
+
+s4 ← “Conclusion: ” + sample from conclusion templates naming dom/mid/minor;  
+
+> 36
+
+return CoT = s1 ⊕ s2 ⊕ s3 ⊕ s4;14 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting 
+
+A.1 Related work: Time series forecasting 
+
+In recent years, time series forecasting has shifted from traditional statistical methods to deep learning–based approaches, which can be broadly categorized into Transformer-based models, convolutional networks, and lightweight linear models. Transformers have been widely adopted due to their strong sequence modeling capabilities. Early works directly applied them along the temporal dimension, while later studies introduced task-specific designs. For example, PatchTST [20] segments time series into patches and models channels independently. TimeXer [21] adopts a decoder-only architecture with causal masking to capture temporal dependencies, while CARD [22] focuses on cross-channel correlations via channel-aligned attention. TimeMixer [23] and SEMixer [19] model temporal dynamics across multiple scales via decomposition and mixing strategies. MLF [2] extends this idea by introducing multi-period modeling with adaptive patching and weighted fusion. In addition, efficient alternatives have been explored. ModernTCN [24] uses large-kernel convolutions to model dependencies without attention, while DLinear [25] and LSINet [5] demonstrate that simple linear architectures can achieve competitive performance with high efficiency. Finally, inspired by large language models, time series foundation models learn general temporal representations via large-scale pretraining for cross-task generalization. Encoder-based methods such as MOMENT [27] and MOIRAI [32] adopt masked modeling with patch tokenization to handle diverse and multivariate data, while decoder-based approaches including Timer [29], TimesFM [31], Sundial [28], and TIME-MOE [30] unify forecasting and related tasks under an autoregressive or generative paradigm, incorporating designs such as flexible patching, probabilistic modeling, and mixture-of-experts to improve scalability and generalization. 
+
+A.2 Datasets 
+
+The 8 public datasets used in this paper are extensively used for long-term TSF algorithm evaluation, covering multiple fields including industry (4 ETT datasets), climate (Weather), energy (Electricity), transportation (Traffic), and economy (Exchange). The detailed descriptions are as follows: 1. Electricity dataset 3 collects the electricity consumption (kWh) every 15 minutes of 321 clients from 2012 to 2014. 2. ETT datasets 4 comprises two sub-datasets, ETT1 and ETT2, collected from two separate counties. Each sub-dataset offers two versions with varying sampling resolutions (15 minutes and 1 hour). ETT dataset includes multiple time series of electrical loads and a single time sequence of oil temperature. 3. Weather dataset 5 contains 21 meteorological indicators, such as air temperature, humidity, etc, recorded every 10 minutes for the entirety of 2020. 4. Exchange dataset 6 contains the current exchange of eight countries. 5. Traffic records hourly road occupancy rates measured by 862 sensors of the San Francisco Bay area freeways in 2 years. Table 7: Statistics of the eight benchmark datasets. Time points denotes the total number of observations. Split denotes train/validation/test sizes. Frequency denotes the sampling interval.                             
+
+> Datasets Variable T ime points Split (train/val/test) Frequency ETTh1,ETTh2 717,420 (8545, 2881, 2881) Hourly ETTm1,ETTm2 769,680 (34465, 11521, 11521) 15min Weather 21 52,696 (36792, 5271, 10540) 10min Exchange rate 87,588 (5120, 665, 1422) Daily Electricity 321 26,304 (18317, 2633, 5261) Hourly Traffic 862 17,544 (12185, 1757, 3509) Hourly
+> 3https://archive.ics.uci.edu/dataset/321/electricity
+> 4https://github.com/zhouhaoyi/Informer2020
+> 5https://www.bgc-jena.mpg.de/wetter/
+> 6https://github.com/laiguokun/multivariate-time-series-data
+
+15 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting Table 8: Comparison of GRPO algorithm variants on three datasets (MSE ↓). All variants use the naive reward ( −δ). Visualized in Figure 5(d).                         
+
+> Dataset GRPO with Reward Mapping GRPO DAPO DrGRPO GSPO SAPO
+> Exchange 0.1587 0.1753 0.1714 0.1804 0.1815 0.1712 Electricity 0.1463 0.1503 0.1493 0.1475 0.1493 0.1481 Weather 0.0061 0.0167 0.0386 0.0346 0.0324 0.0452
+
+Table 9: Average token count of the human input across different data representations. 
+
+Representation Input=96 Input=512 
+
+Raw TS (time series as text) 1656 7480 Textual–Num (structured analysis) 1085 1085 
+
+A.3 Forecasting Model Descriptions 
+
+We use two groups of forecasting models as ensemble candidates. All models operate in a univariate setting with input length 96 and prediction length 96. 
+
+A.3.1 Foundation model weight sources 
+
+• MOIRAI : A universal time series forecasting transformer pre-trained on large-scale data with masked token prediction. Weights: Salesforce/moirai-1.1-R-small 7.• MOMENT : A family of foundation models for time series, pre-trained with masked reconstruction on diverse time series corpora. Weights: AutonLab/MOMENT-1-large 8.• TimeMoE : A decoder-only Mixture-of-Experts model for time series, using sparse expert routing for multi-horizon forecasting. Weights: Maple728/TimeMoE-50M 9.• TimesFM : A decoder-only foundation model from Google, pre-trained on 100B real-world time points with patched input tokenization. Weights: google/timesfm-2.5-200m-pytorch 10 .• Timer : A generative pre-trained Transformer for time series with unified next-token prediction across forecasting tasks. Weights: Timer_forecast_1.0.ckpt 11 .• TimerXL : An extended version of Timer with larger model capacity. Weights: TimerXL_forecast.pth 12 .• Sundial : A causal language model for time series that discretizes continuous values via adaptive binning. Weights: thuml/sundial-base-128m 13 .• Chronos : A language modeling framework for time series using quantization-based tokenization, built on T5 architecture. Weights: amazon/chronos-t5-base 14 .16 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting Table 10: Input ablation study (REATS-SFT, MSE ↓). (a) In-distribution evaluation on small model candidates. (b) OOD evaluation: trained on small models, tested on foundation models. Best in bold .
+
+(a) Small Model Candidates (ID)                        
+
+> Method Exch H1 H2 M1 M2 Wea Elec Traf Avg
+> Textual–Num ( Ours ).1888 .1492 .1769 .0785 .0792 .0424 .1605 .0925 .1210
+> Raw TS (text) .1988 .1487 .1787 .0770 .0790 .0475 .1595 .0935 .1228 Raw TS (tsenc) .1968 .1451 .1778 .0756 .0760 .0480 .1562 .0922 .1210
+
+(b) Small → Zeroshot (OOD)                     
+
+> Method Exch H1 H2 M1 M2 Wea Elec Traf Avg
+> Textual–Num .1579 .1442 .1925 .0892 .1165 .0098 .3972 .3640 .1839
+> Raw TS (text) .1583 .1450 .1937 .0894 .1183 .0211 .3967 .3677 .1863 Raw TS (tsenc) .1501 .1448 .1945 .0874 .1118 .0089 .4042 .6306 .2165
+
+Table 11: Model mapping for OOD generalization experiments (Table 3). Model 1–4 are unseen foundation models used for each dataset, with varying candidate sets to cover a broader range of foundation models. Bold indicates models not seen during training. 
+
+Dataset Model 1 Model 2 Model 3 Model 4 Exchange MOMENT TimeMoE TimesFM MOIRAI 
+
+ETTh1 MOMENT Sundial TimesFM MOIRAI 
+
+ETTh2 MOMENT Sundial TimesFM MOIRAI 
+
+ETTm1 MOMENT Sundial TimesFM MOIRAI 
+
+ETTm2 MOMENT Timer TimeMoE MOIRAI 
+
+Weather MOMENT Timer TimeMoE TimesFM 
+
+Electricity MOMENT Sundial Timer MOIRAI 
+
+Traffic MOMENT Sundial Timer TimeMoE 
+
+A.4 Supplementary experimental results A.4.1 Comparison with GRPO algorithm variants A.4.2 OOD model mapping A.4.3 Supplementary OOD experiments (Table 16 and Table 17) A.4.4 Supplementary results about scalability to varying numbers of candidate Models (Table 18 and Table 19) A.5 Discussion of reward mapping function designs A.5.1 Selection of reward scaling factor k
+
+We evaluate the three bounded reward mapping functions that involve a scaling factor k (the naive r= − δ has no such parameter), where δ = L(w) − L (w∗) denotes the forecasting MSE gap between the predicted ensemble weights and the oracle weights. We define a unified scoring framework with three criteria: 1. Near-oracle sensitivity : r(0) − r(0 .01) ∈ [0 .05 , 0.20] , ensuring the function can distinguish near-optimal candidates without over-sensitivity. 2. Mid-range signal : r(0 .1) ∈ [0 .20 , 0.50] , maintaining meaningful learning signal while sufficiently penalizing suboptimal generations. 3. Far-range signal : r(0 .3) > 0.05 , ensuring that poorly-performing generations still receive non-zero reward differences for policy optimization. Figure 8 shows the reward curves under varying k. By checking which k values simultaneously satisfy all three criteria, we identify the valid range for each function and select k near the center: k=20 for reciprocal (valid range [10 , 25] ,widest among all three), k=10 for exponential (valid range [7 , 12] , narrow), and k=2 for linear (to maximize coverage before the dead zone at δ ≥ 1/k ). 
+
+> 7
+
+https://huggingface.co/Salesforce/moirai-1.1-R-small 
+
+> 8
+
+https://huggingface.co/AutonLab/MOMENT-1-large 
+
+> 9
+
+https://huggingface.co/Maple728/TimeMoE-50M 
+
+> 10
+
+https://huggingface.co/google/timesfm-2.5-200m-pytorch 
+
+> 11
+
+https://github.com/thuml/OpenLTM 
+
+> 12
+
+https://github.com/thuml/OpenLTM 
+
+> 13
+
+https://huggingface.co/thuml/sundial-base-128m 
+
+> 14
+
+https://huggingface.co/amazon/chronos-t5-base 
+
+17 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting Table 12: OOD generalization to mixed models (MSE ↓). Trained on small model candidates (CARD, LSINet, PDF, TimeXer), evaluated on mixed candidates (2–3 unseen per dataset). Bold in mapping table indicates unseen models. The MAE results are shown in appendix Table 15. 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+Model 1 .1690 .1515 1.8930 .0815 1.9402 .4372 1.7326 .0667 .8090 Model 2 .1675 1.9515 .2022 .1124 .0729 .7114 .7635 .9884 .6212 Model 3 .3037 1.9124 2.0073 2.0260 1.9540 .5683 .1472 2.1670 1.3857 Model 4 1.5737 .1746 1.9351 1.8879 .2862 .4397 1.7626 2.1059 1.2707 
+
+Traditional Ensemble 
+
+Ens avg .2534 .4671 .8089 .4161 .4371 .2702 .6257 .7310 .5012 Ens rand .3149 .5819 .9487 .5392 .5611 .3393 .7218 .8503 .6071 InvMSE tr .1688 .1611 .2467 .0860 .0840 .2739 .1914 .0786 .1613 InvMSE val .2427 .1922 .3573 .1034 .0829 .3331 .2199 .0765 .2010 RLMC .2562 .1739 .2023 .1087 .0736 .2617 .1513 .0667 .1583 OptW tr .1594 .1632 .2094 .0848 .0792 .2598 .1562 .0827 .1493 OptW val .1937 .1732 .2103 .1103 .0792 .3172 .1586 .0825 .1656 
+
+LLM-based Ensemble 
+
+GPT-5.2 .1760 .3551 .5593 .2701 .2608 .2747 .3541 .2109 .3076 Codex .1671 .3235 .5333 .2039 .2263 .1939 .3156 .1843 .2685 GPT-5.5 .1964 .3982 .5998 .2758 .3103 .3162 .3746 .2945 .3457 DeepSeek-V3.2 .1724 .3556 .5755 .1904 .2783 .1588 .3074 .2001 .2798 Grok-4 .1828 .3646 .5754 .2452 .3072 .2771 .4228 .2986 .3342 
+
+REATS (Ours) 
+
+REATS-GRPO .1370 .1798 .2568 .0816 .0761 .0218 .1522 .0791 .1231 Model Mapping                                     
+
+> Dataset Model 1 Model 2 Model 3 Model 4 Exchange CARD MOIRAI MOMENT ModernTCN
+> ETTh1 PDF TimeMixer TimeXer Timer
+> ETTh2 PatchTST Sundial TimeMixer TimeXer ETTm1 LSINet MOMENT PatchTST TimeXer ETTm2 ModernTCN PDF PatchTST TimesFM
+> Weather CARD MLF MOMENT Timer
+> Electricity DLinear MOMENT PDF TimeMixer
+> Traffic CARD MOMENT SEMixer TimeMixer
+
+A.5.2 Reward Sensitivity Analysis 
+
+To formalize the discriminative power of each reward function, we analyze their derivatives with respect to δ. By the first-order Taylor expansion: 
+
+r(δ + ∆ δ) − r(δ) = r′(δ) ∆ δ + o(∆ δ), ∆δ → 0 (5) For two nearby points δ1, δ 2, the mean value theorem guarantees the existence of ξ ∈ (δ1, δ 2) such that 
+
+r(δ1) − r(δ2) = r′(ξ) ( δ1 − δ2) (6) Therefore, the local reward difference can be approximated as: 
+
+|r(δ1) − r(δ2)| ≈ dr dδ · | δ1 − δ2| (7) This shows that |dr/dδ | directly quantifies the local reward sensitivity : given the same performance difference |∆δ|
+
+between two candidates, a larger derivative produces a larger raw reward gap, contributing to better discrimination among candidates in that δ region. 18 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting 
+
+Figure 7: Transfer learning comparison (small model group, MSE ↓). Each source dataset (X-axis) is used for training, and the average MSE across the other 7 target datasets (Y-axis) is reported. Baselines are the best method from each category. 
+
+Figure 8: Reward curves under varying k for (a) exponential, (b) linear, and (c) reciprocal mapping functions. Bold lines indicate the selected k values. (d) Comparison of all four mappings at their recommended k.The derivatives of the three reward functions are: Reciprocal: dr dδ = k
+
+(1 + kδ )2 (8) Exponential: dr dδ = k · e−kδ (9) Linear: dr dδ =
+
+k δ < 1/k 
+
+0 δ ≥ 1/k (10) At their recommended k values, the three functions exhibit distinct sensitivity profiles: • Reciprocal (k=20 ): Maintains effective sensitivity across a wide δ range (polynomial decay ensures no dead zones even at moderate δ). Under GRPO’s constraint that the reward mapping should provide signal across the full group diversity, the reciprocal also achieves the highest near-oracle sensitivity (δ < 0.03 ), preserving higher raw reward resolution near the oracle as weights approach optimality. In contrast, other functions produce diminished or zero reward signals at moderate δ, limiting their near-oracle k choices. • Exponential (k=10 ): Provides stronger discrimination in the mid-range ( δ ∈ [0 .034 , 0.34] ), but its signal vanishes rapidly beyond this range, and weaker near-oracle sensitivity limits the final refinement precision. • Linear (k=2 ): Maintains constant sensitivity within its narrow active region [0 , 1/k ], but offers zero signal beyond the cutoff, severely restricting its effective range. 19 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting 
+
+A.5.3 Theoretical analysis 
+
+The empirical analysis above demonstrates that the reciprocal mapping outperforms alternatives. In this section, we provide theoretical justification by analyzing how the reward mapping function affects the GRPO learning signal. Since GRPO continues from an SFT-initialized model, the policy starts from a coarse initialization that GRPO must further refine. 
+
+GRPO signal and reward variance. In GRPO, the policy gradient for generation i within a prompt group is scaled by the normalized advantage: 
+
+ˆAi = ri − μr
+
+σr
+
+, where μr = 1
+
+G
+
+X
+
+> j
+
+rj , σr =
+
+s 1
+
+G
+
+X
+
+> j
+
+(rj − μr )2 (11) where G is the group size. A necessary condition for reward-driven learning is σr > 0: when all rewards are identical (σr = 0 ), no reward-driven policy-gradient update arises from that group. To understand how the choice of reward mapping affects σr , we apply a first-order Taylor expansion of r(δ) around the group mean ¯δ:
+
+σr ≈ | r′(¯δ)| · σδ (12) where σδ is the standard deviation of δ values within the generation group (controlled by sampling temperature). This decomposes the GRPO learning signal into two independent factors: • |r′(¯δ)|: the reward function’s local sensitivity at the current training regime • σδ : the generation diversity (controlled by sampling hyperparameters) Under the first-order approximation, |r′(¯δ)| > 0 and σδ > 0 yield non-zero local reward dispersion. Moreover, while advantage normalization prevents the raw derivative magnitude from proportionally scaling the learning signal, a mapping with stronger near-oracle sensitivity and bounded range produces better-separated normalized advantages in mixed-quality groups (see Appendix A.5.4 for quantitative analysis). 
+
+Connection to GRPO’s within-group advantage separation. The normalized advantage gap between two candidates 
+
+i, j in a GRPO group is: 
+
+ˆAi − ˆAj = f (δi) − f (δj )
+
+σf (δ)
+
+(13) For any affine mapping f (δ) = −aδ + b (a > 0), the scaling factor a cancels between numerator and denominator, leaving ˆAi − ˆAj = ( δj − δi)/σ δ regardless of a. Thus, affine reward transformations do not alter the normalized advantage gaps within a group. However, for a nonlinear bounded mapping such as f (δ) = 1 /(1 + kδ ), both the numerator and σf (δ) depend nonlinearly on the entire group’s δ distribution, which changes the advantage separation among candidates. In particular, in mixed-quality groups where some δbad ≫ δi, δ j , the unbounded f = − δ allows σf (δ)
+
+to grow without limit, driving | ˆAi − ˆAj | → 0; the bounded reciprocal prevents this compression (see Appendix A.5.4). 
+
+Since GRPO generates multiple candidate outputs per prompt via sampling, the δ values within each group can span a wide range. The reward mapping must maintain adequate sensitivity across this range. If the mapping’s derivative vanishes in certain δ regions (“dead zones”), two failure cases arise: (1) if all group members fall in the dead zone, all rewards become identical, σr = 0 , and no reward-driven learning signal; (2) if some group members fall in the dead zone, their rewards collapse to indistinguishable values, and those generations provide no reward-driven learning signal. 
+
+Derivative comparison. We compare the sensitivity |r′(δ)| of each mapping: 
+
+|r′
+
+> rec
+
+(δ)| = k
+
+(1 + kδ )2 = O(1 /δ 2) (polynomial decay) (14) 
+
+|r′
+
+> exp
+
+(δ)| = k · e−kδ = O(e−kδ ) (exponential decay) (15) 
+
+|r′
+
+> lin
+
+(δ)| =
+
+k if δ < 1/k 
+
+0 if δ ≥ 1/k (hard cutoff) (16) The three mappings exhibit fundamentally different decay behaviors. The reciprocal decays polynomially, meaning its sensitivity decreases slowly and all samples in the group remain distinguishable in raw reward space regardless of their δ value. The exponential decays much faster, causing samples with moderate-to-large δ to receive near-identical rewards and become indistinguishable. The linear has a hard cutoff at δ = 1 /k , beyond which sensitivity is exactly zero and all such samples are mapped to identical rewards. 20 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting 
+
+Absence of a hard reward dead zone. We formally verify that the reciprocal mapping maintains distinct rewards for any pair of non-identical δ values. For r(δ) = 11+ kδ with k > 0, since (1 + kδ )2 > 0 for all δ ≥ 0, the derivative 
+
+|r′
+
+> rec
+
+(δ)| = k/ (1 + kδ )2 > 0 for all δ ≥ 0. Because r(δ) is strictly monotonically decreasing, δi̸ = δj =⇒ r(δi)̸ =
+
+r(δj ), so any generation group with σδ > 0 yields σr > 0 regardless of ¯δ.
+
+Positive lower bound on reward dispersion. Beyond the qualitative guarantee above, we derive a quantitative lower bound on σr. Let D = max i,j |r(δi) − r(δj )| be the maximum reward difference in the group. Since μr lies between 
+
+min i ri and max i ri, at least one term satisfies (ri − μr )2 ≥ D2/4, giving: 
+
+σ2 
+
+> r
+
+= 1
+
+G
+
+X
+
+> i
+
+(ri − μr )2 ≥ D2
+
+4G =⇒ σr ≥ D
+
+2√G (17) To bound D from below, we apply the mean value theorem: for any δi, δ j , there exists ξ ∈ [δi, δ j ] such that: 
+
+|r(δi) − r(δj )| = |r′(ξ)| · | δi − δj | (18) Since |r′
+
+> rec
+
+(δ)| = k/ (1 + kδ )2 is monotonically decreasing and ξ ≤ δmax :
+
+|r′(ξ)| ≥ | r′(δmax )| = k
+
+(1 + kδ max )2 (19) Combining the above: 
+
+σr ≥ k
+
+2√G (1 + kδ max )2 · max  
+
+> i̸=j
+
+|δi − δj | (20) This lower bound confirms that the reciprocal mapping maintains adequate sensitivity at both small δ (where 
+
+|r′| ≈ k) and moderate δ (where |r′| = k/ (1 + kδ )2 remains positive) , providing effective discrimination across the full δ range encountered during GRPO training. 
+
+Failure modes of alternative mappings. Applying the same mean value theorem-based derivation to the alternative mappings yields analogous bounds that reveal their limitations. For the exponential mapping rexp (δ) = e−kδ , since 
+
+|r′
+
+> exp
+
+(ξ)| = ke −kξ is monotonically decreasing, |r′
+
+> exp
+
+(ξ)| ≥ k · e−kδ max for ξ ≤ δmax , the analogous bound is: 
+
+σr ≥ k · e−kδ max 
+
+2√G · max  
+
+> i̸=j
+
+|δi − δj | (21) The factor e−kδ max decays exponentially, making this bound vanishingly small even at moderate δmax (e.g., with 
+
+kδ max = 5 , the factor is ≈ 0.007 ). Practically, effective raw-reward saturation ( |r′| < 0.01 ) begins at δ ≈ ln(100 k)/k ,beyond which all samples become effectively indistinguishable. For the linear mapping rlin (δ) = max(0 , 1 − kδ ), when δmax > 1/k , the derivative |r′
+
+> lin
+
+(ξ)| = 0 for ξ > 1/k , so the same bound degenerates to: 
+
+σr ≥ 0 (22) which is trivially true and provides no guarantee. When min i δi > 1/k , all rewards are exactly zero and σr = 0 .In contrast, the reciprocal’s bound has only polynomial decay (1 + kδ max )2 in the denominator, ensuring a strictly positive lower bound for any finite δmax . Among the three mappings considered and under the rollout ranges studied, the reciprocal is the most robust: it decays polynomially rather than exponentially, avoiding both the hard dead zone of the linear mapping and the rapid effective saturation of the exponential mapping. 
+
+A.5.4 Why naive reward r = −δ fails in practice 
+
+While the naive mapping r(δ) = −δ does not suffer from dead-zone issues, it introduces two problems under GRPO’s advantage normalization ˆAi=( ri−μr )/σ r : (1) as a linear function, it produces uniform advantage spacing regardless of candidate quality, whereas the convex reciprocal concentrates discrimination among near-optimal candidates; (2) its unbounded range allows a single outlier to dominate σr, compressing all near-optimal advantages to near-identical values.               
+
+> r=−δReciprocal r= 1 /(1 + 20 δ)
+> Top-2 gap ( δ=0.001 vs 0.01) 0.009 0.147
+> Bottom-2 gap ( δ=0.5 vs 2.0) 1.500 0.067
+> Normalized ˆA1−ˆA20.012 0.379
+
+21 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting In a realistic mixed-quality group ( δ ∈ { 0.001 , 0.01 , 0.1, 0.5, 2.0}), the reciprocal achieves 32 × larger normalized advantage separation between the best two candidates, because it simultaneously bounds outlier rewards near zero (preventing σr inflation) and nonlinearly stretches near-oracle differences. This effect cannot be replicated by any affine transformation of r= − δ.Table 13: Summary of the time-series characteristic analysis tools. 
+
+Feature Group Key features Description 
+
+Stationarity ϕsta 
+
+ADF test result Tests whether the series contains a unit root, i.e., non-stationary time series. KPSS test result Tests whether a series is stationary around its “trend” or “mean”. Noise ϕnoise 
+
+Coefficient of variation Captures relative variability compared to the mean level. Noise proportion Estimates how much variance is attributed to irregular com-ponents. Noise intensity Reflects predictability difficulty due to random fluctuations. Trend ϕtrend 
+
+Trend slope Measures long-term directional movement over time. R2 (Goodness of fit) Indicates how well a linear trend explains the series. Trend type Identifies whether a clear increasing or decreasing pattern exists. Trend strength Quantifies the dominance of trend relative to fluctuations. Seasonality ϕsea 
+
+Period length Indicates repeating temporal cycle length. Seasonal variance ratio Measures contribution of periodic components. Seasonality strength Assesses whether periodic patterns are dominant. Autocorrelation ϕac 
+
+Significant ACF/PACF lags The number of lags outside the confidence interval in the ACF (Autocorrelation Function) and Partial ACF. ACF/PACF coefficients Autocorrelation coefficients at each lag. Autocorrelation judg-ment Evaluates overall temporal dependency strength. Statistics ϕstat 
+
+Mean / Median Describe central tendency and distribution symmetry. Standard deviation Measures overall dispersion of values. Minimum / Maximum Define the range of observed values. Quantiles (Q1, Q2, Q3) Describe distribution spread and skewness. Percentiles Capture tail behavior of the distribution. Central tendency consis-tency Assesses symmetry between mean and median. IQR Outliers ϕout 
+
+Lower threshold Defines lower bound for outlier detection. Upper threshold Defines upper bound for outlier detection. Lower outlier count Counts extreme low values. Upper outlier count Counts extreme high values. Outlier ratio Reflects prevalence of rare extreme events. Distribution ϕdist 
+
+Normality test Assesses deviation from Gaussian assumptions. Skewness Measures asymmetry of the distribution. Kurtosis Captures tail heaviness and peak sharpness. Distribution type Summarizes overall distribution shape. 
+
+A.6 Derivation of Closed-Form Oracle Weights 
+
+Given N base forecasters, let ˆyi ∈ RT denote the prediction of model i and y ∈ RT the ground truth, where T is the prediction horizon. We define the per-model error as ei = ˆ yi − y.The ensemble prediction under weights w is ˆy = PMi=1 wi ˆyi. Since PNi=1 wi = 1 , we can write y = PMi=1 wiy, and the ensemble error becomes: 
+
+eens = ˆ y − y =
+
+> M
+
+X
+
+> i=1
+
+wi ˆyi −
+
+> M
+
+X
+
+> i=1
+
+wiy =
+
+> M
+
+X
+
+> i=1
+
+wi(ˆ yi − y) = 
+
+> M
+
+X
+
+> i=1
+
+wiei (23) 22 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting The ensemble MSE is: 
+
+L(w) = 1
+
+T
+
+> T
+
+X
+
+> t=1
+> M
+
+X
+
+> i=1
+
+wi ei,t 
+
+!2
+
+= 1
+
+T
+
+> T
+
+X
+
+> t=1
+> M
+
+X
+
+> i=1
+> M
+
+X
+
+> j=1
+
+wi wj ei,t ej,t 
+
+=
+
+> M
+
+X
+
+> i=1
+> M
+
+X
+
+> j=1
+
+wi wj
+
+1
+
+T
+
+> T
+
+X
+
+> t=1
+
+ei,t ej,t 
+
+| {z }
+
+> Gij
+
+= w⊤Gw (24) where G ∈ RM ×M with Gij = 1
+
+> T
+
+PTt=1 ei,t ej,t . Thus, minimizing the ensemble MSE is equivalent to minimizing the quadratic form w⊤Gw .We minimize w⊤Gw subject to the constraint PMi=1 wi = 1 . Introducing a Lagrange multiplier λ:
+
+J (w, λ ) = w⊤Gw − λ(1⊤w − 1) (25) Taking the derivative with respect to w and setting it to zero: 
+
+∂J
+
+∂w = 2 Gw − λ1 = 0 =⇒ w = λ
+
+2 G−11 (26) Substituting into the constraint 1⊤w = 1 :
+
+1⊤
+
+ λ
+
+2 G−11
+
+
+
+= 1 =⇒ λ
+
+2 = 1
+
+1⊤G−11 (27) Substituting back: 
+
+w∗ = G−111⊤G−11 (28) This is computed independently for each sample (each sample has its own G). Since per-sample G may be ill-conditioned, we regularize G ← G + ϵI (with ϵ = 10 −10 ). We then solve the simplex-constrained QP w∗ = arg min w≥0, 1⊤w=1 w⊤Gw to obtain the exact non-negative optimal weights. The closed-form solution above serves as the initial point. 
+
+A.7 Diverse Weight Selection Procedure 
+
+As discussed in the main text, since relying solely on the single optimum w∗ as supervision may provide insufficient supervision signals and degrade fine-tuning performance, we generate K′−1=9 diverse yet high-quality weight vectors per sample. We sample candidates via a Dirichlet distribution centered on w∗ and select K vectors through a multi-objective greedy procedure that minimizes: 
+
+s(w) = L(w) − L ∗
+
+L∗ − dmin (w, S) − H(w) (29) where L(w) is the ensemble MSE under weight w, L∗ is the optimal MSE, dmin (w, S) = min w′∈S ∥w − w′∥2 is the minimum ℓ2 distance to the already-selected set S, and H(w) = − P 
+
+> i
+
+wi log wi encourages smooth non-sparse distributions. This diverse supervision enables the LLM to learn a distribution of reasonable weight configurations rather than overfitting to a single solution, improving generalization to unseen time series patterns. For SFT, it exposes the model to multiple valid solutions per sample, preventing memorization of a single weight pattern; for GRPO, it provides row-wise oracle references (Section 3.4) that enable fine-grained per-row reward computation, yielding richer and more informative gradient signals than a single-row comparison. 23 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting 
+
+A.8 SFT Training Data Example 
+
+We provide a representative SFT training sample below to illustrate the input–output format. Each sample consists of a system prompt, a structured user input, and the model’s chain-of-thought response with ensemble weights. 
+
+System prompt: 
+
+You are a time series ensemble expert. Generate a weight table (K’ rows × Ncandidate models (tools)) for ensemble. Each row: all weights non-negative and sum to 1. 
+
+User input (structured prompt with dataset context, series analysis, tool descriptions, and RAG-retrieved similar samples): 
+
+Assign ensemble weights to the forecasting tools based on the information below. Dataset: Exchange (daily exchange rates of 8 countries). Task: predict the next 96 values from the historical data. Historical series analysis: [stationarity] ADF p-value: 0.69, ADF stationary: False, KPSS stationary: False, Overall judgment: Non-stationary [trend] Trend slope: 0.0113, R 2: 93%, Trend type: Upward trend, Trend strength: Strong [noise] Noise ratio: 18%, Noise strength: Low noise [autocorrelation] Dominant ACF lag: 1, Dominant ACF value: 0.972, Judgment: Significant autocorrelation exists [distribution] Normal: False, Skewness: -0.089, Kurtosis: -1.53, Type: Left-skewed (non-normal) [seasonality] ... [statistics] ... [outliers] ... Available forecasting tools: TimeXer: decoder-only Transformer with patch tokenization and causal masking. PDF: FFT-based periodicity decoupling with parallel Transformer and conv branches. CARD: channel-dependent Transformer with cross-channel attention and token blending. LSINet: lightweight linear model with sparse temporal connections via Bernoulli interaction. Similar sample analysis: [stationarity] Non-stationary, [trend] Strong upward, [noise] Low ... Optimal ensemble weights(%) on the most similar time series: CARD,LSINet,PDF,TimeXer 4,33,35,28 | 6,43,25,26 | 5,39,25,31 | ... 
+
+Model output (chain-of-thought reasoning followed by weight predictions): 
+
+<think> Key patterns: non-stationary series, pronounced upward drift, clean signal with little noise, extremely strong short-lag persistence, no outliers, left-skewed distribution. Tool match: PDF aligns strongly since FFT periodicity decoupling fits the series; LSINet contributes through strong trend favoring linear decomposition; CARD and TimeXer have limited relevance. Reference: similar-series ensembles lean toward LSINet with moderate PDF, but current characteristics better suit PDF. Conclusion: prioritize PDF, hedge with LSINet, token allocation to CARD and TimeXer. </think> Optimal ensemble weights(%) on the historical time series: CARD,LSINet,PDF,TimeXer 5,12,71,12 | 13,40,33,14 | 19,18,48,15 | 15,29,42,14 | ... 
+
+24 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting 
+
+A.9 More discussions about Interpretability Analysis and GRPO Reasoning Improvement A.9.1 Chain-of-thought interpretability 
+
+Both REATS-SFT and REATS-GRPO generate structured chain-of-thought reasoning before producing ensemble weights. The reasoning follows a consistent four-step structure: (1) summarize key series patterns, (2) match patterns to tool capabilities, (3) reference similar historical cases from RAG, and (4) state the allocation conclusion. This structure enables users to understand why specific tools receive higher weights, making the ensemble decision transparent and auditable. We illustrate with a Weather test sample (non-stationary, downward trend, low noise, ACF lag-1 = 0.987): 
+
+REATS-SFT:     
+
+> Key patterns: non-stationary, marked downward trajectory, very little noise, extremely strong short-lag persistence. Tool match: PDF fits best because FFT periodicity decoupling aligns with series characteristics; CARD can help modestly through attention exploiting autocorrelation. Conclusion: allocate heavily to PDF, keep moderate weight on CARD. Weights: CARD=32%, LSINet=5%, PDF=56%, TimeXer=7%
+
+REATS-GRPO:     
+
+> Key patterns: non-stationary, marked downward trajectory, very little noise, extremely strong short-lag persistence. Tool match: CARD is well-suited here as attention can exploit autocorrelation structure; PDF adds complementary value via FFT periodicity decoupling. Conclusion: prioritize CARD given its fit, hedge with PDF, LSINet. Weights: CARD=53%, LSINet=18%, PDF=24%, TimeXer=5%
+
+Both outputs provide clear, interpretable reasoning that links observed series properties to specific tool capabilities, demonstrating the inherent interpretability of the REATS framework regardless of the training stage. 
+
+A.9.2 GRPO reasoning improvement over SFT 
+
+Comparing the two outputs above reveals that GRPO refines the feature-to-tool mapping through RL exploration. The oracle weights for this sample are: CARD=49%, PDF=38%, TimeXer=7%, LSINet=6%. The dominant characteristic of this series is its extremely strong autocorrelation (0.987), which favors attention-based models that can directly exploit lag dependencies. GRPO correctly identifies this and allocates CARD as the primary tool (53% vs. oracle 49%). SFT instead defaults to PDF (56%), which targets periodicity, a less relevant property for this autocorrelation-dominated series. This shows that GRPO, through reward-driven exploration, learns more accurate reasoning pathways that better connect series characteristics with appropriate tool capabilities. 25 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting Table 14: Ensemble forecasting results (MAE ↓). Dataset abbreviations: Exch=Exchange, H1/H2=ETTh1/ETTh2, M1/M2=ETTm1/ETTm2, Wea=Weather, Elec=Electricity, Traf=Traffic. 
+
+(a) Foundation Model Candidates 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+MOIRAI .2810 .3476 .3588 .2662 .3957 .0584 .5800 .2695 .3196 MOMENT .3845 .3428 .3990 .2516 .3140 .0922 .7105 .8640 .4198 TimeMoE .3341 .3199 .3238 .2311 .2731 .0586 .4489 .1894 .2724 TimesFM .2984 .3117 .3423 .2506 .3575 .0431 .5040 .1932 .2876 
+
+Traditional Ensemble 
+
+Ens avg .3026 .3060 .3338 .2300 .3046 .0602 .5145 .3160 .2960 Ens rand .3071 .3114 .3386 .2341 .3112 .0608 .5248 .3295 .3022 InvMSE tr .2950 .3057 .3320 .2292 .2930 .0569 .4961 .1973 .2756 InvMSE val .3016 .3057 .3323 .2292 .2928 .0479 .4958 .1958 .2751 RLMC .2979 .3045 .3272 .2229 .3016 .0409 .4488 .1885 .2666 OptW tr .2833 .3042 .3240 .2250 .2748 .0540 .4544 .1967 .2645 OptW val .3071 .3049 .3262 .2249 .2747 .0455 .4541 .1968 .2668 
+
+LLM-based Ensemble 
+
+GPT-5.2 .2728 .2915 .3193 .2194 .2850 .0492 .4741 .2244 .2670 Codex .2701 .2894 .3189 .2167 .2783 .0514 .4728 .2217 .2649 GPT-5.5 .2756 .2954 .3234 .2220 .2916 .0566 .4822 .2420 .2736 DeepSeek-V3.2 .2631 .2868 .3182 .2155 .2783 .0498 .4739 .2408 .2658 Grok-4 .2780 .2950 .3249 .2224 .2909 .0592 .4941 .2605 .2781 
+
+REATS (Ours) 
+
+REATS-SFT .2545 .2815 .3125 .2116 .2681 .0391 .4521 .1968 .2520 
+
+REATS-GRPO .2464 .2751 .3031 .2071 .2597 .0367 .4397 .1839 .2440 
+
+(b) Small Model Candidates 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+CARD .2849 .3087 .3278 .2289 .2535 .0608 .4929 .1708 .2660 LSINet .4962 .2992 .3137 .2084 .1993 .1165 .3730 1.1956 .4002 PDF .5316 .2958 .3183 .2022 .1877 .0919 .2810 1.1898 .3873 TimeXer .9606 1.0635 1.1316 1.0863 1.1301 .0827 1.0080 1.1635 .9533 
+
+Traditional Ensemble 
+
+Ens avg .4306 .3842 .4135 .3330 .3456 .0821 .4291 .7684 .3983 Ens rand .4637 .4125 .4423 .3570 .3695 .0840 .4544 .8007 .4230 InvMSE tr .3143 .2955 .3164 .2050 .1961 .0830 .3061 .1965 .2391 InvMSE val .4237 .3053 .3493 .2169 .1961 .0811 .3169 .1923 .2602 RLMC .4439 .3005 .4371 .2277 .1993 .0765 .2888 .1707 .2681 OptW tr .2824 .2996 .3163 .2055 .1930 .0821 .2812 .2197 .2350 OptW val .3658 .3050 .3280 .2258 .1912 .0810 .2860 .2195 .2503 
+
+LLM-based Ensemble 
+
+GPT-5.2 .3745 .3286 .3518 .2568 .2563 .0634 .3439 .4405 .3020 Codex .3572 .3146 .3422 .2417 .2438 .0636 .3332 .3826 .2849 GPT-5.5 .3839 .3347 .3570 .2635 .2620 .0686 .3551 .5058 .3163 DeepSeek-V3.2 .3581 .3109 .3371 .2395 .2386 .0615 .3214 .3742 .2802 Grok-4 .3837 .3307 .3604 .2653 .2679 .0750 .3529 .5550 .3239 
+
+REATS (Ours) 
+
+REATS-SFT .3028 .2916 .3144 .2087 .2019 .0472 .2925 .2316 .2363 
+
+REATS-GRPO .2802 .2823 .3071 .1964 .1865 .0406 .2800 .2117 .2231 
+
+Table 15: Generalization study across tool groups (MAE ↓). The model is trained on small model candidates (CARD, LSINet, PDF, TimeXer). (a) Evaluated on foundation model candidates (all 4 unseen). (b) Evaluated on mixed model candidates (2–3 unseen per dataset). Bold in mapping tables indicates unseen models not present during training. Dataset abbreviations: Exch=Exchange, H1/H2=ETTh1/ETTh2, M1/M2=ETTm1/ETTm2, Wea=Weather, Elec=Electricity, Traf=Traffic. 
+
+(a) OOD to Foundation Models 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+Model 1 .3845 .3428 .3990 .2516 .3140 .0922 .7105 .8640 .4198 Model 2 .3341 .3169 .3283 .2304 .2461 .0786 .4383 .1943 .2709 Model 3 .2984 .3117 .3423 .2506 .2731 .0586 .5764 .3245 .3045 Model 4 .2810 .3476 .3588 .2662 .3957 .0431 .5800 .1894 .3077 
+
+Traditional Ensemble 
+
+Ens avg .3025 .3053 .3349 .2305 .2734 .0652 .5310 .3408 .2980 Ens rand .3073 .3106 .3395 .2343 .2806 .0656 .5409 .3521 .3039 InvMSE tr .2950 .3050 .3332 .2298 .2614 .0603 .5089 .2109 .2756 InvMSE val .3016 .3051 .3337 .2298 .2615 .0452 .5086 .2087 .2743 RLMC .2859 .3055 .3368 .2228 .2461 .0730 .4383 .1839 .2615 OptW tr .2833 .3036 .3271 .2257 .2441 .0579 .4466 .1980 .2608 OptW val .3071 .3052 .3312 .2259 .2447 .0466 .4466 .1988 .2633 
+
+LLM-based Ensemble 
+
+GPT-5.2 .2744 .2908 .3220 .2204 .2436 .0535 .4840 .2507 .2674 Codex .2695 .2873 .3212 .2171 .2409 .0560 .4839 .2365 .2641 GPT-5.5 .2815 .2976 .3287 .2255 .2566 .0585 .4985 .2712 .2773 DeepSeek-V3.2 .2667 .2863 .3193 .2165 .2336 .0539 .4739 .2290 .2599 Grok-4 .2827 .2955 .3280 .2229 .2565 .0637 .5066 .2899 .2807 
+
+REATS (Ours) 
+
+REATS-GRPO .2482 .2760 .3103 .2139 .2280 .0382 .4390 .2711 .2531 
+
+(b) OOD to Mixed Models 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+Model 1 .2849 .2958 1.1093 .2084 1.1312 .0608 1.0157 .1708 .5346 Model 2 .2810 1.0929 .3283 .2516 .1877 .1017 .7105 .8640 .4772 Model 3 .3845 1.0635 1.1564 1.1205 1.1374 .0922 .2810 1.1882 .8030 Model 4 .9946 .3169 1.1316 1.0863 .3575 .0786 1.0292 1.1745 .7711 
+
+Traditional Ensemble 
+
+Ens avg .3813 .5373 .7387 .5149 .5370 .0775 .6200 .7260 .5166 Ens rand .4070 .5713 .7783 .5486 .5732 .0797 .6494 .7494 .5446 InvMSE tr .2851 .3066 .3910 .2172 .2104 .0774 .3284 .2068 .2529 InvMSE val .3716 .3394 .4822 .2424 .2088 .0756 .3560 .2019 .2847 RLMC .3846 .3161 .3285 .2467 .1893 .0741 .2869 .1708 .2446 OptW tr .2784 .3087 .3494 .2193 .2074 .0803 .2911 .2150 .2437 OptW val .3070 .3186 .3506 .2514 .2073 .0726 .2937 .2146 .2520 
+
+LLM-based Ensemble 
+
+GPT-5.2 .3038 .4679 .6045 .4102 .4087 .0654 .4573 .3766 .3868 Codex .2931 .4431 .5938 .3572 .3796 .0637 .4308 .3502 .3639 GPT-5.5 .3263 .4952 .6270 .4163 .4429 .0702 .4732 .4430 .4117 DeepSeek-V3.2 .2952 .4528 .5989 .3299 .3961 .0542 .4101 .3426 .3600 Grok-4 .3101 .4725 .6149 .3899 .4458 .0679 .4998 .4525 .4067 
+
+REATS (Ours) 
+
+REATS-GRPO .2524 .3095 .3844 .2085 .1948 .0394 .2866 .2074 .2354 
+
+Model Mapping for (a) 
+
+Dataset Model 1 Model 2 Model 3 Model 4 Exchange MOMENT TimeMoE TimesFM MOIRAI 
+
+ETTh1 MOMENT Sundial TimesFM MOIRAI 
+
+ETTh2 MOMENT Sundial TimesFM MOIRAI 
+
+ETTm1 MOMENT Sundial TimesFM MOIRAI 
+
+ETTm2 MOMENT Timer TimeMoE MOIRAI 
+
+Weather MOMENT Timer TimeMoE TimesFM 
+
+Electricity MOMENT Sundial Timer MOIRAI 
+
+Traffic MOMENT Sundial Timer TimeMoE 
+
+Model Mapping for (b) 
+
+Dataset Model 1 Model 2 Model 3 Model 4 Exchange CARD MOIRAI MOMENT ModernTCN 
+
+ETTh1 PDF TimeMixer TimeXer Timer 
+
+ETTh2 PatchTST Sundial TimeMixer TimeXer ETTm1 LSINet MOMENT PatchTST TimeXer ETTm2 ModernTCN PDF PatchTST TimesFM 
+
+Weather CARD MLF MOMENT Timer 
+
+Electricity DLinear MOMENT PDF TimeMixer 
+
+Traffic CARD MOMENT SEMixer TimeMixer 
+
+26 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting Table 16: Generalization study within tool groups (MSE ↓). (a) Trained on foundation model candidates (MOIRAI, MOMENT, TimeMoE, TimesFM), 1–2 unseen per dataset. (b) Trained on small model candidates (CARD, LSINet, PDF, TimeXer), 1–3 unseen per dataset. Bold in mapping tables indicates unseen models not present during training. The MAE results are shown in Table 17. 
+
+(a) OOD within Foundation Models 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+Model 1 .3037 .1966 .2765 .1124 .1472 .5683 .7635 .9884 .4196 Model 2 .2355 .1742 .2022 .0987 .1229 .4397 .3740 .1800 .2284 Model 3 .2502 .1712 .2102 .1112 .2862 .0752 .5569 .0831 .2180 Model 4 .1675 .2161 .2413 .1273 .3164 .0039 .5908 .1489 .2265 
+
+Traditional Ensemble 
+
+Ens avg .2123 .1618 .2070 .0946 .1585 .1670 .4765 .1835 .2076 Ens rand .2177 .1674 .2119 .0981 .1707 .1837 .4957 .2175 .2203 InvMSE tr .1989 .1615 .2052 .0943 .1339 .1083 .4485 .0996 .1813 InvMSE val .2129 .1615 .2057 .0943 .1337 .0072 .4481 .0979 .1702 RLMC .1898 .1619 .2011 .0902 .1209 .2903 .3740 .0827 .1888 OptW tr .1707 .1608 .2006 .0930 .1183 .0761 .3797 .0864 .1607 OptW val .1989 .1619 .2007 .0927 .1191 .0109 .3797 .0863 .1563 
+
+LLM-based Ensemble 
+
+GPT-5.2 .1760 .1493 .1924 .0884 .1281 .0473 .4160 .1114 .1636 Codex .1696 .1451 .1928 .0861 .1215 .1146 .4168 .1052 .1689 GPT-5.5 .1940 .1553 .2003 .0912 .1390 .0435 .4351 .1369 .1744 DeepSeek-V3.2 .1690 .1464 .1904 .0861 .1173 .0538 .4033 .1051 .1589 Grok-4 .1929 .1531 .2005 .0902 .1351 .1915 .4443 .1465 .1943 
+
+REATS (Ours) 
+
+REATS-GRPO .1447 .1341 .1803 .0827 .1059 .0030 .3648 .0810 .1371 
+
+(b) OOD within Small Models 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+Model 1 .1690 .1647 2.0318 .0815 .1147 .4372 1.7633 .0667 .6036 Model 2 1.5364 .1558 .1825 1.9358 1.9402 1.2352 1.7247 2.1738 1.3605 Model 3 .5319 2.0278 1.8930 .0748 1.9540 .1663 .1472 2.1670 1.1202 Model 4 .5978 1.9515 1.9351 2.0260 .0791 .4429 1.7951 2.1059 1.3667 
+
+Traditional Ensemble 
+
+Ens avg .3268 .4752 .8083 .4193 .4189 .1445 .7556 .8227 .5214 Ens rand .4027 .5965 .9526 .5429 .5359 .2355 .8761 .9823 .6406 InvMSE tr .1903 .1608 .2229 .0763 .0843 .1697 .1818 .0742 .1450 InvMSE val .2975 .1907 .8023 .1208 .0842 .1857 .2085 .0728 .2453 RLMC .2547 .1653 .8372 .0814 .1129 .1713 .1473 .0667 .2253 OptW tr .1586 .1634 .1921 .0832 .0836 .1727 .1578 .0851 .1371 OptW val .4002 .1672 .8066 .0857 .0840 .1857 .1585 .0850 .2466 
+
+LLM-based Ensemble 
+
+GPT-5.2 .2719 .2756 .5583 .2252 .3101 .0651 .4118 .2476 .2957 Codex .2625 .2736 .4768 .1837 .2936 .0737 .3771 .2212 .2703 GPT-5.5 .2771 .3144 .6262 .2890 .3151 .0787 .4311 .2994 .3289 DeepSeek-V3.2 .2659 .4610 .5092 .2402 .5704 .1260 .4059 .2403 .3524 Grok-4 .2763 .3221 .5934 .2237 .3041 .1214 .4528 .3253 .3274 
+
+REATS (Ours) 
+
+REATS-GRPO .1606 .1524 .2324 .0755 .0981 .0446 .1555 .0812 .1250 
+
+Model Mapping for (a) 
+
+Dataset Model 1 Model 2 Model 3 Model 4 Exchange MOMENT Sundial Timer MOIRAI ETTh1 MOMENT Sundial TimesFM MOIRAI ETTh2 MOMENT Sundial Timer MOIRAI ETTm1 MOMENT Sundial TimesFM MOIRAI ETTm2 Sundial Timer TimesFM MOIRAI Weather MOMENT Timer TimeMoE TimesFM Electricity MOMENT Sundial Timer MOIRAI Traffic MOMENT Timer TimeMoE MOIRAI 
+
+Model Mapping for (b) 
+
+Dataset Model 1 Model 2 Model 3 Model 4 Exchange CARD DLinear LSINet SEMixer 
+
+ETTh1 CARD LSINet MLF TimeMixer 
+
+ETTh2 ModernTCN PDF PatchTST TimeXer ETTm1 LSINet MLF PDF PatchTST 
+
+ETTm2 CARD ModernTCN PatchTST SEMixer 
+
+Weather CARD LSINet PatchTST TimeXer Electricity MLF ModernTCN PDF PatchTST 
+
+Traffic CARD PDF SEMixer TimeMixer 
+
+Table 17: Generalization study within tool groups (MAE ↓). (a) Trained on foundation model candidates (MOIRAI, MOMENT, TimeMoE, TimesFM), 1–2 unseen per dataset. (b) Trained on small model candidates (CARD, LSINet, PDF, TimeXer), 1–3 unseen per dataset. Bold in mapping tables indicates unseen models not present during training. Dataset abbreviations: Exch=Exchange, H1/H2=ETTh1/ETTh2, M1/M2=ETTm1/ETTm2, Wea=Weather, Elec=Electricity, Traf=Traffic. 
+
+(a) OOD within Foundation Models 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+Model 1 .3845 .3428 .3990 .2516 .2756 .0922 .7105 .8640 .4150 Model 2 .3351 .3169 .3283 .2304 .2461 .0786 .4383 .3245 .2873 Model 3 .3433 .3117 .3392 .2506 .3575 .0586 .5764 .1894 .3033 Model 4 .2810 .3476 .3588 .2662 .3957 .0431 .5800 .2695 .3177 
+
+Traditional Ensemble 
+
+Ens avg .3162 .3053 .3349 .2305 .2843 .0652 .5310 .3530 .3026 Ens rand .3204 .3106 .3393 .2343 .2915 .0656 .5409 .3657 .3085 InvMSE tr .3057 .3050 .3331 .2298 .2621 .0603 .5089 .2294 .2793 InvMSE val .3167 .3051 .3337 .2298 .2620 .0452 .5086 .2263 .2784 RLMC .3005 .3055 .3281 .2228 .2445 .0730 .4383 .1895 .2628 OptW tr .2836 .3036 .3274 .2257 .2444 .0579 .4466 .2045 .2617 OptW val .3060 .3052 .3279 .2259 .2459 .0466 .4466 .2039 .2635 
+
+LLM-based Ensemble 
+
+GPT-5.2 .2836 .2916 .3207 .2210 .2540 .0503 .4846 .2518 .2697 Codex .2763 .2871 .3208 .2170 .2463 .0579 .4848 .2445 .2668 GPT-5.5 .2982 .2979 .3282 .2252 .2643 .0497 .4986 .2859 .2810 DeepSeek-V3.2 .2734 .2870 .3181 .2161 .2418 .0491 .4733 .2362 .2619 Grok-4 .2972 .2956 .3287 .2235 .2616 .0653 .5066 .3043 .2853 
+
+REATS (Ours) 
+
+REATS-GRPO .2529 .2742 .3094 .2109 .2292 .0365 .4415 .1940 .2436 
+
+(b) OOD within Small Models 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+Model 1 .2849 .3087 1.1625 .2084 .2535 .0608 1.0294 .1708 .4349 Model 2 .9776 .2992 .3183 1.1029 1.1312 .1165 1.0166 1.1898 .7690 Model 3 .4962 1.1200 1.1093 .2022 1.1374 .0615 .2810 1.1882 .6995 Model 4 .5167 1.0929 1.1316 1.1205 .1929 .0827 1.0367 1.1745 .7936 
+
+Traditional Ensemble 
+
+Ens avg .4416 .5454 .7421 .5210 .5272 .0742 .6723 .7608 .5356 Ens rand .4714 .5817 .7822 .5522 .5589 .0764 .7085 .7948 .5658 InvMSE tr .3167 .3059 .3744 .2045 .2079 .0764 .3173 .1952 .2498 InvMSE val .4134 .3378 .7392 .2742 .2077 .0773 .3426 .1915 .3230 RLMC .3750 .3087 .7556 .2083 .2512 .0759 .2812 .1708 .2960 OptW tr .2831 .3089 .3395 .2198 .2110 .0759 .2925 .2189 .2437 OptW val .4428 .3132 .7408 .2228 .2118 .0772 .2931 .2188 .3151 
+
+LLM-based Ensemble 
+
+GPT-5.2 .3987 .4037 .6049 .3758 .4470 .0549 .4900 .4051 .3975 Codex .3884 .4035 .5614 .3396 .4304 .0548 .4664 .3817 .3783 GPT-5.5 .4070 .4350 .6479 .4200 .4503 .0588 .4986 .4449 .4203 DeepSeek-V3.2 .3879 .5183 .5636 .3739 .5916 .0626 .4660 .3716 .4169 Grok-4 .4042 .4438 .6304 .3741 .4388 .0645 .5119 .4652 .4166 
+
+REATS (Ours) 
+
+REATS-GRPO .2847 .2952 .3669 .2025 .2167 .0453 .2900 .2111 .2391 
+
+Model Mapping for (a) 
+
+Dataset Model 1 Model 2 Model 3 Model 4 Exchange MOMENT Sundial Timer MOIRAI ETTh1 MOMENT Sundial TimesFM MOIRAI ETTh2 MOMENT Sundial Timer MOIRAI ETTm1 MOMENT Sundial TimesFM MOIRAI ETTm2 Sundial Timer TimesFM MOIRAI Weather MOMENT Timer TimeMoE TimesFM Electricity MOMENT Sundial Timer MOIRAI Traffic MOMENT Timer TimeMoE MOIRAI 
+
+Model Mapping for (b) 
+
+Dataset Model 1 Model 2 Model 3 Model 4 Exchange CARD DLinear LSINet SEMixer 
+
+ETTh1 CARD LSINet MLF TimeMixer 
+
+ETTh2 ModernTCN PDF PatchTST TimeXer ETTm1 LSINet MLF PDF PatchTST 
+
+ETTm2 CARD ModernTCN PatchTST SEMixer 
+
+Weather CARD LSINet PatchTST TimeXer Electricity MLF ModernTCN PDF PatchTST 
+
+Traffic CARD PDF SEMixer TimeMixer 
+
+27 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting Table 18: Scalability analysis across different numbers of candidate models (MSE ↓). All candidates are foun-dation models. (a) N=6, (b) N=8, (c) N=2. Dataset abbreviations: Exch=Exchange, H1/H2=ETTh1/ETTh2, M1/M2=ETTm1/ETTm2, Wea=Weather, Elec=Electricity, Traf=Traffic. 
+
+(a) N=6 (Chronos, MOIRAI, MOMENT, Sundial, Timer, TimesFM) 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+Chronos .1772 .1796 .2299 .1053 .1925 .0162 .6863 .2638 .2314 MOIRAI .1675 .2161 .2413 .1273 .3164 .0269 .5908 .1489 .2294 MOMENT .3037 .1966 .2765 .1124 .1707 .5683 .7635 .9884 .4225 Sundial .2355 .1742 .2022 .0987 .1472 .1833 .3740 .0893 .1881 Timer .2502 .1746 .2102 .1039 .1229 .4397 .5569 .1800 .2548 TimesFM .1845 .1712 .2212 .1112 .2862 .0039 .4770 .0864 .1927 
+
+Traditional Ensemble 
+
+Ens avg .1919 .1595 .2027 .0920 .1473 .0972 .4765 .1501 .1896 Ens rand .1957 .1630 .2066 .0947 .1558 .1104 .4905 .1703 .1984 InvMSE val .1926 .1594 .2020 .0919 .1326 .0074 .4539 .0987 .1673 RLMC .1710 .1598 .2032 .0908 .1155 .0247 .4609 .0860 .1640 InvMSE tr .1829 .1594 .2017 .0918 .1326 .0708 .4541 .0997 .1741 OptW tr .1649 .1584 .1971 .0909 .1162 .0777 .3828 .0886 .1596 OptW val .1939 .1595 .2025 .0908 .1176 .0164 .3823 .0884 .1564 
+
+LLM-based Ensemble 
+
+GPT-5.2 .1643 .1468 .1905 .0867 .1340 .0288 .4231 .1059 .1600 Codex .1654 .1468 .1908 .0858 .1260 .0579 .4343 .1151 .1653 GPT-5.5 .1676 .1489 .1922 .0876 .1345 .0350 .4246 .1067 .1621 DeepSeek-V3.2 .1660 .1465 .1900 .0850 .1283 .0377 .4285 .1160 .1622 Grok-4 .1665 .1483 .1919 .0864 .1279 .0562 .4368 .1163 .1663 
+
+REATS (Ours) 
+
+REATS-SFT .1468 .1346 .1751 .0809 .1077 .0065 .3769 .0862 .1393 
+
+(b) N=8 (Chronos, MOIRAI, MOMENT, Sundial, TimeMoE, Timer, TimerXL, TimesFM) 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+Chronos .1772 .1796 .2299 .1053 .1925 .0162 .6863 .2638 .2314 MOIRAI .1675 .2161 .2413 .1273 .3164 .0269 .5908 .1489 .2294 MOMENT .3037 .1966 .2765 .1124 .1707 .5683 .7635 .9884 .4225 Sundial .2355 .1742 .2022 .0987 .1472 .1833 .3740 .0893 .1881 TimeMoE .2359 .1768 .1996 .0997 .1416 .0752 .3902 .0831 .1753 Timer .2502 .1746 .2102 .1039 .1229 .4397 .5569 .1800 .2548 TimerXL .2744 .1782 .2138 .1028 .1121 .4343 .4104 .1305 .2321 TimesFM .1845 .1712 .2212 .1112 .2862 .0039 .4770 .0864 .1927 
+
+Traditional Ensemble 
+
+Ens avg .2040 .1607 .1995 .0919 .1324 .1205 .4373 .1257 .1840 Ens rand .2067 .1629 .2023 .0936 .1384 .1306 .4475 .1389 .1901 InvMSE val .2046 .1611 .1990 .0921 .1213 .0082 .4181 .0916 .1620 RLMC .1686 .1612 .1997 .0922 .1079 .0257 .3727 .0778 .1507 InvMSE tr .1940 .1610 .1989 .0921 .1214 .0921 .4184 .0926 .1713 OptW tr .1843 .1590 .1954 .0915 .1075 .0716 .3810 .0838 .1593 OptW val .2033 .1603 .1976 .0915 .1082 .0200 .3807 .0836 .1556 
+
+LLM-based Ensemble 
+
+GPT-5.2 .1830 .1512 .1892 .0874 .1183 .0960 .3977 .0957 .1648 Codex .1844 .1514 .1901 .0875 .1176 .0922 .4067 .1036 .1667 GPT-5.5 .1859 .1541 .1924 .0893 .1220 .1011 .4045 .1001 .1687 DeepSeek-V3.2 .1785 .1487 .1864 .0864 .1142 .0874 .3954 .0996 .1621 Grok-4 .1814 .1515 .1908 .0869 .1183 .0592 .4046 .1008 .1617 
+
+REATS (Ours) 
+
+REATS-SFT .1622 .1390 .1767 .0832 .1041 .0139 .3706 .0832 .1416 
+
+(c) N=2 (MOMENT, TimerXL) 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+MOMENT .3037 .1966 .2765 .1124 .1707 .5683 .7635 .9884 .4225 TimerXL .2744 .1782 .2138 .1028 .1121 .4343 .4104 .1305 .2321 
+
+Traditional Ensemble 
+
+Ens avg .2870 .1827 .2226 .1062 .1223 .4809 .4887 .3302 .2776 Ens rand .2877 .1842 .2301 .1066 .1286 .4883 .5215 .4061 .2941 InvMSE val .2866 .1823 .2203 .1060 .1171 .4735 .4454 .1357 .2459 RLMC .2745 .1791 .2114 .1028 .1116 .4343 .4104 .1305 .2318 InvMSE tr .2863 .1823 .2192 .1060 .1173 .4766 .4463 .1363 .2463 OptW tr .2749 .1782 .2117 .1029 .1111 .4393 .4094 .1298 .2322 OptW val .2752 .1783 .2125 .1029 .1111 .4363 .4094 .1298 .2319 
+
+LLM-based Ensemble 
+
+GPT-5.2 .2780 .1772 .2068 .1038 .1109 .4431 .4193 .1558 .2369 Codex .2807 .1791 .2120 .1046 .1125 .4585 .4287 .1568 .2416 GPT-5.5 .2812 .1795 .2155 .1049 .1155 .4487 .4452 .2125 .2504 DeepSeek-V3.2 .2786 .1776 .2072 .1039 .1097 .4467 .4128 .1399 .2346 Grok-4 .2796 .1788 .2119 .1046 .1142 .4402 .4326 .1801 .2428 
+
+REATS (Ours) 
+
+REATS-SFT .2735 .1746 .2018 .1027 .1091 .4356 .3990 .1275 .2280 
+
+28 REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting Table 19: Scalability study with foundation model candidates (MAE ↓). We evaluate REATS with varying numbers of candidate models: (a) N=6, (b) N=8, and (c) N=2. Dataset abbreviations: Exch=Exchange, H1/H2=ETTh1/ETTh2, M1/M2=ETTm1/ETTm2, Wea=Weather, Elec=Electricity, Traf=Traffic. 
+
+(a) N=6 (Chronos, MOIRAI, MOMENT, Sundial, Timer, TimesFM) 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+Chronos .2986 .3165 .3541 .2391 .3095 .0413 .6375 .3693 .3207 MOIRAI .2810 .3476 .3588 .2662 .3957 .0584 .5800 .2695 .3196 MOMENT .3845 .3428 .3990 .2516 .3140 .0922 .7105 .8640 .4198 Sundial .3351 .3169 .3283 .2304 .2756 .0682 .4383 .1943 .2734 Timer .3433 .3169 .3392 .2378 .2461 .0786 .5764 .3245 .3078 TimesFM .2984 .3117 .3423 .2506 .3575 .0431 .5040 .1932 .2876 
+
+Traditional Ensemble 
+
+Ens avg .3022 .3021 .3303 .2260 .2776 .0597 .5269 .3087 .2917 Ens rand .3052 .3056 .3339 .2292 .2838 .0601 .5345 .3185 .2963 InvMSE val .3026 .3020 .3295 .2256 .2636 .0435 .5092 .2209 .2746 RLMC .2893 .3026 .3308 .2236 .2405 .0503 .5057 .1950 .2672 InvMSE tr .2956 .3019 .3292 .2255 .2637 .0563 .5093 .2227 .2755 OptW tr .2818 .3004 .3247 .2227 .2424 .0571 .4498 .2032 .2603 OptW val .3050 .3022 .3292 .2228 .2444 .0440 .4491 .2029 .2625 
+
+LLM-based Ensemble 
+
+GPT-5.2 .2757 .2879 .3182 .2182 .2610 .0480 .4875 .2408 .2672 Codex .2762 .2879 .3188 .2166 .2538 .0519 .4966 .2571 .2699 GPT-5.5 .2780 .2905 .3198 .2198 .2622 .0494 .4879 .2424 .2687 DeepSeek-V3.2 .2764 .2872 .3185 .2154 .2548 .0479 .4905 .2507 .2677 Grok-4 .2780 .2897 .3199 .2175 .2560 .0515 .4981 .2573 .2710 
+
+REATS (Ours) 
+
+REATS-SFT .2572 .2739 .3041 .2088 .2331 .0373 .4491 .2013 .2456 
+
+(b) N=8 (Chronos, MOIRAI, MOMENT, Sundial, TimeMoE, Timer, TimerXL, TimesFM) 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+Chronos .2986 .3165 .3541 .2391 .3095 .0413 .6375 .3693 .3207 MOIRAI .2810 .3476 .3588 .2662 .3957 .0584 .5800 .2695 .3196 MOMENT .3845 .3428 .3990 .2516 .3140 .0922 .7105 .8640 .4198 Sundial .3351 .3169 .3283 .2304 .2756 .0682 .4383 .1943 .2734 TimeMoE .3341 .3199 .3238 .2311 .2731 .0586 .4489 .1894 .2724 Timer .3433 .3169 .3392 .2378 .2461 .0786 .5764 .3245 .3078 TimerXL .3600 .3199 .3399 .2364 .2354 .0822 .4512 .2408 .2832 TimesFM .2984 .3117 .3423 .2506 .3575 .0431 .5040 .1932 .2876 
+
+Traditional Ensemble 
+
+Ens avg .3106 .3033 .3272 .2249 .2632 .0620 .4959 .2738 .2826 Ens rand .3127 .3055 .3298 .2269 .2679 .0623 .5018 .2813 .2860 InvMSE val .3110 .3037 .3266 .2248 .2510 .0441 .4790 .2073 .2684 RLMC .2852 .3038 .3271 .2251 .2314 .0539 .4381 .1802 .2556 InvMSE tr .3032 .3035 .3264 .2247 .2511 .0589 .4793 .2090 .2695 OptW tr .2954 .3010 .3227 .2228 .2330 .0562 .4477 .1972 .2595 OptW val .3105 .3028 .3239 .2228 .2339 .0453 .4472 .1970 .2604 
+
+LLM-based Ensemble 
+
+GPT-5.2 .2913 .2929 .3170 .2183 .2462 .0578 .4633 .2211 .2635 Codex .2920 .2927 .3181 .2183 .2457 .0568 .4721 .2379 .2667 GPT-5.5 .2938 .2960 .3200 .2211 .2504 .0592 .4692 .2280 .2672 DeepSeek-V3.2 .2872 .2896 .3146 .2162 .2399 .0551 .4615 .2273 .2614 Grok-4 .2899 .2928 .3185 .2175 .2464 .0532 .4692 .2307 .2648 
+
+REATS (Ours) 
+
+REATS-SFT .2734 .2788 .3052 .2110 .2281 .0414 .4435 .1979 .2474 
+
+(c) N=2 (MOMENT, TimerXL) 
+
+Method Exch H1 H2 M1 M2 Wea Elec Traf Avg 
+
+Individual Models 
+
+MOMENT .3845 .3428 .3990 .2516 .3140 .0922 .7105 .8640 .4198 TimerXL .3600 .3199 .3399 .2364 .2354 .0822 .4512 .2408 .2832 
+
+Traditional Ensemble 
+
+Ens avg .3710 .3270 .3517 .2421 .2552 .0867 .5356 .4873 .3321 Ens rand .3714 .3284 .3576 .2427 .2617 .0869 .5504 .5056 .3381 InvMSE val .3706 .3265 .3493 .2418 .2471 .0862 .4970 .2649 .2979 RLMC .3601 .3219 .3393 .2364 .2351 .0822 .4512 .2408 .2834 InvMSE tr .3704 .3265 .3481 .2417 .2475 .0864 .4978 .2664 .2981 OptW tr .3604 .3201 .3393 .2366 .2349 .0829 .4530 .2454 .2841 OptW val .3606 .3203 .3406 .2366 .2349 .0825 .4527 .2454 .2842 
+
+LLM-based Ensemble 
+
+GPT-5.2 .3631 .3207 .3365 .2382 .2383 .0833 .4752 .2999 .2944 Codex .3657 .3229 .3410 .2396 .2407 .0846 .4836 .3026 .2976 GPT-5.5 .3656 .3234 .3444 .2400 .2453 .0842 .4972 .3598 .3075 DeepSeek-V3.2 .3633 .3211 .3359 .2384 .2368 .0834 .4690 .2706 .2898 Grok-4 .3644 .3222 .3411 .2395 .2434 .0833 .4861 .3310 .3014 
+
+REATS (Ours) 
+
+REATS-SFT .3590 .3179 .3319 .2363 .2349 .0820 .4546 .2482 .2831 
+
+29

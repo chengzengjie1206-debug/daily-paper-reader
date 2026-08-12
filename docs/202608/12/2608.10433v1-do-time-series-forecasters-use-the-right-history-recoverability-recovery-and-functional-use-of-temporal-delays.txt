@@ -1,0 +1,982 @@
+Title: Do Time-Series Forecasters Use the Right History: Recoverability, Recovery, and Functional Use of Temporal Delays
+
+URL Source: https://arxiv.org/pdf/2608.10433v1
+
+Published Time: Wed, 12 Aug 2026 00:32:16 GMT
+
+Number of Pages: 33
+
+Markdown Content:
+# Do Time-Series Forecasters Use the Right History: Recoverability, Recovery, and Functional Use of Temporal Delays 
+
+Qipeng Qian 1,2 Yuntao Qian 21Supcon Technology, Hangzhou, China 
+
+> 2
+
+College of Artificial Intelligence, Zhejiang University, Hangzhou 310027, China 
+
+qianqipeng@supcon.com ytqian@zju.edu.cn 
+
+Abstract 
+
+Forecast accuracy does not tell us which past inputs produced a prediction. We separate three questions for time-series models with known delay structure: can the true delay be recovered from the observed data, does the model report it, and does the forecast actually use the same history? We first derive input-conditioned recoverability measures that separate intrinsic ambiguity from model error. We then prove that a delay report can become arbitrarily reliable while forecast risk approaches the oracle even though the predictor still uses the wrong lag. This failure also appears in finite samples on the point-delay task: among forecasts with a correct delay report and normalized excess risk within 10% of the oracle, the reported history is functionally unused under our matched masking test in 55.4% of N-HiTS cases and 92.7% of TCN cases. Finally, we show that routing the prediction through the reported history removes off-report bypass paths; a hard one-hot control achieves exact fixed-report alignment. The main conclusion is simple: a good forecast, even with a correct delay report, does not show that the model used the right history. 
+
+# 1 Introduction 
+
+Time-series models are usually judged by forecast error. That is not enough when the location of useful history matters. Autocorrelated inputs can make nearby lags look similar, output memory can hide a wrong input delay, and a model can predict well while using a different part of the past from the one that generated the output [Bj¨ orklund and Ljung, 2003, Sadler and Kozick, 2006, Ljung, 1999, Seborg et al., 2016, Kay, 1993]. We ask one direct question: does a forecaster use the right history? This requires three separate checks. 
+
+Recoverability asks whether the observed trajectory contains enough information to distinguish the true delay from alternatives. Recovery/reporting asks whether the fitted model identifies that delay or kernel. 
+
+Functional use asks whether changing the reported history actually changes the numerical forecast. These are different claims, and we audit them in the following order (the arrows denote audit order, not logical implication): recoverability −→ recovery/report −→ functional use .
+
+A model should not be blamed for a delay that the data cannot distinguish. Conversely, a correct report need not affect the forecast at all. For example, a model may output “delay 8” while its numerical prediction changes mostly when lag 12 is perturbed. Forecast error alone cannot reveal that mismatch. The central question is therefore the last link: even when a delay is recoverable, correctly reported, and paired with a near-oracle forecast, was that history actually used? Our contributions follow the same order. First , we measure whether the delay is recoverable before judging the model. The point-delay and finite-kernel settings admit input-conditioned Bayes calibration, while 1arXiv:2608.10433v1 [cs.LG] 11 Aug 2026 the autoregressive setting uses a profile score that allows a wrong lag to refit the other dynamic parameters. 
+
+Second , we prove that accurate reporting and near-oracle forecasting can still coexist with use of the wrong lag. We then test this exact joint event, rather than only comparing forecast and structural rankings. Third ,we intervene on past inputs to measure use directly and study routing as a controlled fix. A no-bypass factorization removes off-report historical paths, and a hard one-hot control realizes the point-delay guarantee exactly. DelayBench-TS is only the controlled testbed that makes these questions measurable; the main result is the separation between recoverability, reporting, and actual use. The nontrivial point is not merely that a model explanation can be unfaithful. It is that the mismatch can survive after the temporal structure is statistically recoverable, the model reports that structure correctly, and the numerical forecast is already near the oracle. This joint condition removes three easier explanations—ambiguous data, an incorrect report, and a poor predictor—before asking whether the reported history actually participates in prediction. 
+
+# 2 Related Work 
+
+Delay estimation and recoverability. Classical system identification and newer time-series methods estimate delays, lead–lag structure, or temporal edges directly [Bj¨ orklund and Ljung, 2003, Sadler and Kozick, 2006, Ljung, 1999, Ma and Huang, 2023, Cattaldo et al., 2024, Heyse et al., 2021, Zhao and Shen, 2024, Runge et al., 2019a,b, Runge, 2020]. Related work also asks whether a time-series structure is identifiable from the observed data [Kuskova et al., 2026b, Tan et al., 2025]. We use the same recoverability principle for an explicit finite delay or kernel decision. When the candidate likelihood is complete, we compute an input-conditioned Bayes limit for the structural decision itself. When autoregressive memory introduces nuisance compensation, we use a profile-separation diagnostic instead of calling it a Bayes oracle. The goal is practical: before interpreting a model’s structural error, decide whether that trajectory actually made the delay distinguishable. 
+
+Reports, explanations, and actual use. Readable explanations need not match the computation producing a prediction [Jain and Wallace, 2019, Jacovi and Goldberg, 2020, Ross et al., 2017]. Time-series work tests perturbations, context windows, and predictive masks [Ozyegen et al., 2022, Liu et al., 2024c,b, Kim et al., 2026, Zhang et al., 2025, Koh et al., 2020, Zheng et al., 2026], while autocorrelation can confound naive temporal attribution [Tunyi, 2026]. Forecast-necessity testing asks by edge ablation whether a reported relation is required for prediction [Kuskova et al., 2026a]. Our audit adds instance-level recoverability and an externally specified structural target: after a delay is recoverable, correctly reported, and paired with near-oracle forecasting, is that location actually used? We compare the report with intervention sensitivity and use “functional use” only for controlled predictor sensitivity, not real-world causal identification. 
+
+Controlled benchmarks. Synthetic and causal benchmarks provide controlled structure and held-out mechanisms [Tan et al., 2025, Cheng et al., 2024, Mogensen et al., 2024, Stein et al., 2025, Herdeanu et al., 2025, Yi et al., 2026, Zhao et al., 2026]. We use that setting only to answer the ordered question above: what can the trajectory reveal, what did the model report, and what history did the forecast use? This keeps the controlled generator in a supporting role rather than making benchmark breadth the main claim. 
+
+# 3 Problem Setup 
+
+An instance contains input U1: T , output Y1: T , and a finite candidate set. Let L be the largest candidate lag, 
+
+IL = {L + 1 , . . . , T }, neff = T − L, and 
+
+Sdu = ( ut−d)t∈I L .
+
+2Model and oracle are compared only when they use the same observed information and the same valid window. This matters most for autoregressive models, because the first scored output may depend on a previous output. If that boundary value is observed, both model and oracle must condition on the same value. If it is not observed, it cannot be silently given to the oracle. Full information-contract details are in Section A. In the released P2 data, the burn-in boundary value was not preserved, so the repaired profile audit simply drops that first transition and uses 
+
+IP2  
+
+> L
+
+= {L + 2 , . . . , T }, nP2 = T − L − 1. (1) This changes only the theory calibration; learned predictions are unchanged. The repair changes favorable membership for only 2 of 400 trajectories, so it fixes the information mismatch without changing the empirical story. We study three controlled mechanisms: P1: Yt = αU t−d + ϵt,
+
+P2: Yt = aY t−1 + bU t−d + ϵt,
+
+P3: Yt = aY t−1 +
+
+> L
+
+X
+
+> k=0
+
+hkUt−k + ϵt, h ∈ H . (2) P1 is a point delay, P2 adds output memory, and P3 uses a finite library of point, multipath, or distributed kernels. These three cases are not meant to cover every time-series mechanism; they isolate the two main complications we need for the argument: nuisance compensation and distributed delay structure. Models may report the candidate directly or through a fixed readout. Functional use is measured separately by intervening on past inputs and comparing the resulting response profile with the reported delay or kernel. For a point report r, let Ak denote the magnitude of the forecast response when the declared intervention is applied at historical location k, with the report and any intervention context held fixed. Let kpeak be the response peak under the fixed evaluation tie rule and define 
+
+duse (r, A ) = |r − kpeak |.
+
+Thus a correct report and a small structural error do not by definition force a small duse . The binary “unused” test used for the confirmatory P1 analysis is stricter and masking-based; it is defined in the Link-II experiment below. Full generator, loss, oracle, and intervention details are in the appendix. 
+
+# 4 Theory 
+
+The theory answers the same three questions as the experiments. Link I asks what the data make possible before any neural model is involved. Link II asks whether a correct report and a good forecast are already enough to show that the correct history was used. Link III asks what changes when the prediction is forced to pass through the reported history. The three links are meant to be read in that order. Full statements and proofs for the Link-I identities are in Sections B and C. 
+
+4.1 When is the delay recoverable? 
+
+For the point-delay model and fixed observed input u, two candidate delays d, d ′ differ by 
+
+DKL (d∥d′ | u) = α2
+
+2σ2 ∥Sdu − Sd′ u∥22. (3) 3Thus recovery is hard when the realized input looks similar at the two candidate lags. This is an input-conditioned statement: two trajectories generated with the same nominal SNR can have very different delay information if their realized histories have different shift geometry. Under a stationary input with variance 
+
+σ2 
+
+> U
+
+and autocorrelation ρU ,
+
+EU DKL = neff 
+
+α2σ2
+
+> U
+
+σ2 [1 − ρU (|d − d′|)] ,
+
+which makes the role of sequence length, SNR, lag spacing, and autocorrelation explicit. For two equal-prior candidates, the exact Bayes error is 
+
+R⋆
+
+> 0−1
+
+(d, d ′; u) = Φ 
+
+
+
+−pDKL (d∥d′ | u)/2
+
+
+
+,
+
+where Φ is the standard normal CDF. For more than two candidates we compute the finite-library Bayes risk numerically. This gives a direct answer to the first question: on this realized trajectory, how often would even the best structural decision rule be wrong? Output memory makes the problem harder because a wrong delay can refit other parameters. For P2, write the true conditional mean in the intercept-augmented form 
+
+m⋆t = η⋆ + a⋆Yt−1 + b⋆Ut−d⋆ ,
+
+with η⋆ = 0 in the centered specification, and let xt,d ′ contain the previous output and the wrong-lag input (plus an intercept when used). Here E⋆ denotes expectation under the true P2 process. Define 
+
+Qd′ = inf 
+
+> β′
+
+X
+
+> t∈I P2
+> L
+
+E⋆[( m⋆t − x⊤ 
+
+> t,d ′
+
+β′)2], κARX = min  
+
+> d′̸=d⋆
+
+Qd′
+
+nP2 (σ⋆)2 . (4) Small κARX means a wrong delay can imitate the true mean after nuisance refitting. This is different from ordinary lag correlation: the wrong lag is allowed to exploit the previous output and change its gain before we measure how much mismatch remains. The corresponding population profile KL is Qd′ /(2( σ⋆)2) when the innovation variance is fixed, and 
+
+nP2 
+
+2 log 
+
+
+
+1 + Qd′
+
+nP2 (σ⋆)2
+
+
+
+when that variance is also refitted. κARX is therefore a separation score, not an exact composite Bayes risk. For a finite kernel library, exact removal of known output memory gives ey = Uh + ϵ, with U =[S0u, . . . , S Lu], and 
+
+DKL (h∥h′ | u) = 12σ2 ∥U(h − h′)∥22. (5) Define the worst finite-library separation 
+
+γ(U, H) = min 
+
+> h̸=h′
+
+∥U(h − h′)∥2
+
+∥h − h′∥2
+
+.
+
+Then every candidate pair satisfies 
+
+DKL (h∥h′ | u) ≥ γ(U, H)2
+
+2σ2 ∥h − h′∥22.
+
+So kernel recovery depends on whether the realized input separates the candidate mean responses. If two different kernels produce the same conditional mean under the realized input, no structural readout can distinguish them from the output distribution alone. The exact P3 calibration used here is the a = 0 special 4case. In the experiments, favorable instances use Bayes risk for P1/P3 and κARX for P2. The common role of these quantities is simply to separate data ambiguity from model failure. The exact form changes across the three mechanisms, but the question does not. The main favorable subsets use R⋆ 
+
+> Bayes
+
+≤ .05 for P1/P3 and 
+
+κARX ≥ .20 for P2. For P1, ambiguity comes from two shifted copies of the realized input being too similar. For P2, a wrong lag can also borrow predictive power from the previous output and refit its gain. For P3, two different kernels can become indistinguishable after they are filtered through the realized input. We therefore do not compare raw structural error without first checking the corresponding recoverability quantity. This is the only purpose of Link I: it tells us when a structural mistake is informative about the model rather than about the data. 
+
+4.2 A correct report and a good forecast still need not mean use 
+
+A correct report and a low forecast error still do not tell us which structure produced the forecast. The gap is more general than the point-delay model. 
+
+Proposition 4.1 (Trajectory separation can coexist with vanishing average prediction penalty) . For each n,consider two equal-prior Gaussian structural candidates Pj,n = N (μj,n , σ 2In), j ∈ { 0, 1}, and define 
+
+Dn := ∥μ0,n − μ1,n ∥22
+
+2σ2 .
+
+Suppose Dn → ∞ while Dn/n → 0. Let the structural report be the MAP decision, but under the true candidate 0 let the numerical predictor use the alternative mean bY = μ1,n . Then 
+
+Pr  
+
+> 0
+
+( bH̸ = 0) = Φ( −pDn/2) → 0, 1
+
+n E∥Y − bY ∥22 = σ2
+
+
+
+1 + 2Dn
+
+n
+
+
+
+→ σ2.
+
+Thus the two structures can become arbitrarily reliably distinguishable at the trajectory level while using the wrong structure costs asymptotically nothing under average forecast MSE. Accurate reporting and near-oracle forecasting therefore do not imply functional alignment when reporting and prediction are uncoupled. 
+
+P1 is a direct special case with μj,n = αS dj u(n). For α̸ = 0 , whenever the two shift operators differ, any sequence Dn → ∞ with Dn/n → 0 can be realized by scaling the input; on a correct report the predictor can still use d1 and have report–use distance |d0 − d1| (proof in Section C). A concrete choice is Dn = nβ for any 
+
+0 < β < 1: structural decision error then vanishes while the wrong-structure excess MSE is only 2σ2nβ−1.The reason is simple: structural evidence adds over the whole trajectory, whereas forecast MSE averages the mismatch over coordinates. The proposition is an existence result, not a claim that every accurate forecaster fails this way; it shows why even a correct report and an excellent forecast cannot replace a direct use test. 
+
+4.3 What routing guarantees 
+
+Link II motivates a direct coupling test. Let v collect all nonhistorical inputs or context held fixed in the intervention, and let g(r) be the historical gate vector induced by report r. Suppose prediction is forced through 
+
+Fstr (u, v ; r) = G v, r, g(r) ⊙ u, (6) and G receives no other function of the historical block u.5Proposition 4.2 (No-bypass constraint under routed prediction) . For a fixed report r, changing only coordi-nates whose gate entry gk(r) = 0 cannot change the forecast. If G is LG-Lipschitz in its gated input, then for scalar intervention amplitude δ a single-coordinate intervention obeys 
+
+∥Fstr (u + δe k, v ; r) − Fstr (u, v ; r)∥ ≤ LG|gk(r)| | δ|,
+
+where ek is the kth coordinate vector. 
+
+Corollary 4.3 (Exact point-delay alignment under nondegenerate one-hot routing) . If g(r) = er and the selected coordinate has nonzero intervention response, then every off-report response is zero and the unique response peak is r. The point-delay report–use distance is therefore zero. 
+
+The guarantee is deliberately narrow. It does not say that routing makes a wrong report correct, and it does not force the model to use the selected coordinate strongly. It only says that an off-report historical path cannot bypass the gate. This guarantee holds with the report and any input-derived context fixed. 
+
+Remark 4.4 (Interventions can change the report) . In deployed mode, changing an input may also change the report or a context variable recomputed from that input. Such a response is a report-selection effect, not an ungated bypass. The theorem also explains why we keep soft and hard routing separate in the experiments. A dense soft gate can still satisfy the factorization, but every candidate may retain nonzero weight, so its argmax is not a one-hot certificate. The hard control is stronger: once the report is fixed, all other historical coordinates are removed from the forward path. Neither statement says that routing will improve forecast MSE; the guarantee concerns the relation between the report and the history available to the predictor. 
+
+# 5 Experiments 
+
+The experiments mirror the three theoretical links rather than forming a single leaderboard. We first validate each recoverability quantity and ask whether structural errors remain on favorable trajectories. We then test two increasingly strong separations: disagreement between forecast and structural rankings, followed by the instance-level event “correct report + near-oracle forecast + functional non-use.” Finally, routing is used as a mechanism test: if off-report paths are the source of the mismatch, removing those paths should close the measured gap. We use the same 400 held-out trajectories per task and three training seeds for the main comparison. TCN [Bai et al., 2018] and N-HiTS [Challu et al., 2023] are the primary neural backbones, and each task has a matched statistical reference. All paired comparisons use the same trajectories. Bootstrap resampling uses complete trajectories; when an estimate combines training seeds, trajectories and seeds are resampled hierarchically. The confirmatory Link-II rerun keeps the original architecture, splits, optimizer, and training budget and only saves the signed forecasts needed for the new conditional test. Exact generation, additional models, leakage checks, bootstrap details, and independent replications are in the appendix. The main text keeps only the results needed for the three questions above. 
+
+5.1 Recoverability and recovery 
+
+Before looking at learned models, we first verify the recoverability quantities themselves. Point-delay Bayes calculations agree with Monte Carlo, the repaired P2 profile score agrees with direct optimization to about 
+
+10 −15 relative error, and the finite-kernel Bayes ordering matches the reference error (Figure 1 and Table 10). The P2 repair changes favorable membership for only 2 of 400 trajectories and does not change the model ordering. We then restrict attention to favorable cases to ask whether a learned model still fails when the structure is statistically clear. 6Table 1: Recovery and forecasting on the common cohort. “Recoverable error” is structural error restricted to cases favorable under the task-specific recoverability measure. Lower is better. 
+
+Task Method Structural error Recoverable error Forecast MSE P1 Gaussian MAP .065 .010 1.189 Elastic Net .265 .138 2.509 MLP-NARX .798 .798 1.559 TCN .273 .176 1.673 N-HiTS .500 .440 1.678 P2 Profile ARX .118 .004 .388 PEM-ARX .248 .049 .733 MLP-NARX .784 .783 .520 TCN .370 .250 .935 N-HiTS .570 .500 .540 P3 Finite-library MLE .115 .004 .929 Elastic Net .853 .857 1.622 MLP-NARX .851 .854 .903 TCN .353 .225 1.068 N-HiTS .714 .691 .912 
+
+Table 1 shows that the matched references are close to the favorable-region limit, while the learned structural readouts remain much worse. The lightweight baselines make the same point from another angle. In P2, MLP-NARX reaches forecast MSE .520, close to N-HiTS (.540) and well below TCN (.935), but its structural error is .784 and its recoverable error is .783. In P3, MLP-NARX again forecasts competitively (.903) while its kernel-candidate error remains .851. A model can therefore fit the numerical target well while learning little about the declared delay. The remaining recovery gap is not claimed to be an architecture-level impossibility: structural error continues to improve with more training data (Appendix Section G.9). 
+
+5.2 Forecast accuracy does not imply recovery 
+
+Forecast ranking can disagree with structural ranking. In both P2 and P3, TCN has lower structural error than N-HiTS, while N-HiTS has lower forecast MSE; all four paired bootstrap intervals exclude zero (Table 2). Thus the model that predicts better is not necessarily the model that recovers the delay better. The same qualitative separation appears in the independent iTransformer release. This is useful evidence, but it is still weaker than the theorem because it compares two metrics separately. The next experiment conditions on good reporting and good forecasting at the same time. Table 2: Forecast and structural rankings disagree. Differences are first system minus second system with paired trajectory-bootstrap 95% CIs; lower is better, and the final column names the better system.                                  
+
+> Task Metric (first −second) Difference [95% CI] Better P2 Structural: TCN −N-HiTS −0.200 [−0.247 ,−0.155 ]TCN P2 Forecast MSE: N-HiTS −TCN −0.395 [−0.523 ,−0.271 ]N-HiTS P3 Structural: TCN −N-HiTS −0.362 [−0.407 ,−0.314 ]TCN P3 Forecast MSE: N-HiTS −TCN −0.157 [−0.249 ,−0.081 ]N-HiTS
+
+75.3 Correct and near-oracle still does not mean used 
+
+The stronger test conditions on reporting and forecasting at the same time. For row i, define normalized excess risk 
+
+NER i = ∥byi − μ⋆i ∥22/n i
+
+σ2
+
+> i
+
+, μ⋆i = αS d⋆i ui. (7) Here ni is the scored forecast length and σ2 
+
+> i
+
+is the innovation variance for row i. The near-oracle threshold 
+
+NER ≤ .10 was fixed before evaluating the confirmatory results. Since the oracle risk is the noise variance, 
+
+1 + NER is the conditional risk in oracle-noise units; using the clean conditional mean avoids a lucky-noise definition of “near oracle.” We call the report unused if zeroing its ±1-lag window changes the scalar forecast no more than the 95th-percentile effect of 20 disjoint equal-width windows with the closest standardized-input energy. This label is fixed before conditioning on report correctness or NER; validation is in Section G.5. Table 3 directly shows the separation from Theorem 4.1: even when the report is correct and the forecast is Table 3: Direct Link-II joint failure on 1,200 seed–trajectory rows per backbone. “Correct” means the reported delay is true; “near” means NER ≤ .10 ; “both” satisfies both conditions; “unused” counts both-rows whose reported window fails the matched masking test. The last column is unused/both.                    
+
+> Backbone Correct NER ≤.10 Both Unused Unused |both [95% CI] N-HiTS 600 401 177 98 .554 [.417,.679] TCN 873 395 248 230 .927 [.865,.977]
+
+near the oracle, the reported history is often unused. The effect is not marginal: the conditional unused rate is .554 for N-HiTS and .927 for TCN, with both confidence intervals well above zero. Conditioning on both events is essential. Correct reporting rules out the trivial case in which the model simply named the wrong lag, while the NER filter rules out cases where the forecast is too poor for its history use to be informative. The unused label itself is computed before either conditioning step, so the subset is not created by retuning the functional diagnostic. This does not prove the asymptotic proposition empirically; it shows the same joint failure in finite samples. The conclusion is also insensitive to the NER cutoff: τNER = .10 was fixed first, and the same saved forecasts are evaluated at three additional thresholds without retraining or cutoff selection. As Table 4 shows, Table 4: NER-cutoff sensitivity. n counts correct-report rows with NER ≤ τNER ; the last column is the unused fraction. Large rates indicate persistent report–use mismatch.                          
+
+> Backbone NER cutoff τNER Both nUnused |both [95% CI] N-HiTS .01 47 .553 [.326,.778] .05 118 .525 [.349,.701] .10 177 .554 [.417,.679] .20 234 .538 [.417,.658] TCN .01 78 .949 [.857,1.000] .05 171 .942 [.865,1.000] .10 248 .927 [.865,.977] .20 305 .918 [.872,.958]
+
+N-HiTS stays near .53–.55 unused and TCN above .91 across all four thresholds. On the same locked rows, three additive amplitudes and input Jacobians also show large report–use gaps (Appendix Section G.5), so the result is not tied to one NER cutoff or one sensitivity calculation. 85.4 Routing closes the report–use gap 
+
+We next ask whether coupling the report to the numerical path removes the mismatch. We separate dense soft routing from a hard one-hot control. The soft router predicts through the full gate vector, so its structural object is the whole vector rather than the argmax alone. The hard control uses only the reported argmax delay in the forward pass and is therefore the implementation that matches Theorem 4.3. No routing hyperparameter search is used for this closure experiment. Table 5 shows that routing removes the measured fixed report–use Table 5: P1 routing mechanism test on the common cohort. Structural error and forecast MSE are lower-is-better; fixed report–use gap is in lags, with 0 meaning exact peak alignment under the fixed-report intervention.                            
+
+> Backbone Regime Struct. error ↓Forecast MSE ↓Fixed gap (lags) ↓
+> N-HiTS Separate .500 1.678 9.846 Soft routed .493 1.365 0Hard one-hot .492 1.507 0TCN Separate .273 1.673 13.791 Soft routed .257 1.311 0Hard one-hot .264 1.393 0
+
+gap in this P1 closure for both backbones. Importantly, the structural errors change little while the measured gap falls from 9.846/13.791 lags to zero. The closure is therefore not explained by a large improvement in report accuracy; it follows the change in how historical information reaches the numerical predictor. The soft router also has the lowest forecast MSE here, but only the hard one-hot route matches the point-delay guarantee in Theorem 4.3; the table should therefore be read as a mechanism comparison, not as a claim that routing must improve forecasting. Table 6: Numerical check of the hard one-hot guarantee under a fixed report. The theorem-compatible target is off-report maximum = 0 and each fraction = 1 ; responses use tolerance 10 −7.                  
+
+> Backbone Off-report max ↓Off-report zero frac. ↑Selected active frac. ↑Peak =report frac. ↑
+> N-HiTS 01.000 1.000 1.000 TCN 01.000 1.000 1.000
+
+Table 6 checks the theorem directly. For both backbones, every fixed-report off-support response is zero to 10 −7, every selected response is nonzero, and every response peak equals the report. This is the numerical counterpart of the one-hot corollary. The result is about alignment, not guaranteed forecast improvement: soft routing has the lowest P1 MSE in this release, while hard routing still improves on the separate baseline. Soft routing also removes the ungated bypass in the tested implementation, but its gate is dense and should not be read as a one-hot delay certificate. Cross-task results give the same direction. As Table 7 shows, shared routing reduces the report–use gap by about 9.8–13.1 lags across P1–P3, and all three 95% intervals exclude zero. This matters because the exact one-hot guarantee is P1-specific, whereas the empirical coupling benefit is not confined to that task. These cross-task effects remain empirical and are not assigned the hard one-hot guarantee. For non-point P3 kernels, the same coupling improves full-profile ℓ2 and cosine scores for both backbones; path recall improves for TCN but not significantly for N-HiTS (Table 9). This full-profile check is kept in the appendix because it supports the routing claim without changing the main point-delay theorem. 9Table 7: Cross-task empirical coupling contrast. Entries are shared-gate minus separate-head report–use gaps in lags with trajectory-bootstrap 95% intervals; negative favors routing. This is an empirical contrast, not the hard one-hot guarantee.              
+
+> Task ∆gap = shared −separate (lags) [95% CI] P1 −13 .113 [−13 .983 ,−12 .215 ]P2 −11 .154 [−12 .078 ,−10 .178 ]P3 −9.835 [−11 .865 ,−7.965 ]
+
+5.5 Does the routing effect transfer? 
+
+We also drive the controlled mechanisms with Beijing air-quality and hydraulic input histories. All 12 shared-minus-separate report–use intervals favor coupling: Table 8: Real-input semi-synthetic routing test. Each entry is the shared-minus-separate report–use gap in lags with a paired 95% CI; negative means routing improves alignment.                                           
+
+> Task Source TCN N-HiTS P1 Beijing −11 .67 [−13 .69 ,−10 .01 ]−9.48 [−12 .76 ,−6.74 ]Hydraulic −11 .57 [−14 .34 ,−9.12 ]−13 .79 [−15 .56 ,−11 .68 ]P2 Beijing −11 .81 [−13 .71 ,−9.37 ]−8.14 [−10 .35 ,−6.23 ]Hydraulic −14 .24 [−16 .46 ,−11 .67 ]−7.17 [−8.64 ,−5.56 ]P3 Beijing −9.46 [−11 .13 ,−7.79 ]−8.75 [−12 .04 ,−4.02 ]Hydraulic −14 .09 [−16 .47 ,−11 .09 ]−10 .09 [−12 .62 ,−6.93 ]
+
+As Table 8 shows, every one of the 12 backbone–task–source contrasts favors coupling, and all 12 intervals exclude zero. These tests keep the output-side delay mechanism known while changing the input geometry. Together with the stress and physics-inspired checks in Sections G.6 and G.7, they show that the report–use effect is not confined to white or AR(1) inputs. The transfer claim remains narrow: routing improves report–use alignment under these controlled mechanisms and authentic input histories. It does not show that routing always improves forecast accuracy or identify real-world causal structure. Broader robustness and transfer audits are reported in the appendix. 
+
+# 6 Discussion and Conclusion 
+
+The paper separates three questions that are often mixed together: can the delay be recovered from the data, did the model report it, and did the forecast actually use it? The main result is that success on the first two questions, even together with a near-oracle forecast, does not answer the third. Routing then provides a controlled closure test: hard one-hot routing removes off-report historical paths exactly, while the softer shared gate shows that the same direction holds empirically beyond the point-delay guarantee. Whether this mismatch matters depends on the role of the report. If the only goal is in-distribution forecast MSE, exploiting a correlated proxy lag may be harmless. The issue arises when a reported delay is interpreted as evidence about the process or used for sensor selection, diagnosis, or control. In those settings, a correct-looking report that is disconnected from the prediction path can support the wrong downstream conclusion even when the forecast itself is accurate. We therefore do not argue that every forecaster must recover the data-generating delay; we argue that a structural report should not be treated as functionally meaningful without a separate use test. The scope remains narrow. P2 uses profile separation rather than a composite Bayes oracle, the exact P3 10 calibration uses the a = 0 special case of the known-memory result, the semi-synthetic tests retain controlled output mechanisms, and the interventions measure predictor sensitivity rather than real-world causality. Extending the same recoverability–report–use audit to multivariate pathways, learned context windows, and large pretrained forecasters is a natural next step. Within the present scope, the conclusion is simple: good forecasting does not show that a model recovered or used the right history, and even a correct delay report is not enough. 
+
+11 References 
+
+Shaojie Bai, J. Zico Kolter, and Vladlen Koltun. An empirical evaluation of generic convolutional and recurrent networks for sequence modeling. arXiv preprint arXiv:1803.01271 , 2018. doi: 10.48550/arXiv. 1803.01271. Svante Bj¨ orklund and Lennart Ljung. A review of time-delay estimation techniques. In Proceedings of the 42nd IEEE Conference on Decision and Control , volume 3, pages 2502–2507, Maui, HI, USA, 2003. IEEE. doi: 10.1109/CDC.2003.1272997. Marco Cattaldo, Alberto Ferrer, and Ingrid M˚ age. Variable time delay estimation in continuous industrial processes. Chemometrics and Intelligent Laboratory Systems , 246:105082, 2024. doi: 10.1016/j.chemolab. 2024.105082. URL https://doi.org/10.1016/j.chemolab.2024.105082 .Cristian Challu, Kin G. Olivares, Boris N. Oreshkin, Federico Garza, Max Mergenthaler-Canseco, and Artur Dubrawski. N-hits: Neural hierarchical interpolation for time series forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 37, pages 6989–6997, 2023. doi: 10.1609/aaai.v37i6.25854. Song Chen. Beijing multi-site air quality. UCI Machine Learning Repository, 2017. URL https: //doi.org/10.24432/C5RK5G . Dataset. Yuxiao Cheng, Ziqian Wang, Tingxiong Xiao, Qin Zhong, Jinli Suo, and Kunlun He. Causaltime: Realisti-cally generated time-series for benchmarking of causal discovery. In The Twelfth International Conference on Learning Representations , 2024. URL https://proceedings.iclr.cc/paper_files/ paper/2024/hash/0c79d6ed1788653643a1ac67b6ea32a7-Abstract-Conference. html .Thomas M. Cover and Joy A. Thomas. Elements of Information Theory . Wiley-Interscience, Hoboken, NJ, 2 edition, 2006. ISBN 9780471241959. doi: 10.1002/047174882X. Luc Devroye, L´ aszl´ o Gy˝ orfi, and G´ abor Lugosi. A Probabilistic Theory of Pattern Recognition , volume 31 of 
+
+Stochastic Modelling and Applied Probability . Springer, New York, 1996. ISBN 9781461207115. doi: 10.1007/978-1-4612-0711-5. Bradley Efron and Robert J. Tibshirani. An Introduction to the Bootstrap , volume 57 of Monographs on Statistics and Applied Probability . Chapman & Hall, New York, 1993. ISBN 9780412042317. Nikolai Helwig, Eliseo Pignanelli, and Andreas Sch¨ utze. Condition monitoring of hydraulic systems. UCI Machine Learning Repository, 2015. URL https://doi.org/10.24432/C5CW21 . Dataset. Benjamin Herdeanu, Juan Nathaniel, Carla Roesch, Jatan Buch, Gregor Ramien, Johannes Haux, and Pierre Gentine. Causaldynamics: A large-scale benchmark for structural discovery of dy-namical causal models. In Advances in Neural Information Processing Systems , volume 38, 2025. URL https://proceedings.neurips.cc/paper_files/paper/2025/hash/ 39a3f7dc00e4723a5ca7808b04fc4d4f-Abstract-Datasets_and_Benchmarks_ Track.html . Datasets and Benchmarks Track. Jolan Heyse, Laurent Sheybani, Serge Vulli´ emoz, and Pieter van Mierlo. Evaluation of directed causality measures and lag estimations in multivariate time-series. Frontiers in Systems Neuroscience , 15:620338, 2021. doi: 10.3389/fnsys.2021.620338. 12 Alon Jacovi and Yoav Goldberg. Towards faithfully interpretable NLP systems: How should we define and evaluate faithfulness? In Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics , pages 4198–4205, 2020. doi: 10.18653/v1/2020.acl-main.386. Sarthak Jain and Byron C. Wallace. Attention is not explanation. In Proceedings of NAACL-HLT , pages 3543–3556, 2019. doi: 10.18653/v1/N19-1357. Steven M. Kay. Fundamentals of Statistical Signal Processing, Volume I: Estimation Theory . Prentice Hall, Upper Saddle River, NJ, 1993. ISBN 9780133457117. Changhun Kim, Yechan Mun, Hyeongwon Jang, Eunseo Lee, Sangchul Hahn, and Eunho Yang. Delta-XAI: A unified framework for explaining prediction changes in online time series monitoring. In The Fourteenth International Conference on Learning Representations , 2026. URL https://openreview.net/ forum?id=ZHW5pp5nE5 .Pang Wei Koh, Thao Nguyen, Yew Siang Tang, Stephen Mussmann, Emma Pierson, Been Kim, and Percy Liang. Concept bottleneck models. In Proceedings of the 37th International Conference on Machine Learning , volume 119 of Proceedings of Machine Learning Research , pages 5338–5348, 2020. URL 
+
+https://proceedings.mlr.press/v119/koh20a.html .Solomon Kullback and Richard A. Leibler. On information and sufficiency. The Annals of Mathematical Statistics , 22(1):79–86, 1951. doi: 10.1214/aoms/1177729694. Valentina Kuskova, Dmitry Zaytsev, and Michael Coppedge. Beyond coefficients: Forecast-necessity testing for interpretable causal discovery in nonlinear time-series models. arXiv preprint arXiv:2604.18751 , 2026a. doi: 10.48550/arXiv.2604.18751. URL https://arxiv.org/abs/2604.18751 .Valentina Kuskova, Dmitry Zaytsev, and Michael Coppedge. When are neural interaction discoveries real? identifiability, recoverability, and a pre-fit diagnostic. arXiv preprint arXiv:2606.08390 , 2026b. doi: 10.48550/arXiv.2606.08390. URL https://arxiv.org/abs/2606.08390 .Yong Liu, Tengge Hu, Haoran Zhang, Haixu Wu, Shiyu Wang, Lintao Ma, and Mingsheng Long. itransformer: Inverted transformers are effective for time series forecasting. In The Twelfth International Conference on Learning Representations , 2024a. URL https://openreview.net/forum?id=JePfAI8fah .Zichuan Liu, Tianchun Wang, Jimeng Shi, Xu Zheng, Zhuomin Chen, Lei Song, Wenqian Dong, Jayantha Obeysekera, Farhad Shirani, and Dongsheng Luo. TimeX++: Learning time-series explanations with information bottleneck. In Proceedings of the 41st International Conference on Machine Learning ,volume 235 of Proceedings of Machine Learning Research , pages 32062–32082. PMLR, 2024b. URL 
+
+https://proceedings.mlr.press/v235/liu24bl.html .Zichuan Liu, Yingying Zhang, Tianchun Wang, Zefan Wang, Dongsheng Luo, Mengnan Du, Min Wu, Yi Wang, Chunlin Chen, Lunting Fan, and Qingsong Wen. Explaining time series via contrastive and locally sparse perturbations. In The Twelfth International Conference on Learning Representations , 2024c. URL https://openreview.net/forum?id=qDdSRaOiyb .Lennart Ljung. System Identification: Theory for the User . Prentice Hall PTR, Upper Saddle River, NJ, 2 edition, 1999. ISBN 9780136566953. Xin-Yue Ma and Chun-Qing Huang. Data-driven approach for time-delay estimation of industrial processes. 
+
+ISA Transactions , 137:35–58, 2023. doi: 10.1016/j.isatra.2023.01.028. 13 Søren Wengel Mogensen, Karin Rathsman, and Per Nilsson. Causal discovery in a complex industrial system: A time series benchmark. In Francesco Locatello and Vanessa Didelez, editors, Proceedings of the Third Conference on Causal Learning and Reasoning , volume 236 of Proceedings of Machine Learning Research , pages 1218–1236. PMLR, 2024. URL https://proceedings.mlr.press/ v236/mogensen24a.html .Susan A. Murphy and Aad W. van der Vaart. On profile likelihood. Journal of the American Statistical Association , 95(450):449–465, 2000. doi: 10.1080/01621459.2000.10474219. Ozan Ozyegen, Igor Ilic, and Mucahit Cevik. Evaluation of interpretability methods for multivariate time series forecasting. Applied Intelligence , 52(5):4727–4743, 2022. doi: 10.1007/s10489-021-02662-2. Christian P. Robert and George Casella. Monte Carlo Statistical Methods . Springer Texts in Statistics. Springer, New York, 2 edition, 2004. ISBN 9780387212395. doi: 10.1007/978-1-4757-4145-2. Andrew Slavin Ross, Michael C. Hughes, and Finale Doshi-Velez. Right for the right reasons: Training differentiable models by constraining their explanations. arXiv preprint arXiv:1703.03717 , 2017. Jakob Runge. Discovering contemporaneous and lagged causal relations in autocorrelated nonlinear time series datasets. In Jonas Peters and David Sontag, editors, Proceedings of the 36th Conference on Uncertainty in Artificial Intelligence , volume 124 of Proceedings of Machine Learning Research , pages 1388–1397. PMLR, 2020. URL https://proceedings.mlr.press/v124/runge20a.html .Jakob Runge, Sebastian Bathiany, Erik Bollt, Gustau Camps-Valls, Dim Coumou, Ethan Deyle, Clark Glymour, Marlene Kretschmer, Miguel D. Mahecha, Jordi Mu˜ noz-Mar´ ı, Egbert H. van Nes, Jonas Peters, Rick Quax, Markus Reichstein, Marten Scheffer, Bernhard Sch¨ olkopf, Peter Spirtes, George Sugihara, Jie Sun, Kun Zhang, and Jakob Zscheischler. Inferring causation from time series in earth system sciences. 
+
+Nature Communications , 10:2553, 2019a. doi: 10.1038/s41467-019-10105-3. Jakob Runge, Peer Nowack, Marlene Kretschmer, Seth Flaxman, and Dino Sejdinovic. Detecting and quantifying causal associations in large nonlinear time series datasets. Science Advances , 5(11):eaau4996, 2019b. doi: 10.1126/sciadv.aau4996. Brian M. Sadler and Richard J. Kozick. A survey of time delay estimation performance bounds. In 2006 IEEE Sensor Array and Multichannel Signal Processing Workshop Proceedings , pages 282–288, Waltham, MA, USA, 2006. IEEE. doi: 10.1109/SAM.2006.1706138. Dale E. Seborg, Thomas F. Edgar, Duncan A. Mellichamp, and Francis J. Doyle. Process Dynamics and Control . John Wiley & Sons, Hoboken, NJ, 4 edition, 2016. ISBN 9781119285915. Gideon Stein, Maha Shadaydeh, Jan Blunk, Niklas Penzel, and Joachim Denzler. Causalrivers: Scaling up benchmarking of causal discovery for real-world time-series. In The Thirteenth International Conference on Learning Representations , 2025. URL https://proceedings.iclr.cc/paper_files/ paper/2025/hash/a205fda871b0f6c1e18a7ad7325eb6cf-Abstract-Conference. html . Spotlight. Mingtian Tan et al. Syntsbench: Rethinking temporal pattern learning in deep learning mod-els for time series. In Advances in Neural Information Processing Systems , volume 38, 2025. URL https://proceedings.neurips.cc/paper_files/paper/2025/hash/ d60361f3d0021c76626b2597957261d6-Abstract-Datasets_and_Benchmarks_ Track.html . Datasets and Benchmarks Track. 14 Alexandre B. Tsybakov. Introduction to Nonparametric Estimation . Springer Series in Statistics. Springer, New York, 2009. ISBN 9780387790527. doi: 10.1007/b13794. Amadeo Tunyi. The failures of marginal influence-based attribution methods for global time series explanations. arXiv preprint arXiv:2607.16236 , 2026. doi: 10.48550/arXiv.2607.16236. URL 
+
+https://arxiv.org/abs/2607.16236 .Huiyang Yi, Xiaojian Shen, Yonggang Wu, Duxin Chen, He Wang, and Wenwu Yu. Causalcompass: Evaluating the robustness of time-series causal discovery in misspecified scenarios. arXiv preprint arXiv:2602.07915 , 2026. doi: 10.48550/arXiv.2602.07915. URL https://arxiv.org/abs/2602. 07915 .Jiahui Zhang, Zhengyang Zhou, Wenjie Du, and Yang Wang. Enhancing the maximum effective window for long-term time series forecasting. In Advances in Neural Information Processing Systems , volume 38, 2025. URL https://openreview.net/forum?id=Gmwsy7TlFI .Lifan Zhao and Yanyan Shen. Rethinking channel dependence for multivariate time series forecasting: Learning from leading indicators. In The Twelfth International Conference on Learning Represen-tations , 2024. URL https://proceedings.iclr.cc/paper_files/paper/2024/hash/ b52b07a239a7afa155ca25cf17a55074-Abstract-Conference.html .Yuyang Zhao, Lian Xu, Hao Miao, Chenxi Liu, and Hao Xue. Ts-fault: Benchmarking time series forecasters against structural faults. arXiv preprint arXiv:2606.18539 , 2026. doi: 10.48550/arXiv.2606.18539. Xu Zheng, Wei Cheng, Zhuomin Chen, Mo Sha, Jingchao Ni, and Dongsheng Luo. Information bottleneck learning for faithful time series forecasting explanations. arXiv preprint arXiv:2607.28124 , 2026. doi: 10.48550/arXiv.2607.28124. URL https://arxiv.org/abs/2607.28124 .15 A Detailed Assumptions and Notation 
+
+Candidate, input, and prior contract. The candidate index H is independent of the input mechanism in the core synthetic tier: U ⊥ H. Exact Bayes statements condition on every boundary variable actually used by the candidate likelihood. If an input policy or initial-history law depends on the candidate, the structural prior must be conditioned on the observed variables and the corresponding likelihood contribution included. The released P2 profile calibration does not invoke such a Bayes claim: because its burn-in boundary YL was not serialized faithfully, the repaired diagnostic simply excludes the first post-boundary transition and uses Equation (1). 
+
+Innovation contract. P1 and P3 assume independent Gaussian innovations. P2 assumes ϵt is independent of the filtration generated by past output and the observed exogenous input. Closed-loop inputs are excluded from the exact P2 theorem unless the controller and likelihood are explicitly modeled. 
+
+Boundary history and the P2 repair. The general P2/P3 conditional formulas require the boundary output history used by the recursion to be observed and conditioned upon consistently. The released P2 generator violated that condition only for the first scored transition: burn-in produced a random candidate-dependent 
+
+YL, but serialization replaced that boundary value while the target YL+1 had already been generated from it. We therefore make no same-information claim for that transition. All reported P2 profile calibration in the repaired release starts at L + 2 , where YL+1 is observed, and uses nP2 = T − L − 1. The implemented exact P3 cohort has a = 0 , so no output-boundary history enters its KL/Bayes computation. For a future nonzero-a
+
+exact P3 cohort, the common observed boundary history would have to be conditioned upon explicitly. 
+
+Known versus unknown nuisance parameters. A known-parameter Bayes oracle defines a strict same-information limit only when those parameters are fixed and included in the observed information set for every evaluated system. If the parameters are hidden or vary within the scenario, the known-parameter result is a labeled lower reference. Profile likelihood is a feasible reference when gain, previous-output carry-over, or variance are unknown. Profile-KL is a population separation diagnostic for a composite incorrect candidate; it is not, by itself, an exact composite-hypothesis Bayes risk. 
+
+# B Additional Link-I Statements 
+
+The main text keeps only the recoverability formulas needed for the argument. The exact decision and profile statements used by the proofs are collected here. 
+
+Proposition B.1 (Conditional delay information) . For any d, d ′ ∈ D ,
+
+DKL (P (u) 
+
+> d
+
+∥P (u) 
+
+> d′
+
+) = α2
+
+2σ2 ∥Sdu − Sd′ u∥22 . (8) 
+
+Corollary B.2 (Average information under stationary input) . If Ut is second-order stationary with variance 
+
+σ2 
+
+> U
+
+and autocorrelation ρU , define SNR pure := α2σ2 
+
+> U
+
+/σ 2. Then for ∆ = |d − d′|,
+
+EU [DKL (P (U ) 
+
+> d
+
+∥P (U ) 
+
+> d′
+
+)] = neff SNR pure [1 − ρU (∆)] . (9) 
+
+Proposition B.3 (Exact binary Bayes risk) . For two equal-prior candidates with common covariance, 
+
+R⋆
+
+> 0−1
+
+(d, d ′; u) = Φ 
+
+
+
+−
+
+q
+
+DKL (P (u) 
+
+> d
+
+∥P (u) 
+
+> d′
+
+)/2
+
+
+
+. (10) 16 Proposition B.4 (Known-parameter ARX delay information) . Let ϑ⋆ denote the true nuisance-parameter tuple, with ϑ⋆ = ( η⋆, a ⋆, b ⋆, (σ⋆)2) and η⋆ = 0 in the centered specification. For d, d ′ ∈ D ,
+
+DKL (P (u) 
+
+> d,ϑ ⋆
+
+∥P (u) 
+
+> d′,ϑ ⋆
+
+)= (b⋆)2
+
+2( σ⋆)2
+
+X
+
+> t∈I P2
+> L
+
+(ut−d − ut−d′ )2. (11) 
+
+Proposition B.5 (Population profile-KL) . Condition on the common observed initial history h0. Use either centered regressors xt,d ′ = ( Yt−1, U t−d′ )⊤ or the intercept-augmented version xt,d ′ = (1 , Y t−1, U t−d′ )⊤. If the incorrect candidate uses the true innovation variance (σ⋆)2, then 
+
+Jfixed s2 
+
+> prof
+
+(d⋆, d ′) = Qd′
+
+2( σ⋆)2 . (12) 
+
+If instead its single common innovation variance s2 > 0 is also optimized, then 
+
+Jfree s2 
+
+> prof
+
+(d⋆, d ′) = nP2 
+
+2 log 
+
+
+
+1 + Qd′
+
+nP2 (σ⋆)2
+
+
+
+. (13) 
+
+Proposition B.6 (Kernel separation) . For every distinct h, h′ ∈ H ,
+
+DKL (P (u) 
+
+> h
+
+∥P (u) 
+
+> h′
+
+) ≥ γ(U, H)2
+
+2σ2 h − h′ 22 . (14) 
+
+Moreover, γ(U, H) = 0 iff at least two candidates generate identical conditional means. 
+
+# C Proofs 
+
+C.1 Proof of Theorem B.1 
+
+Both candidates are multivariate Gaussian with common covariance σ2I and means μd = αS du and 
+
+μd′ = αS d′ u. Using the standard Gaussian KL identity [Kullback and Leibler, 1951, Cover and Thomas, 2006] gives 
+
+DKL (P (u) 
+
+> d
+
+∥P (u) 
+
+> d′
+
+) = 12 (μd − μd′ )⊤(σ2I)−1(μd − μd′ ) (15) 
+
+= α2
+
+2σ2 ∥Sdu − Sd′ u∥22 . (16) 
+
+C.2 Proof of Theorem B.2 
+
+For each t ∈ I L, stationarity yields 
+
+E[( Ut−d − Ut−d′ )2] = 2 σ2 
+
+> U
+
+− 2 Cov( Ut−d, U t−d′ ) (17) 
+
+= 2 σ2 
+
+> U
+
+[1 − ρU (|d − d′|)] . (18) Summing over neff positions and substituting into Theorem B.1 gives the result. 17 C.3 Proof of Theorem B.3 
+
+Let ∆2 
+
+> M
+
+= ( μd − μd′ )⊤Σ−1(μd − μd′ ). Under equal priors and common covariance, the optimal linear dis-criminant has error Φ( −∆M /2) . Since DKL (Pd∥Pd′ ) = ∆ 2 
+
+> M
+
+/2, the claimed expression follows. Monotonic inversion of Φ gives the information threshold. For a finite candidate set with prior masses πj and conditional densities p(u) 
+
+> j
+
+, the 0–1 Bayes risk is 
+
+R⋆
+
+> Bayes
+
+(u) = 1 −
+
+Z
+
+max  
+
+> j
+
+{πj p(u) 
+
+> j
+
+(y)} dy. (19) 
+
+C.4 Derivation of multicandidate Bayes risk 
+
+For any rule ψ, the correct-decision probability is 
+
+X
+
+> j
+
+Z
+
+1{ψ(y) = j}πj p(u) 
+
+> j
+
+(y) d y. (20) Pointwise maximization is achieved by the MAP rule and equals R max j πj p(u) 
+
+> j
+
+(y) d y. Taking the comple-ment proves Equation (19). 
+
+C.5 Proof of Theorem B.4 
+
+The conditional trajectory KL decomposes over time. At time t, both candidates have variance (σ⋆)2 and conditional means 
+
+a⋆Yt−1 + b⋆ut−d, a⋆Yt−1 + b⋆ut−d′ . (21) Any common intercept and the shared a⋆Yt−1 term cancel, so the mean difference is deterministic conditional on the observed input and equals b⋆(ut−d − ut−d′ ). Summing the one-dimensional equal-variance Gaussian KL terms proves the proposition. 
+
+C.6 Proof of Theorem B.5 
+
+Using the standard profile-likelihood construction [Murphy and van der Vaart, 2000], for a candidate parameter 
+
+β′ and fixed candidate variance (σ⋆)2, the conditional KL is 
+
+12( σ⋆)2
+
+X
+
+> t
+
+E⋆[( m⋆t − x⊤ 
+
+> t,d ′
+
+β′)2]. (22) The infimum over β′ is the population least-squares residual Qd′ , giving the first result. Define 
+
+Γd′ := X
+
+> t∈I P2
+> L
+
+E⋆[xt,d ′ x⊤ 
+
+> t,d ′
+
+],
+
+cd′ := X
+
+> t∈I P2
+> L
+
+E⋆[xt,d ′ m⋆t ],M ⋆ := X
+
+> t∈I P2
+> L
+
+E⋆[( m⋆t )2].
+
+(23) 18 Then the quadratic objective is M ⋆ − 2β′⊤ cd′ + β′⊤ Γd′ β′. Since Γd′ is positive semidefinite and the second moments are finite, cd′ ∈ Range(Γ d′ ): if w0 ∈ ker(Γ d′ ), then P 
+
+> t
+
+E⋆[( w⊤ 
+
+> 0
+
+xt,d ′ )2] = 0 , hence w⊤ 
+
+> 0
+
+xt,d ′ = 0 
+
+almost surely for every t and therefore w⊤ 
+
+> 0
+
+cd′ = 0 . Thus the minimum is 
+
+Qd′ = M ⋆ − c⊤ 
+
+> d′
+
+Γ† 
+
+> d′
+
+cd′ . (24) Here Γ† 
+
+> d′
+
+is the Moore–Penrose pseudoinverse. If the candidate variance is free, after minimizing over β′ the KL equals 
+
+12
+
+
+
+nP2 log s2
+
+(σ⋆)2 + nP2 (σ⋆)2 + Qd′
+
+s2 − nP2 
+
+
+
+. (25) Differentiating with respect to s2 gives s2 
+
+> d′,opt
+
+= ( σ⋆)2 + Qd′ /n P2 . Substitution gives the logarithmic expression. 
+
+C.7 Partial-correlation interpretation 
+
+In a centered stationary P2 process with nondegenerate residual variances, all moments below are taken under the true stationary law. Define 
+
+Zt = Ut−d⋆ , Wt = Ut−d′ , Vt = Yt−1. (26) Because a⋆Vt is already in the incorrect candidate span span {Vt, W t},
+
+inf  
+
+> a′,b ′
+
+E⋆[( a⋆Vt + b⋆Zt − a′Vt − b′Wt)2]= ( b⋆)2 inf 
+
+> c1,c 2
+
+E⋆[( Zt − c1Vt − c2Wt)2]. (27) Residualize Zt and Wt against Vt, obtaining eZt and fWt. One-dimensional projection then gives 
+
+Qd′
+
+nP2 
+
+= ( b⋆)2 Var( eZt)(1 − ρ2  
+
+> ZW ·V
+
+). (28) Here ρZW ·V is the partial correlation between Zt and Wt given Vt. This separates compensation through the previous output from similarity between the true and incorrect input lags after controlling for that previous output. 
+
+C.8 Proof of Theorem B.6 
+
+By Equation (5) and the definition of γ,
+
+U(h − h′) 2 ≥ γ(U, H) h − h′ 
+
+> 2
+
+. (29) Squaring and dividing by 2σ2 proves the lower bound. Since H is finite, the minimum is attained. It is zero iff a distinct pair has Uh = Uh′.
+
+C.9 Proof of Theorem 4.1 
+
+For two equal-prior Gaussians with covariance σ2In, the squared Mahalanobis distance is ∆2 
+
+> M,n
+
+= ∥μ0,n −
+
+μ1,n ∥22/σ 2 = 2 Dn. The equal-prior MAP error is therefore 
+
+Φ( −∆M,n /2) = Φ( −pDn/2) ,
+
+19 which tends to zero because Dn → ∞ . Under candidate 0, write Y = μ0,n + ϵ with ϵ ∼ N (0 , σ 2In). If the numerical predictor uses μ1,n , then 
+
+1
+
+n E∥Y − μ1,n ∥22 = σ2 + 1
+
+n ∥μ0,n − μ1,n ∥22
+
+= σ2
+
+
+
+1 + 2Dn
+
+n
+
+
+
+,
+
+which converges to the oracle risk σ2 because Dn/n → 0.For the P1 specialization, μj,n = αS dj u(n). If Sd0̸ = Sd1 , choose any z(n) with ξn := ∥(Sd0 −
+
+Sd1 )z(n)∥22 > 0 and set 
+
+u(n) := 
+
+s
+
+2σ2Dn
+
+α2ξn
+
+z(n).
+
+Then α2∥(Sd0 − Sd1 )u(n)∥22/(2 σ2) = Dn exactly. The forecast map u 7 → αS d1 u remains tied to the wrong lag regardless of the MAP report, so on the event that the report equals d0 the report–use distance is |d0 − d1|;that event has probability tending to one. 
+
+C.10 Proof of Theorem 4.2 
+
+The no-bypass claim is immediate from the factorization in Equation (6). Fix r and let the vector perturbation 
+
+∆u be supported only on coordinates k with gk(r) = 0 . Then 
+
+g(r) ⊙ (u + ∆ u) = g(r) ⊙ u, 
+
+so the arguments supplied to G are unchanged. For the Lipschitz bound, with the report fixed and scalar intervention amplitude δ,
+
+∥g(r) ⊙ (u + δe k) − g(r) ⊙ u∥ = |gk(r)| | δ|.
+
+The Lipschitz property of G gives the stated bound. A one-hot gate is the special case in which all off-report gate entries are zero. None of these steps lower-bounds sensitivity on the selected coordinates, so nontrivial use requires a separate nondegeneracy condition. 
+
+C.11 Proof of Theorem 4.3 
+
+For a one-hot gate g(r) = er, Theorem 4.2 gives Ak = 0 for every k̸ = r under the fixed-report intervention. The assumption Ar > 0 therefore makes r the unique maximizer of the intervention-response magnitude. Hence the peak-based point-delay report–use distance is zero. 
+
+# D Bayes Oracle Computation 
+
+We use the standard Bayes decision rule for finite candidate classes [Devroye et al., 1996, Tsybakov, 2009]. Let h0 denote the realized observed initial history when one is required. For each fixed observed (u, h 0) and candidate j:1. construct the conditional mean/covariance or sequential innovation likelihood on the common valid window, including any candidate-dependent initial-history contribution when required; 2. compute qj (y) = log πj (u, h 0) + log p(u,h 0) 
+
+> j
+
+(y);3. use log-sum-exp to obtain posterior probabilities; 20 4. select the Bayes rule ψ⋆ minimizing posterior expected loss; 5. estimate Bayes risk from B independent draws H(b) ∼ π(· | u, h 0) and Y (b) ∼ P (u,h 0) 
+
+> H(b)
+
+.For 0–1 loss, 
+
+bRMC Bayes (u, h 0) = 1
+
+B
+
+> B
+
+X
+
+> b=1
+
+1{ψ⋆(Y (b); u, h 0)̸ = H(b)}. (30) Writing bR = bRMC Bayes (u, h 0), the Monte Carlo standard error is 
+
+qbR(1 − bR)/B [Robert and Casella, 2004]. An outer bootstrap over input realizations estimates scenario-average uncertainty [Efron and Tibshirani, 1993]. 
+
+# E Detailed Synthetic Generator Specification 
+
+E.1 Unified generation order 
+
+For each trajectory, the implementation follows the fixed order: 1. sample the input family and generate U1: Traw ;2. sample the structural candidate and dynamic nuisance parameters; 3. generate the clean latent process and apply burn-in removal; 4. generate innovations and observation corruption using independent random streams; 5. crop every candidate to the common task window; for the released P2 profile audit, additionally drop the first post-boundary transition and use IP2  
+
+> L
+
+so that every lagged output regressor is actually observed; 6. compute P1/P3 KL/Bayes quantities and the repaired P2 finite-sample profile quantities on their declared windows; exact models with nonzero output memory must condition on any required observed boundary history; 7. assign a difficulty bin and write the complete metadata record; 8. split by complete trajectory and parameter-combination group. The raw length includes a burn-in chosen from the slowest declared state decay and the maximum candidate lag. Numerical stationarity is checked empirically in addition to analytic stability conditions. 
+
+E.2 Reference configuration 
+
+Unless a factor is being scanned, the reference instance uses 
+
+T = 512 , d = 8 , SNR = 10 dB , ρU = 0 .5, a = 0 .6. (31) For P3, the reference kernel is a normalized two-path kernel with spacing four and secondary mass 0.3. The reference stress track uses Gaussian innovations and no corruption; each stress experiment changes one declared module. 21 E.3 Stable ARX(2) templates 
+
+Rather than sampling arbitrary coefficients, the initial release uses a small validated template library. Each pair 
+
+(a1, a 2) is accepted only if the roots of the state-transition polynomial imply a stable recursion. Templates are selected to produce fast monotone, slow monotone, and mildly oscillatory impulse responses. The exact released coefficients and their pole locations are stored in the scenario configuration. 
+
+E.4 Kernel construction 
+
+Point, multipath, triangular, exponential, and biphasic kernels are first constructed on support {0, . . . , L } and then normalized. For two-path kernels, with overall kernel gain bh and secondary-path weight w ∈ [0 , 1] ,
+
+hk = bh [(1 − w)1{k = d1} + w1{k = d2}] . (32) For exponential kernels with decay constant τh > 0,
+
+hd+ℓ ∝ exp( −ℓ/τ h), ℓ ≥ 0. (33) Matched kernel pairs are accepted only after checking that their parameter distance and realized mean-response distance fall in the pre-specified range. 
+
+E.5 Noise and corruption modules 
+
+Student-t innovations are rescaled to the target variance when the variance exists. Contaminated Gaussian noise uses a stored contamination indicator. Colored innovations are generated before the process recursion and are not confused with output autoregression. Missingness, quantization, and saturation are applied only after a clean latent output has been generated. Both clean and corrupted outputs are released. 
+
+E.6 Physics-inspired modules 
+
+Cascade, parallel-path, and sensor-smoothing systems are simulated in state-space form with explicit states. The benchmark label contains both the physical path delays and an optional summary kernel derived from an impulse response. Structural scoring uses the physical labels; functional scoring may additionally use the realized impulse-response kernel. This prevents an effective-lag summary from replacing the declared physical target. 
+
+E.7 Generator validation 
+
+Each configuration must pass: • stability and finite-value checks; • target versus empirical SNR checks; • candidate-label independence from input metadata and array shape; • empirical autocorrelation and spectrum sanity checks; • impulse-response verification for every mechanism family; • paired-noise reproducibility and random-seed replay; • shortcut tests using input-only and metadata-only classifiers. A scenario family is excluded from the main benchmark if a metadata-only classifier predicts its candidate label above the pre-specified tolerance. 22 F Detailed Experimental Sampling Protocol 
+
+F.1 One-factor and interaction sweeps 
+
+The main severity study varies one factor from the reference configuration. A fixed set of two-factor interactions is also evaluated for robustness; the exact interaction definitions and parameter ranges are part of the released scenario configuration rather than introduced as additional paper notation. All remaining combinations are sampled from a fixed configuration distribution and are used for robustness rather than exhaustive factorial claims. 
+
+F.2 Difficulty-targeted sampling 
+
+For exact-tier instances, a proposal is repeatedly generated until its oracle quantity falls in the target bin. The proposal distribution and maximum rejection count are fixed before benchmark execution. If a bin cannot be populated without extreme parameters, the bin is marked unsupported rather than filled by changing its definition. 
+
+F.3 Minimum reporting units 
+
+The statistical unit is a complete trajectory. Training seeds are nested within model configurations and trajectories are nested within scenarios. Scenario-level summaries are reported alongside pooled trajectory metrics to prevent large easy scenario families from dominating the leaderboard. 23 G Supplementary Empirical Evidence 
+
+G.1 Main-text validation and secondary comparisons 
+
+The following validation figure and secondary numerical results are kept here to keep the main text focused on the central argument. (a) P1: empirical error tracks Bayes risk    
+
+> Mean Bayes risk Structural error 000.14 0.16 0.28 0.33 0.41 0.49 0.55 0.65
+> Gaussian MAP cross-correlation
+> (b) P2: profile separation predicts error
+> Mean profile margin (log scale) Structural error -2.3 0-1.5 0.1 -0.7 0.2 0.1 0.3 0.9 0.4
+> profile ARX known coefficients
+> (c) P3: numerical Bayes-risk ordering
+> Numerical Bayes risk Structural error 000.14 0.2 0.29 0.4 0.43 0.6 0.58 0.8
+> TCN separate head N-HiTS separate head
+> Held-out cohorts. Diagonal lines are reference equality, not fitted trends; P2 uses a profile-margin ordering rather than a Bayes identity.
+
+Figure 1: Stage-I calibration. P1 empirical reference error tracks analytic Bayes risk; P2 error decreases with nuisance-profile separation; P3 structural error is ordered by numerical Bayes risk. P2 is an ordering diagnostic rather than a Bayes identity. Table 9: P3 full-kernel effects: shared gate minus separate head. Intervals are trajectory-bootstrap 95% CIs. 
+
+Backbone Family ∆ℓ2 ∆ cosine ∆ path recall TCN Multipath −.882 [−.938 , −.829 ] +.679 [+.640 , +.718 ] +.220 [+.174 , +.263 ]N-HiTS Multipath −.464 [−.491 , −.436 ] +.297 [+.278 , +.319 ] −.062 [−.137 , +.013 ]TCN Distributed −.798 [−.903 , −.692 ] +.542 [+.464 , +.616 ] –N-HiTS Distributed −.484 [−.515 , −.450 ] +.265 [+.238 , +.288 ] –
+
+This appendix preserves the audit evidence that is necessary for reproducibility but would obscure the main empirical narrative. It includes exact numerical validation, stress-tier functional results, failed-and-corrected audits, and sample-scaling diagnostics. Each subsection names its release and cohort; the release map in Table 24 prevents cross-release pooling. 
+
+G.2 Numerical validation and frozen references 
+
+Table 10 collects the frozen numerical checks and reference errors underlying the compact calibration plot in the main text. P1’s analytic binary Bayes error and its Monte Carlo estimate agree within the pre-specified three-Monte-Carlo-standard-error tolerance across the calibrated difficulty range. The P1 balanced set contains 480 trajectories, 80 in each of six Bayes-risk bins. Its frozen raw and difficulty-balanced risks coincide by construction: 0.2042 for Gaussian MAP, 0.2021 for cross-correlation, 0.2458 for prewhitened cross-correlation, and 0.2542 for ridge lag regression. 24 Table 10: Exact-tier theory-calibration checks. Error is the observed fraction of wrong delay or kernel selections.                       
+
+> Task Sample Axis Implementation check Reference error P1 480 Bayes risk Analytic/Monte Carlo agreement within 3 MC s.e. MAP .204; xcorr .202 P2 100 Corrected profile margin Max. closed-form/optimizer rela-tive error 1.03 ×10 −15
+> 2/400 favorable labels changed P3 250 Observability Zero identity and KL lower bound verified Bayes .113; MLE .116; ridge .248
+
+The repaired P2 profile implementation was independently recomputed on 100 configurations using the corrected window IP2  
+
+> L
+
+. Closed-form linear algebra and iterative optimization agree to maximum relative error 
+
+1.029 × 10 −15 . Rejoining the frozen common-cohort predictions changes favorable membership for 2 of 400 trajectories while leaving the favorable count at 244; profile ARX and PEM-ARX favorable errors remain .004 and .049, N-HiTS changes from .497 to .500, TCN from .251 to .250, and MLP-NARX from .781 to .783. The repair therefore removes the boundary-contract mismatch without changing the empirical ordering. P3 contains 250 scenarios, 50 in each of five observability bins. The finite-library Bayes, finite-library MLE, and ridge-kernel risks are 0.1132, 0.1160, and 0.2480. The release also verifies equal realized means for zero-observability candidates and the declared KL lower bound for separated candidates. 
+
+G.3 Confirmatory P3 Bayes-easy audit 
+
+We compute a finite-library multicandidate Bayes risk once for each of the 400 trajectory IDs in the unified P3 cohort and join the resulting membership to every backbone and readout. Monte Carlo uses 2,000 draws by default and 20,000 draws within a prespecified margin of any reported threshold. Table 11 reports the primary R⋆ 
+
+> Bayes
+
+≤ 0.05 subset; the same qualitative ordering holds at thresholds 0.01, 0.10, and 0.15. The point-estimate Bayes-easy set contains 230 trajectories for every system and has Jaccard overlap 0.406 with the single trajectory-level observability-easy set. Five trajectories have Monte Carlo intervals that cross the 0.05 threshold (226 are easy by the upper-confidence rule and 231 by the lower-confidence rule), so sensitivity membership is reported separately rather than changed by backbone. This demonstrates why observability is explanatory rather than a complete decision limit. Table 11: P3 structural error on the numerical Bayes-easy subset. Intervals are 95% hierarchical-bootstrap intervals over trajectories and three training seeds; n counts distinct trajectories.                      
+
+> Backbone Readout Error [95% CI] n
+> TCN frozen probe .868 [.832, .899] 230 TCN separate head .225 [.184, .265] 230 TCN shared gate .235 [.196, .278] 230 N-HiTS frozen probe .865 [.833, .896] 230 N-HiTS separate head .691 [.645, .738] 230 N-HiTS shared gate .681 [.635, .726] 230
+
+G.4 Oracle-normalized forecast context 
+
+Tables 12 and 13 separate raw forecast units from oracle normalization. NEFE uses NEFE = (MSE model −
+
+MSE oracle )/(MSE mean − MSE oracle ). The mean and persistence predictors are computed on the exact fixed 25 test trajectories. P1 and P2 provide stable normalization; the smaller P3 denominator produces wide ratio intervals, so paired raw-MSE differences remain primary there. Table 12: Raw forecast MSE on the frozen NEFE audit cohort. Oracle, mean, and persistence are direct references; soft-routed, TCN, and N-HiTS are model forecasts. Lower is better.                         
+
+> Task Oracle Mean Persistence Soft-routed TCN-sep. N-HiTS-sep. P1 1.323 1.864 2.979 1.548 1.858 1.725 P2 .290 1.306 .505 .708 .872 .544 P3 .826 .992 1.505 .931 .956 .881
+
+Table 13: Oracle-normalized forecast error (NEFE) for learned systems on the same cohort. Lower is better; raw paired MSE remains primary for P3 because its normalization denominator is small.             
+
+> Task Soft-routed TCN-sep. N-HiTS-sep. P1 .415 .989 .742 P2 .412 .573 .250 P3 .634 .785 .333
+
+Table 14: Primary paired M8 ranking contrasts over 1,200 matched trajectories and three training seeds. Differences are listed in the comparison direction; 95% hierarchical-bootstrap intervals resample trajectories and seeds.                                       
+
+> Task Comparison Difference [95% CI] P1 TCN −N-HiTS structural error −.077 [−.101 ,−.053 ]P1 N-HiTS −TCN forecast MSE −.158 [−.222 ,−.093 ]P2 TCN −N-HiTS structural error −.111 [−.141 ,−.081 ]P2 N-HiTS −TCN forecast MSE −.175 [−.311 ,−.066 ]P3 TCN −N-HiTS structural error −.167 [−.195 ,−.139 ]P3 N-HiTS −TCN forecast MSE −.102 [−.153 ,−.059 ]
+
+Table 14 is an independent architecture-replication contrast and is not pooled with the unified common-cohort table in the main text. The P2 favorable-error entry in Table 21 is intentionally omitted because the corrected boundary-window membership was not replayed for that independent release; its overall structural error, MSE, and functional gap are unaffected. 
+
+G.5 Functional consistency and negative controls 
+
+Functional-use terminology. Throughout the paper, “use” means controlled sensitivity of the fitted numer-ical predictor to historical input locations under the fixed intervention diagnostics. It is intentionally narrower than a claim of real-world causality or internal mechanistic equivalence. For the binary P1 audit, “unused” is the matched-window masking label defined in the main text: the reported ±1-lag window is zeroed and compared with 20 disjoint equal-width energy-matched control windows. This label is computed before any conditioning on report correctness or NER and is held fixed in the triple-separation analysis. Additive perturbations and Jacobians are separate continuous robustness diagnostics. The target profile is tied to a known mechanism because the exact and physics-inspired tiers expose the declared delay or kernel used by the generator. 26 Before interpreting learned-model scores, we test the diagnostics on seven predictors with known functional structure: a true-delay oracle, a deliberately shifted delay, a true two-path rule, a similar-error wrong kernel, an output-only rule, a uniform-history rule, and an exact hard one-hot replay. On 400 fresh trajectories per predictor, additive sensitivity and input Jacobians recover nonuniform full profiles with cosine similarity numerically equal to one and zero peak error, while all three diagnostics correctly reject input use for the output-only predictor. Matched donor-block replacement localizes single paths to within 0.85–0.88 lags on average, but recalls only 0.620 of weak secondary paths for the two-path rule and 0.423 for hard one-hot replay. It is therefore retained as a qualitative robustness check, not the primary full-kernel diagnostic; its uniform-history blind spot is likewise explicitly recorded. The complete exact- and stress-tier diagnostic summaries are reported in Tables 15 and 16. Table 15: Exact-tier functional consistency. Gaps are mean absolute distances between the reported delay (kernel peak for P3) and the functional response peak; brackets are 95% bootstrap confidence intervals.                               
+
+> System P1 gap P1 unused |correct P2 gap P3 peak gap xcorr 0.290 [0.050, 0.585] 0.055 0.240 [0.000, 0.530] 0.070 [0.010, 0.150] profile/finite ref. 0.320 [0.045, 0.726] 0.064 0.470 [0.140, 0.890] 0.105 [0.005, 0.240] lag regression 4.020 [3.010, 5.095] 0.394 0.155 [0.000, 0.415] 2.135 [1.650, 2.660] TCN 14.930 [13.745, 16.020] 0.891 14.285 [13.075, 15.486] 4.870 [4.415, 5.390] N-HiTS 4.400 [3.390, 5.340] 0.525 6.025 [5.040, 7.080] 2.765 [2.410, 3.125] iTransformer 6.900 [5.640, 8.171] 0.651 11.010 [9.539, 12.466] 2.590 [2.325, 2.840]
+
+Table 16: P1 stress-tier functional consistency. Gaps include 95% bootstrap confidence intervals; the unused rate conditions on a correct structural report. Each model–tier cell uses 200 trajectories.                 
+
+> System Mean report–use gap Reported history unused |correct report xcorr 1.575 [0.905, 2.360] 0.132 profile ARX 0.925 [0.370, 1.540] 0.104 lag regression 8.470 [7.250, 9.700] 0.645 TCN 10.085 [9.050, 11.215] 0.882 N-HiTS 7.250 [6.090, 8.500] 0.705 iTransformer 9.360 [7.965, 10.890] 0.725
+
+The functional conclusions pass the pre-specified stability check at additive amplitudes 0.10, 0.25, and 0.50 standardized input units. P2 and P3 exact-tier confidence intervals are reported in Table 15; complete response kernels, rather than only their peaks, are retained in the release artifacts. 
+
+Joint-subset diagnostic robustness. We additionally freeze the exact Link-II subset used in the main joint test (177 N-HiTS and 248 TCN seed–trajectory rows) and recompute continuous functional responses without retraining. The binary “unused” label itself is masking-based, so it does not depend on additive amplitude. The additive and Jacobian diagnostics below instead test whether the same locked rows continue to place their functional response away from the reported delay. Table 17 shows that peak locations are highly stable across amplitudes; additive .25 versus Jacobian report–use gaps have Spearman correlation .982 for N-HiTS and .907 for TCN, with exact peak agreement .989 and .734, respectively. Finite perturbations and local derivatives need not agree exactly, but both show the same substantial report–use mismatch on the identical locked subset. 27 Table 17: Functional-diagnostic robustness on the fixed correct-and-near-oracle P1 subset. Gap is the mean absolute distance between the reported delay and the response peak; brackets are 95% hierarchical-bootstrap intervals. No Jacobian binary-use threshold is introduced.                              
+
+> Backbone Diagnostic Mean report–use gap [95% CI] Peak =report [95% CI] N-HiTS Additive .10 9.05 [7.47,10.74] .243 [.178,.306] Additive .25 9.10 [7.51,10.80] .243 [.178,.310] Additive .50 8.98 [7.30,10.73] .243 [.181,.310] Jacobian 9.16 [7.60,10.82] .243 [.181,.310] TCN Additive .10 13.15 [11.90,14.45] .016 [.000,.038] Additive .25 13.06 [11.77,14.27] .012 [.000,.028] Additive .50 12.71 [11.68,13.75] .008 [.000,.023] Jacobian 13.28 [12.09,14.52] .028 [.000,.059]
+
+Alignment-penalty control. A validation-selected differentiable alignment penalty produced no stable gain: all four paired report–use intervals crossed zero. This negative control narrows the remedy claim to routing predictive information through the reported structure; it does not support the tested auxiliary regularizer. 
+
+G.6 Stress and physics-inspired robustness 
+
+The stress tier changes one assumption at a time: P1 Gaussian outliers, a P2 unmodeled second autoregressive term, and P3 sensor smoothing. The physics-inspired tier contains 900 trajectories from cascaded units, parallel paths, and process delay with sensor smoothing. Figure 2 reports structural error rather than transferring exact-tier Bayes claims to misspecified models. The three stress curves have different shapes and ranges, so exact-tier averages do not summarize robustness. The matched candidate MLE remains strong on the declared physics generators because it receives the correct simulator family and candidate library, whereas correlation rules fail especially on broadened, correlated parallel paths. These results validate the intended robustness tiers; they do not claim industrial realism or a universal oracle. 
+
+G.7 Structural OOD and real-input semi-synthetic transfer 
+
+We test two different boundaries. Parameter-combination and candidate-space holdouts ask whether a structural head extrapolates beyond random ID splits; hydraulic and Beijing air-quality histories ask whether conclusions survive realistic input autocorrelation and regimes while the P1–P3 output mechanisms retain known ground truth. Parameter-combination holdouts expose structural-risk increases hidden by random trajectory splits. Candidate-set and continuous-kernel readouts show mixed extrapolation rather than universal improvement: size-seven candidate sets degrade modestly, N-HiTS improves on a held-out smooth kernel family, and both backbones degrade sharply on held-out sparse kernels (Table 18). The real-input audit contains 28,800 complete records derived from hydraulic [Helwig et al., 2015], Beijing air-quality [Chen, 2017], and synthetic-control inputs with group-safe or chronological splits. Direct within-source contrasts are reported in Table 8; coupled heads preserve their report–use advantage, while forecast effects remain task dependent. To separate source shift from marginal difficulty, each supported real-input trajectory is also matched to its nearest synthetic trajectory on the task-specific score. The bootstrap resamples real trajectories, synthetic donors, and training seeds and rematches at every draw. The previously named “calibration residual” was 28 Figure 2: Mechanism-specific robustness profiles; lower structural error is better. Top: 120 trajectories per severity show distinct degradation under P1 outliers, a P2 unmodeled dynamic term, and P3 sensor smoothing. Bottom: cascades, parallel paths, and sensor dynamics compare correlation rules with a simulator-matched candidate MLE. Empirical zeros indicate no errors in the finite sample, not zero population risk; matched MLE is a generator-aware sanity reference rather than a general-purpose model. Table 18: Exploratory structural OOD effects relative to the corresponding ID split. Positive error is degradation; negative kernel ℓ2 is improvement. Intervals are 95% bootstrap intervals over 1,200 trajectories and three seeds.                                  
+
+> Setting Task/backbone Metric OOD −ID [95% CI] Candidate set size 7 P1 Error +.023 [+ .007 ,+.039]
+> Candidate set size 7 P2 Error +.037 [+ .020 ,+.052]
+> Held-out smooth kernel N-HiTS Kernel ℓ2−.101 [ −.117 ,−.085]
+> Held-out smooth kernel TCN Kernel ℓ2+.007 [ −.017 ,+.027]
+> Held-out sparse kernel N-HiTS Kernel ℓ2+.316 [+ .302 ,+.331]
+> Held-out sparse kernel TCN Kernel ℓ2+.366 [+ .353 ,+.378]
+
+29 a signed per-instance residual, so it is not reported as an absolute calibration gap. A corrected group-level absolute-gap audit is secondary: several source–model intervals cross zero, while P1 hydraulic and selected N-HiTS cells show residual calibration shift. Retained support and matching quality are reported in Table 19. The robust transfer conclusion therefore comes from direct routing contrasts, not from a universal calibration-transfer claim. Table 19: Common-support diagnostics for difficulty-matched real-input transfer. Coverage is the retained fraction of real trajectories; mismatch is the mean absolute matched-score difference divided by the synthetic IQR.                             
+
+> Task Source Coverage nNormalized mismatch P1 Hydraulic .755 151 .063 P1 Beijing .905 181 .110 P2 Hydraulic .730 146 .007 P2 Beijing .895 179 .002 P3 Hydraulic .525 105 .029 P3 Beijing .745 149 .006
+
+G.8 Failed-and-corrected audit chain 
+
+The initial TCN negative-control audit searched only within candidate lags 1–32. This produced approximately 65% median relative control-energy mismatch and was correctly retained as a failed audit. The corrected protocol searches the complete observed history for an equal-width, nonoverlapping, energy-matched window. Using new data and seeds 4444, 5555, and 6666, the maximum median control energy error is 0.215, below the pre-specified 0.25 threshold; the unused-rate seed range is 0.165, below its 0.20 threshold. The three unused-given-correct rates are 0.776, 0.941, and 0.905. Forecast output standard deviation is at least 0.282, and the maximum forecast-MSE to mean-baseline-MSE ratio is 0.953, ruling out a constant or entirely invalid numerical forecast. These checks support the confirmatory TCN result only; they do not justify a universal statement about the model class. The stress-tier audit similarly retains the initial failed run, the pilot, and the fresh-seed confirmatory result. The confirmatory design uses 120 trajectories per severity point, exact replay difference zero, and yields P1/P2/P3 curve ranges 0.275/0.125/0.533. The numerical distance between the three normalized failure curves is 0.414. 
+
+G.9 Neural sample-scaling diagnostics 
+
+The first 900-trajectory neural experiment left N-HiTS and iTransformer near random performance. A 32-sample overfit test subsequently reached 100% memorization in all nine task–model combinations, ruling out label misalignment and a failure of the separate candidate-probability output to receive training signals as explanations. The initial architecture replication therefore uses 16,200 trajectories per task. For iTransformer on P3, favorable-region error decreases from 0.653 ± 0.025 at 8,100 samples to 0.495 ± 0.038 at 16,200 and 0.406 ± 0.019 at 32,400. This experiment is a sample-efficiency diagnostic, not a main leaderboard comparison. Table 20 shows that, on the fixed unified protocol, all four P2/P3 backbone cells improve significantly in separate-head structural error from 8,192 to 16,384 training trajectories. The reductions are .051 for both TCN tasks, .102 for P2 N-HiTS, and .145 for P3 N-HiTS; all paired 95% intervals exclude zero. Overall structural error nevertheless remains .251–.482 at the largest budget, and P3 favorable-subset error remains .106–.400. The corrected P2 favorable-membership replay was performed for the unified 4,096-sample 30 Table 20: Full training-size audit used to test whether favorable-subset recovery failures vanish with more data. Architecture, optimization protocol, test cohort, and seeds are fixed. Values are separate-head means; continued improvement from 8k to 16k makes the result budget-conditional rather than a saturation claim.                                                                   
+
+> Task Backbone Train nError Favorable error MSE P2 N-HiTS 4,096 .570 .500 .540 P2 N-HiTS 8,192 .468 –.505 P2 N-HiTS 16,384 .366 –.512 P2 TCN 4,096 .370 .250 .935 P2 TCN 8,192 .324 –.833 P2 TCN 16,384 .273 –.722 P3 N-HiTS 4,096 .714 .691 .912 P3 N-HiTS 8,192 .627 .577 .887 P3 N-HiTS 16,384 .482 .400 .906 P3 TCN 4,096 .353 .225 1.068 P3 TCN 8,192 .302 .158 1.056 P3 TCN 16,384 .251 .106 .974
+
+closure cohort; to avoid mixing legacy and repaired memberships, the 8,192/16,384 P2 favorable-error cells are not used for a quantitative favorable-scaling claim. The sample-scaling conclusion therefore remains budget-conditional rather than a saturation or impossibility claim. Table 21: iTransformer [Liu et al., 2024a] independent architecture replication (1,200 trajectories per task, three seeds). It is not pooled with the unified common-400 cohort. Brackets are 95% intervals.                 
+
+> Task Error Favorable error MSE Functional gap P1 .332 [.311,.351] .268 [.248,.291] 1.360 [1.249,1.480] 6.900 [5.640,8.171] P2 .387 [.364,.410] –1.032 [.943,1.122] 11.010 [9.539,12.466] P3 .536 [.516,.556] .482 [.454,.511] 1.015 [.934,1.098] 2.590 [2.325,2.840]
+
+Table 22: Separate-head ranges across the three fixed training seeds. Trajectory-bootstrap intervals quantify test-instance uncertainty; these ranges expose training-seed variability separately.                             
+
+> Task Backbone Error range Gap range MSE range P1 N-HiTS .468–.522 9.002–11.225 1.654–1.723 P1 TCN .255–.307 13.328–14.215 1.643–1.697 P2 N-HiTS .557–.588 8.495–10.748 .539–.543 P2 TCN .352–.398 11.145–12.400 .821–1.100 P3 N-HiTS .695–.728 1.965–3.000 .889–.930 P3 TCN .333–.375 8.893–12.875 1.045–1.095
+
+Table 21 reports iTransformer only on its independent replication cohort, while Table 22 separates the observed three-seed range from trajectory-level uncertainty. 
+
+G.10 Complete common-cohort model coverage 
+
+Table 23 contains every system evaluated on the unified 400-trajectory cohort, including forecast-only baselines with unsupported structural cells. 
+
+G.11 Run accounting 
+
+The initial architecture replication comprises 27 independent training runs (three models, three tasks, and three seeds), with zero failed runs and three hyperparameter attempts, below the pre-specified limit of 12. 31 Table 23: Complete unified common-cohort results. Brackets are trajectory-bootstrap 95% intervals; unsup-ported structural outputs are dashes. Neural entries average three seeds. 
+
+Task System Readout Structural error Favorable error Forecast MSE P1 cross correlation direct .083 [.058,.110] .007 [.000,.017] 1.186 [.933,1.452] P1 elastic net direct lag profile .265 [.223,.307] .138 [.098,.178] 2.509 [1.959,3.071] P1 gaussian map direct .065 [.043,.090] .010 [.000,.024] 1.189 [.939,1.458] P1 mean predictor forecast only – – 1.695 [1.401,2.017] P1 mlp narx frozen probe frozen probe .798 [.773,.821] .798 [.769,.826] 1.559 [1.294,1.854] P1 nhits separate head .500 [.460,.538] .440 [.396,.488] 1.678 [1.375,2.002] P1 pem arx direct system ID .242 [.198,.282] .114 [.077,.152] 2.291 [1.811,2.839] P1 persistence predictor forecast only – – 3.015 [2.339,3.809] P1 prewhitened cross correlation direct .175 [.140,.212] .051 [.027,.074] 1.236 [.964,1.533] P1 tcn separate head .273 [.238,.306] .176 [.143,.211] 1.673 [1.383,1.973] P2 elastic net direct lag profile .268 [.225,.312] – .816 [.612,1.051] P2 mean predictor forecast only – – 1.374 [1.039,1.769] P2 mlp narx frozen probe frozen probe .784 [.759,.808] .783 [.731,.832] .520 [.401,.659] P2 nhits separate head .570 [.532,.607] .500 [.443,.560] .540 [.429,.664] P2 pem arx direct system ID .248 [.205,.290] .049 [.025,.078] .733 [.558,.933] P2 persistence predictor forecast only – – .569 [.461,.689] P2 profile arx direct .118 [.085,.150] .004 [.000,.012] .388 [.290,.507] P2 tcn separate head .370 [.331,.408] .250 [.198,.303] .935 [.778,1.110] P3 elastic net direct lag profile .853 [.815,.885] .857 [.813,.900] 1.622 [1.257,2.073] P3 finite library mle direct .115 [.085,.147] .004 [.000,.013] .929 [.771,1.108] P3 mean predictor forecast only – – 1.159 [.979,1.346] P3 mlp narx frozen probe frozen probe .851 [.828,.873] .854 [.825,.881] .903 [.740,1.071] P3 nhits separate head .714 [.679,.749] .691 [.645,.736] .912 [.754,1.087] P3 pem arx direct system ID .833 [.795,.868] .839 [.791,.883] 1.458 [1.152,1.818] P3 persistence predictor forecast only – – 1.426 [1.155,1.753] P3 tcn separate head .353 [.318,.388] .225 [.187,.264] 1.068 [.890,1.269] 
+
+The train, validation, and test identifiers are disjoint. Only systems that satisfy the common historical (U, Y )
+
+contract are eligible for a scored row. Table 25 separates training, probe fitting, evaluation, and bootstrap operations. The release artifact additionally records resolved configurations, code and checkpoint hashes, per-instance predictions, structural outputs, bootstrap seeds, and failure manifests. Full software contracts and schemas accompany the repository rather than the paper source. 32 Table 24: Release and cohort map. Comparisons are paired only within a row; independent releases are not pooled for ranking. “Replay” means evaluation of frozen predictions or deterministic rules without retraining. 
+
+Evidence block Public release Train/calibration cohort Test cohort Systems/regimes Seeds Retrained? Initial architecture replica-tion Initial architecture re-lease 16,200/1,200 per task independent 1,200 per task TCN, N-HiTS, iTrans-former; separate report 3 yes Unified capability chain Unified-regime release 4,096/512/512 per task common 400 per task TCN, N-HiTS; legacy five-regime audit plus P1 closure controls 3 yes Training-budget audit Saturation release 8,192 or 16,384/512/512 for P2/P3 same common 400 TCN, N-HiTS; fore-cast/probe and separate head 3 yes Functional sanity Functional-sanity re-lease none fresh 400 seven known rules; three diagnostics – no P3 full-kernel audit Full-kernel release unified checkpoints unified P3 common 400 TCN/N-HiTS separate/shared/soft-routed/frozen; two classical references 3 replay CPU extension CPU-coverage release 4,096/512/512 per task common 400 per task Elastic Net, prediction-error ARX, MLP-NARX, mean, persistence 3 MLP yes/replay Real-input transfer Real-input transfer re-lease frozen synthetic and source-specific splits 200 per source/task be-fore support filtering TCN, N-HiTS, routed lag-aware variants 3 replay Theory–experiment clo-sure Confirmatory closure release original unified P1 split; repaired P2 calibration table common 400 P1/P2 P1 separate/soft-routed/hard-onehot; corrected P2 member-ships 3 P1 yes / P2 no 
+
+Table 25: Run accounting by scientific study. Training, calibration-probe fits, checkpoint/rule evaluations, and bootstrap analyses are distinct operations. Failed development runs are retained in manifests and are not included in scientific aggregates. 
+
+Study Training Probe fits Evaluation cells Bootstrap contrasts Failed Retried Initial architecture replication 27 0 27 6 0 0Unified five-regime release 72 18 90 60 0 0Training-size saturation 48 24 48 48 0 0Functional sanity audit 0 0 21 21 0 0P3 full-kernel audit 0 0 26 72 3 3CPU coverage extension 9 9 21 39 1 1Matched real-input transfer 0 0 30 120 0 0Theory–experiment closure 18 0 – – 0 0
+
+33
