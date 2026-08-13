@@ -6,46 +6,43 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-12
-- 运行时间：2026-08-12 21:18:27 UTC
+- 最新运行日期：2026-08-13
+- 运行时间：2026-08-13 20:20:01 UTC
 - 运行状态：成功
-- 本次总论文数：8
-- 精读区：3
-- 速读区：5
+- 本次总论文数：7
+- 精读区：5
+- 速读区：2
 
 ### 今日简报（AI）
-今日聚焦时间序列预测的可靠性与历史利用，共精读2篇、速读5篇。  
-最值得关注的是精读9分的《Retrieval-Corrected Conformal Prediction for Time Series》（预测区间校准）与8分的《Do Time-Series Forecasters Use the Right History》（时序延迟恢复与使用）。  
-建议优先精读这两篇，其余速读可关注REATS集成学习与均值保持概率预测方法。
-- 详情：[/202608/12/README](/202608/12/README)
+今日精读聚焦空气质量预测与时间序列模型，LSTM+注意力机制获满分，多季节ARMA紧随其后。  
+最值得关注：基于注意力机制的LSTM空气质量模拟（10.0）与时变多季节ARMA（9.0），两者均指向复杂动态序列建模。  
+下一步建议：普通读者可优先了解LSTM+注意力如何捕捉空气污染长程依赖，再对比ARMA的季节性处理。
+- 详情：[/202608/13/README](/202608/13/README)
 
 ### 精读区论文标签
-1. [Retrieval-Corrected Conformal Prediction for Time Series](/202608/12/2608.10553v1-retrieval-corrected-conformal-prediction-for-time-series)  
+1. [Air Quality Station Simulation via LSTM and Attention-Based Modelling](/202608/13/2608.11839v1-air-quality-station-simulation-via-lstm-and-attention-based-modelling)  
+   标签：评分：10.0/10、query:aq-forecast
+   evidence：提出结合LSTM与注意力的SATADL模型，用于多小时后空气质量预报
+2. [Time-Varying Multi-Seasonal ARMA Models](/202608/13/2608.11481v1-time-varying-multi-seasonal-arma-models)  
    标签：评分：9.0/10、query:aq-forecast
-   evidence：针对时间序列不确定性量化的保形预测方法
-2. [Do Time-Series Forecasters Use the Right History: Recoverability, Recovery, and Functional Use of Temporal Delays](/202608/12/2608.10433v1-do-time-series-forecasters-use-the-right-history-recoverability-recovery-and-functional-use-of-temporal-delays)  
+   evidence：多季节时变ARMA模型，面向时间序列预测
+3. [FarSky: Task-Aware Latent-Space Coupling for Generative Intra-Hour Solar Forecasting](/202608/13/2608.11254v1-farsky-task-aware-latent-space-coupling-for-generative-intra-hour-solar-forecasting)  
    标签：评分：8.0/10、query:aq-forecast
-   evidence：时间序列预测诊断；恢复时间延迟
-3. [Probabilistic forecasting via post-processing prediction errors: In- or out-of-sample?](/202608/12/2608.10620v1-probabilistic-forecasting-via-post-processing-prediction-errors-in--or-out-of-sample)  
+   evidence：生成式小时内太阳辐照度预测
+4. [XGBoost "is all you need": the case of forecasting transmitted heat energy in District Heating Systems](/202608/13/2608.11446v1-xgboost-is-all-you-need-the-case-of-forecasting-transmitted-heat-energy-in-district-heating-systems)  
    标签：评分：8.0/10、query:aq-forecast
-   evidence：通过误差后处理实现概率时间序列预测的混合框架
+   evidence：XGBoost与LSTM在时间序列预测上的对比研究
+5. [FM-LLM: A frequency-enhanced mixture-of-experts framework for adapting LLMs to time series forecasting](/202608/13/2608.11623v1-fm-llm-a-frequency-enhanced-mixture-of-experts-framework-for-adapting-llms-to-time-series-forecasting)  
+   标签：评分：8.0/10、query:aq-forecast
+   evidence：频率增强混合专家框架适配冻结大语言模型进行时间序列预测
 
 ### 速读区论文标签
-1. [REATS: LLM Reasoning-based Ensemble Learning for Adaptive Time Series Forecasting](/202608/12/2608.10149v1-reats-llm-reasoning-based-ensemble-learning-for-adaptive-time-series-forecasting)  
-   标签：评分：7.0/10、query:aq-forecast
-   evidence：基于LLM推理的集成路由器，为自适应时间序列预测生成可解释的样本自适应权重。
-2. [Benchmarking Time Series Generation Methods for Privacy-Preserving Forecasting](/202608/12/2608.10891v1-benchmarking-time-series-generation-methods-for-privacy-preserving-forecasting)  
-   标签：评分：7.0/10、query:aq-forecast
-   evidence：面向隐私保护预测的合成时间序列生成基准研究
-3. [Two-stage Odd Residual Flows for Mean-Preserving Probabilistic Time Series Forecasting](/202608/12/2608.11114v1-two-stage-odd-residual-flows-for-mean-preserving-probabilistic-time-series-forecasting)  
-   标签：评分：7.0/10、query:aq-forecast
-   evidence：面向长时程的概率时间序列预测方法
-4. [Estimating the Conditional Forecast-Revision Scale in Sequential Models: Local-Smoothing Limits, Matched Models, and Cost--Accuracy Trade-offs](/202608/12/2608.03163v1-estimating-the-conditional-forecast-revision-scale-in-sequential-models-local-smoothing-limits-matched-models-and-cost--accuracy-trade-offs)  
+1. [Lightweight PID-Based Drift Mitigation for Cellular Traffic Forecasting](/202608/13/2608.08332v1-lightweight-pid-based-drift-mitigation-for-cellular-traffic-forecasting)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：序列预测模型中的条件预测修正尺度
-5. [PATH: Next-Interval Prediction via Autoregressive Tree Hierarchy on Tabular Data](/202608/12/2608.08078v1-path-next-interval-prediction-via-autoregressive-tree-hierarchy-on-tabular-data)  
+   evidence：基于PID的漂移缓解方法用于时空时序预测
+2. [A Factor Graph Approach to Scalable Multi-Output Gaussian Process Regression](/202608/13/2608.11917v1-a-factor-graph-approach-to-scalable-multi-output-gaussian-process-regression)  
    标签：评分：6.0/10、query:aq-forecast
-   evidence：适用于时间序列不确定性的区间预测方法
+   evidence：可扩展的多输出高斯过程回归，可用于时序预测
 
 
 <div class="dpr-home-promo-card">
