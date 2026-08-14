@@ -1,0 +1,1358 @@
+Title: Into the ORBIT for Time Series: Training Regimes for Foundation Models
+
+URL Source: https://arxiv.org/pdf/2608.13262v1
+
+Published Time: Fri, 14 Aug 2026 01:17:54 GMT
+
+Number of Pages: 40
+
+Markdown Content:
+## Falcon-2.0 Technical Report 
+
+# Into the ORBIT for Time Series: Training Regimes for Foundation Models 
+
+Hongjie Xia ∗, Yiding Liu ∗, Yifan Hu ∗, Peiyuan Liu ∗, Zewei Dong †  
+
+> ∗Equal Contribution
+
+, †Corresponding Author  
+
+> #{xiahongjie.xhj, yiding.lyd, hyf476357, peiyuan.liu, zewei.dong}@ant-intl.com
+
+Time series foundation models (TSFMs) have advanced primarily through architectural innovations such as group attention, flow matching, serial-token prediction, and mixture-of-experts scaling. However, the training regimes governing data exposure over large-scale heterogeneous corpora remain comparatively under-explored. Consequently, the effective pre-training distribution is often poorly controlled along four coupled axes: cross-domain im-balance, frequency-dependent context requirements, variable prediction horizons, and miss-ingness. To address this problem, we introduce ORBIT (Omni-Range Bootstrap Incremental 
+
+Training), a training paradigm that explicitly controls the effective pre-training distribution. 
+
+ORBIT comprises two key components. First, Bootstrap Multi-Level Sampling converts prescribed dataset weights into a global source allocation and constructs per-dataset sample indices through stochastic selection of time series records, target variables, context win-dows, and prediction horizons. Second, Omni-Range Incremental Training assembles and incrementally consumes these variable-length examples throughout a single training run, allowing diverse context lengths and prediction horizons to coexist without stage-specific schedules. Under ORBIT , we train Falcon-2.0 , a deliberately simple univariate encoder-only Transformer featuring missingness-aware triple-channel patch tokenization and direct multi-patch quantile prediction. Beyond this backbone, we further investigate how representation rank evolves through Transformer depth and introduce Rank-Guided Cross-Depth Alignment , a training-only objective that uses late-layer states as stop-gradient references for shallow representations and adds no inference cost. Our analysis relates the alignment error to the transfer of non-negligible spectral modes across depth. Evaluations on GIFT-Eval and fev-bench show that Falcon-2.0 achieves strong zero-shot forecasting performance across diverse domains and frequencies. Ablations confirm the importance of stochastic sample construction and simultaneous exposure to diverse context lengths and prediction horizons. Falcon-2.0 is publicly released to support future research.    
+
+> Date: August 14, 2026
+> Code: https://github.com/ant-intl/Falcon-TST
+> Model: https://pypi.org/project/falcon-tst/
+
+1 Introduction 
+
+Time series foundation models (TSFMs) have recently emerged as a promising paradigm for learning generalizable forecasting capabilities from large-scale and heterogeneous temporal cor-pora (Woo et al., 2024; Das et al., 2024; Ansari et al., 2024; Cohen et al., 2026; Auer et al., 2026). 1arXiv:2608.13262v1 [cs.LG] 13 Aug 2026 Compared with traditional task-specific forecasting models (Zhou et al., 2022; Hu et al., 2025c,a; Liu et al., 2024a; Nie et al., 2023), TSFMs aim to provide zero-shot or few-shot forecasting across diverse domains, frequencies, and forecasting settings. Recent progress has been driven primarily by architectural innovations, including improved tokenization strategies, attention mechanisms, generative objectives, long-context modeling, and large-scale model scaling (Liu et al., 2026b; Ansari et al., 2025; Grinsztajn et al., 2026; Khwaja et al., 2026; Podest et al., 2026; Liu et al., 2026a). Although these developments have substantially improved forecasting performance, the training regimes that govern the exposure of heterogeneous temporal corpora during pre-training remain comparatively under-explored. Unlike language or vision foundation models, time series corpora naturally exhibit substantial heterogeneity in their sources, temporal resolutions, observation patterns, and forecasting re-quirements (Kottapalli et al., 2025; Hu et al.). Importantly, the capability of a TSFM is not solely determined by the nominal size of the collected corpus, but by the effective pre-training distribution 
+
+induced by the training pipeline (Syed et al., 2026). This distribution is shaped by which datasets, time series records, variables, context windows, and forecasting horizons are sampled, as well as how missing observations and invalid targets are handled throughout optimization (Yeh et al., 2023). Therefore, designing a scalable TSFM requires not only increasing corpus size or model capacity, but also controlling the distribution of training experiences presented to the model. This challenge introduces several coupled difficulties for large-scale TSFM pre-training. First, heterogeneous datasets often contain highly imbalanced sources, causing dominant datasets to determine the optimization trajectory while under-represented domains receive insufficient ex-posure (Shao et al., 2024, 2025). Second, different temporal resolutions and recording frequencies naturally require different historical context ranges, making fixed context training insufficient for broad temporal generalization (Zhang et al., 2022; Chung et al., 2024). Third, forecasting tasks involve diverse prediction horizons, while existing models often rely on horizon-specific training or multi-stage context extension (Lim et al., 2021). Finally, missing observations are pervasive in real-world time series and require consistent treatment across normalization, tokenization, attention computation, and loss optimization (Hu et al., 2026; Che et al., 2018). These challenges indicate that effective TSFM training requires a principled strategy for controlling data exposure, temporal coverage, and supervision quality simultaneously. To address these challenges, we introduce ORBIT (Omni-Range Bootstrap Incremental Training), a training paradigm designed to explicitly control the effective pre-training distribution of het-erogeneous time series corpora. ORBIT separates the construction of forecasting examples from their consumption during optimization through two complementary components. ❶ Bootstrap Multi-Level Sampling controls data exposure hierarchically. At the corpus level, prescribed domain-aware dataset weights are converted into an ordered global training stream using a low-discrepancy greedy blending rule. Within each retained dataset, Bootstrap Stochastic Sampling constructs an offline sample index through four stochastic selections: a valid time series record, a target variable, a context window, and a compatible prediction horizon. Each indexed example is represented by a five-tuple containing its record, variable, context start, context end, and prediction horizon. In contrast to sequential traversal and sliding-window enumeration used in existing TSFM training pipelines (Goswami et al., 2024a; Shi et al., 2025; Liu et al., 2025b), this construction explicitly ran-domizes forecasting configurations while preserving reproducibility and efficient random access. ❷
+
+Omni-Range Incremental Training consumes the resulting variable-length examples throughout a single training run. Context lengths and prediction horizons are sampled once during sample-index construction rather than resampled during optimization. During batch assembly, contexts are 2left-padded and targets are right-padded to their respective mini-batch maxima, with attention and loss masks excluding unsupported positions. The globally interleaved sample stream is then consumed incrementally from memory-mapped storage. Short and long contexts, together with short and long prediction horizons, therefore coexist throughout optimization, avoiding the sepa-rate context-extension stages or horizon-specific training schedules adopted by several existing approaches (Ansari et al., 2025; Liu et al., 2026b; Shi et al., 2025). Under ORBIT , we train Falcon-2.0 , a deliberately simple encoder-only Transformer designed to investigate the effectiveness of the proposed training paradigm beyond architectural scaling alone. Rather than introducing highly specialized modules or task-specific architectural branches, 
+
+Falcon-2.0 adopts a unified patch-based forecasting framework that provides a simple and scalable interface for heterogeneous pre-training following the univariate encoder formulation of Chronos-2 (Ansari et al., 2025). Specifically, Falcon-2.0 treats each variable as an independent temporal sequence and employs a missingness-aware triple-channel patch tokenization scheme to distinguish observed values, missingness patterns, and temporal information. This design allows the model to consistently process incomplete observations and diverse training examples generated by ORBIT .Furthermore, Falcon-2.0 adopts parallel patch prediction, enabling direct forecasting of multiple future segments within a unified objective and supporting the variable prediction horizons sampled during training. The simplicity of Falcon-2.0 allows us to isolate and evaluate the contribution of training strategies rather than relying on architectural complexity. Beyond the training distribution, we investigate how representations evolve across Transformer depth. Deep layers often capture richer and more diverse temporal structures, while shallow representations may suffer from limited expressive capacity (Yu et al., 2026). Motivated by this observation, we introduce a training-only Rank-Guided Cross-Depth Alignment objective, which uses late-layer representations as stop-gradient teachers to regularize shallow layers. This alignment improves representation consistency across depth without introducing additional inference cost (Hu et al., 2025b; Jiang et al., 2025). We further show that sufficiently small alignment error bounds the perturbation between centered shallow and deep representations and, under an explicit spectral-separation condition, prevents the shallow representation from losing non-negligible modes present in the deep representation. Moreover, we evaluate Falcon-2.0 trained with ORBIT on large-scale heterogeneous forecasting benchmarks, including GIFT-Eval (Aksu et al., 2024a) and fev-bench (Shchur et al., 2025). The results demonstrate strong zero-shot forecasting capability across diverse domains and frequencies, validating the effectiveness of the proposed training paradigm and the complementary benefit of cross-depth representation alignment. The principal contributions of this report are: 1. We identify effective pre-training distribution control as a critical but under-explored factor in time series foundation model development, and introduce ORBIT (Omni-Range Bootstrap 
+
+Incremental Training), a unified training paradigm for heterogeneous temporal corpora. 2. We propose Bootstrap Multi-Level Sampling and Omni-Range Incremental Training , which respectively control heterogeneous data exposure and enable single-stage training over diverse temporal contexts and forecasting horizons. 3. We develop Falcon-2.0 , a simple encoder-only Transformer trained under ORBIT , demonstrating that carefully designed training regimes can unlock strong forecasting capability without relying on excessive architectural complexity. 4. We introduce Rank-Guided Cross-Depth Alignment , a training-time representation regular-3Table 1 Comparison of representative time series foundation models from the perspective of model design. 
+
+Model Architecture Input Representation Forecasting Formulation 
+
+Chronos Encoder-decoder Discretized univariate time series via quantization Auto-regressive probabilistic forecasting MOMENT Encoder-only Patch-based input Masked reconstruction TimesFM Decoder-only Patch-based input Auto-regressive next-patch prediction Timer Decoder-only Patch-based input Auto-regressive next-patch prediction Timer-XL Decoder-only Patch-based input Auto-regressive next-patch prediction Timer-S1 Decoder-only with MoE and STP blocks Patch-based input Serial-token prediction with multi-patch quantile forecasting Time-MoE Decoder-only with MoE Point-wise tokenization Auto-regressive next-patch prediction with multi-resolution forecasting heads Moirai Encoder-only Patch-based input with any-variate processing Probabilistic distribution forecasting Moirai2 Decoder-only Patch-based input Quantile forecasting with multi-patch prediction TTM MLP-Mixer Patch-based input with adaptive patching Direct forecasting GTM Decoder-only with Fourier attention Patch-based input with frequency-aware 2D positional encoding Unified reconstruction and auto-regressive forecasting Sundial Decoder-only Patch-based input Auto-regressive next-patch prediction Chronos-2 Encoder-only with group attention Patch-based grouped targets and covariates with meta features Quantile forecasting TabPFN-TS Tabular foundation model Time series with tabular features Probabilistic forecasting via tabular regression TiRex Decoder-only xLSTM Patch-based input Quantile forecasting with contiguous patch masking TiRex-2 Decoder-only xLSTM with asymmetric grouped attention Patch-based multivariate input with past and future-known covariates Quantile forecasting Toto Decoder-only with factorized space-time attention Patch-based input with causal scaling Student-t mixture robust probabilistic forecasting Toto-2.0 Decoder-only with factorized space-time attention Patch-based input with causal scaling Quantile forecasting with contiguous patch masking 
+
+Falcon-2.0 Encoder-only Patch-based input with meta features Quantile forecasting under the ORBIT 
+
+ization method that transfers information from deeper Transformer layers to shallow layers without additional inference overhead. 
+
+2 Related Work 
+
+Time series foundation models (TSFMs) have rapidly evolved along architectural, algorithmic, and methodological dimensions. We organize this section around two core themes: the model architectures themselves, and the data and training regimes that enable their generalization. 
+
+2.1 Time Series Foundation Models 
+
+Recent progress on time series foundation models (TSFMs) has moved forecasting from task-specific training toward large-scale, cross-domain pre-training with strong zero-shot transferability, while differing mainly in tokenization, architectural inductive bias, probabilistic modeling, and efficiency (Kottapalli et al., 2025; Liang et al., 2024). Table 1 provides a structured comparison of existing models along key design dimensions. Early representative approaches such as Chronos (Ansari et al., 2024) cast time series as a dis-crete language via scaling and quantization and train language-model-style architectures auto-4regressively. MOMENT (Goswami et al., 2024b) learns general-purpose time series representations through masked pretraining, enabling transfer to diverse downstream tasks via task-specific fine-tuning. TimesFM (Das et al., 2024) shows that a decoder-only Transformer trained on patched continuous-valued time series can already serve as a strong general-purpose forecaster. Building on this generative line, Timer (Liu et al., 2024b), Timer-XL (Liu et al., 2025b), and Timer-S1 (Liu et al., 2026b) progressively scale decoder-based TSFMs toward long-context, multivariate, and sparse mixture-of-experts settings, with Timer-S1 further proposing serial-token prediction to better align model computation with the inherently sequential nature of long-horizon forecasting. Time-MoE (Shi et al., 2025) scales auto-regressive decoder-only TSFMs to 2.4B parameters through sparse mixture-of-experts design. In parallel, Moirai (Woo et al., 2024) formulates universal forecasting through a masked encoder with any-variate attention and probabilistic outputs, while Moirai2 (Liu et al., 2025a) revisits this design and demonstrates that a simpler decoder-only quantile forecasting pipeline can improve both efficiency and performance. Other models explore more specialized directions. TTM (Ekambaram et al., 2024) shows that compact mixer-based architectures can also achieve strong transfer. GTM (HE et al., 2026) pushes TSFMs toward generative-task-agnostic modeling with frequency-domain attention and unified adaptation across forecasting, imputation, and anomaly detection. Sundial (Liu et al., 2025c) introduces continuous generative forecasting through flow matching. Chronos-2 (Ansari et al., 2025) extends TSFMs from univariate to univer-sal forecasting with multivariate structure and covariates via group attention. TabPFN-TS (Hoo et al., 2025) reformulates forecasting as a tabular regression problem via temporal featurization. TiRex (Auer et al., 2026) leverages xLSTM to combine in-context learning with strong state tracking for long-horizon zero-shot forecasting. Extending this recurrent design, TiRex-2 (Podest et al., 2026) generalizes TiRex to multivariate forecasting with past and future-known covariates. Toto (Cohen et al., 2026) designs an observability-oriented TSFM with causal scaling and factorized time–variate attention. Toto 2.0 (Khwaja et al., 2026) further designs contiguous patch masking and scales the decoder-only time–variate Transformer from 4M to 2.5B parameters. Overall, existing work suggests that TSFMs are evolving along two complementary directions: one focuses on scaling model size, context length, and training corpus diversity to improve universality, while the other emphasizes time-series-native inductive biases and broader task generalization to make foundation models more robust, efficient, and practically useful. 
+
+2.2 Training Regimes in Time Series Foundation Models 
+
+Beyond architecture, TSFMs also differ substantially in how they define the effective pretraining distribution . As summarized in Table 2, we characterize the training regimes of representative TSFMs along five key dimensions: dataset weighting, sequence selection, variable selection, win-dow sampling, and prediction-length assignment. Under this view, early models such as MO-MENT (Goswami et al., 2024a), Time-MoE (Shi et al., 2025), and Timer-XL (Liu et al., 2025b) largely rely on sequential traversal or sliding-window enumeration, together with uniform, sequence-count-aware, and window-count-aware dataset weighting, respectively. When coupled with deterministic enumeration, these pipelines may skew the effective training distribution toward datasets with greater data volume, more constituent sequences, or more candidate training win-dows, thereby exacerbating cross-dataset imbalance. In contrast, more recent models increasingly adopt stochastic sampling strategies. For instance, Moirai (Woo et al., 2024) combines length-aware dataset weighting with probabilistic sequence sampling, variable subsampling, and random crop-ping. However, the length-aware dataset weighting setting may still favor datasets with greater aggregate sequence length during the sampling process. The Toto family (Cohen et al., 2026; Khwaja 5Table 2 Training regimes comparison of data construction and sampling strategies in representative TSFMs.                                   
+
+> Model Dataset Weighting Sequence Selection Variable Selection Window Sampling Prediction Length
+> MOMENT 1Uniform Sequential traversal All variates retained Sliding window with stride Fixed length Time-MoE 2Sequence-count-aware Sequential traversal Univariate samples Non-overlapping sliding window Next-patch horizon Timer-XL 3Window-count-aware Sequential traversal All variates retained Sliding window with stride Next-patch horizon Moirai, Moirai2 4Length-aware Probabilistic sampling Random composition Random cropping Random sampling Toto, Toto 2.0 5Unknown Sequential traversal Random composition Random sampling Next-patch horizon Chronos-2 6Unknown Random sampling All variates retained Random sampling Fixed length
+> Falcon-2.0 Domain-aware ORBIT : Hierarchical sampling with omni-range contexts and horizons
+> 1MOMENT github repository: https://github.com/moment-timeseries-foundation-model/moment-research
+> 2Time-MoE github repository: https://github.com/Time-MoE/Time-MoE
+> 3Timer-XL github repository: https://github.com/thuml/OpenLTM
+> 4Moirai family github repository: https://github.com/SalesforceAIResearch/uni2ts
+> 5Toto family github repository: https://github.com/DataDog/toto
+> 6Chronos-2 github repository: https://github.com/amazon-science/chronos-forecasting
+
+et al., 2026) traverses sequences sequentially and constructs univariate or multivariate samples through random variable composition, random window sampling. Chronos-2 (Ansari et al., 2025) adopts random sampling at both the sequence and window levels and supports grouped mul-tivariate or covariate-informed inputs. By contrast, Falcon-2.0 adopts domain-aware weighting to explicitly control source-level exposure, preventing high-volume datasets from dominating the training distribution while enabling under-represented domains to contribute meaningful supervision. These developments reflect a broader shift from static dataset traversal toward more stochastic, length-diverse, and compositionally flexible sampling schemes. A further key distinction among TSFMs concerns the optimization and training pipeline design . MO-MENT (Goswami et al., 2024a) follows the encoder-only masked-reconstruction paradigm, while decoder-style models such as Time-MoE (Shi et al., 2025) and Timer-XL (Liu et al., 2025b) adopt auto-regressive next-patch prediction. Recent TSFMs have increasingly moved beyond point forecasting toward probabilistic forecasting. Moirai (Woo et al., 2024) optimizes likelihood over parametric probabilistic outputs, whereas latest models such as Chronos-2 (Ansari et al., 2025), TiRex-2 (Podest et al., 2026), and Moirai 2.0 (Liu et al., 2025a) favor direct quantile regression. In par-allel, normalization and training-inference alignment have become increasingly important. In most cases, RevIN (Kim et al., 2022) is widely used for stabilizing distribution of input data (Goswami et al., 2024a; Liu et al., 2024b; Shi et al., 2025). Chronos-2 (Ansari et al., 2025) adopts masked instance normalization with optional arcsinh scaling to reduce the influence of outliers. Moirai (Woo et al., 2024) uses packed standardization, and Toto (Cohen et al., 2026) introduces causal patch-wise scaling for nonstationary observability data. Several recent models also move beyond single-stage pretraining, most notably Timer-S1 (Liu et al., 2026b), which uses pretraining, continued pretrain-ing, and long-context extension, and Chronos-2 (Ansari et al., 2025), which likewise separates base training from later capability refinement. Taken together, these results suggest that progress in TSFMs depends not only on larger models, but also on the joint design of sampling strategy, forecasting objective, normalization scheme, and inference-consistent training procedure. 6Positioning of Falcon-2.0 . Existing time series foundation models have advanced primarily through architectural innovations—including group attention (Ansari et al., 2025), flow match-ing (Liu et al., 2025c), serial-token prediction (Liu et al., 2026b), and any-variate attention (Liu et al., 2025a)—or through scaling data and model capacity (Liu et al., 2025b; Shi et al., 2025). However, the training methodologies governing exposure to heterogeneous temporal corpora remain com-paratively under-explored, particularly how time series records, target variables, context windows, and forecasting horizons are sampled and how missing observations are handled during opti-mization (Syed et al., 2026; Yeh et al., 2023). Falcon-2.0 targets this gap with a deliberately simple encoder-only Transformer, demonstrating that carefully designed training regimes can unlock strong forecasting capability without relying on excessive architectural complexity. Specifically, 
+
+Bootstrap Multi-Level Sampling explicitly controls source-level exposure and constructs diverse forecasting tasks, while Omni-Range Incremental Training continuously exposes the model to diverse context lengths and forecasting horizons within a single training stage, with missing observations handled consistently throughout the pipeline. 
+
+3 Model Architecture 
+
+3.1 Overview 
+
+Falcon-2.0 deliberately adopts a minimally specialized backbone, enabling a controlled assess-ment of the proposed training regime and representation-level mechanisms. As illustrated in Figure 1, the model follows the univariate encoder formulation of Chronos-2 (Ansari et al., 2025): missingness-aware reversible instance normalization with an arcsinh transform, triple-channel patch tokenization using temporal, value, and indicator features, a learnable REG token, future query patches, and direct multi-patch quantile prediction. Unlike Chronos-2, Falcon-2.0 processes target variables independently and does not use group attention. The encoder consists of Pre-RMSNorm Transformer blocks with RoPE, SwiGLU feed-forward layers, and output-gated self-attention. Our contribution therefore does not lie in proposing an alternative backbone. Rather, this formula-tion establishes a controlled setting for studying two questions: how ORBIT shapes the effective pre-training distribution over heterogeneous time series (Section 4), and whether the depth-wise rank structure of a time series Transformer can be exploited through cross-depth representation alignment (Section 3.4). 
+
+3.2 Input Representation and Backbone 
+
+Let x = ( x1, . . . , xL) ∈ (R ∪ {⊥} )L denote a univariate context of length L, where ⊥ represents a missing observation, and let C denote the maximum admissible context length in time steps. The model uses a common patch size P for context and future segments. After left padding, the context contains N =
+
+l LP
+
+m
+
+context patches. 
+
+3.2.1 Missingness-Aware Reversible Instance Normalization 
+
+Let Vx = {i : xi is observed } denote the observed-index set. When Vx is nonempty, Falcon-2.0 
+
+follows Chronos-2 (Ansari et al., 2025) and computes instance statistics only from observed values: 
+
+μ = 1
+
+|V x| ∑
+
+> i∈V x
+
+xi, σ = max 
+
+s 1
+
+|V x| ∑
+
+> i∈V x
+
+(xi − μ)2, ϵnorm 
+
+!
+
+. (1) 7… …             
+
+> Context Patches Future Query Patches [REG]
+> 12NN+1 N+2 N+M
+> [𝐵×(𝑁 + 1 + 𝑀)×𝑑]
+> -L T
+> NaN NaN NaN
+> Value Time Mask
+> Residual Block
+> Triple-Channel Patch Tokenization Triple-Channel Patch Tokenization Missingness-Aware RevIN RMSNorm RMSNorm Gated Self-Attention RoPE
+> Feed-Forward Network
+> ⨁⨁
+> Quantile Head
+> ×𝐷
+> Time Series Input
+> 𝜇, 𝜎
+> RMSNorm Linear
+> Q
+> Linear
+> K
+> Linear
+> V
+> Linear
+> G
+> RoPE RoPE
+> Scaled Dot-Product Attention
+> 𝜎 ⨂
+> Concat Linear Gated Self-Attention
+> Heads
+> Residual Block Linear
+> Up_proj Gate 𝜎 ⨂
+> Linear  ⨁
+> SwiGLU Linear …
+> Extract Future Patches Quantile Forecast Ground Truth
+> ℒ%&'
+> Pinball Loss Residual Block De-RevIN
+> Context / Future Patches
+> 𝜎 Sigmoid Activation Function
+> ⨂⨁
+> Skip Connection Element-wise Multiplication Element-wise Addition Data Flow
+
+Figure 1 Falcon-2.0 architecture. Following the univariate encoder formulation of Chronos-2 (Ansari et al., 2025), the model represents each context or future query patch through temporal, value, and indicator channels. Context tokens, a learnable REG token, and future query tokens are jointly processed by a bidirectional Transformer encoder. A quantile head decodes all future patches in parallel. 
+
+For an entirely unobserved context, we define (μ, σ) = ( 0, 1 ) by convention and set every observa-tion indicator to zero. The transformed value and its observation indicator are 
+
+exi =
+
+(
+
+arcsinh (( xi − μ)/σ) , i ∈ V x,0, i /∈ V x, ai = I[i ∈ V x]. (2) For a prediction bey, the original scale is recovered by by = σ sinh (bey) + μ.
+
+3.2.2 Triple-Channel Patch Tokenization 
+
+The context is left-padded to NP time steps. We assign each position a relative index ri, with ri < 0for context positions and ri ≥ 0 for future positions, and use τi = ri/C as its temporal feature. For context patch n ∈ { 1, . . . , N}, let tctx 
+
+n , vctx 
+
+n , and actx 
+
+n in RP denote its temporal, transformed-value, and observation-indicator vectors. Its triple-channel representation is 
+
+zctx 
+
+n = tctx 
+
+n ; vctx 
+
+n ; actx 
+
+n
+
+ ∈ R3P. (3) A shared residual SwiGLU projection ϕ : R3P → Rd maps each patch to the latent dimension: 
+
+hctx 
+
+n = ϕ(zctx 
+
+n ), Hctx ∈ RN×d. (4) Here, d is the latent representation dimension. Since ϕ is a standard two-layer residual projection, we omit its internal parameterization. 
+
+3.2.3 Parallel Future Queries 
+
+Let T denote the prediction length represented in a single encoder evaluation. This requires M =
+
+⌈T/P⌉ future query patches, where M ≤ Mmax and Mmax is the maximum number represented 8jointly. For a mini-batch B = {1, . . . , B}, let sample b have lengths (Lb, Tb) and patch counts 
+
+Nb = ⌈Lb/P⌉ and Mb = ⌈Tb/P⌉. We write NB = max b Nb, MB = max b Mb, and SB = NB +
+
+1 + MB denote the padded token dimensions. Positions outside an individual sample’s context or forecast support are excluded from attention and from the empirical objective. The following equations suppress the sample index. For future patch j ∈ { 0, . . . , M − 1} and within-patch position 
+
+κ ∈ { 0, . . . , P − 1}, the temporal feature is 
+
+tfut  
+
+> j
+
+[κ] = jP + κ
+
+C . (5) Future target values are unavailable, so the value channel is zero. The indicator channel is set to one to distinguish prospective prediction locations: 
+
+zfut  
+
+> j
+
+=
+
+h
+
+tfut  
+
+> j
+
+; 0P; 1P
+
+i
+
+, hfut  
+
+> j
+
+= ϕ(zfut  
+
+> j
+
+). (6) Collecting these representations gives Hfut = [ hfut 0 ; . . . ; hfut 
+
+> M−1
+
+] ∈ RM×d. The indicator channel is interpreted jointly with the relative temporal feature: at context positions it records observation status, whereas at future positions it identifies prospective prediction locations. A separate patch-level indicator defines the support of self-attention. A context patch belongs to this support if it contains at least one observation; the REG token and future query patches are included by construction. The context tokens, a learnable REG token hreg ∈ Rd, and the future query tokens are concatenated as 
+
+Hemb = Hctx ; hreg ; Hfut 
+
+ ∈ RS×d, S = N + 1 + M. (7) 
+
+3.2.4 Transformer Encoder 
+
+Let D denote the number of encoder blocks. We adopt the indexing convention ℓ ∈ { 0, . . . , D −
+
+1}, and H[ℓ] ∈ RS×d denotes the output of block ℓ. Each block uses Pre-RMSNorm, RoPE (Su et al., 2024), output-gated multi-head self-attention (Qiu et al., 2026), and a SwiGLU feed-forward layer (Shazeer, 2020). With nh attention heads and per-head dimension dh = d/nh, the gated attention operation is summarized as 
+
+O = softmax Qattn K⊤
+
+> attn
+
+√dh
+
++ m
+
+!
+
+Vattn , eO = O ⊙ sigmoid (G). (8) Here, Qattn , Kattn , Vattn , and G are the query, key, value, and output-gate projections, respectively. The additive attention mask m ∈ { 0, −∞}S×S assigns zero to admissible query–key pairs and 
+
+−∞ otherwise. The admissible set comprises observed context support, the REG token, and future query tokens, with bidirectional attention within this set. Because no realized future observation is included in the encoder input, the forecasting information set is preserved. 
+
+3.3 Quantile Forecasting Head 
+
+Let H[D−1] 
+
+> fut
+
+∈ RM×d denote the final-layer states at future query positions, and let Hout fut =
+
+RMSNorm (H[D−1] 
+
+> fut
+
+) be the final normalized representation. A residual quantile head ψ produces forecasts in the normalized arcsinh space: 
+
+beY = ψ Hout fut 
+
+ ∈ RM×P×Nq , (9) 9(a) Multi-Stage Autoregressive Prediction                     
+
+> ……
+> Context Patches Future Query Patches [REG]
+> 12NN+1 N+2 N+M
+> [𝐵×(𝑁 + 1 + 𝑀)×𝑑]
+> ……
+> Context Patches Future Query Patches [REG]
+> 12NN+1 N+2 N+M
+> [𝐵×(𝑁 + 1 + 2 ×𝑀)×𝑑]
+> Falcon-2.0 …
+> Future Predicted Patches
+> N+1 N+2 N+M
+> …
+> N+1 N+2 N+M
+> Append Predicted Patches
+> Falcon-2.0 …
+> Median pred First-Pass Autoregressive Stage
+> (b) Representation Alignment
+> Triple-Channel Patch Tokenization Missingness-Aware RevIN Quantile Head Time Series Input RMSNorm Encoder Layer 1 Encoder Layer 2 Encoder Layer D …Representation Alignment
+> ℒ()*+,
+
+Figure 2 Falcon-2.0 long-horizon inference and auxiliary representation alignment. (a) Multi-Stage Autoregressive Prediction: each stage predicts up to Mmax future patches in parallel; its median forecast is appended to the context before the next stage, and stage-wise outputs are concatenated and truncated to the requested horizon. (b) Rank-Guided Cross-Depth Alignment: a deep encoder block provides a stop-gradient reference representation for a shallow block through a token-wise cosine objective. The auxiliary objective is used only during training. 
+
+where Nq = 21 is the number of quantile levels and 
+
+Q = {0.01, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.99 }.(10) The patch and within-patch dimensions are flattened in chronological order to obtain beYflat ∈
+
+RMP ×Nq . When the requested horizon T is not divisible by P, only the first T positions are retained; the remaining positions of the final patch do not participate in training or evaluation. The head therefore produces a complete conditional quantile function at every represented forecast position, while the median channel q = 0.5 provides the point forecast used by the multi-stage inference procedure in Section 3.6. 
+
+3.4 Rank-Guided Cross-Depth Alignment Motivation. Recent analysis shows that time series patch embeddings have sharply decaying singular spectra and that their numerical rank tends to increase across Transformer depth, a phenomenon termed the flow of ranks (Yu et al., 2026). That work uses the low-rank structure of early layers primarily for compression. We investigate a complementary training hypothesis: when a late-layer representation exhibits a broader non-negligible spectrum, can its geometry guide a shallow layer without adding an external teacher or changing inference? 
+
+Asymmetric cross-depth objective. For a batch of size B, let h[ℓ]
+
+b,u ∈ Rd denote token u of sample b
+
+after encoder block ℓ. We align a shallow block ℓsh with a deeper block ℓdp , where 0 ≤ ℓsh < ℓ dp ≤
+
+D − 1. Under this indexing convention, the default 32-layer model uses (ℓsh , ℓdp ) = ( 1, 31 ).Inspired by the asymmetric optimization used by TimeAlign (Hu et al., 2025b), gradients are stopped through the deep representation. Unlike TimeAlign, however, both representations here come from different depths of the same encoder rather than from a separate branch that observes future targets. Define 
+
+zsh 
+
+b,u = h[ℓsh ]
+
+b,u
+
+h[ℓsh ]
+
+b,u 2
+
+, zdp 
+
+b,u = sg 
+
+
+
+h[ℓdp ]
+
+b,u
+
+h[ℓdp ]
+
+b,u 2
+
+ , (11) where sg (·) denotes stop-gradient. For numerical stability, each denominator is lower-bounded by 10 a small positive constant ϵalign .Let ωb,u ∈ { 0, 1 } denote the alignment-support indicator. It equals one for valid context patches and future query patches within the sampled horizon, and zero for padding-induced positions and the REG token. The token-wise cosine objective is 
+
+Lalign = 1
+
+nvB
+
+# ∑
+
+> b=1
+> SB
+
+# ∑
+
+> u=1
+
+ωb,u
+
+
+
+1 −
+
+D
+
+zsh 
+
+> b,u
+
+, zdp 
+
+> b,u
+
+E 
+
+, nv = ∑
+
+> b,u
+
+ωb,u. (12) The objective updates the shallow representation using the current deep representation as an asymmetric reference signal. It introduces no additional forecasting function and is not evaluated during inference. 
+
+Spectral diagnostics. Stack the nv valid, row-normalized shallow and deep token vectors into 
+
+Zsh , Zdp ∈ Rnv ×d. To remove a shared mean direction before measuring spectral breadth, define the centering matrix Cv = Inv − n−1 
+
+> v
+
+11 ⊤ and 
+
+Zsh = CvZsh , Zdp = CvZdp . (13) For a centered representation matrix Z with singular values s1(Z) ≥ s2(Z) ≥ · · · , we consider the 
+
+ε-numerical rank and stable rank 
+
+rε(Z) = j : sj(Z) > εs1(Z) , rstable (Z) = ∥Z∥2
+
+> F
+
+∥Z∥22
+
+. (14) The first counts singular directions that remain non-negligible relative to the dominant mode, whereas the second measures how broadly representation energy is distributed. Both are diagnostics rather than optimization targets: a broader spectrum does not by itself imply more predictive information. 
+
+From cosine alignment to spectral transfer. Because every aligned row has unit norm, the token-wise cosine objective is exactly equivalent to a matrix discrepancy: 
+
+Zsh − Zdp  
+
+> 2
+> F
+
+= 2nvLalign . (15) Since ∥Cv∥2 ≤ 1, centering cannot amplify this discrepancy. Hence 
+
+δF := Zsh − Zdp F ≤
+
+q
+
+2nvLalign , η := Zsh − Zdp 2 ≤ δF. (16) Standard singular-value perturbation bounds (Stewart and Sun, 1990) then give, for every j,
+
+sj(Zsh ) − sj(Zdp ) ≤ η. (17) Consequently, if the r-th deep singular mode is separated from the numerical-rank threshold by more than the alignment perturbation, namely 
+
+sr(Zdp ) − η > ε
+
+
+
+s1(Zdp ) + η
+
+
+
+, (18) then rε(Zsh ) ≥ r. This establishes a conditional transfer result: cosine alignment does not create rank unconditionally, but sufficiently accurate alignment prevents the shallow representation from 11 retaining fewer than r non-negligible modes when the deep spectrum satisfies the stated separation condition. The same perturbation also controls stable rank. By the triangle and reverse-triangle inequalities, whenever δF < ∥Zdp ∥F,
+
+rstable (Zsh ) ≥
+
+
+
+∥Zdp ∥F − δF
+
+2
+
+
+
+∥Zdp ∥2 + η
+
+2 . (19) Thus, a small alignment loss also limits how far the shallow representation’s energy distribution can deviate from that of the deep representation, although the bound may be loose when the deep spectrum is highly concentrated. 
+
+Subspace interpretation and directionality. Let Vsh  
+
+> r
+
+and Vdp  
+
+> r
+
+contain the top-r right singular vectors of the centered shallow and deep representations, and define the corresponding projectors 
+
+Psh  
+
+> r
+
+= Vsh  
+
+> r
+
+(Vsh  
+
+> r
+
+)⊤ and Pdp  
+
+> r
+
+= Vdp  
+
+> r
+
+(Vdp  
+
+> r
+
+)⊤. Their normalized chordal discrepancy is 
+
+d2sub (r) = 12r Psh  
+
+> r
+
+− Pdp  
+
+> r
+> 2
+> F
+
+= 1
+
+r
+
+> r
+
+# ∑
+
+> j=1
+
+sin 2 θj, (20) where θj are the principal angles between the two feature subspaces. When the deep representation has a nonzero spectral gap around its r-th singular value, matrix perturbation theory provides an upper bound on this discrepancy that vanishes with η. We use Equation (20) only as an analysis diagnostic; the training objective remains the less expensive token-wise cosine loss in Equation (12). Finally, stop-gradient determines the direction of transfer. Without it, the auxiliary loss could decrease by moving the deep representation toward the narrower shallow representation. Treating the deep state as fixed within each update instead directs the alignment gradient to the shallow branch and preceding blocks. The forecasting objective continues to update the full network, so alignment regularizes representation development without freezing the deep encoder during training. 
+
+3.5 Training Loss 
+
+Let sample b have a sampled forecast horizon Tb and targets yb = ( yb,1 , . . . , yb,Tb ). Its observed target set is 
+
+Vb = t ∈ { 1, . . . , Tb} : yb,t is observed . (21) The context statistics (μb, σb) from Equation (1) are reused to transform every observed target: 
+
+eyb,t = arcsinh 
+
+ yb,t − μb
+
+σb
+
+
+
+, t ∈ V b. (22) Let bey(q) 
+
+> b,t
+
+denote the corresponding quantile-head output for q ∈ Q after flattening the patch dimen-sion. With Ntgt = ∑Bb=1 |V b|, the forecasting loss is the observed-target pinball objective (Koenker and Hallock, 2001) 
+
+Lpin = 1
+
+Nq Ntgt 
+
+> B
+
+# ∑
+
+> b=1
+
+# ∑
+
+> t∈V b
+
+# ∑
+
+> q∈Q
+
+ρq
+
+eyb,t − bey(q)
+
+> b,t
+
+
+
+, ρq(e) = max (qe , (q − 1)e) . (23) 12 The residual convention is e = ey − bey, under which minimizing ρq estimates the conditional q-quantile. Targets that are unobserved, introduced solely by batch padding, or located beyond the sampled horizon have zero contribution. Samples with Vb = ∅ are excluded before the batch objective is formed, ensuring that Ntgt > 0. Training in the normalized arcsinh space prevents high-amplitude series from dominating the batch objective while retaining an invertible map to the original scale. The median prediction, q = 0.5, minimizes the absolute-error component and is used as the recursive input during long-horizon inference; the remaining quantiles characterize predictive uncertainty and are never collapsed into the median during training. The complete pre-training objective combines forecasting accuracy with cross-depth representation alignment: 
+
+Ltotal = Lpin + λalign Lalign , (24) where the default run uses λalign = 10.0. The forecasting term updates the patch-embedding map, all encoder blocks, and the quantile head. Because the deep representation is stop-gradient in Equation (11), the auxiliary term updates only the shallow branch and its preceding computation. At evaluation time, Lalign is absent and the forecasting architecture is unchanged. 
+
+3.6 Multi-Stage Autoregressive Prediction 
+
+Falcon-2.0 represents at most Mmax future patches in one encoder evaluation, giving a per-stage forecasting capacity 
+
+Tmax = Mmax P. (25) For a requested horizon Treq , the number of stages is 
+
+K =
+
+ Treq 
+
+Tmax 
+
+
+
+. (26) At stage k ∈ { 1, . . . , K}, let 
+
+Tk = min  Tmax , Treq − (k − 1)Tmax 
+
+ , Mk =
+
+ Tk
+
+P
+
+
+
+. (27) The model constructs Mk future query patches and predicts all Mk P positions in parallel. Only the first Tk positions are retained when the final stage ends inside a patch. Normalization is performed once. Specifically, (μ, σ) are computed from the original observed context, and the resulting transformed context is denoted by ex(0). The same statistics are held fixed at every stage so that observed context values and recursively generated values remain in a common coordinate system. Given the current context ex(k−1), stage k produces bey(q,k) ∈ RTk for every q ∈ Q . Its median is incorporated into the next context as 
+
+ex(k) = Tail C
+
+ ex(k−1); bey(0.5, k) 
+
+, (28) where Tail C retains the most recent C time steps when the accumulated context exceeds the admissible context length. Recursively generated positions receive observation indicator one because they are available as conditioning values in the subsequent stage. 13 For each quantile level, the final transformed forecast concatenates the stage outputs in temporal order: 
+
+bey(q) = Trunc Treq 
+
+ bey(q,1 ); · · · ; bey(q,K) 
+
+. (29) The original scale is recovered only after all stages: 
+
+by(q) 
+
+> t
+
+= σ sinh 
+
+bey(q)
+
+> t
+
+
+
++ μ, t = 1, . . . , Treq . (30) Therefore, prediction is parallel within each stage and autoregressive only across stages. When 
+
+Treq ≤ Tmax , K = 1 and the procedure reduces to direct parallel forecasting without recursive feedback. For longer horizons, only the median trajectory is fed back; all quantile trajectories are nevertheless retained as outputs. 
+
+3.7 Model Configuration 
+
+The default Falcon-2.0 configuration contains D = 32 encoder blocks and 585M trainable parame-ters. Its latent dimension is d = 1024, partitioned across nh = 16 attention heads with dh = 64, sat-isfying d = nhdh. Each block expands the representation to dff = 4096 in its SwiGLU feed-forward sublayer. The stack uses Pre-RMSNorm, RoPE with base 10,000, output-gated self-attention, and bias-free linear maps. The common patch size is P = 16 for both context and future segments. A maximum context of 
+
+C = 8192 time steps therefore contains Nmax = C/P = 512 context patches. Together with one REG 
+
+token and Mmax = 6 future query patches, the largest encoder sequence contains Smax = Nmax +
+
+1 + Mmax = 519 tokens. The corresponding per-stage forecasting capacity is Tmax = Mmax P = 96 time steps; longer horizons use the procedure in Section 3.6. These values specify the model’s representational capacity, whereas the per-example context and horizon are sampled by ORBIT as described in Section 4. Table 3 summarizes the configuration. We report it for reproducibility and do not treat these conventional architectural choices as the principal contribution. 
+
+4 ORBIT 
+
+Training a time series foundation model on a heterogeneous corpus implicitly defines an effective pre-training distribution : the probability with which each dataset, record, target variable, context window, and prediction horizon contributes to the optimization objective. This distribution is particularly consequential for time series because data sources differ jointly in domain, sampling frequency, record length, variable count, and missingness (Aksu et al., 2024b; Shchur et al., 2025). When training examples are obtained through sequential traversal or deterministic window enumeration, their exposure is determined largely by corpus layout and the number of enumerable windows, rather than by an explicitly specified training objective. As illustrated in Figure 3, ORBIT separates the construction and consumption of this distribution into two complementary components. Bootstrap Multi-Level Sampling controls source exposure and constructs forecasting examples by sampling records, target variables, temporal split points, and prediction horizons. Omni-Range Incremental Training interleaves the resulting context and horizon ranges throughout a single step-based training run, rather than assigning different ranges to separate training stages. Operationally, the split-point and horizon variables are sampled 14 Table 3 Model configuration of Falcon-2.0 . Encoder blocks follow the indexing convention {0, . . . , D − 1}.                        
+
+> Parameter Value
+> Encoder blocks ( D)32 Trainable parameters 585M Latent representation dimension ( d)1024 FFN hidden size ( dff )4096 Attention heads ( nh)16 Per-head dimension ( dh)64 Patch size ( P)16 Maximum future patches ( Mmax )6Maximum per-stage horizon ( Tmax )96 Maximum context length ( C)8192 Maximum context patches ( Nmax )512 Maximum encoder tokens ( Smax )519 Positional encoding RoPE (base 10,000) Normalization RMSNorm ( ϵrms =10 −5)Attention Output-gated self-attention FFN activation SwiGLU Bias terms in linear maps Absent Quantile levels ( Nq)21 Alignment blocks (ℓsh ,ℓdp )(1, 31 )
+
+once during index construction and are subsequently consumed by Omni-Range training; they are not independently resampled by the two components. The channel-independent backbone, triple-channel tokenization, and parallel patch prediction of Falcon-2.0 provide an interface for processing this variable-length and missingness-aware stream, but do not themselves define the pre-training distribution. 
+
+4.1 Problem Formulation and Motivation 
+
+Given a prescribed weighting over the pre-training datasets, consider a dataset D containing ND
+
+time series records. Record i is represented as Xi ∈ RLi ×Vi , where Li denotes its temporal length and Vi ≥ 1 its number of target variables; the v-th target variable is denoted by xi,v ∈ RLi . The objective is to make the aggregate dataset composition of the global training stream follow these weights while sampling forecasting instances over time series records, target variables, temporal windows, and prediction horizons. At the same time, the data pipeline must support efficient random access so that data loading does not become a bottleneck in large-scale distributed training. A common baseline is fixed sliding-window sampling , which sequentially enumerates training ex-amples from each record (Goswami et al., 2024a; Shi et al., 2025; Liu et al., 2025b). Although straightforward, fixed window enumeration makes training exposure depend on the number of eligible windows. Adjacent windows often overlap substantially, producing highly redundant training examples. Datasets that yield more windows receive greater exposure. Reusing a fixed set of window boundaries also limits the diversity of context–target configurations. Together, these effects increase the nominal sample count without a corresponding gain in training diversity, potentially skewing data exposure during optimization. Such distributional biases motivate a sampling strategy that randomizes across multiple dimensions instead of relying on deterministic window traversal. To specify the forecasting examples produced by such a strategy, we introduce the following representation. 
+
+Definition 4.1 (Sample Index) . For the ND records in dataset D, a sample index ID with MD entries 15 Offline Sample Index Cache 
+
+> Cached five-tuple and memory-mapped random access.
+
+𝒓 𝒎 𝒗 𝒎 𝒔 𝒎 𝒆 𝒎 𝒑 𝒎 
+
+Training Step        
+
+> Optimizer step 𝒕
+> Energy Finance Health Traffic
+> Weather Web Logistics Sensor
+
+Heterogeneous Corpus 
+
+ORBIT: Omni-Range Bootstrap Incremental Training 
+
+Domain-Aware Weighting 
+
+Falcon-2.0 
+
+Update 
+
+> Update parameters
+
+Dataset Validity Filtering 
+
+> Bootstrap Multi-Level Sampling Omni-Range Incremental Training
+
+Greedy Blending Schedule         
+
+> Level-1 Record Selection
+> …
+> Record-1 Record-𝑵 𝓓
+> Retain records of length ≥ 2𝑃 and sample 𝑟 !with equal probability.
+> Level-2 Target Variable Selection
+> Var-1 Var-2 Var-𝑉 #!
+> …Record-𝑟 !
+> Sample 𝑣 !uniformly among the 𝑉 #!variables.
+
+Index Lookup          
+
+> Batch Assembly
+> Each global slot receives a dataset assignment. A five-tuple completes the corresponding sample description.
+> Record Variable Context-start Context-end Horizon
+> Level-3 Context Window Sampling
+> End position context horizon
+> Uniformly sample split point 𝑒 !,then context start offset 𝑠 !, over feasible integer positions.
+> short medium long
+> Level-4 Prediction Horizon Sampling
+> Given 𝑒 !, uniformly sample a feasible prediction horizon 𝑝 !.
+> Dataset  𝓓
+
+Figure 3 Overview of ORBIT . At the corpus level, dataset validity filtering and prescribed weights are translated by greedy blending into dataset assignments for the global training stream. Within each retained dataset, record filtering and four-level stochastic sampling construct a sample index of five-tuples over records, target variables, context windows, and prediction horizons. The resulting offline cache supports index lookup and batch assembly for Omni-Range Incremental Training .
+
+maps each sample identifier m ∈ { 1, . . . , MD } to a valid extraction tuple 
+
+ID (m) = ( rm, vm, sm, em, pm),where rm ∈ { 1, . . . , ND } denotes the index of a time series record with temporal length Lrm and Vrm
+
+target variables, and vm ∈ { 1, . . . , Vrm } denotes the index of a target variable within that record. 
+
+sm, em ∈ Z denote the starting offset and exclusive endpoint, respectively, of the context window within record rm, with 0 ≤ sm < em < Lrm and em − sm ≥ P, while pm ∈ Z≥P denotes an admissible prediction horizon satisfying pm ≤ Tmax and em + pm ≤ Lrm . Accordingly, the context is the segment of xrm,vm spanning offsets sm through em − 1, and the target is the immediately following segment spanning offsets em through em + pm − 1. Beyond the validity of individual extraction tuples, the sampling scheme should satisfy require-ments at two levels. At the corpus level, aggregate dataset exposure over the complete global training stream should follow the prescribed weights. Within each dataset, the construction of the sample index should ensure that every valid record remains eligible for selection and that time series records, target variables, temporal window positions, and prediction horizons are selected stochastically. 
+
+4.2 Bootstrap Multi-Level Sampling 
+
+Bootstrap Multi-Level Sampling addresses these requirements hierarchically. At the corpus level, dataset weighting and blending control how frequently each dataset contributes to the global training stream. Within each dataset, a four-level stochastic procedure constructs the corresponding sample index by selecting the time series record, target variable, context window, and prediction horizon of each indexed example. 16 4.2.1 Dataset Weighting and Blending 
+
+We first apply dataset-level validity filtering to exclude datasets with excessive overall missingness or no record long enough to form a valid context–target pair. Across the retained datasets, ORBIT 
+
+uses domain-aware weighting to balance exposure across domains and prevent high-volume datasets from dominating the training distribution. These weights define the desired dataset composition of an ordered global training stream. The stream length is fixed in advance to match the total sample budget of a single pre-training run. With the desired composition and stream length specified, we use a low-discrepancy greedy blending rule to materialize the dataset assignments. For each slot, the rule selects the dataset whose cumulative assigned count has the largest deficit relative to its target count at that point. Unlike independent categorical sampling, which matches the prescribed proportions only in expectation, this rule keeps the cumulative dataset composition close to its target after every assignment. Once a dataset has been assigned to each slot, a local sample identifier is selected for that dataset. As described next, the corresponding per-dataset sample index maps this identifier to the five-tuple (rm, vm, sm, em, pm). Together with the dataset assignment, this five-tuple completes the indexed extraction description associated with the corresponding slot. 
+
+4.2.2 Bootstrap Stochastic Sampling 
+
+Complementing the corpus-level dataset assignments, Bootstrap Stochastic Sampling operates separately within each retained dataset D to construct its sample index ID. For every sam-ple identifier m ∈ { 1, . . . , MD }, a four-level stochastic procedure generates the extraction tuple 
+
+ID (m) = ( rm, vm, sm, em, pm) by sampling a valid record, a target variable within that record, a context window, and a compatible prediction horizon. This construction avoids deterministic record traversal and fixed window boundaries, helping reduce sequential correlations and increase the diversity of context–target configurations. 
+
+Level-1: Record Selection. We first exclude records shorter than 2 P time steps, where P is the common patch size introduced in Section 3.2, so that every retained record can provide at least one full patch for both the context and target segments. For each sample identifier m, the record index 
+
+rm is sampled with equal probability from the retained records, without weighting by record length or variable count. 
+
+Level-2: Target Variable Selection. Conditioned on the selected record rm, the procedure draws a target-variable index vm with equal probability from {1, . . . , Vrm }. Together with the equal-probability record sampling in Level-1, this prevents target-variable exposure from scaling with the number of extractable temporal windows. 
+
+Level-3: Context Window Sampling. Context requirements vary substantially across records and sampling frequencies, motivating coverage of both short local histories and longer temporal extents. After selecting record rm and target variable vm in Levels 1 and 2, respectively, the procedure operates on the resulting univariate series xrm,vm of length Lrm . It first samples the exclusive endpoint of the context window, which also serves as the context–target split point, uniformly from the feasible integer positions: 
+
+em | rm ∼ Unif {P, . . . , Lrm − P} . (31) Here P is the common patch size introduced in Section 3.2; the two bounds reserve at least one full 17 patch on each side of the split point. Conditioned on em, the context starting offset is then sampled uniformly from its feasible integer range: 
+
+sm | em ∼ Unif {max (0, em − C), . . . , em − P} , (32) where C is the maximum admissible context length defined in Section 3.2. Consequently, the sampled context length em − sm ranges from P to min (C, em), exposing the model to different temporal extents without exceeding its context capacity. 
+
+Level-4: Prediction Horizon Sampling. Forecasting applications likewise require prediction horizons ranging from short to long, making a single fixed horizon unnecessarily restrictive. Given the sampled split point em, the prediction horizon length is sampled uniformly from the feasible integer set 
+
+pm | em, rm ∼ Unif {P, . . . , min (Tmax , Lrm − em)} . (33) Here Tmax is the maximum per-stage forecasting capacity defined in Section 3.6. The lower bound supplies at least one full target patch, while the upper bound respects both the model’s per-stage capacity and the number of future observations remaining after em. Equivalently, the exclusive endpoint of the target lies between em + P and min (em + Tmax , Lrm ). The sampling is therefore uniform over the feasible horizon range determined jointly by the selected record and split point. Earlier split points can admit horizons up to Tmax , whereas later positions are limited by the shorter remaining suffix. Across the entries of the sample index, this construction allows short- to long-range targets to coexist whenever the selected records permit, rather than binding the sample index to a single prediction length. Repeating the four-level procedure for all MD sample identifiers yields the sample index ID ∈
+
+ZMD ×5. Constructed offline and cached for reproducibility and reuse across training runs, the sample index separates the specification of context–horizon configurations from their subsequent consumption during training. Algorithm 1 summarizes the complete construction.  
+
+> Algorithm 1 Bootstrap Sample Index Construction
+
+Require: Dataset D with ND records, record lengths {Li}, and variable counts {Vi}; patch size P;maximum context length C ≥ P; maximum per-stage horizon Tmax ≥ P; sample-index size MD
+
+Ensure: Sample index ID ∈ ZMD ×5 
+
+> 1:
+
+Initialize a random generator G 
+
+> 2:
+
+RD ← { i ∈ { 1, . . . , ND } : Li ≥ 2P} 
+
+> 3:
+
+for m = 1 to MD do  
+
+> 4:
+
+▷ Level-1: Record Selection  
+
+> 5:
+
+rm ← G.choice (RD ) 
+
+> 6:
+
+▷ Level-2: Target Variable Selection  
+
+> 7:
+
+vm ← G.choice ({1, . . . , Vrm }) 
+
+> 8:
+
+▷ Level-3: Context Window Sampling  
+
+> 9:
+
+em ← G.choice ({P, . . . , Lrm − P}) 
+
+> 10:
+
+sm ← G.choice ({max (0, em − C), . . . , em − P}) 
+
+> 11:
+
+▷ Level-4: Prediction Horizon Sampling  
+
+> 12:
+
+pm ← G.choice ({P, . . . , min (Tmax , Lrm − em)}) 
+
+> 13:
+
+ID (m) ← (rm, vm, sm, em, pm) 
+
+> 14:
+
+end for  
+
+> 15:
+
+return ID
+
+18 4.3 Omni-Range Incremental Training 
+
+A time series foundation model must generalize across temporal resolutions and forecasting requirements that call for widely different context lengths and prediction horizons. Training with a fixed context–horizon configuration covers only a narrow operating regime, whereas multi-stage context extension or horizon-specific optimization treats different temporal ranges through separate schedules or objectives and increases training complexity (Ansari et al., 2025; Liu et al., 2026b; Shi et al., 2025). Building on the sample indices defined in Section 4.2.2, Omni-Range training stochastically mixes diverse context–horizon configurations in a single training run, enabling the model to learn across a broad range of temporal scales. Operationally, Omni-Range Incremental Training comprises two complementary components: assembling samples with different context lengths and prediction horizons into mini-batches and incrementally consuming cached sample index entries during optimization. 
+
+Omni-Range Batch Assembly. The five-tuples selected for a mini-batch generally encode different context lengths em − sm and prediction horizons pm and therefore cannot be stacked directly. During batch assembly, context windows are left-padded to the longest context in the mini-batch, aligning their valid endpoints at the context–target split, while target windows are right-padded to the longest prediction horizon, aligning the beginnings of their forecast ranges. Padded context positions are marked invalid in the observation-indicator channel, with fully padded context patches excluded by the attention mask; padded target positions are excluded by the loss mask and therefore make no direct contribution to the training objective. The model can therefore train jointly on examples spanning different context and prediction ranges within a single mini-batch, without any additional runtime cropping or resampling. 
+
+Incremental Sample Consumption. Before optimization, the global training stream constructed in Section 4.2.1 is globally shuffled, while the sample identifiers within each dataset are shuffled independently. Together, these shuffling steps establish the sequence in which sample index entries are accessed during the training run. Each entry is a five-tuple of extraction metadata, 
+
+(rm, vm, sm, em, pm), rather than a time series sample that can be consumed directly. At training time, the corresponding context and target segments are loaded on demand from memory-mapped storage as specified by the five-tuple. Loading only the required segments avoids materializing all sampled windows in memory, reducing the memory footprint while supporting efficient batch construction. Overall, the globally interleaved training stream supports incremental consumption of stochastically constructed samples, promoting sample diversity and reducing redundant exposure compared with conventional epoch-based training, which repeatedly traverses a fixed sample collection. 
+
+5 Pre-training 
+
+The preceding section introduced the sampling and horizon-control mechanisms that define the training distribution of Falcon-2.0 . This section specifies how those mechanisms are instantiated in the pre-training run, including the corpus, optimization schedule, alignment objective, and distributed execution setup. 19 Table 4 Pre-training configuration.                               
+
+> Configuration Setting used in pre-training
+> Loss function 21-quantile pinball regression Quantile levels Q{0.01, 0.05, 0.10, . . . , 0.90, 0.95, 0.99 }
+> Optimizer AdamW ( β1=0.9, β2=0.95) Peak learning rate 6×10 −5
+> LR schedule Cosine annealing Minimum learning rate 6×10 −6
+> Training iterations 1,000,000 LR decay iterations 999,000 Weight decay 0.1 Gradient clipping 1.0 Batch size 64 Precision BF16 mixed precision Min prediction length pmin 16 Max prediction length pmax 96 Alignment blocks (ℓsh ,ℓdp )(1, 31 ), with λalign =10.0 Training schedule Step-based
+
+5.1 Training Data Corpus 
+
+Falcon-2.0 is pre-trained on a large-scale heterogeneous corpus spanning seven domains—Energy, Finance, Healthcare, Nature, Sales, Transport, and Cloud/IT—with each domain contributing multiple datasets of varying temporal lengths, sampling frequencies, and variate counts. Following the data leakage prevention principles established by GIFT-Eval (Aksu et al., 2024b), we rigorously separate pre-training data from all evaluation benchmarks, ensuring that zero-shot performance reflects genuine generalization rather than memorization. Detailed information on the corpus composition and dataset statistics can be found in Appendix A.1. 
+
+5.2 Training Configuration 
+
+The full set of training hyperparameters is summarized in Table 4. Falcon-2.0 is trained with 21-quantile regression using the pinball loss (Section 3.3), with quantile levels Q = {0.01, 0.05, . . . , 0.99 },providing calibrated coverage from the extreme tails to the median. Optimization is performed with AdamW ( β1 = 0.9, β2 = 0.95) (Loshchilov and Hutter, 2017) for 1,000,000 optimizer steps. The learning rate peaks at 6 × 10 −5 and follows cosine decay for 999,000 steps to a minimum of 6 × 10 −6,with a warmup fraction of 0.001. Weight decay is set to 0.1 and gradients are clipped to norm 1.0. Training uses BF16 mixed precision with a per-GPU batch size of 64 on NVIDIA B200-180GB GPU clusters. The Omni-Range parameters are set to pmin = 16 and pmax = 96, matching the single-pass horizon H1 = M × Pout = 6 × 16 = 96 from Section 3.2.3. We additionally enable the alignment auxiliary loss between encoder blocks ℓsh = 1 and ℓdp = 31 with weight λalign = 10.0. 
+
+5.3 Distributed Training 
+
+Falcon-2.0 is trained with Megatron-LM (Shoeybi et al., 2019) on an NVIDIA B200-180GB GPU cluster using data parallelism and the distributed optimizer; tensor and pipeline parallel sizes are set to 1 in the reported run. Each optimizer update aggregates per-rank micro-batches across the data-parallel group, while optimizer states are sharded to reduce memory pressure. To keep distributed data access deterministic and inexpensive, sample indices are constructed once on rank 0, cached under a configuration-dependent key, and then loaded by the remaining ranks after 20 Falcon-2.0 STRIDE + TS1 STRIDE + C2 TiRex-2 Falcon-X Timer-S1 Toto-2.0 2.5B Migas-1.0 Chronos-2 Toto-2.0 1B Toto-2.0 313M VISIT-2.0 Toto-2.0 22M TTM-R3 PT t0-alpha Moirai-2 Toto-2.0 4M TimesFM 2.0 500M Chronos-Bolt Base Chronos-Bolt Small Super-Linear Chronos Large Chronos Base Chronos Small TTM-R2 PT TimesFM TTM-R1 PT Lag-Llama VISIT-1.0  
+
+> 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2 1.3
+> Normalized MASE
+> Seasonal Naive = 1
+> 0.668 0.674 0.674 0.678 0.687 0.693 0.696 0.697 0.698 0.699 0.703 0.714 0.719 0.724 0.724 0.728 0.757 0.758 0.808 0.822 0.857 0.870 0.876 0.892 1.020 1.077 1.079 1.228 1.270
+> Time-series foundation models Falcon series
+
+Figure 4 GIFT-Eval pretrained-model comparison. Seasonal-Naive-normalized MASE for the 29 pretrained models included in the GIFT-Eval leaderboard as of July 2026. Scores are geometrically aggregated over all 97 dataset–frequency– horizon configurations; lower is better. 
+
+synchronization. This preserves identical sample ordering across ranks while avoiding redundant index construction during large-scale pre-training. 
+
+6 Experiments 
+
+6.1 Evaluation Benchmarks 
+
+We evaluate forecasting performance on two complementary benchmarks. GIFT-Eval (Aksu et al., 2024b) contains 23 datasets spanning seven domains and ten sampling frequencies. Its short-, medium-, and long-horizon settings form 97 dataset–frequency–horizon configurations, and its leakage-aware construction makes it a focused test of out-of-distribution generalization. We report Seasonal-Naive-normalized MASE for median point forecasts and Continuous Ranked Probability Score (CRPS) for probabilistic forecasts. Full dataset statistics and horizon definitions are provided in Appendix A.2. 
+
+fev-bench (Shchur et al., 2025) broadens the evaluation to 100 tasks across seven domains, including 46 tasks with known-future covariates. We report normalized MASE and Weighted Quantile Loss (WQL), using the geometric mean across tasks as in the released leaderboard. The complete task list, frequency–horizon mapping, and evaluation-window construction are deferred to Appendix A.3. 
+
+6.2 Main Results 
+
+Figures 4 and 5 compare Falcon-2.0 with existing methods using leaderboard results available as of July 2026. For GIFT-Eval, we report all models categorized as pretrained , together with 
+
+Falcon-2.0 ; for fev-bench, we include the complete leaderboard. Both comparisons use Seasonal-Naive-normalized MASE, where lower values indicate better point-forecast accuracy. 
+
+Overall comparison. Falcon-2.0 establishes the strongest point-forecasting result in the GIFT-Eval comparison. Among the 29 evaluated pretrained models, it achieves both the lowest normalized MASE ( 0.6684 ) and the best mean MASE rank ( 7.81 ), improving over STRIDE + Timer-S1 (0.6744) 21 TimesFM-2.5 Chronos-2 Falcon-2.0 TabPFN-TS TiRex FlowState Toto-1.0 Moirai-2.0 Chronos-Bolt Sundial-Base CatBoost LightGBM TFT PatchTST DeepAR Stat. Ensemble AutoARIMA AutoTheta AutoETS Seasonal Naive Naive Drift                    
+
+> 0.5 0.6 0.7 0.8 0.9 1.0 1.1 1.2
+> Normalized MASE  Seasonal Naive = 1
+> 0.644 0.645 0.646 0.699* 0.699 0.702 0.715 0.720 0.735 0.748 0.763 0.783 0.795 0.816 0.820* 0.829* 0.879* 0.890 0.977* 1.000 1.167 1.181
+> Time-series foundation models Task-specific / statistical baselines Falcon series
+
+Figure 5 fev-bench model comparison. Seasonal-Naive-normalized MASE for all 22 models included in the fev-bench leaderboard as of July 2026. Scores are geometrically aggregated over the benchmark tasks; lower is better. 
+
+by 0.9%. The consistent agreement between the aggregate MASE and mean rank highlights that 
+
+Falcon-2.0 ’s lead is not driven by isolated outsized wins, but rather reflects uniform strength across the 97 configurations. In terms of probabilistic performance, Falcon-2.0 remains highly competitive, securing the seventh-lowest CRPS (0.4843) with a mean CRPS rank of 9.62, though STRIDE + Chronos-2 retains an edge on this specific dimension (0.4544; rank 6.84). The fev-bench evaluation (Figure 5) further validates the robustness of Falcon-2.0 under a more heterogeneous task suite. Its aggregate normalized MASE of 0.6459 is within 0.3% of the top-performing TimesFM-2.5 (0.6438) and virtually tied with Chronos-2 (0.645), while establishing a superior mean MASE rank (5.15 vs. 5.63). Crucially, Falcon-2.0 achieves the best aggregate WQL ( 0.4842 ) among all models while successfully completing all 100 tasks. No single baseline outperforms Falcon-2.0 on both aggregate MASE and WQL simultaneously: TimesFM-2.5 yields slightly better point-forecasts but higher WQL, whereas Chronos-2 offers competitive mean ranks but inferior aggregate WQL. Consequently, Falcon-2.0 occupies a highly desirable operating Pareto-frontier, successfully marrying near-optimal point accuracy with state-of-the-art probabilistic calibration. Taken together, these cross-benchmark results confirm that Falcon-2.0 ’s capabilities generalize well beyond a narrow subset of tasks. This cross-benchmark strength provides the central empirical support for Falcon-2.0 : explicitly controlling source exposure and interleaving context and horizon ranges during training translates into a model that is competitive across distinct forecasting regimes. The remaining GIFT-Eval CRPS gap and the task-level advantages of Chronos-2 define concrete directions for improving probabilistic consistency without diminishing Falcon-2.0 ’s established point-forecasting strength. 
+
+Fine-grained behavior. Figures 6 and 7 dissect the point and probabilistic accuracy of Falcon-2.0 
+
+across forecast horizons, variate configurations, and the availability of known-future covariates. On GIFT-Eval (Figure 6), Falcon-2.0 ’s normalized MASE changes smoothly from 0.643 on short horizons to 0.683 and 0.725 on medium and long horizons, outperforming both Chronos-2 and Toto-2.0-2.5B at every horizon. A similar advantage is observed across variate settings, where 22 Short Medium Long         
+
+> 0.600 0.625 0.650 0.675 0.700 0.725 0.750 0.775 0.800
+> Normalized MASE
+> 0.643 0.683 0.725 0.667 0.725 0.757 0.663 0.726 0.754
+> (a) Forecast horizon: MASE
+> Short Medium Long
+> 0.40 0.42 0.44 0.46 0.48 0.50 0.52 0.54
+> Normalized CRPS
+> 0.488 0.466 0.493 0.496 0.471 0.472 0.486 0.464 0.461
+> (b) Forecast horizon: CRPS
+> Univariate Multivariate
+> 0.600 0.625 0.650 0.675 0.700 0.725 0.750 0.775 0.800
+> Normalized MASE
+> 0.641 0.705 0.689 0.709 0.683 0.712
+> (c) Variate type: MASE
+> Univariate Multivariate
+> 0.40 0.42 0.44 0.46 0.48 0.50 0.52 0.54
+> Normalized CRPS
+> 0.491 0.476 0.503 0.464 0.501 0.446
+> (d) Variate type: CRPS
+> Falcon-2.0 Chronos-2 Toto-2.0 2.5B
+
+Figure 6 GIFT-Eval fine-grained comparison. Seasonal-Naive-normalized MASE for Falcon-2.0 , Chronos-2, and Toto-2.0-2.5B; lower is better. Panels (a)–(b) report MASE and CRPS by short, medium, and long forecast horizons, while panels (c)–(d) report the same metrics for univariate and multivariate tasks. Bars show subgroup aggregates results. 
+
+Falcon-2.0 leads on both univariate (0.641) and multivariate (0.705) tasks. While its probabilistic predictions (CRPS) remain stable across horizons (ranging within 0.466–0.493), the fine-grained split exposes a multivariate bottleneck: Falcon-2.0 leads on univariate probabilistic tasks (0.491 vs. 0.503 and 0.501) but trails Toto-2.0-2.5B on multivariate tasks (0.476 vs. 0.446) and at long horizons (0.493 vs. 0.461). The fev-bench decomposition (Figure 7) isolates a critical architectural boundary. On the 54 tasks 
+
+without known-future covariates, Falcon-2.0 significantly outperforms Chronos-2 in both MASE (0.642 vs. 0.663) and WQL (0.467 vs. 0.476). However, on the 46 tasks with covariates, where Falcon-2.0 ’s autoregressive interface does not ingest future features, this performance ordering reverses (MASE of 0.652 vs. 0.621; WQL of 0.509 vs. 0.498). Crucially, horizon length itself does not degrade performance significantly—MASE/WQL shift minimally from 0.648/0.483 (short) to 0.641/0.489 (medium). These findings suggest that the residual performance gap on fev-bench stems primarily from covariate conditioning limitations rather than sensitivity to the forecast window. 
+
+Domain-level analysis. We further analyze domain-specific performance in Figures 8 and 9 to identify where Falcon-2.0 ’s aggregate gains originate. On GIFT-Eval (Figure 8), Falcon-2.0 achieves the lowest normalized MASE in four of seven domains: Energy (0.769), Healthcare (0.531), Nature (0.650), and Transport (0.576). The largest margin occurs in Nature (0.650 versus 0.723 for the next-best model, a 10.2% reduction), while Sales and 23 Short Medium    
+
+> 0.55 0.60 0.65 0.70 0.75 0.80
+> Normalized MASE
+> 0.648 0.641 0.642 0.654 0.687 0.732 0.713 0.721
+
+(a) Forecast horizon: MASE     
+
+> Short Medium
+> 0.35 0.40 0.45 0.50 0.55 0.60 0.65
+> Normalized WQL
+> 0.483 0.489 0.486 0.481 0.526 0.552 0.549 0.543
+
+(b) Forecast horizon: WQL  
+
+> Univariate Multivariate
+> 0.55 0.60 0.65 0.70 0.75 0.80
+> Normalized MASE
+> 0.682 0.584 0.674 0.595 0.751 0.613 0.791 0.594
+
+(c) Variate type: MASE  
+
+> Univariate Multivariate
+> 0.35 0.40 0.45 0.50 0.55 0.60 0.65
+> Normalized WQL
+> 0.547 0.387 0.538 0.400 0.603 0.424 0.641 0.408
+
+(d) Variate type: WQL   
+
+> Without With
+> 0.55 0.60 0.65 0.70 0.75 0.80
+> Normalized MASE
+> 0.642 0.652 0.663 0.621 0.689 0.714 0.694 0.746
+
+(e) Future covariates: MASE  
+
+> Without With
+> 0.35 0.40 0.45 0.50 0.55 0.60 0.65
+> Normalized WQL
+> 0.467 0.509 0.476 0.498 0.502 0.578 0.508 0.605
+
+(f) Future covariates: WQL    
+
+> Falcon-2.0 Chronos-2 TiRex Toto-1.0
+
+Figure 7 fev-bench fine-grained comparison. Seasonal-Naive-normalized MASE (left column) and WQL (right column) for Falcon-2.0 , Chronos-2, TiRex, and Toto-1.0; lower is better. Panels (a)–(b), (c)–(d), and (e)–(f) decompose performance by forecast horizon, variate type, and availability of known-future covariates, respectively. Bars show subgroup aggregates results. 
+
+Web/CloudOps are effectively tied across models. In contrast, Econ/Fin remains a point-forecasting weakness, where Toto-2.0-2.5B dominates (0.739 vs. 0.785). The domain-level CRPS aligns with this trend: Falcon-2.0 leads only in Nature (0.334) and Sales (0.409), whereas Toto-2.0-2.5B leads in five domains, confirming that Falcon-2.0 ’s global superiority on GIFT-Eval is largely anchored by its highly robust point predictions. On fev-bench (Figure 9), Falcon-2.0 demonstrates broad domain-level coverage, leading MASE in Cloud (0.566), Economy (0.623), Energy (0.642), and Mobility (0.665), while leading WQL in Economy (0.528), Healthcare (0.581), Mobility (0.553), and Nature (0.346). Its probabilistic performance in the Economy domain is exceptional, providing an 8.8% relative WQL reduction over the next-best model (0.528 vs. 0.579). Nevertheless, Chronos-2 maintains dominance in the Retail domain across both metrics (0.685/0.513 vs. Falcon-2.0 ’s 0.725/0.530) and secures the top WQL in Cloud and Energy. These findings pinpoint covariate-rich domains and specialized Retail 24 Econ./Fin. Energy Healthcare Nature Sales Transport Web/CloudOps             
+
+> 0.45 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85
+> Normalized MASE
+> 0.785 0.769 0.531 0.650 0.679 0.576 0.614 0.772 0.816 0.551 0.723 0.679 0.603 0.611 0.739 0.817 0.534 0.724 0.699 0.594 0.616
+> (a) Domain: MASE
+> Econ./Fin. Energy Healthcare Nature Sales Transport Web/CloudOps
+> 0.3 0.4 0.5 0.6 0.7
+> Normalized CRPS
+> 0.734 0.585 0.448 0.334 0.409 0.456 0.461 0.735 0.585 0.423 0.340 0.412 0.451 0.469 0.721 0.581 0.392 0.338 0.437 0.446 0.442
+> (b) Domain: CRPS
+> Falcon-2.0 Chronos-2 Toto-2.0 2.5B
+
+Figure 8 GIFT-Eval domain-level comparison. Seasonal-Naive-normalized MASE (a) and CRPS (b) across the seven domains for Falcon-2.0 , Chronos-2, and Toto-2.0-2.5B; lower is better. 
+
+regimes as key frontiers for future refinement of Falcon-2.0 ’s probabilistic consistency. 
+
+6.3 Scaling Behavior 
+
+We investigate the scaling behavior of Falcon-2.0 along data exposure and model capacity. 
+
+6.3.1 Data Scaling 
+
+Because Falcon-2.0 reconstructs batches from its bootstrap distribution throughout step-based training, increasing the training budget increases cumulative exposure to heterogeneous records, variables, contexts, and horizons. Holding the 585M-parameter architecture fixed, Figure 10 measures how this additional data exposure affects optimization and forecasting performance. The smoothed loss decreases throughout training despite occasional evaluation spikes, indicating stable optimization under the heterogeneous sampling regime. Generalization improves in parallel: from 100k to one million steps, MASE falls by 10.6% on GIFT-Eval and 12.1% on fev-bench, while CRPS on GIFT-Eval and WQL on fev-bench fall by 11.2% and 12.8%, respectively. Both benchmarks attain their best checkpoint-level scores at the end of training, with only minor intermediate fluctuations. Thus, the additional sampled-data exposure continues to transfer across benchmarks rather than producing a late-stage generalization reversal, although the flattening loss curve suggests diminishing marginal returns. 25 Cloud Economy Energy Healthcare Mobility Nature Retail                   
+
+> 0.50 0.55 0.60 0.65 0.70 0.75 0.80 0.85
+> Normalized MASE
+> 0.566 0.623 0.642 0.678 0.665 0.675 0.725 0.575 0.637 0.646 0.682 0.687 0.673 0.685 0.619 0.631 0.747 0.675 0.711 0.707 0.778 0.581 0.649 0.776 0.684 0.745 0.722 0.844
+> (a) Domain: MASE
+> Cloud Economy Energy Healthcare Mobility Nature Retail
+> 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70
+> Normalized WQL
+> 0.334 0.528 0.555 0.581 0.553 0.346 0.530 0.331 0.590 0.540 0.596 0.555 0.349 0.513 0.373 0.579 0.628 0.611 0.576 0.361 0.587 0.355 0.603 0.658 0.598 0.602 0.356 0.644
+> (b) Domain: WQL
+> Falcon-2.0 Chronos-2 TiRex Toto-1.0
+
+Figure 9 fev-bench domain-level comparison. Seasonal-Naive-normalized MASE (a) and WQL (b) across the seven domains for Falcon-2.0 , Chronos-2, TiRex, and Toto-1.0; lower is better. 
+
+6.3.2 Model Scaling 
+
+We next investigate the effect of model scaling under a fixed training budget of one million iterations. Specifically, we compare the default 585M configuration ( D = 32, d = 1024; Table 3) against two progressively smaller variants: a 249M model with D = 24 and d = 768, and a 75M model with 
+
+D = 16 and d = 512. All three variants are trained and evaluated using the same protocol, ensuring that the comparison primarily reflects differences in model capacity rather than training conditions. Figure 11 summarizes their performance at the final checkpoint. Increasing capacity improves all four metrics without a reversal. On GIFT-Eval, scaling from 75M to 585M reduces MASE from 0.6839 to 0.6684 and CRPS from 0.4986 to 0.4843, corresponding to relative reductions of 2.3% and 2.9%. On fev-bench, MASE falls from 0.6745 to 0.6459 and WQL from 0.5083 to 0.4842, corresponding to 4.2% and 4.7% reductions. The 249M model already captures much of the fev-bench improvement, whereas the largest GIFT-Eval gain appears between 249M and 585M. Across these three capacities, the consistent direction of change supports a stable capacity–performance relationship. 
+
+6.4 Ablation Study 6.4.1 Architecture 
+
+We evaluate four architectural choices in Falcon-2.0 : Triple-Channel Patch Tokenization, the shared residual SwiGLU patch projection ϕ, Parallel Patch Prediction, and output gating in self-attention. 26 (a) Optimization convergence Lower is better 123450 20 40 60 80 100   
+
+> Training steps (x10k) Loss
+> 1,000-step mean 20k-step moving average Periodic evaluation
+> 5.042 to 1.160 (77.0% lower)
+> 1k-step mean loss, 1k to 1,000k steps
+
+(b) Generalization performance - MASE Lower is better 0.64 0.68 0.72 0.76 10 30 50 70 90 100 
+
+> Training steps (x10k) MASE
+> GIFT-EVAL: 0.661 (-10.6%) fev-bench: 0.635 (-12.1%)
+
+(c) Generalization performance - CRPS / WQL Lower is better 0.46 0.48 0.50 0.52 0.54 0.56 10 30 50 70 90 100 
+
+> Training steps (x10k) CRPS / WQL
+> GIFT-EVAL: 0.476 (-11.2%) fev-bench: 0.477 (-12.8%)
+
+Figure 10 Training convergence and benchmark performance. (a) The 1,000-step mean training loss decreases from 5.042 at the beginning of logging to 1.160 at one million training steps (77.0% reduction); the dark-blue curve denotes a 20k-step moving average and cyan markers denote periodic evaluation loss. (b)–(c) Checkpoint evaluations from 100k to one million training steps show consistent overall improvements on both GIFT-Eval and fev-bench. At the final checkpoint, MASE reaches 0.661 and 0.635 on GIFT-Eval and fev-bench, respectively; CRPS on GIFT-Eval reaches 0.476, while WQL on fev-bench reaches 0.477. 75M    
+
+> D=16 / d=512 249M
+> D=24 / d=768 585M
+> D=32 / d=1024
+
+Model size and configuration  
+
+> 0.64 0.65 0.66 0.67 0.68 0.69
+> MASE
+> Lower is better
+> 0.684 0.682 0.668 0.674 0.656 0.646
+
+(a) Parameter scaling - MASE    
+
+> GIFT-Eval fev-bench
+> 75M
+> D=16 / d=512 249M
+> D=24 / d=768 585M
+> D=32 / d=1024
+
+Model size and configuration 
+
+> 0.48 0.49 0.49 0.50 0.50 0.51 0.51
+> CRPS / WQL
+> Lower is better
+> 0.499 0.497 0.484 0.508 0.497 0.484
+
+(b) Parameter scaling - probabilistic score 
+
+> GIFT-Eval CRPS fev-bench WQL
+
+Figure 11 Parameter scaling at a fixed one-million-iteration budget. Performance of the 75M, 249M, and 585M variants after the same number of training iterations. (a) Seasonal-Naive-normalized MASE on GIFT-Eval and fev-bench. (b) CRPS on GIFT-Eval and WQL on fev-bench. Lower is better. 
+
+Each ablated variant removes one component from the full model while following the same training and evaluation protocol. Figure 12 reports the geometrically aggregated scores on both benchmarks; lower values indicate better performance. Parallel Patch Prediction has the largest and most consistent effect. Relative to the variant without this component, the full architecture reduces MASE and CRPS on GIFT-Eval by 8.0% and 8.7%, respectively, and MASE and WQL on fev-bench by 4.1% and 8.0%, respectively. The degradation across both point and probabilistic metrics indicates that direct multi-patch forecasting makes the largest observed contribution among the architectural choices evaluated here. 27 Complete architecture No triple-channel tokenization No residual patch projection No parallel patch prediction No attention output gating      
+
+> 0.62 0.64 0.66 0.68 0.70 0.72 0.74
+> 0.668 0.674 0.674 0.727 0.677 0.646 0.658 0.651 0.673 0.641
+> (a) Architecture ablation: MASE
+> Complete architecture No triple-channel tokenization No residual patch projection No parallel patch prediction No attention output gating
+> 0.46 0.47 0.48 0.49 0.50 0.51 0.52 0.53 0.54
+> 0.484 0.488 0.489 0.530 0.491 0.484 0.491 0.486 0.526 0.480
+> (b) Architecture ablation: CRPS / WQL
+> Metric value (lower is better)
+> GIFT-Eval fev-bench Complete architecture
+
+Figure 12 Architecture ablation of Falcon-2.0 . The complete 585M architecture is compared with four variants, each removing one component under the same training and evaluation protocol. Panel (a) reports Seasonal-Naive-normalized MASE on GIFT-Eval and fev-bench. Panel (b) reports CRPS on GIFT-Eval and WQL on fev-bench. Hatched bars denote the complete architecture. Scores are geometrically aggregated over configurations or tasks, and lower values indicate better performance. 
+
+Triple-Channel Patch Tokenization and the residual SwiGLU patch projection provide smaller but consistent improvements. Restoring the triple-channel representation lowers the four error metrics by 0.7–1.9% relative to its ablation, while restoring the residual SwiGLU patch projection ϕ lowers them by 0.4–1.0%. Output gating in self-attention has a comparatively modest effect. It lowers GIFT-Eval MASE and CRPS from 0.677 and 0.491 to 0.668 and 0.484, respectively. On fev-bench, the corresponding differences remain below 1% for both metrics. Overall, these results identify Parallel Patch Prediction as the principal architectural contributor, while the remaining components have more modest effects. 
+
+6.4.2 Sampling 
+
+We conduct a controlled ablation to assess how different strategies for constructing samples within each dataset affect forecasting performance. All comparisons use the 585M Falcon-2.0 architecture and the same corpus, training budget, optimization settings, and evaluation protocol. Specifically, we compare Bootstrap Stochastic Sampling with sliding-window enumeration and independently control whether the context length and prediction horizon are fixed or sampled from their feasible ranges. For the sliding-window variants, eligible cutoff positions are enumerated rather than sampled, while the context length and prediction horizon are fixed or sampled as specified by each configuration. Following the evaluation protocol in Section 6.1, metric values are geometrically aggregated over configurations or tasks and reported in Figure 13. 
+
+Sampling rule. We first isolate the effect of the sampling rule by comparing Bootstrap Stochastic Sampling with the sliding-window variant that samples context lengths and prediction horizons from the same feasible ranges. Relative to this sliding-window variant, Bootstrap Stochastic Sampling reduces MASE and CRPS on GIFT-Eval by 11.7% and 13.6%, respectively, and MASE and WQL on fev-bench by 5.4% and 6.5%. The gains are consistent across point and probabilistic metrics on both benchmarks. Among the sliding-window variants, fixing both lengths outperforms sampling either or both, yet remains worse than Bootstrap Stochastic Sampling on all four metrics. This pattern suggests that varying context lengths and prediction horizons alone cannot offset the redundancy introduced by enumerating adjacent cutoff positions. Stochastic selection across records, variables, and temporal positions also contributes to sample diversity. 
+
+Context and horizon sampling. We next isolate the effects of sampling context lengths and 28 Bootstrap both sampled Sliding both fixed Sliding context fixed Sliding horizon fixed Sliding both sampled      
+
+> 0.62 0.64 0.66 0.68 0.70 0.72 0.74 0.76 0.78
+> 0.668 0.700 0.745 0.755 0.757 0.646 0.663 0.673 0.705 0.682
+> (a) Sampling rule: MASE
+> Bootstrap both sampled Sliding both fixed Sliding context fixed Sliding horizon fixed Sliding both sampled
+> 0.46 0.48 0.50 0.52 0.54 0.56 0.58
+> 0.484 0.510 0.545 0.549 0.561 0.484 0.506 0.519 0.545 0.518
+> (b) Sampling rule: CRPS / WQL
+> Both sampled Context fixed Horizon fixed
+> 0.62 0.64 0.66 0.68 0.70 0.72
+> 0.668 0.688 0.712 0.646 0.647 0.674
+> (c) Context and horizon: MASE
+> Both sampled Context fixed Horizon fixed
+> 0.46 0.47 0.48 0.49 0.50 0.51 0.52 0.53 0.54
+> 0.484 0.499 0.525 0.484 0.491 0.506
+> (d) Context and horizon: CRPS / WQL
+> Normalized error (lower is better)
+> GIFT-Eval fev-bench Measured full ORBIT
+
+Figure 13 Sampling ablation of Falcon-2.0 . All configurations use the 585M Falcon-2.0 model. Panels (a)–(b) compare Bootstrap Stochastic Sampling with four sliding-window variants covering all combinations of fixed and sampled context lengths and prediction horizons. Panels (c)–(d) assess the individual contributions of context and horizon sampling by comparing joint sampling with variants that fix one length while sampling the other. Panels (a) and (c) report normalized MASE, while panels (b) and (d) report CRPS on GIFT-Eval and WQL on fev-bench. Hatched bars denote the full ORBIT 
+
+configuration. Lower values indicate better performance. 
+
+prediction horizons within Bootstrap Stochastic Sampling. Compared with the fixed-horizon variant, joint sampling reduces MASE and CRPS on GIFT-Eval by 6.1% and 7.7%, respectively, and MASE and WQL on fev-bench by 4.2% each, showing that horizon sampling has the larger effect. Compared with the fixed-context variant, joint sampling reduces GIFT-Eval MASE and CRPS by 2.9% and 3.0%, respectively. On fev-bench, the MASE difference is small (0.6459 versus 0.6465), although joint sampling also improves WQL. Joint sampling is the only configuration to achieve the lowest error on all four metrics, supporting the simultaneous sampling of diverse context lengths and prediction horizons within a single training stage. 
+
+7 Conclusion 
+
+We introduce ORBIT , a training paradigm that explicitly controls the effective pre-training dis-tribution of heterogeneous time series corpora. Bootstrap Multi-Level Sampling regulates source exposure and constructs diverse examples across records, variables, temporal windows, and predic-tion horizons, while Omni-Range Incremental Training jointly covers varying context lengths and horizons within a single stage. Under ORBIT , we train Falcon-2.0 , an encoder-only Transformer with missingness-aware triple-channel tokenization and parallel patch prediction, and explore Rank-Guided Cross-Depth Alignment to regularize shallow representations using deeper layers. Evaluations on GIFT-Eval and fev-bench show strong zero-shot forecasting performance, while ablation and scaling studies validate the benefits of controlled sampling, joint context-horizon coverage, and increased training exposure. These results highlight training-distribution design as a key factor in building scalable and generalizable time series foundation models. 29 References 
+
+Walmart Competition Admin and Will Cukierski. Walmart recruiting - store sales forecasting. https://kaggle.com/ competitions/walmart-recruiting-store-sales-forecasting , 2014. Kaggle. Taha Aksu, Gerald Woo, Juncheng Liu, Xu Liu, Chenghao Liu, Silvio Savarese, Caiming Xiong, and Doyen Sahoo. Gift-EVAL: A benchmark for general time series forecasting model evaluation. arXiv preprint arXiv:2410.10393 , 2024a. Taha Aksu, Gerald Woo, Juncheng Liu, Xu Liu, Chenghao Liu, Silvio Savarese, Caiming Xiong, and Doyen Sahoo. Gift-eval: A benchmark for general time series forecasting model evaluation. arXiv preprint arXiv:2410.10393 , 2024b. Abdul Fatir Ansari, Lorenzo Stella, Caner Turkmen, Xiyuan Zhang, Pedro Mercado, Huibin Shen, Oleksandr Shchur, Syama Sundar Rangapuram, Sebastian Pineda Arango, Shubham Kapoor, et al. Chronos: Learning the language of time series. Transactions on Machine Learning Research , 2024. Abdul Fatir Ansari, Oleksandr Shchur, Jaris Küken, Andreas Auer, Boran Han, Pedro Mercado, Syama Sundar Rangapu-ram, Huibin Shen, Lorenzo Stella, Xiyuan Zhang, et al. Chronos-2: From univariate to universal forecasting. arXiv preprint arXiv:2510.15821 , 2025. Andreas Auer, Patrick Podest, Daniel Klotz, Sebastian Böck, Günter Klambauer, and Sepp Hochreiter. Tirex: Zero-shot forecasting across long and short horizons with enhanced in-context learning. In The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2026. https://openreview.net/forum?id=v7UqniC9pF .Zhengping Che, Sanjay Purushotham, Kyunghyun Cho, David Sontag, and Yan Liu. Recurrent neural networks for multivariate time series with missing values. Scientific reports , 8(1):6085, 2018. Hyunseung Chung, Sumin Jo, Yeonsu Kwon, and Edward Choi. Time is not enough: Time-frequency based explanation for time-series black-box models. In Proceedings of the 33rd ACM International Conference on Information and Knowledge Management , pages 394–403, 2024. Ben Cohen, Emaad Khwaja, Youssef Doubli, Salahidine Lemaachi, Chris Lettieri, Charles Masson, Hugo Miccinilli, Elise Ramé, Qiqi Ren, Afshin Rostamizadeh, et al. This time is different: An observability perspective on time series foundation models. Advances in neural information processing systems , 38:50907–50951, 2026. Abhimanyu Das, Weihao Kong, Rajat Sen, and Yichen Zhou. A decoder-only foundation model for time-series forecasting. In Proceedings of the 41st International Conference on Machine Learning , ICML’24. JMLR.org, 2024. Open Power System Data. Data package time series. version 2020-10-06, 2020. https://doi.org/10.25832/time_series/ 2020-10-06 .UK COVID-19 data from official UK government sources. UK COVID-19 dashboard data. https://www.kaggle.com/ datasets/happyadam73/uk-covid19-dashboard-data-sqlite-compressed , 2022. Kaggle. Etienne David, Jean Bellot, and Sylvain Le Corff. HERMES: Hybrid error-corrector model with inclusion of external signals for nonstationary fashion time series. arXiv preprint arXiv:2202.03224 , 2022. S. De Vito, E. Massera, M. Piga, L. Martinotto, and G. Di Francia. On field calibration of an electronic nose for benzene estimation in an urban pollution monitoring scenario. Sensors and Actuators B: Chemical , 129(2):750–757, 2008. ISSN 0925-4005. doi: https://doi.org/10.1016/j.snb.2007.09.060. https://www.sciencedirect.com/science/article/pii/ S0925400507007691 .ECDC. Respiratory viruses weekly data. https://github.com/EU-ECDC/Respiratory_viruses_weekly_data/tree/main ,2025. Open data repository; weekly respiratory virus surveillance in the EU/EEA. Vijay Ekambaram, Arindam Jati, Pankaj Dayama, Sumanta Mukherjee, Nam H Nguyen, Wesley M. Gifford, Chandra Reddy, and Jayant Kalagnanam. Tiny time mixers (TTMs): Fast pre-trained models for enhanced zero/few-shot forecasting of multivariate time series. In The Thirty-eighth Annual Conference on Neural Information Processing Systems ,2024. https://openreview.net/forum?id=3O5YCEWETq .Philip J Fleming and John J Wallace. How not to lie with statistics: the correct way to summarize benchmark results. 
+
+Communications of the ACM , 29(3):218–221, 1986. FlorianKnauer and Will Cukierski. Rossmann store sales. https://kaggle.com/competitions/rossmann-store-sales ,2015. Kaggle. Rakshitha Wathsadini Godahewa, Christoph Bergmeir, Geoffrey I. Webb, Rob Hyndman, and Pablo Montero-Manso. Monash time series forecasting archive. In The Conference on Neural Information Processing Systems Datasets and Benchmarks Track , 2021. https://openreview.net/forum?id=wEc1mgAjU-.
+
+30 Mononito Goswami, Konrad Szafer, Arjun Choudhry, Yifu Cai, Shuo Li, and Artur Dubrawski. Moment: a family of open time-series foundation models. In Proceedings of the 41st International Conference on Machine Learning , ICML’24. JMLR.org, 2024a. Mononito Goswami, Konrad Szafer, Arjun Choudhry, Yifu Cai, Shuo Li, and Artur Dubrawski. MOMENT: A family of open time-series foundation models. In International Conference on Machine Learning , 2024b. Léo Grinsztajn, Klemens Flöge, Oscar Key, Felix Birkel, Philipp Jund, Brendan Roof, Mihir Manium, Shi Bin Hoo, Magnus Bühler, Anurag Garg, et al. Tabpfn-3: Technical report. arXiv preprint arXiv:2605.13986 , 2026. Cheng HE, Xu Huang, Gangwei Jiang, Zhaoyi Li, Defu Lian, Hong Xie, Enhong Chen, xijie liang, Zhengzengrong, and Patrick Lee. GTM: A general time-series model for enhanced representation learning of time-series data. In The Fourteenth International Conference on Learning Representations , 2026. https://openreview.net/forum?id=PWM6FERWz9 .Tao Hong, Pierre Pinson, and Shu Fan. Global energy forecasting competition 2012. International Journal of Forecasting , 30 (2):357–363, 2014. Shi Bin Hoo, Samuel Müller, David Salinas, and Frank Hutter. From tables to time: Extending tabpfn-v2 to time series forecasting. arXiv preprint arXiv:2501.02945 , 2025. Addison Howard, Haruka Yui, Mark McDonald, and Will Cukierski. Recruit restaurant visitor forecasting. https: //kaggle.com/competitions/recruit-restaurant-visitor-forecasting , 2017. Kaggle. Yifan Hu, Jie Yang, Xilin Dai, Wanxu Cai, Kuiye Ding, Yuante Li, Qinghua Liu, Enze Ma, Zhiyuan Qu, Yixin Wang, et al. The landscape of agentic time series systems: Architectures, reliability, and frontiers. Yifan Hu, Peiyuan Liu, Peng Zhu, Dawei Cheng, and Tao Dai. Adaptive multi-scale decomposition framework for time series forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence , volume 39, pages 17359–17367, 2025a. Yifan Hu, Jie Yang, Tian Zhou, Peiyuan Liu, Yujin Tang, Rong Jin, and Liang Sun. Bridging past and future: Distribution-aware alignment for time series forecasting. arXiv preprint arXiv:2509.14181 , 2025b. Yifan Hu, Guibin Zhang, Peiyuan Liu, Disen Lan, Naiqi Li, Dawei Cheng, Tao Dai, Shu-Tao Xia, and Shirui Pan. Timefilter: Patch-specific spatial-temporal graph filtration for time series forecasting. In International Conference on Machine Learning , pages 24893–24911. PMLR, 2025c. Yifan Hu, Hongzhou Chen, Peiyuan Liu, Yiding Liu, Zewei Dong, and Jiang-Ming Yang. Existence precedes value: Joint modeling of observational existence and evolving states in time series forecasting. arXiv preprint arXiv:2606.13571 ,2026. Dengyang Jiang, Mengmeng Wang, Liuzhuozheng Li, Lei Zhang, Haoyu Wang, Wei Wei, Guang Dai, Yanning Zhang, and Jingdong Wang. No other representation component is needed: Diffusion transformers can provide representation guidance by themselves. arXiv preprint arXiv:2505.02831 , 2025. Emaad Khwaja, Chris Lettieri, Gerald Woo, Eden Belouadah, Marc Cenac, Guillaume Jarry, Enguerrand Paquin, Xunyi Zhao, Viktoriya Zhukov, Othmane Abou-Amal, et al. Toto 2.0: Time series forecasting enters the scaling era. arXiv preprint arXiv:2605.20119 , 2026. Taesung Kim, Jinhee Kim, Yunwon Tae, Cheonbok Park, Jang-Ho Choi, and Jaegul Choo. Reversible instance normaliza-tion for accurate time-series forecasting against distribution shift. In International Conference on Learning Representations ,2022. https://openreview.net/forum?id=cGDAkQo1C0p .Roger Koenker and Kevin F Hallock. Quantile regression. Journal of economic perspectives , 15(4):143–156, 2001. Siva Rama Krishna Kottapalli, Karthik Hubli, Sandeep Chandrashekhara, Garima Jain, Sunayana Hubli, Gayathri Botla, and Ramesh Doddaiah. Foundation models for time series: A survey. arXiv preprint arXiv:2504.04011 , 2025. Guokun Lai, Wei-Cheng Chang, Yiming Yang, and Hanxiao Liu. Modeling long- and short-term temporal patterns with deep neural networks. In The International ACM SIGIR Conference on Research & Development in Information Retrieval ,2017. https://api.semanticscholar.org/CorpusID:4922476 .lexis Cook, DanB, inversion, and Ryan Holbrook. Store sales – time series forecasting. https://www.kaggle.com/ competitions/store-sales-time-series-forecasting , 2020. Kaggle. Yuxuan Liang, Haomin Wen, Yuqi Nie, Yushan Jiang, Ming Jin, Dongjin Song, Shirui Pan, and Qingsong Wen. Foundation models for time series analysis: A tutorial and survey. In Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining , KDD ’24, page 6555–6565. ACM, August 2024. doi: 10.1145/3637528.3671451. http: //dx.doi.org/10.1145/3637528.3671451 .
+
+31 Bryan Lim, Sercan Ö Arık, Nicolas Loeff, and Tomas Pfister. Temporal fusion transformers for interpretable multi-horizon time series forecasting. International Journal of Forecasting , 37(4):1748–1764, 2021. Chenghao Liu, Taha Aksu, Juncheng Liu, Xu Liu, Hanshu Yan, Quang Pham, Silvio Savarese, Doyen Sahoo, Caiming Xiong, and Junnan Li. Moirai 2.0: When less is more for time series forecasting. arXiv preprint arXiv:2511.11698 , 2025a. Yiding Liu, Yifan Hu, Hongjie Xia, Peiyuan Liu, Hongzhou Chen, Xilin Dai, Zewei Dong, and Jiang-Ming Yang. Falcon-x: A time series foundation model for heterogeneous multivariate modeling. arXiv preprint arXiv:2605.27286 , 2026a. Yong Liu, Tengge Hu, Haoran Zhang, Chenyu Wu, Shiyu Wang, Lintao Ma, and Mingsheng Long. itransformer: Inverted transformers are effective for time series forecasting. International Conference on Learning Representations (ICLR) , 2024a. Yong Liu, Haoran Zhang, Chenyu Li, Xiangdong Huang, Jianmin Wang, and Mingsheng Long. Timer: generative pre-trained transformers are large time series models. In Proceedings of the 41st International Conference on Machine Learning , ICML’24. JMLR.org, 2024b. Yong Liu, Guo Qin, Xiangdong Huang, Jianmin Wang, and Mingsheng Long. Timer-XL: Long-context transformers for unified time series forecasting. In The Thirteenth International Conference on Learning Representations , 2025b. https: //openreview.net/forum?id=KMCJXjlDDr .Yong Liu, Guo Qin, Zhiyuan Shi, Zhi Chen, Caiyin Yang, Xiangdong Huang, Jianmin Wang, and Mingsheng Long. Sundial: A family of highly capable time series foundation models. In Forty-second International Conference on Machine Learning , 2025c. https://openreview.net/forum?id=LO7ciRpjI5 .Yong Liu, Xingjian Su, Shiyu Wang, Haoran Zhang, Haixuan Liu, Yuxuan Wang, Zhou Ye, Yang Xiang, Jianmin Wang, and Mingsheng Long. Timer-s1: A billion-scale time series foundation model with serial scaling. arXiv preprint arXiv:2603.04791 , 2026b. Ilya Loshchilov and Frank Hutter. Decoupled weight decay regularization. arXiv preprint arXiv:1711.05101 , 2017. Spyros Makridakis, Evangelos Spiliotis, and Vassilios Assimakopoulos. The M4 competition: Results, findings, conclusion and way forward. International Journal of Forecasting , 2018. Spyros Makridakis, Evangelos Spiliotis, and Vassilios Assimakopoulos. M5 accuracy competition: Results, findings, and conclusions. International Journal of Forecasting , 38(4):1346–1364, 2022. ISSN 0169-2070. doi: https://doi.org/10.1016/j. ijforecast.2021.11.013. https://www.sciencedirect.com/science/article/pii/S0169207021001874 . Special Issue: M5 competition. Paolo Mancuso, Veronica Piccialli, and Antonio M Sudoso. A machine learning approach for forecasting hierarchical time series. Expert Systems with Applications , 182:115102, 2021. Michael W. McCracken and Serena Ng. FRED-MD: A monthly database for macroeconomic research. Journal of Business & Economic Statistics , 34(4):574–589, 2016. doi: 10.1080/07350015.2015.1086655. https://doi.org/10.1080/07350015. 2015.1086655 .Michael W. McCracken and Serena Ng. FRED-QD: A quarterly database for macroeconomic research. Review , 103(1): 1–44, January 2021. doi: 10.20955/r.103.1-44. https://ideas.repec.org/a/fip/fedlrv/90588.html .MichalKecera. Rohlik sales forecasting challenge. https://kaggle.com/competitions/ rohlik-sales-forecasting-challenge-v2 , 2024. Kaggle. Kamiar Mohaddes and Mehdi Raissi. Compilation, revision and updating of the global var (gvar) database. Mendeley Data, Version 1, 2024. https://doi.org/10.17632/kfp5fhgkvf.1 .Yuqi Nie, Nam H. Nguyen, Phanwadee Sinthong, and Jayant Kalagnanam. A time series is worth 64 words: Long-term forecasting with transformers. In International Conference on Learning Representations , 2023. General Directorate of Health Affairs and Saudi Arabia Ministry of Health. Riyadh hospital admissions dataset (2020–2024). https://www.kaggle.com/dsv/9992619 , 2024. Santosh Palaskar, Vijay Ekambaram, Arindam Jati, Neelamadhav Gantayat, Avirup Saha, Seema Nagar, Nam Nguyen, Pankaj Dayama, Renuka Sindhgatta, Prateeti Mohapatra, Harshit Kumar, Jayant Kalagnanam, Nandyala Hemachandra, and Narayan Rangaraj. Automixer for improved multivariate time-series forecasting on business and it observability data. Proceedings of the AAAI Conference on Artificial Intelligence , 38:22962–22968, 2024. Patrick Podest, Marco Pichler, Elias Bürger, Levente Zólyomi, Bernhard Voggenberger, Wilhelm Berghammer, Daniel Klotz, Sebastian Böck, Günter Klambauer, and Sepp Hochreiter. Tirex-2: Generalizing tirex to multivariate data and streaming. arXiv preprint arXiv:2607.01204 , 2026. 
+
+32 Zihan Qiu, Zekun Wang, Bo Zheng, Zeyu Huang, Kaiyue Wen, Songlin Yang, Rui Men, Le Yu, Fei Huang, Suozhi Huang, Dayiheng Liu, Jingren Zhou, and Junyang Lin. Gated attention for large language models: Non-linearity, sparsity, and attention-sink-free. In The Thirty-ninth Annual Conference on Neural Information Processing Systems , 2026. 
+
+https://openreview.net/forum?id=1b7whO4SfY .Zezhi Shao, Fei Wang, Yongjun Xu, Wei Wei, Chengqing Yu, Zhao Zhang, Di Yao, Tao Sun, Guangyin Jin, Xin Cao, et al. Exploring progress in multivariate time series forecasting: Comprehensive benchmarking and heterogeneity analysis. 
+
+IEEE Transactions on Knowledge and Data Engineering , 37(1):291–305, 2024. Zezhi Shao, Chengqing Yu, and Fei Wang. Heterogeneity in multivariate time series: Comprehensive analysis and adaptive modeling. In Proceedings of the 19th International Symposium on Spatial and Temporal Data , pages 76–79, 2025. Noam Shazeer. Glu variants improve transformer. arXiv preprint arXiv:2002.05202 , 2020. Oleksandr Shchur, Abdul Fatir Ansari, Caner Turkmen, Lorenzo Stella, Nick Erickson, Pablo Guerron, Michael Bohlke-Schneider, and Yuyang Wang. fev-bench: A realistic benchmark for time series forecasting. arXiv preprint arXiv:2509.26468 , 2025. Siqi Shen, Vincent Van Beek, and Alexandru Iosup. Statistical characterization of business-critical workloads hosted in cloud datacenters. In IEEE/ACM International Symposium on Cluster, Cloud and Grid Computing , pages 465–474. IEEE, 2015. Xiaoming Shi, Shiyu Wang, Yuqi Nie, Dianqi Li, Zhou Ye, Qingsong Wen, and Ming Jin. Time-moe: Billion-scale time series foundation models with mixture of experts. In The Thirteenth International Conference on Learning Representations ,2025. https://openreview.net/forum?id=e1wDDFmlVu .Mohammad Shoeybi, Mostofa Patwary, Raul Puri, Patrick LeGresley, Jared Casper, and Bryan Catanzaro. Megatron-lm: Training multi-billion parameter language models using model parallelism. arXiv preprint arXiv:1909.08053 , 2019. Gilbert W Stewart and Ji-guang Sun. Matrix perturbation theory. 1990. Jianlin Su, Murtadha Ahmed, Yu Lu, Shengfeng Pan, Wen Bo, and Yunfeng Liu. Roformer: Enhanced transformer with rotary position embedding. Neurocomputing , 568:127063, 2024. Md Asif Bin Syed, Md Younus Ahamed, and Azmine Toushik Wasi. Position: Time-series foundation models require explicit domain-level benchmarks. In Forty-third International Conference on Machine Learning Position Paper Track , 2026. 
+
+https://openreview.net/forum?id=W2eEMPjzIQ .Artur Trindade. ElectricityLoadDiagrams20112014. UCI Machine Learning Repository, 2015. DOI: https://doi.org/10.24432/C58C86. Alexander van Renen, Dominik Horn, Pascal Pfeil, Kapil Vaidya, Wenjian Dong, Murali Narayanaswamy, Zhengchun Liu, Gaurav Saxena, Andreas Kipf, and Tim Kraska. Why TPC is not enough: An analysis of the amazon redshift fleet. Proc. VLDB Endow. , 17(11):3694–3706, July 2024. ISSN 2150-8097. doi: 10.14778/3681954.3682031. https: //doi.org/10.14778/3681954.3682031 .Jingyuan Wang, Jiawei Jiang, Wenjun Jiang, Chengkai Han, and Wayne Xin Zhao. Towards efficient and comprehensive urban spatial-temporal prediction: A unified library and performance benchmark. arXiv preprint arXiv:2304.14343 ,2023. Gerald Woo, Chenghao Liu, Akshat Kumar, Caiming Xiong, Silvio Savarese, and Doyen Sahoo. Unified training of universal time series forecasting transformers. In Proceedings of the 41st International Conference on Machine Learning ,ICML’24. JMLR.org, 2024. Haixu Wu, Jiehui Xu, Jianmin Wang, and Mingsheng Long. Autoformer: Decomposition transformers with auto-correlation for long-term series forecasting. In Neural Information Processing Systems , 2021. https://api. semanticscholar.org/CorpusID:235623791 .Siqiao Xue, Zhaoyang Zhu, Wei Zhang, Rongyao Cai, Rui Wang, Yixiang Mu, Fan Zhou, Jianguo Li, Peng Di, and Hang Yu. QuitoBench: A high-quality open time series forecasting benchmark. arXiv preprint arXiv:2603.26017 , 2026. Chin-Chia Michael Yeh, Xin Dai, Huiyuan Chen, Yan Zheng, Yujie Fan, Audrey Der, Vivian Lai, Zhongfang Zhuang, Junpeng Wang, Liang Wang, et al. Toward a foundation model for time series data. In Proceedings of the 32nd ACM International Conference on Information and Knowledge Management , pages 4400–4404, 2023. Annan Yu, Danielle C. Maddix, Boran Han, Xiyuan Zhang, Abdul Fatir Ansari, Oleksandr Shchur, Christos Faloutsos, Andrew Gordon Wilson, Michael W. Mahoney, and Bernie Wang. Understanding transformers for time series: Rank 
+
+33 structure, flow-of-ranks, and compressibility. In The Fourteenth International Conference on Learning Representations , 2026. 
+
+https://openreview.net/forum?id=axR2KZwaD3 .Xiang Zhang, Ziyuan Zhao, Theodoros Tsiligkaridis, and Marinka Zitnik. Self-supervised contrastive pre-training for time series via time-frequency consistency. Advances in neural information processing systems , 35:3988–4003, 2022. Haoyi Zhou, Shanghang Zhang, Jieqi Peng, Shuai Zhang, Jianxin Li, Hui Xiong, and Wancai Zhang. Informer: Beyond efficient transformer for long sequence time-series forecasting. AAAI , 2021. Jingbo Zhou, Xinjiang Lu, Yixiong Xiao, Jian Tang, Jiantao Su, Yu Li, Ji Liu, Junfu Lyu, Yanjun Ma, and Dejing Dou. SDWPF: A dataset for spatial dynamic wind power forecasting over a large turbine array. Scientific Data , 11(1):649, 2024. doi: 10.1038/s41597-024-03427-5. https://doi.org/10.1038/s41597-024-03427-5 .Tian Zhou, Ziqing Ma, Qingsong Wen, Xue Wang, Liang Sun, and Rong Jin. Fedformer: Frequency enhanced decomposed transformer for long-term series forecasting. In International conference on machine learning , pages 27268–27286. PMLR, 2022. 
+
+34 A Data Sources and Benchmark Specifications 
+
+This appendix documents the data interfaces behind the experiments. For pre-training, the relevant unit is a source collection and its contribution to the overall corpus. For evaluation, the relevant unit is a forecasting task specified by a dataset, sampling frequency, prediction horizon, and set of evaluation windows. The following sections therefore separate corpus composition from benchmark construction. 
+
+A.1 Pre-training Data Inventory 
+
+The observed portion of the pre-training corpus is assembled from three complementary releases. The GIFT-Eval pre-training split (Aksu et al., 2024b) 1 supplies broad coverage across application domains and temporal resolutions; the Chronos training collection (Ansari et al., 2024) 2 contributes several high-volume public forecasting datasets; and the Quito corpus (Xue et al., 2026) 3 adds production application-traffic traces at two granularities. Table 5 keeps these source boundaries explicit while reporting the frequency, number of series, variable count, and total observations of every entry. Two Chronos procedures further augment this pool (Ansari et al., 2024). TSMixup first rescales sampled series and then combines them, allowing temporal motifs drawn from different datasets to appear in new compositions. KernelSynth expands the corpus in a different direction by sampling functions from randomly composed Gaussian-process kernels. The former recombines patterns already present in the public data, whereas the latter introduces controlled trend, smoothness, and periodic structures without requiring an additional observed dataset. 
+
+A.2 GIFT-Eval Task Composition 
+
+GIFT-Eval is organized as a grid of forecasting conditions rather than as a single pooled test set (Aksu et al., 2024b). Its 23 datasets are evaluated at the available sampling resolutions and, where applicable, at short-, medium-, and long-range horizons. This expansion produces 97 dataset– frequency–horizon configurations spanning seven domains and ten frequencies. Table 6 exposes the construction in two layers: the data-profile columns describe each dataset–frequency instance, while the evaluation columns give the horizon and number of forecast windows attached to it. The protocol evaluates the final 10% of each series through non-overlapping rolling windows. Standard competition horizons are retained for collections such as M4 (Makridakis et al., 2018); other datasets receive horizon scales chosen according to their frequency and application setting. Results are then combined across configurations, so comparison is performed at the level of forecasting conditions rather than by pooling observations from datasets of very different sizes. The resulting evaluation unit is therefore more specific than a dataset name. A series resampled at two frequencies produces two data profiles, and a short, medium, or long horizon attached to either profile defines a separate forecasting condition. Table 6 makes this distinction visible: the main body records one profile for each available frequency, while the bracketed values report how many valid rolling origins are available at the corresponding horizon. This representation avoids making a high-resolution dataset with many observations automatically more influential than a smaller source. It also shows where the benchmark retains a single application-specific horizon and where it probes the same data over multiple forecast ranges. 
+
+> 1https://huggingface.co/datasets/Salesforce/GiftEvalPretrain
+> 2https://huggingface.co/datasets/autogluon/chronos_datasets
+> 3https://huggingface.co/datasets/hq-bench/quito-corpus
+
+35 Table 5 Inventory of the 70 real-world datasets used for pre-training. Rows are organized by the public collection from which each dataset was obtained; frequencies and counts follow the released metadata. 
+
+Dataset Freq. Series Variables Time points Domain GIFT-Eval pre-training collection 
+
+BDG-2 H 611 1 9,454,968 Energy 
+
+BEIJING_SUBWAY_30MIN 30T 276 2 433,872 Transport 
+
+CIF 2016 M 72 1 6,334 Finance 
+
+CMIP6 6H 270,336 53 1,973,452,800 Nature 
+
+ERA5 H 245,760 45 2,146,959,360 Nature 
+
+HZMETRO 15T 80 2 190,160 Transport 
+
+LOS_LOOP 5T 207 1 7,094,304 Transport 
+
+LargeST 5T 42,333 1 4,452,510,528 Transport 
+
+M1 A, M, Q 921 1 57,882 Finance 
+
+M3 A, M, Q 3,003 1 209,114 Finance 
+
+NN5 D, W 222 1 93,240 Finance 
+
+PEMS03 5T 358 1 9,382,464 Transport 
+
+PEMS04 5T 307 3 5,216,544 Transport 
+
+PEMS07 5T 883 1 24,921,792 Transport 
+
+PEMS08 5T 170 3 3,035,520 Transport 
+
+PEMS_BAY 5T 325 1 16,941,600 Transport 
+
+Q-TRAFFIC 15T 45,148 1 264,386,688 Transport 
+
+Residential Power T 504 3 271,333,509 Energy 
+
+SHMETRO 15T 288 2 2,536,992 Transport 
+
+Tourism A, M, Q 1,212 1 150,822 Finance 
+
+Traffic H, W 1,724 1 15,060,864 Transport 
+
+Uber TLC D, H 524 1 1,176,531 Transport 
+
+alibaba_cluster_trace_2018 5T 58,409 2 95,192,530 Web 
+
+australian_electricity_demand 30T 5 1 1,153,584 Energy 
+
+azure_vm_traces_2017 5T 159,472 1 885,522,908 Web 
+
+beijing_air_quality H 12 11 420,768 Nature 
+
+bitcoin_with_missing D 18 1 81,918 Finance 
+
+borealis H 15 1 83,269 Energy 
+
+borg_cluster_data_2011 5T 143,386 2 537,552,854 Web 
+
+buildings_900k H 1,792,328 1 15,702,585,608 Energy 
+
+bull H 41 1 719,304 Energy 
+
+cdc_fluview_ilinet W 75 5 63,903 Healthcare 
+
+cdc_fluview_who_nrevss W 74 4 41,760 Healthcare 
+
+china_air_quality H 437 6 5,739,234 Nature 
+
+cockatoo H 1 1 17,544 Energy 
+
+covid19_energy H 1 1 31,912 Energy 
+
+covid_mobility D 362 1 148,602 Transport 
+
+elecdemand 30T 1 1 17,520 Energy 
+
+elf H 1 1 21,792 Energy 
+
+extended_web_traffic_with_missing D 145,063 1 370,926,091 Web 
+
+godaddy M 3,135 2 128,535 Finance 
+
+hog H 24 1 421,056 Energy 
+
+ideal H 217 1 1,255,253 Energy 
+
+kaggle_web_traffic_weekly W 145,063 1 16,537,182 Web 
+
+lcl H 713 1 9,543,553 Energy 
+
+london_smart_meters_with_missing 30T 5,520 1 166,238,880 Energy 
+
+oikolab_weather H 8 1 800,456 Nature 
+
+pdb H 1 1 17,520 Energy 
+
+pedestrian_counts H 66 1 3,130,762 Transport 
+
+project_tycho W 1,258 1 1,377,707 Healthcare 
+
+rideshare_with_missing H 2,304 1 859,392 Transport 
+
+sceaux H 1 1 34,223 Energy 
+
+smart H 5 1 95,709 Energy 
+
+solar_power 4S 1 1 7,397,222 Energy 
+
+spain H 1 1 35,064 Energy 
+
+subseasonal D 862 4 14,197,140 Nature 
+
+subseasonal_precip D 862 1 9,760,426 Nature 
+
+sunspot_with_missing D 1 1 73,894 Nature 
+
+vehicle_trips_with_missing D 329 1 32,512 Transport 
+
+weather D 3,010 1 42,941,700 Nature 
+
+wiki-rolling_nips D 47,675 1 40,619,100 Web 
+
+wind_power 4S 1 1 7,397,147 Energy 
+
+Chronos training collection 
+
+Solar 5T 5,166 1 543,049,920 Energy 
+
+Taxi 30T, H 70,412 1 56,793,348 Transport 
+
+Weatherbench D, H, W 675,840 1 82,753,646,592 Nature 
+
+Wind Farms D, H, T 1,011 1 175,154,333 Energy 
+
+dominick W 100,014 1 29,652,492 Sales 
+
+exchange_rate D 8 1 84,976 Finance 
+
+mexico_city_bikes H 494 1 38,687,004 Transport 
+
+ushcn_daily D 1,218 5 47,080,115 Nature 
+
+wiki_daily_100k D 100,000 1 274,100,000 Web 
+
+Quito corpus 
+
+Quito 10T, H 33,806 5 313,269,828 Various Frequency aliases: S = second, T = minute, H = hourly, D = daily, W = weekly, M = monthly, Q = quarterly, and A = annual. 
+
+36 Table 6 GIFT-Eval task specifications grouped by application domain. Short, Medium, and Long report forecast horizon [number of rolling windows]; a dash indicates that the range is not evaluated. 
+
+Data profile Evaluation schedule Dataset Freq. Series Avg. length Variables Short Medium Long Nature 
+
+Jena Weather 10T 1 52,704 21 48 [20] 480 [11] 720 [8] H 1 8,784 21 48 [19] 480 [2] 720 [2] D 1 366 21 30 [2] – –Saugeen D 1 23,741 1 30 [20] – –W-THU 1 3,391 1 8 [20] – –M 1 780 1 12 [7] – –Temperature Rain D 32,072 725 1 30 [3] – –KDD Cup 2018 H 270 10,898 1 48 [20] 480 [2] 720 [2] D 270 455 1 30 [2] – –
+
+Web/CloudOps 
+
+BizITObs - Application 10S 1 8,834 2 60 [15] 600 [2] 900 [1] BizITObs - Service 10S 21 8,835 2 60 [15] 600 [2] 900 [1] BizITObs - L2C 5T 1 31,968 7 48 [20] 480 [7] 720 [5] H 1 2,664 7 48 [6] 480 [1] 720 [1] Bitbrains - Fast Storage 5T 1,250 8,640 2 48 [18] 480 [2] 720 [2] H 1,250 721 2 48 [2] – –Bitbrains - rnd 5T 500 8,640 2 48 [18] 480 [2] 720 [2] H 500 720 2 48 [2] – –
+
+Energy 
+
+ETT1 15T 1 69,680 7 48 [20] 480 [15] 720 [10] H 1 17,420 7 48 [20] 480 [4] 720 [3] D 1 725 7 30 [3] – –W-THU 1 103 7 8 [2] – –ETT2 15T 1 69,680 7 48 [20] 480 [15] 720 [10] H 1 17,420 7 48 [20] 480 [4] 720 [3] D 1 725 7 30 [3] – –W-THU 1 103 7 8 [2] – –Solar 10T 137 52,560 1 48 [20] 480 [11] 720 [8] H 137 8,760 1 48 [19] 480 [2] 720 [2] D 137 365 1 30 [2] – –W-FRI 137 52 1 8 [1] – –Electricity 15T 370 140,256 1 48 [20] 480 [20] 720 [20] H 370 35,064 1 48 [20] 480 [8] 720 [5] D 370 1,461 1 30 [5] – –W-FRI 370 208 1 8 [3] – –
+
+Transport 
+
+Loop Seattle 5T 323 105,120 1 48 [20] 480 [20] 720 [15] H 323 8,760 1 48 [19] 480 [2] 720 [2] D 323 365 1 30 [2] – –SZ-Taxi 15T 156 2,976 1 48 [7] 480 [1] 720 [1] H 156 744 1 48 [2] – –M_DENSE H 30 17,520 1 48 [20] 480 [4] 720 [3] D 30 730 1 30 [3] – –
+
+Sales 
+
+Restaurant D 807 358 1 30 [1] – –Hierarchical Sales D 118 1,825 1 30 [7] – –W-WED 118 260 1 8 [4] – –Car Parts M 2,674 51 1 12 [1] – –
+
+Econ/Fin 
+
+M4 Yearly A 22,974 37 1 6 [1] – –M4 Quarterly Q 24,000 100 1 8 [1] – –M4 Monthly M 48,000 234 1 18 [1] – –M4 Weekly W 359 1,035 1 13 [1] – –M4 Daily D 4,227 2,371 1 14 [1] – –M4 Hourly H 414 902 1 48 [2] – –
+
+Healthcare 
+
+Hospital M 767 84 1 12 [1] – –COVID Deaths D 266 212 1 30 [1] – –US Births D 1 7,305 1 30 [20] – –W-TUE 1 1,043 1 8 [14] – –M 1 240 1 12 [2] – –
+
+37 The evaluation data originate from ten public sources. Environmental and infrastructure measure-ments include Jena Weather, ETT, Electricity, and Solar (Wu et al., 2021; Zhou et al., 2021; Trindade, 2015; Lai et al., 2017); operational workloads are represented by BizITObs and Bitbrains (Palaskar et al., 2024; Shen et al., 2015); and urban mobility data are obtained through LibCity (Wang et al., 2023). Sales, economic, financial, and healthcare tasks are drawn from the Recruit competition, hierarchical-sales data, and the Monash archive (Howard et al., 2017; Mancuso et al., 2021; Go-dahewa et al., 2021). The benchmark curation keeps its evaluation sources separate from the pre-training split. 
+
+A.3 fev-bench Task Composition 
+
+fev-bench treats a forecasting task as a complete evaluation specification: it fixes the data source, target selection, forecast horizon, and rolling evaluation cutoffs (Shchur et al., 2025). The bench-mark derives 100 tasks from 96 datasets and emphasizes breadth across applications rather than repeatedly evaluating every dataset at multiple alternative horizons. Competition tasks preserve their published forecast lengths; the remaining horizons follow frequency-aware choices, including week-ahead forecasts for selected hourly datasets. Each task is evaluated at W rolling origins, with 
+
+W adapted to dataset scale and the amount of history available before the first forecast. Table 7 records the resulting task definitions using standard pandas frequency aliases. Each row in Table 7 should consequently be interpreted as an evaluation contract. The frequency fixes the temporal grid, T translates the intended forecast interval into a number of future observa-tions, and W states how many rolling origins contribute to the task-level score. A dataset name may appear in several rows when the source supports distinct sampling resolutions; these rows represent different forecasting settings rather than duplicated measurements. The median-length, series, and target columns further expose the amount of usable history and the panel structure presented to the model. Rolling origins prevent a single terminal cutoff from determining a task result; W is reduced for shorter records, large panels, or fixed competition splits to keep the evaluation feasible. The source-family and application-domain fields serve different purposes as well: the former preserves dataset provenance, while the shaded groups organize tasks by their operational interpretation. Keeping these two axes separate makes it possible to inspect domain coverage without losing traceability to the benchmark or repository from which a task was constructed. The source-family column in Table 7 reflects three complementary acquisition routes. First, estab-lished forecasting resources contribute tasks from GIFT-Eval, Monash, and BOOMLET (Aksu et al., 2024b; Godahewa et al., 2021; Cohen et al., 2026). Second, domain repositories supply macroeco-nomic and energy measurements, including GVAR, FRED, EPF, ERCOT, and ENTSO-e (Mohaddes and Raissi, 2024; McCracken and Ng, 2016, 2021; Fleming and Wallace, 1986; Ansari et al., 2024; Data, 2020). Third, forecasting competitions add fixed-horizon retail and energy problems from Favorita, M5, Rossmann, Walmart, Rohlik, KDD Cup 2022, and the Global Energy Forecasting Competitions (lexis Cook et al., 2020; Makridakis et al., 2022; FlorianKnauer and Cukierski, 2015; Admin and Cukierski, 2014; MichalKecera, 2024; Zhou et al., 2024; Hong et al., 2014). Additional tasks cover public health, environmental monitoring, fashion, and cloud systems through ECDC influenza surveillance, UK COVID-19 statistics, UCI air quality, Hermes, hospital admissions, and Redset (ECDC, 2025; data from official UK government sources, 2022; De Vito et al., 2008; David et al., 2022; of Health Affairs and Ministry of Health, 2024; van Renen et al., 2024). Together, they test robustness across domains, temporal scales, and history lengths. 38 Table 7 fev-bench task specifications arranged by application domain. The source-family column records how each task enters the benchmark; T and W denote the forecast horizon and number of rolling evaluation windows, respectively. 
+
+Task Source family Freq. T W Median length Series Targets Cloud 
+
+BizITObs-L2C GIFT-Eval 5T 288 20 31,968 1 7BizITObs-L2C GIFT-Eval H 24 20 2,664 1 7BOOMLET-1062 BOOMLET 5T 288 20 16,384 1 21 BOOMLET-1209 BOOMLET 5T 288 20 16,384 1 53 BOOMLET-1225 BOOMLET T 60 20 16,384 1 49 BOOMLET-1230 BOOMLET 5T 288 20 16,384 1 23 BOOMLET-1282 BOOMLET T 60 20 16,384 1 35 BOOMLET-1487 BOOMLET 5T 288 20 16,384 1 54 BOOMLET-1631 BOOMLET 30T 96 20 10,463 1 40 BOOMLET-1676 BOOMLET 30T 96 20 10,463 1 100 BOOMLET-1855 BOOMLET H 24 20 5,231 1 52 BOOMLET-1975 BOOMLET H 24 20 5,231 1 75 BOOMLET-2187 BOOMLET H 24 20 5,231 1 100 BOOMLET-285 BOOMLET T 60 20 16,384 1 75 BOOMLET-619 BOOMLET T 60 20 16,384 1 52 BOOMLET-772 BOOMLET T 60 20 16,384 1 67 BOOMLET-963 BOOMLET T 60 20 16,384 1 28 Redset Other 5T 288 10 25,920 118 1Redset Other 15T 96 10 8,640 126 1Redset Other H 24 10 2,160 138 1
+
+Economy 
+
+Australian Tourism Macro Q 8 2 36 89 1FRED-MD-CEE Macro M 12 20 798 1 3FRED-MD-Macro Macro M 12 20 798 1 51 FRED-QD-CEE Macro Q 8 20 266 1 3FRED-QD-Macro Macro Q 8 20 266 1 51 GVAR Macro Q 8 10 178 33 6US Consumption Macro M 12 10 792 31 1US Consumption Macro Q 8 10 262 31 1US Consumption Macro Y 5 10 64 31 1World CO2 Emissions Macro Y 5 9 60 191 1World Life Expectancy Macro Y 5 10 74 237 1World Tourism Macro Y 5 2 21 178 1
+
+Energy 
+
+ETT GIFT-Eval 15T 96 20 69,680 2 7ETT GIFT-Eval H 168 20 17,420 2 7ETT GIFT-Eval D 28 20 724 2 7ETT GIFT-Eval W 13 5 103 2 7Solar GIFT-Eval W 13 1 52 137 1Solar GIFT-Eval D 28 10 365 137 1ENTSO-e Load Energy 15T 96 20 175,292 6 1ENTSO-e Load Energy 30T 96 20 87,645 6 1ENTSO-e Load Energy H 168 20 43,822 6 1EPF-BE Energy H 24 20 52,416 1 1EPF-DE Energy H 24 20 52,416 1 1EPF-FR Energy H 24 20 52,416 1 1EPF-NP Energy H 24 20 52,416 1 1EPF-PJM Energy H 24 20 52,416 1 1ERCOT Energy D 28 20 6,452 8 1ERCOT Energy H 168 20 154,872 8 1ERCOT Energy M 12 15 211 8 1ERCOT Energy W 13 20 921 8 1
+
+Continued on next page 
+
+39 Table 7 fev-bench task specifications (continued). 
+
+Task Source family Freq. T W Median length Series Targets 
+
+GFC12 Energy H 168 10 39,414 11 1GFC14 Energy H 168 20 17,520 1 1GFC17 Energy H 168 20 17,544 8 1Solar with Weather Energy 15T 96 20 198,600 1 1Solar with Weather Energy H 24 20 49,648 1 1KDD Cup 2022 Competitions D 14 10 243 134 1KDD Cup 2022 Competitions 10T 288 10 35,279 134 1KDD Cup 2022 Competitions 30T 96 10 11,758 134 1
+
+Healthcare 
+
+Hospital GIFT-Eval M 12 4 84 767 1ECDC ILI Other W 13 10 201 25 1Hospital Admissions Other D 28 20 1,731 8 1Hospital Admissions Other W 13 16 246 8 1UK COVID-Nation-Cumulative Other D 28 20 729 4 3UK COVID-Nation-Cumulative Other W 8 4 105 4 3UK COVID-Nation-New Other D 28 20 729 4 3UK COVID-Nation-New Other W 8 4 105 4 3UK COVID-UTLA-Cumulative Other W 13 5 104 214 1UK COVID-UTLA-New Other D 28 10 721 214 1
+
+Mobility 
+
+Loop Seattle GIFT-Eval D 28 10 365 323 1Loop Seattle GIFT-Eval 5T 288 10 105,120 323 1Loop Seattle GIFT-Eval H 168 10 8,760 323 1M-DENSE GIFT-Eval D 28 10 730 30 1M-DENSE GIFT-Eval H 168 10 17,520 30 1SZ Taxi GIFT-Eval 15T 96 10 2,976 156 1SZ Taxi GIFT-Eval H 168 2 744 156 1
+
+Nature 
+
+Jena Weather GIFT-Eval 10T 144 20 52,704 1 21 Jena Weather GIFT-Eval D 28 11 366 1 21 Jena Weather GIFT-Eval H 24 20 8,784 1 21 UCI Air Quality Other H 168 20 9,357 1 4UCI Air Quality Other D 28 11 389 1 4
+
+Retail 
+
+Hierarchical Sales GIFT-Eval D 28 10 1,825 118 1Hierarchical Sales GIFT-Eval W 13 10 260 118 1Favorita Store Sales Competitions M 12 2 54 1,579 1Favorita Store Sales Competitions W 13 10 240 1,579 1Favorita Store Sales Competitions D 28 10 1,688 1,579 1Favorita Transactions Competitions M 12 2 54 51 1Favorita Transactions Competitions W 13 10 240 51 1Favorita Transactions Competitions D 28 10 1,688 51 1M5 Competitions M 12 1 58 30,490 1M5 Competitions W 13 1 257 30,490 1M5 Competitions D 28 1 1,810 30,490 1Restaurant Competitions D 28 8 296 817 1Rohlik Orders Competitions W 8 5 170 7 1Rohlik Orders Competitions D 61 5 1,197 7 1Rohlik Sales Competitions W 8 1 150 5,243 1Rohlik Sales Competitions D 14 1 1,046 5,390 1Rossmann Competitions W 13 8 133 1,115 1Rossmann Competitions D 48 10 942 1,115 1Walmart Competitions W 39 1 143 2,936 1Hermes Other W 52 1 261 10,000 1
+
+40

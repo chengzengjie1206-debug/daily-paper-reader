@@ -1,0 +1,394 @@
+Title: High-resolution Calibrated Probabilistic Hourly Precipitation from a Deterministic Forecast
+
+URL Source: https://arxiv.org/pdf/2608.12685v1
+
+Published Time: Fri, 14 Aug 2026 00:28:23 GMT
+
+Number of Pages: 31
+
+Markdown Content:
+# High-resolution Calibrated Probabilistic Hourly Precipitation from a Deterministic Forecast 
+
+## Thomas M. Hamill ∗
+
+## August 14, 2026 
+
+Abstract 
+
+An “Attention Residual U-Net” method is described for probabilistic quantitative precip-itation forecasting (PQPF) that predicts the hourly probability of no precipitation plus the distribution of positive precipitation from a weighted mixture of two Gamma distributions. The neural network is trained on patches of numerical weather prediction (NWP) hourly precip-itation from The Weather Company’s convection-permitting GRAF (Global high-Resolution Atmospheric Forecasting) model along with terrain information and column-average relative humidity from the National Oceanic and Atmospheric Administration’s (NOAA’s) Global Fore-cast System (GFS). The target data are NOAA’s Multi-Radar, Multi-Sensor (MRMS) gauge-corrected, quality controlled radar data sampled to the same grid as the GRAF data. The network outputs distributional parameters for each model grid point. Training uses negative log-likelihood as a proper scoring rule, with climatological initialization for stable convergence. Inference is performed as a single forward pass over the contiguous United States (CONUS) domain, with edge-replication padding to satisfy the network’s spatial-divisibility requirement. The subsequent forecasts are spatially detailed, highly reliable, and skillful with respect to clima-tology and a simpler reference forecast method. The method is particularly useful for estimating probabilities in regions with large terrain variation. 
+
+# 1 Introduction 
+
+High-resolution probabilistic precipitation forecasts can be helpful for flash-flood warnings, hydro-logical modeling, and decision support. The choice and effective use of probabilistic guidance for operational forecasters and emergency managers is itself an active research area, e.g., (Murphy, 1993; Gneiting and Raftery, 2007; Hoss and Fischbeck, 2016; Raftery, 2016; Cross and LaDue, 2021; Ripberger et al. , 2022; Heggli et al. , 2023; Radford et al. , 2023). Generating reliable probabilistic forecast content commonly is complicated by model errors and computational resource limitations. Raw numerical weather prediction (NWP) precipitation fields exhibit systematic biases in both location and intensity, and a single deterministic forecast cannot convey forecast uncertainty. This motivates the use of ensemble forecasts, in some situations with accompanying statistical postprocessing. However, for convection-permitting forecasts over large domains with conventional NWP models, ensemble forecasts may be too computationally expensive to perform regularly. Is there a way to provide high-quality, unbiased probabilistic precipitation guidance from a single deterministic forecast?  
+
+> ∗The Weather Company, Atlanta, Georgia; e-mail: tom.hamill@weather.com
+
+1arXiv:2608.12685v1 [physics.ao-ph] 13 Aug 2026 A simple method to estimate probabilities may be to incorporate relevant data from the sur-rounding neighborhood. This can be applied, for example, by estimating the probability of ex-ceedance using relative frequency derived from gridded forecast data within some distance (Theis 
+
+et al. , 2005). This can further be improved by applying distance-dependent weights. Traditional statistical post-processing methods may also be used to generate probabilities from deterministic forecasts by fitting parametric distributions based on forecast/observation pairs. Model Output Statistics (MOS; Glahn and Lowry, 1972; Carter et al. , 1989) pioneered regression-based calibration of NWP output to produce probabilistic guidance. There is now a burgeoning literature on the use and calibration of ensembles for generation of probabilities, including extended logistic regression (Bentzien and Friederichs, 2012; Ben Bouall` egue, 2013), heteroscedastic regres-sion (Messner and Mayr, 2014), probabilistic ensemble model output statistics (EMOS; Scheuerer, 2014; Scheuerer and Hamill, 2015), ensemble model output statistics (Hamill et al. , 2004), and Bayesian model averaging specifically designed for probabilistic quantitative precipitation forecast-ing (BMA–PQPF; Sloughter et al. , 2007), and many more. National-scale blending of statistically post-processed forecasts (Hamill et al. , 2017) and neural-network-based post-processing (Hamill and Scheuerer, 2018; Ghazvinian et al. , 2022) have further extended the capability. These methods have demonstrated clear improvements in probabilistic skill, but they typically operate on a grid-point or station basis, exploiting neither the spatial structure of the NWP fields nor the relationships among neighboring forecast errors. Deep learning offers a natural extension that can exploit spatial context. Convolutional neural network based approaches (CNNs; LeCun et al. , 1998) are particularly well suited to precipitation post-processing because their convolutional filters efficiently capture local spatial patterns in fore-cast errors, and their hierarchical structure can represent corrections simultaneously at multiple spatial scales. In the context of probabilistic prediction, they may extract scale-dependent pre-dictive information. Examples of recent deep learning applications for probabilistic precipitation post-processing include Chapman et al. (2022), Badrinath et al. (2023), and Hu et al. (2023). The work described here leverages a type of convolutional neural network, but it is designed to produce a probabilistic forecast from a deterministic one, in this case The Weather Company’s GRAF model (Section 2). This is a conventional convection-permitting NWP system based on the National Center for Atmospheric Research (NCAR) Model for Predictions Across Scales (MPAS; Skamarock et al. , 2012). The method is an Attention Residual U-Net — a U-shaped encoder– decoder architecture augmented with residual connections and attention gates. It predicts the parameters of a zero-inflated mixture of two Gamma distributions at each grid point, i.e., a point mass probability of zero precipitation and a weighted mixture of two Gamma distributions. The two-component Gamma mixture provides greater flexibility than a single Gamma, accommodat-ing for example both the light-precipitation mode associated with stratiform rain and the heavy-precipitation tail associated with convective events. By incorporating terrain information as predic-tive features, the probabilistic forecasts that it generates can be linked to terrain variations, which we will show has predictive advantages over a simpler method such as a neighborhood method (Theis et al. , 2005; Schwartz and Sobash, 2017). A convection-permitting model like GRAF is capable of producing forecast precipitation at high temporal and spatial resolution. Hence, a probabilistic postprocessing method ideally ought to be able to produce guidance with similar spatial and temporal resolution. Accordingly, this study will focus on hourly precipitation accumulation on a 4-km grid, a more challenging problem than accumulation over longer time spans and larger regions (Roberts and Lean, 2008). The rest of the manuscript is organized as follows. Section 2 briefly describes the GRAF model underpinning this study. Section 3 describes the deep neural network, including the data used, the training and inference methodology, and the loss function. Section 4 briefly describes 2the methodology used to produce the neighborhood reference forecasts. Section 5 describes the verification metrics used to assess forecast quality. Section 6 provides forecast case studies and verification results, and section 7 provides conclusions and possible next steps. 
+
+# 2 The GRAF Forecast Model 
+
+The Weather Company (TWCo) GRAF (Global high-Resolution Atmospheric Forecasting) model is based on version 6.3 of the NCAR Model for Predictions Across Scales (MPAS; Skamarock et al. , 2012), designed to run efficiently on graphical processing units (GPUs). GRAF uses a variable-resolution unstructured centroidal-Voronoi mesh that achieves approximately 4 km grid spacing over the contiguous United States (CONUS), Caribbean Basin, and western Europe, relaxing to approximately 15 km elsewhere (Fig. 1). The design provides the convenience of a global forecast where lateral boundary conditions are not needed, yet still providing forecasts capable of modeling organized thunderstorms. In 2026, GRAF makes forecasts every hour, with even-hour Coordinated Universal Time (UTC) initial-time forecasts to +72 h and odd-hour forecasts to +15 h. Initial conditions are generated for each hour, using the most recently available European Centre for Medium-Range Weather Forecasts (ECMWF) analysis and then running a 3-D variational analysis procedure (Lorenc, 1986) using the Joint Effort for Data assimilation Integration (JEDI) software (Tr´ emolet and Aulign´ e, 2020; Ha et al. , 2022; Park et al. , 2023) to update to recently available surface observations, rawinsonde, and radar reflectivity data. GRAF data are disseminated to media, aviation, consumer, agriculture, and energy customers. For this study, we will consider the calibration of probabilities only to +48 h lead time. 
+
+Figure 1: Variable mesh spacing for the GRAF model over (a) North America, and (b) Europe. Outside these areas, mesh spacing is 14-15 km. GRAF employs a scale-aware nTiedtke convective parameterization (Wang, 2022) that transi-tions smoothly from full convective parameterization at 15 km toward near-explicit convection at 4 km. Additional parameterizations include the Yonsei University (YSU) planetary boundary layer scheme (Hong et al. , 2006) with gravity-wave drag, Weather Research and Forecasting (WRF) single-moment (WSM6) microphysics (Hong and Lim, 2006) with Thompson cloud fraction, the Rapid Radiative Transfer Model for General Circulation Models (RRTMG; Mlawer et al. , 1997; 3Clough et al. , 2005), and the NOAH 4-layer land surface model (Ek et al. , 2003). Terrain heights are from the Global Multi-resolution Terrain Elevation Data 2010 (GMTED2010), with albedo and land-characteristic data from MODIS (Moderate Resolution Imaging Spectroradiometer) at 30 arcsec grid spacing. Before use in the Attention ResUNet, GRAF forecasts from the native mesh are interpolated to a 4-km grid covering the CONUS, southern Canada, and the Gulf of Mexico. 
+
+# 3 Neural Network, Data, and Training 
+
+## 3.1 Input Features and Training Data 
+
+The Attention ResUNet model, described later, is trained on 96 × 96 pixel patches extracted from the CONUS domain. Each patch comprises seven input channels: (1) GRAF precipitation forecast (g): This is the raw model-predicted hourly accumulated precipitation (mm), transformed by a power function g′ = gp with p = 0 .5 (square root) to minimize training sensitivity to outliers and variance stabilization. (Section 3.1.1). (2) Terrain elevation deviation (∆ z): This is the difference between local terrain height and a smoothed representation of terrain height provided by a Gaussian convolution with a length scale of 15 grid points (Figure 2), which facilitates definition of local orographic variability. (3) GFS column-average relative humidity (R): This provides large-scale moisture infor-mation from NOAA’s Global Forecast System (GFS) model, interpolated to the GRAF grid. Ideally this would be provided directly by the GRAF system, but we neglected to save a long time series of these. Use of this was found to help distinguish between no probability of precipitation and small probability. (4) Precipitation–terrain interaction (g′ ×∆z): This was chosen to enhance potential terrain-enhanced precipitation processes (upslope enhancement, rain shadowing). (5) Precipitation–humidity interaction (g′ × R): This is intended to help estimate the mod-ulation of precipitation probability due to the large-scale moisture environment. (6) Terrain gradient, zonal (∂z/∂λ ): This is the longitudinal component of terrain slope, where terrain elevation was smoothed with a Gaussian kernel with a length scale of 15 grid points. This is intended to facilitate estimation of larger-scale terrain-induced precipitation. (7) Terrain gradient, meridional (∂z/∂ϕ ): This is the latitudinal component of terrain slope, also smoothed. 4Figure 2: Terrain height differences from a smoothed terrain representation shown in the western US, used as a feature in the Attention ResUNet training. The difference from smoothed terrain accentuates local elevation differences. Note that interaction terms (4) and (5) are computed after the power transformation has been applied to the GRAF precipitation. The choice of features reflected what data were readily available. At TWCo, we have maintained an archive of hourly precipitation from GRAF dating back several years, but we did not archive long time series of other variables that might have become useful features, which might have included low-level winds and relative humidity, static stability, and so forth. To make up for the lack of an archive of GRAF relative humidity, we substitute GFS humidity data. As of March 2026, TWCo started archiving more variables to facilitate only using features from the GRAF model in future studies. 53.1.1 Power transformation 
+
+Precipitation amounts are strongly right-skewed. Applying a power transformation g′ = gp with 
+
+p < 1 compresses the range of large values and stabilizes variance, which is beneficial because the Gamma distribution’s variance scales with the square of its mean. For Gamma-distributed data, the square root ( p = 0 .5) is asymptotically the variance-stabilizing transformation (Bartlett, 1936). The power transformation is applied to GRAF precipitation before computing the interaction features and before normalization. 
+
+3.1.2 Normalization 
+
+Each feature channel is independently normalized to [0 , 1] using fixed reference maxima chosen to accommodate extreme values: ˜xk = xk − xmin 
+
+> k
+
+xmax  
+
+> k
+
+− xmin 
+
+> k
+
+, (1) where the reference values (Table 1) are determined from domain knowledge and training-set statis-tics. Using fixed maxima rather than sample-dependent standardization ensures consistent normal-ization across training, validation, and inference. Table 1: Normalization reference values for each input channel when p = 0 .5 (square root transfor-mation). Channel xmin  
+
+> k
+
+xmax 
+
+> k
+
+GRAF precipitation ( g0.5) 0 75 0.5 ≈ 8.66 Terrain deviation (∆ z) data min 2500 GFS relative humidity ( R) data min 100 
+
+g0.5 × ∆z data min 75 0.5 × 2500 
+
+g0.5 × R data min 75 0.5 × 100 
+
+∂z/∂λ data min 0.02 
+
+∂z/∂ϕ data min 0.02 
+
+3.1.3 MRMS Target Data 
+
+The training targets are derived from the Multi-Radar Multi-Sensor (MRMS) quantitative precip-itation estimation system (Zhang et al. , 2016), which merges data from the U.S. Weather Surveil-lance Radar–1988 Doppler (WSR-88D) network, gauge reports, and satellite retrievals to produce high-resolution, near-real-time precipitation analyses on a 0.01 ◦ (≈1 km) grid over the CONUS. 
+
+Remapping to the GRAF grid. Hourly MRMS precipitation analyses are read from files of the Stage II multi-sensor pass-2 product. A collocated MRMS data-quality file provides a per-pixel quality index on a [0 , 1] scale encoding sensor coverage and retrieval confidence. Both fields are remapped from the native MRMS 0.01 ◦ (≈1 km) grid to the GRAF CONUS grid ( ≈4.25 km spacing, hereafter ”4 km”) using nearest-neighbor interpolation. Nearest-neighbor interpolation was chosen over other alternatives such as performing the training at 1 km, bilinear interpolation to 4 km, or a conservative upscaling to the 4-km grid. Keeping the 1-km grid spacing would have increased training time for this preliminary study. Were the analyses upscaled to 4 km rather than sampling, the target data would not represent the local variability that we expect customers want in their probability forecasts. 6Quality masking. MRMS grid points with a quality index ≤ 0.01 are treated as unreliable and are not used in the training. During patch extraction, potential tiles in which more than 50% of pixels fail this quality threshold are discarded from consideration as a training sample. Within retained tiles, individual pixels with the quality index ≤ 0.01 receive a target value of −1; the loss function treats this as a mask and excludes such pixels from gradient computation. This strategy preserves spatial coverage in partially contaminated tiles while preventing the network from learning from poor-quality radar retrievals. The quality threshold of 0.01 used in training is admittedly quite non-restrictive. Had we used a higher quality threshold such as 0.5, say, the target data would be more trustworthy. However, this would come at the expense of providing much less training data to the algorithm in the western US. When quality is low due to problems like radar beam blockage, the target MRMS analysis data is more reflective of the model background forecast provided by the NOAA High-Resolution Rapid Refresh (HRRR; Benjamin et al. , 2016; Dowell et al. , 2022). Because of this, in mountainous regions the precipitation analyses may reflect HRRR model bias, making a biased target for training. Despite the low threshold for training, for model verification, we will limit the acceptable samples to those with quality > 0.5. 
+
+3.1.4 Data sampling 
+
+Training patches are drawn from four 60-day date windows that together provide both recency and seasonal variety: (1) the 60 days immediately preceding the initialization date (offset slightly so the valid time falls outside the window); (2) a 60-day window spanning approximately 10–12 months before the initialization date; (3) a 60-day window spanning approximately 12–14 months before the initialization date; and (4) a 60-day window spanning approximately 22–24 months before the initialization date. Dates within each window are sampled with initial conditions at 6-hourly intervals. Separate trainings are conducted for every month of the year. Given the lead-time dependence of skill, a separate training is performed every 3 h of forecast lead time from +3 h to +48 h. To minimize training time, the training for 6-h forecasts, conducted after the training of 3-h forecasts, start from the weight estimates from the +3 h training rather than from random initial weights. Patch data are randomized in several ways to prevent over-learning to terrain features. First, the center locations of the patches on any given day being sampled is random. For each date, the CONUS domain is tiled with a non-overlapping 96 × 96 grid. The origin of the grid is shifted by a date-seeded random offset ( sy, s x) ∈ [0 , 96) 2, so that terrain features appear at different patch-local positions across training days, reducing the risk of over-learning fixed terrain patterns. Tiles whose domain-average MRMS quality fraction of bad pixels exceeds 50% are discarded outright; individual bad pixels within retained tiles are masked during training. Tiles are partitioned into wet (patch maximum GRAF ≥ 0.5 mm) and dry subsets. Wet tiles are sampled with probability proportional to (patch-mean precipitation) 1.5, biasing the training set toward regions of active precipitation. The number of wet tiles per day, nwet , depends on domain wetness: For active days, defined as where the domain mean > 0.15 mm, 35 wet samples are chosen. For moderate days, where the domain mean is between 0 .10–0 .15 mm, 25 samples are chosen. Finally, for dry days, where the domain mean < 0.10 mm, 10 samples are chosen. An additional ndry ∈ { 5, 6, 7, 8} dry tiles are selected uniformly at random. 73.1.5 Data augmentation 
+
+Training patches undergo random geometric augmentation; there is a 50% probability of applying a horizontal flip, whereby the image is reflected left-to-right and the zonal terrain gradient channel (∂z/∂λ ) is multiplied by −1. There is also a 50% probability of reflecting top-to-bottom, and in this case the meridional terrain gradient channel ( ∂z/∂ϕ ) is multiplied by −1. Multiplying the gradient channels by −1 preserves physical consistency: under a left-right reflection a west-facing slope becomes an east-facing slope, so the sign of the zonal gradient must be reversed, and analogously for the meridional gradient under a top-bottom reflection. Random geometric augmentation artificially expands the effective size of the training set, expos-ing the network to a broader variety of spatial configurations. It is particularly useful here because CONUS terrain and precipitation patterns are not left-right or top-bottom symmetric; without augmentation the network could over-fit to the directional biases present in the training patches. 
+
+## 3.2 Network Architecture 
+
+The model is an Attention Residual U-Net (Fig. 3), combining the U-shaped encoder–decoder architecture of Ronneberger et al. (2015) with residual connections (He et al. , 2016) and attention gates (Oktay et al. , 2018). The network maps a 7 × 96 × 96 input tensor to a 6 × 96 × 96 output tensor of six raw real-valued logits per pixel, which are subsequently mapped through sigmoid and softplus activations to the constrained distributional parameters of the zero-inflated two-component Gamma mixture (Section 3.3). 8Figure 3: Architecture of the Attention Residual U-Net for two-component Gamma mixture pre-cipitation forecasting. Left (encoder): The input is a 7 × 96 × 96 patch comprising seven channels: GRAF precipitation (power-transformed), terrain elevation deviation, GFS column-average rela-tive humidity, precipitation ×terrain and precipitation ×humidity interaction terms, and zonal and meridional terrain gradients. An initial Residual Block (inc, 64 channels) is followed by four 2 × 2max-pooling downsampling stages that halve the spatial dimensions and double the channel count at each level (128, 256, 512 channels at 48 × 48, 24 × 24, and 12 × 12, respectively). The Residu-alBlock inset (bottom left) shows the structure: two Conv3 × 3–BN–ReLU layers with a shortcut connection to mitigate gradient vanishing. Center (bridge): A Residual Block at the coarsest reso-lution (6 ×6, 1024 channels) integrates broad spatial context spanning the full ≈384 km extent of the patch. Right (decoder): Four upsampling stages apply 2 × 2 transposed convolutions, progressively recovering spatial detail. At each stage an Attention Gate (orange diamond, labelled A) computes a spatial weighting map ν that re-weights the corresponding encoder skip-connection features before concatenation with the upsampled decoder features; the concatenated tensor then passes through a Residual Block. The AttentionGate inset (bottom right) illustrates how decoder query features g
+
+and encoder key features x are combined via learned 1 × 1 projections, summed, ReLU-activated, projected to a scalar channel, and passed through a sigmoid to produce the element-wise gate 
+
+ν ∈ (0 , 1). Output: A final 1 × 1 convolution maps 64 channels to six raw logits. The per-pixel output panel (red, far right) shows the six distributional parameters after activation: p0 (zero-precipitation probability, sigmoid), w (conditional mixture weight, sigmoid), α1 (light-component shape, softplus), θ1 (light-component scale, softplus), α2 (heavy-component shape, softplus with 
+
+α2 > α 1 enforced post-forward), and θ2 (heavy-component scale, softplus). 93.2.1 Residual blocks 
+
+Each encoder and decoder stage uses a Residual Block (He et al. , 2016), consisting of two 3 × 3convolutional layers with batch normalization (BN; Ioffe and Szegedy, 2015) and rectified linear unit (ReLU) activation, plus an identity shortcut: 
+
+y = ReLU 
+
+
+
+BN  Conv 3×3
+
+ ReLU  BN(Conv 3×3(x))  | {z }
+
+> main path
+
++ Wsx
+
+| {z } 
+
+> shortcut
+
+
+
+, (2) where Ws is a 1 × 1 convolution applied when the number of input and output channels differ, and the identity otherwise. Residual connections mitigate gradient vanishing in deeper networks (He et al. , 2016). In the context of precipitation post-processing they offer an additional advantage: the residual formulation biases the network toward identity mappings, so when the GRAF forecast is already accurate in a region the network learns only a small correction rather than reconstruct-ing the full feature representation from scratch. This is particularly valuable in encoder stages that process predominantly dry patches, where the optimal transformation is close to the identity. Residual blocks also stabilize optimization when the NLL loss exhibits the large dynamic range characteristic of mixed dry/wet batches, since gradient magnitudes are bounded by the shortcut path even when the main-path activations are small. 
+
+3.2.2 Encoder 
+
+The encoder’s role is to progressively compress the spatial domain while expanding the channel dimension, building a hierarchy of representations at successively coarser scales. Shallow encoder stages retain fine spatial detail and respond to local precipitation gradients and terrain edges; deeper stages integrate information across larger areas, capturing mesoscale and synoptic-scale patterns. This hierarchical feature extraction is what allows the network to relate broad moisture environments to local precipitation at the end of the decoder. The encoder comprises four downsampling stages. Each stage applies 2 ×2 max-pooling followed by a residual block, doubling the channel count: Stage Input channels Output channels Spatial size Initial 7 64 96 × 96 Down 1 64 128 48 × 48 Down 2 128 256 24 × 24 Down 3 256 512 12 × 12 
+
+3.2.3 Bridge 
+
+The bridge operates at the coarsest resolution (6 × 6) with 512 input channels, expanding to 1024 channels, capturing the largest-scale spatial context. 
+
+3.2.4 Attention gates 
+
+Standard U-Net skip connections (Ronneberger et al. , 2015) concatenate encoder features with decoder features at matching resolutions. However, not all encoder features are equally informative at every spatial location. Attention gates (Oktay et al. , 2018) learn to suppress irrelevant regions and highlight salient features. 10 Given decoder features g (the “query”) and encoder features x (the “key/value”), the attention gate computes: 
+
+qg = BN( Wgg), (3) 
+
+qx = BN( Wxx), (4) 
+
+ν = sigmoid  BN( ψ · ReLU( qg + qx)) , (5) ˆx = ν ⊙ x, (6) where Wg, Wx, and ψ are learnable 1 × 1 convolutions, sigmoid( ·) denotes the sigmoid activation, and ⊙ denotes element-wise multiplication. The intermediate channel dimension ( Fint ) is half the decoder channel count. The incorporation of attention gates provides several advantages specific to the spatial post-processing of precipitation fields; the first is spatial selectivity. Precipitation is highly localized, and large portions of any domain patch may be dry at any given time. The attention map ν
+
+learns to suppress encoder features from dry, featureless regions, preventing them from diluting the decoder’s representation of active precipitation areas or areas with complex terrain (not shown). In practice the learned ν maps cluster near zero over dry regions and near unity over precipitating or orographically active regions, consistent with this intended role. Second, at the coarsest decoder scale (12 ×12, corresponding to ≈384 km), the attention gate draws on broad synoptic-scale encoder context such as the moisture plume associated with an atmospheric river to guide upsampling. At the finest scale (96 × 96, ≈4 km), it refines that signal using fine-scale terrain gradients. This multi-scale gating lets the network modulate which features are forwarded at each resolution stage independently. A third advantage of the attention mechanism is that in mountainous patches, terrain gradi-ents strongly govern precipitation through upslope enhancement and rain-shadow effects; in flat patches, large-scale moisture is more decisive. Rather than concatenating all encoder features with equal weight, the attention gate can up-weight terrain-gradient channels when orographic forcing is evident in the GRAF forecast and suppress them when precipitation is large-scale and independent of local slope. Finally, without attention, irrelevant encoder activations—e.g., terrain information from a dry, cloudless corner of a patch—pass unchanged through the skip connection and must be suppressed by subsequent decoder convolutions. The attention gate zeros those contributions at the source, simplifying the decoder’s learning task. 
+
+3.2.5 Decoder 
+
+The decoder’s purpose is to progressively recover the spatial detail that was compressed by the encoder’s max-pooling stages. The decoder mirrors the encoder with four upsampling stages. Each stage applies a 2 ×2 transposed convolution (halving channels), passes the encoder features through an attention gate, concatenates the attended encoder features with the upsampled decoder features, and processes the result through a residual block. At coarse scales (Up 1–2) it integrates the synoptic-scale context encoded at the bridge with mesoscale encoder features, establishing the broad structure of the predicted probability field. At finer scales (Up 3–4) it incorporates terrain-gradient and local precipitation features from the shallow encoder layers, enabling the output to reflect kilometer-scale orographic modulation. Because attended skip connections deliver encoder features directly to the matching decoder stage, fine spatial detail that would otherwise be irreversibly lost during max-pooling is recovered without requiring the decoder to reconstruct it from the compressed bridge representation alone. 11 Stage Input ch. (up) Attn. Fint Concat ch. Output ch. Up 1 1024 → 512 256 1024 512 Up 2 512 → 256 128 512 256 Up 3 256 → 128 64 256 128 Up 4 128 → 64 32 128 64 
+
+3.2.6 Output layer 
+
+The final 1 × 1 convolution maps 64 decoder channels to C = 6 output channels, one for each unconstrained parameter of the zero-inflated two-Gamma mixture distribution (Section 3.3). 
+
+## 3.3 Predictive Distribution 
+
+At each pixel, the model predicts a zero-inflated mixture of two Gamma distributions . The distri-bution is hierarchical: (i) with probability p0, precipitation is exactly zero; (ii) with probability 1 − p0, precipitation is positive and drawn from a two-component Gamma mixture: 
+
+• light-precipitation component (Gamma( α1, θ 1)), conditional weight w,
+
+• heavy-precipitation component (Gamma( α2, θ 2)), conditional weight 1 − w.The weights w and 1 − w are the conditional mixture weights given positive precipitation, so they sum to unity. 12 Figure 4: Example predictive density of the zero-inflated mixture of two Gamma distributions at a single grid point. The point mass at y = 0 (height p0) represents the probability of no precipitation. The continuous density for y > 0 is a weighted mixture of a light-precipitation Gamma component (Gamma( α1, θ 1), dashed) and a heavy-precipitation component (Gamma( α2, θ 2), dash-dot), scaled by (1 − p0); their sum is the full conditional density (solid). The network outputs six unconstrained real values ( z0, z 1, z 2, z 3, z 4, z 5) per pixel, which are transformed to satisfy the distributional constraints. The zero-precipitation probability p0 and the conditional mixture weight w are obtained independently by applying the sigmoid function: 
+
+p0 = sigmoid( z0) = 11 + e−z0 , (7) 
+
+w = sigmoid( z1) = 11 + e−z1 . (8) This guarantees p0, w ∈ (0 , 1), so p0 is a valid probability of zero precipitation and w is a valid conditional mixing weight. The Gamma shape and scale parameters must be strictly positive. The first component uses softplus with minimum bounds: 
+
+α1 = αmin + softplus( z2) = αmin + log(1 + ez2 ), (9) 
+
+θ1 = θmin + softplus( z3) = θmin + log(1 + ez3 ), (10) where αmin and θmin are small positive constants (Section 3.5) that prevent numerical instability in the log-gamma and logarithm computations. To prevent label switching (where the two Gamma components swap roles during training), the second shape parameter is constrained to exceed the first: 
+
+α2 = α1 + softplus( z4) + δmin , (11) 13 where δmin = 0 .5 enforces a minimum separation between components. This guarantees α2 > α 1
+
+at all times, ensuring that component 1 always represents lighter precipitation. The second scale parameter is unconstrained relative to θ1:
+
+θ2 = θmin + softplus( z5). (12) Both αj and θj are additionally clamped to maximum values ( αmax , θmax ) to prevent overflow. In summary, the six constrained parameters are: 
+
+p0
+
+|{z} 
+
+> sigmoid( z0)
+
+, w|{z} 
+
+> sigmoid( z1)
+
+, (α1, θ 1)
+
+| {z }
+
+> softplus of ( z2,z 3)
+
+, α2
+
+|{z} 
+
+> α1+softplus( z4)+ δmin
+
+, θ2
+
+|{z} 
+
+> softplus( z5)
+
+. (13) 
+
+3.3.1 Probability density function 
+
+Let Y denote the precipitation amount at a pixel. The predictive distribution is: 
+
+FY (y) = 
+
+
+
+p0, y = 0 ,p0 + (1 − p0)[ w F Γ(y; α1, θ 1) + (1 − w) FΓ(y; α2, θ 2)] , y > 0, (14) where FΓ(y; α, θ ) is the CDF of the Gamma( α, θ ) distribution. The factor (1 − p0) converts the conditional mixture weights ( w, 1 − w) to unconditional probabilities. The density for y > 0 is: 
+
+fY (y) = (1 − p0)[ w f Γ(y; α1, θ 1) + (1 − w) fΓ(y; α2, θ 2)] , (15) with the Gamma PDF: 
+
+fΓ(y; α, θ ) = 1Γ( α) θα yα−1 e−y/θ , y > 0. (16) 
+
+3.3.2 Exceedance probabilities 
+
+For any threshold τ > 0, the exceedance probability follows from (14): 
+
+P (Y > τ ) = (1 − p0)
+
+n
+
+w1 − FΓ(τ ; α1, θ 1) + (1 − w)1 − FΓ(τ ; α2, θ 2)o
+
+. (17) Standard operational thresholds include 0.25, 1.0, 2.5, 5.0, 10.0, and 25.0 mm. The Gamma CDF is evaluated using the regularized incomplete gamma function, which is available in standard nu-merical libraries. 
+
+## 3.4 Loss Function 
+
+The model is trained by minimizing the negative log-likelihood (NLL), which is a strictly proper scoring rule (Gneiting and Raftery, 2007). The NLL was preferred over the Continuous Ranked Probability Score (CRPS), the other common strictly proper scoring rule used in probabilistic post-processing. For the zero-inflated two-component Gamma mixture, the CRPS has no closed-form expression and must be approximated by numerical integration or Monte Carlo sampling of the mixture CDF at many threshold values—an expensive inner loop for every pixel in every mini-batch. In contrast, the Gamma log-PDF has an analytic form (leveraging PyTorch’s torch.lgamma for gradient support), so the NLL can be evaluated exactly in a single vectorized pass. Minimizing the NLL is also equivalent to maximum-likelihood estimation of the distributional parameters, providing a direct link to the parametric model being trained. For a single pixel with observation y and predicted parameters ( p0, w, α 1, θ 1, α 2, θ 2), the NLL is: 14 Case 1: y = 0 (dry observation). 
+
+NLL = − log p0. (18) 
+
+Case 2: y > 0 (wet observation). The NLL decomposes into a zero-inflation term and a mixture term: NLL = − log(1 − p0) − log w f Γ(y; α1, θ 1) + (1 − w) fΓ(y; α2, θ 2), (19) where the first term penalizes assigning too much zero-probability mass when precipitation is ob-served, and the Gamma log-PDF is: log fΓ(y; α, θ ) = ( α − 1) log y − yθ − log Γ( α) − α log θ. (20) The mixture log-likelihood term is evaluated using the log-sum-exp trick for numerical stability: 
+
+− log  wf 1 + (1 − w)f2
+
+ = − log  elog w+ℓ1 + elog(1 −w)+ ℓ2 , (21) where ℓj = log fΓ(y; αj , θ j ). The log Γ( α) term is computed via torch.lgamma , which provides full gradient support. 
+
+Masking. Pixels with poor MRMS radar quality (quality index ≤ 0.01) are assigned a target value of −1 and excluded from the loss computation. 
+
+Batch loss. The overall loss is the mean NLL over all valid pixels in the mini-batch: 
+
+L = 1
+
+|V| 
+
+X
+
+> i∈V
+
+NLL i, (22) where V is the set of valid (non-masked) pixels. 
+
+## 3.5 Climatological Initialization 
+
+Neural network outputs are initially near zero, which after sigmoid/softplus transformations would produce poorly calibrated starting predictions. We initialize the output layer’s biases using clima-tological statistics derived by an Expectation–Maximization (EM) algorithm applied to wet pixels from the training set. This initialization places the network’s predictions close to the marginal climatological distribution from the first forward pass, avoiding the large NLL values that arise when the predicted p0 or the Gamma parameters are far from climatology. The result is noticeably faster convergence: in practice, early-stopping patience is triggered several epochs sooner than with default (near-zero) initialization. 1. Fraction of zeros. Compute ˆ p0, the fraction of valid training pixels with zero precipitation. Set b0 = logit(ˆ p0) ≡ log  ˆp0/(1 − ˆp0).2. Two-component Gamma mixture via EM. Up to 50 000 wet pixels are sub-sampled from the training set and a two-component Gamma mixture is fitted by the EM algorithm (up to 500 iterations, initialized by method of moments). The EM returns mixture weight ˆ w,shape parameters (ˆ α1, ˆα2), and scale parameters ( ˆθ1, ˆθ2), with components ordered so that ˆα1 < ˆα2 (light before heavy). 15 3. Bias initialization. The output layer biases are set via the inverse sigmoid and inverse softplus: 
+
+b0 = logit(ˆ p0), (23) 
+
+b1 = logit( ˆ w), (24) 
+
+b2 = log  eˆα1−αmin − 1, (25) 
+
+b3 = log  eˆθ1−θmin − 1, (26) 
+
+b4 = log  eˆα2− ˆα1−δmin − 1, (27) 
+
+b5 = log  eˆθ2−θmin − 1, (28) where the argument of the log is clamped to be positive before evaluation. The output layer weights are initialized with a small Xavier uniform random initialization. 4. Minimum bounds. αmin = 0 .3 (fixed); θmin = 0 .01 (fixed); δmin = 0 .5 (minimum shape separation enforced by the hard ordering constraint, (11)). 
+
+## 3.6 Training 
+
+3.6.1 Optimization 
+
+Training uses the Adam optimizer (Kingma and Ba, 2015) with a base learning rate of η = 7 ×10 −4,processing batches of 128 samples loaded directly onto the GPU without gradient accumulation. The learning rate is adapted by a PyTorch ReduceLROnPlateau scheduler (reduction factor 0.7, patience 2 epochs) monitoring validation loss. Training halts when validation loss fails to improve for 7 consecutive epochs, up to a maximum of 40 epochs. Gradients are clipped to a maximum norm of 1.0 (when the power transformation is applied) or 2.0 (without) to prevent explosion from the log Γ and logarithm operations. On CUDA (Compute Unified Device Architecture) devices, the forward pass uses bfloat16 precision, which retains the dynamic range of float32, while the NLL loss is evaluated in float32 to avoid numerical instability in the log Γ and logarithm operations. When no checkpoint exists for the target lead time, training warm-starts from the nearest available lead time’s weights. The hyperparameter values above reflect an empirical balance between training speed and fore-cast accuracy. The base learning rate of 7 × 10 −4 was found to converge reliably across lead times without requiring a warm-up schedule; lower values slowed convergence noticeably while higher values occasionally destabilized the NLL loss during early epochs. The ReduceLROnPlateau sched-uler’s patience of 2 tolerates transient validation-loss fluctuations without prematurely decaying the learning rate, while the early-stopping patience of 7 prevents over-fitting when the validation loss plateaus. The batch size of 128 was the largest that fit comfortably in GPU memory while still providing sufficient gradient diversity from the mixed wet/dry training patches; smaller batches increased variance in the gradient estimate and slowed wall-clock convergence. 
+
+3.6.2 Numerical stability 
+
+Several safeguards prevent numerical issues during training: Gamma parameters are clamped: 
+
+α ∈ [αmin , α max ], θ ∈ [θmin , θ max ]. Observations and mixture weights are clamped away from zero before taking logarithms: ysafe = max( y, ϵ ). The per-pixel NLL is capped at NLL max to prevent a single outlier from dominating the batch loss. Stability parameters are automatically adjusted based on the power transformation setting (Table 2). These safeguards are necessary because the 16 two-component Gamma mixture NLL involves several operations that are numerically hazardous in single-precision arithmetic. The log Γ( α) term diverges for large shape parameters, and log y
+
+diverges as y → 0. Without clamping and the log-sum-exp stabilization of (21), a small number of pixels per batch— typically either very heavy convective precipitation or near-zero drizzle—can produce NLL values orders of magnitude larger than the batch mean, destabilizing the optimizer. The per-pixel cap NLL max bounds the influence of such outliers during early training when model parameters are far from their optimum. The power transformation ( p = 0 .5) compresses the range of precipitation values, so tighter clamp bounds and a lower NLL cap suffice; the raw ( p = 1) settings are more permissive to accommodate the wider dynamic range of untransformed heavy-precipitation events. Table 2: Stability parameters as a function of the power transformation exponent p.Parameter p < 1 (transformed) p = 1 (raw) 
+
+ϵ 10 −4 10 −6
+
+αmin 0.3 0.3 
+
+αmax 100 200 
+
+θmin 0.01 0.01 
+
+θmax 100 200 NLL max 100 200 Gradient clip norm 1.0 2.0 
+
+## 3.7 Inference 
+
+Since trainings were available only every three hours from lead times of +3 to +48 h, there were no trainings for many hours, such as hour one of the forecast. The 3-hour training weights whose lead time was nearest to that of the lead time of interest were used, e.g., 3-hour trainings were used for forecasts of lead times +1 to +4 h. The trained Attention Residual U-Net is fully convolutional—it contains no linear or flatten layers, relying entirely on convolutional, pooling, and transposed-convolutional operations. This means the network can accept inputs of arbitrary spatial size at inference time, provided both spatial dimensions are divisible by 2 4 = 16 (the product of the four max-pooling stages in the encoder). Using a domain-wide approach is simpler and faster than patch-based inference: it requires no patch loop, no overlap management, and no weighted blending, and it eliminates seam artifacts that can occur at patch boundaries. For full-domain inference, the CONUS feature tensor (7 × 1308 × 1524) is padded with edge-replication to the nearest multiple of 16 in each spatial dimension (7 × 1312 × 1536) and passed through the model in a single forward pass, producing a 6 × 1312 × 1536 output of raw logits. The output is cropped back to the native 1308 × 1524 domain. The outermost 16 rows and columns of the output are masked as missing, as they are influenced by the replicate-padded region and lack real-data context outside the domain boundary. After the single forward pass, the six raw logit fields are transformed to constrained distribu-tional parameters (sigmoid for p0 and w; softplus with the hard ordering constraint for the Gamma shape and scale parameters), and exceedance probabilities are computed for each threshold τ us-ing (17). 17 4 Reference Standard Probability Forecasts 
+
+To establish a meaningful baseline for evaluating the Attention Residual U-Net, we construct ref-erence probabilistic forecasts directly from the raw GRAF precipitation field by applying Gaussian spatial smoothing. The procedure follows the “neighborhood probability” approach (e.g., Theis et al. , 2005; Schwartz et al. , 2015), in which deterministic model output is convolved with a Gaussian kernel to produce a probabilistic forecast. For a given precipitation threshold τ and forecast date, a binary exceedance field is formed: 
+
+Bτ (r) = 
+
+(
+
+1 if g(r) ≥ τ, 
+
+0 otherwise, (29) where g(r) is the raw GRAF 1-h precipitation at grid point r. The binary field is then convolved with a Gaussian kernel of standard deviation σ:
+
+P στ (r) = 
+
+X
+
+> r′
+
+Bτ (r′) exp 
+
+
+
+− |r−r′|2
+
+> 2σ2
+
+X
+
+> r′
+
+exp 
+
+
+
+− |r−r′|2
+
+> 2σ2
+
+ , (30) yielding the Gaussian-smoothed neighborhood probability at each grid point. Thresholds of τ ∈{0.25 , 1.0, 5.0, 10 .0} mm are evaluated. The smoothing standard deviation σ controls the trade-off between sharpness and calibration: small σ preserves the spatial detail of the GRAF forecast but yields overconfident probabilities clustered near 0 or 1; large σ improves reliability at the expense of spatial resolution. To identify the optimal σ, a range of values σ ∈ { 3, 5, 7, 10 , 15 , 20 , 25 , 30 , 40 , 50 , 60 , 75 } grid points (GRAF’s native grid spacing is ≈4.3 km) were evaluated. For each σ, MRMS observations over a held-out verification period were used to compute reliability diagrams and the Brier Score across all thresholds. The value of σ that produced approximately the best-calibrated reliability curves and the lowest aggregate Brier Score was adopted as the reference standard for subsequent comparisons with the neural network. Using the Gaussian-smoothed GRAF field as a reference is preferable to a raw GRAF exceedance frequency (which would be either 0 or 1 at any single grid point) and avoids the need for ensemble output, which is not available in this single-deterministic-run context. The reference standard therefore reflects the information content of the GRAF forecast itself, and any skill improvement demonstrated by the neural network represents genuine value added by the post-processing. Figure 5 shows reliability diagrams for the 12-h lead time and the 0.25-mm threshold using Jan-Dec 2025 and Gaussian-smoothed GRAF forecasts. For this lead time and threshold, the selected value σ = 15 grid points (Table 3) produces the lowest BS and the most nearly diagonal reliability curve at this lead time. Evaluating other thresholds and lead times, approximately optimal σ were chosen, shown in Table 3. Gaussian-smoothed probability forecasts using these thresholds then become the reference standard for comparisons with the Attention ResUNet. 18 Figure 5: Reliability diagrams for Gaussian-smoothed raw GRAF neighborhood probabilities of exceeding 0.25 mm at 12 h lead time, evaluated over January–December 2025. Each curve corre-sponds to a different Gaussian smoothing standard deviation σ (grid points; GRAF’s native grid spacing is ≈4.3 km); Brier Score (BS) for each σ is shown in the legend. The diagonal dashed line indicates perfect reliability. Table 3: Gaussian smoothing standard deviation σ adopted for the raw-GRAF reference prob-ability forecasts as a function of forecast lead time. σ is given in grid points on GRAF’s na-tive ≈4.3-km grid. Values were selected to minimize the aggregate Brier Score across thresholds 
+
+τ ∈ { 0.25 , 1.0, 5.0, 10 .0} mm over the 2025 verification period. Lead time (h) σ (grid points) 1–12 15 13–30 20 31–48 25 19 5 Verification metrics 
+
+Forecast quality is assessed using MRMS (Multi-Radar Multi-Sensor) radar-derived precipitation as the verification truth. Verification only uses samples where the MRMS hourly quality index is 
+
+≥ 0.5. This will filter out many points in mountainous regions where there may be, for example, radar beam blockage. Standard verification metrics are described in Wilks (2011) and include: 
+
+• Reliability diagrams: Plotting observed frequency against forecast probability for each threshold to assess calibration. 
+
+• Brier Skill Score (BSS): Measuring the fractional improvement over climatological prob-abilities. 1 is the skill of a perfect forecast, 0 is the skill of the reference climatology. 
+
+• Performance diagrams: Jointly displaying the probability of detection and success ratio (1 minus the false alarm ratio) on a single set of axes, with shaded background contours of the critical success index and dashed lines of constant frequency bias (Roebber, 2009). 
+
+# 6 Results 
+
+We start by examining spatial forecast maps for realism. One would expect in these maps that we would see the probabilities in the Attention ResUNet to be linked to terrain variations and to incorporate information not just at individual grid points but from surrounding regions. Figures 6, 7, and 8 provide representative forecast samples. Figure 6 shows a Colorado/New Mexico Front-Range upslope snowstorm case. The Attention ResUNet probabilities in panel (b) show that the largest probabilities are on the eastern side of the Front Range, whereas the smoothed GRAF based probabilities in panel (c) include moderate probabilities on the western side of the Front Range. 
+
+Figure 6: Colorado/New Mexico Front-Range upslope snowstorm case. (a) Raw GRAF 1-h accu-mulated precipitation forecast, (b) Attention ResUNet probability of exceeding 0.25 mm, and (c) Gaussian-smoothed GRAF reference probability. Figure 7 shows an atmospheric river case for Washington State. High probabilities in the Attention ResUNet are more closely linked to the Olympic Peninsula and the Cascade Range, 20 whereas the probability maximum for the smoothed GRAF probabilities is more centered offshore, despite precipitation being forecast to be lighter offshore. This reflects the algorithm performing a sequential binary thresholding and smoothing, not accounting for the amount of precipitation above the threshold. 
+
+Figure 7: Atmospheric river case for Washington State. (a) Raw GRAF 1-h accumulated precipita-tion forecast, (b) Attention ResUNet probability of exceeding 0.25 mm, and (c) Gaussian-smoothed GRAF reference probability. Could the algorithm be applied in Europe, where GRAF also has a 4-km grid? While we do not provide objective verification statistics for Europe in the results presented, Fig. 8 shows an example of a transfer-learning (Pan and Yang, 2010) forecast in Europe using the US-based training. Notice the linkage of higher probabilities to the Italian/Swiss Alps and to the hills in eastern Sardinia, details that are more diffuse with smoothed GRAF. 21 Figure 8: Example Attention ResUNet forecast over a portion of Europe. (a) Raw GRAF 1-h accumulated precipitation forecast, (b) Attention ResUNet probability of exceeding 0.25 mm, and (c) Gaussian-smoothed GRAF reference probability. Figures 9 and 10 provide reliability diagrams for forecasts of +12 h and +48 h, with the panels therein evaluating precipitation exceeding 0.25 mm (0.01 inches, the US probability of precipitation threshold), 1.0 mm, and 5.0 mm. The reliability diagrams were generated from GRAF deterministic forecasts during the months of March, June, September, and December 2025, initialized every 6 hours. Forecasts were evaluated only if the verifying MRMS analysis had quality that exceeded 0.5. Brier Skill Scores (Wilks, 2011) are calculated with respect to a climatological reference standard provided by a climatology generated from the National Centers for Environmental Pre-diction (NCEP) Stage IV (Lin and Mitchell, 2005) hourly high-resolution precipitation analyses using 2020–2024 data. The Stage IV data were bilinearly interpolated to the GRAF grid before computations of skill. Reliability diagrams had largely similar characteristics for other lead times (not shown). These diagrams show that generally both methods are capable of providing reliable hourly forecasts. From the inset frequency-of-use histograms, for the higher thresholds we see that higher-probability forecasts are issued more often from the Attention ResUNet. 22 Figure 9: Reliability diagrams for the Attention ResUNet (blue) and Gaussian-smoothed GRAF reference (red) at 12-h lead time, evaluated over March, June, September, and December 2025. Panels show the probability of exceeding (a) 0.25, (b) 1.0, and (c) 5.0 mm. Brier Skill Scores relative to a Stage IV climatological reference are shown in the legend. The inset histogram shows the frequency of use for each probability bin. The diagonal dashed line indicates perfect reliability. 
+
+Figure 10: As in Fig. 9, but for 48-h lead time. Figure 11 shows the Brier Skill scores as a function of lead time, now stratified by local terrain roughness rather than by CONUS/western-US geography. Roughness is defined from the GRAF terrain-height field as a local standard deviation, computed using the Gaussian-moments identity 
+
+σlocal = pGσ(h2) − Gσ(h)2, where h is terrain height and Gσ denotes Gaussian smoothing with 
+
+σ = 14 grid points ( ≈60 km on GRAF’s ∼4.3-km grid). The “top 10%” terrain category comprises the grid points whose local standard deviation exceeds the 90th percentile of this quantity computed over all finite terrain points in the GRAF domain; the remaining points form the “bottom 90%” category. This is a substantially more direct measure of complex terrain than the West-of-105 ◦Wcriterion used earlier, and it reveals that the Attention ResUNet’s advantage over the Gaussian-smoothed GRAF reference is concentrated in the roughest terrain: at every lead time and threshold, the BSS gap between the two forecasts is larger in the top-10% category than in the bottom-90% 23 category. This gap is most pronounced for the 5 mm exceedance threshold (Figs. 11e,f), where the Attention ResUNet retains a BSS of roughly 0.10–0.20 over rough terrain through 48 h, 25–55% higher than the reference forecast’s skill there depending on lead time, while over smoother terrain the two forecasts are closer together and both decay to a BSS below 0.10 by 48 h. The improvement over the reference forecast is smaller, though still consistent, for the 0.25 and 1.0 mm thresholds. 
+
+Figure 11: Brier Skill Score as a function of lead time for the Attention ResUNet (blue) and Gaussian-smoothed GRAF reference (red), stratified by local terrain roughness: (a,c,e) the top 10% roughest terrain and (b,d,f) the remaining bottom 90% of terrain, as defined in the text. Rows show results for precipitation thresholds of (a,b) 0.25 mm, (c,d) 1.0 mm, and (e,f) 5.0 mm. Performance diagrams (Roebber, 2009) provide a complementary view of forecast quality by jointly displaying the probability of detection (POD) and success ratio (SR, equal to 1 minus the false alarm ratio), with shaded background contours of the critical success index (CSI) and dashed lines of constant frequency bias. For each of the top-10% and bottom-90% terrain categories defined above, curves are constructed by treating each of the 11 saved forecast-probability bins (0, 10, 20, . . . , 100%) as a probability threshold above which the forecast is counted as “yes,” and cumulating hit, false-alarm, and miss counts from that bin through the highest bin. Figures 12 and 13 show these diagrams for the 0.25 and 5 mm thresholds, respectively, with curves for the 24 Attention ResUNet and Gaussian-smoothed GRAF reference at 6-, 24-, and 48-h lead times plotted together (distinguished by line style) on the same axes. For the 0.25 mm threshold, both forecasts trace out smooth, well-behaved curves, with the Attention ResUNet consistently shifted toward higher POD and higher SR (i.e., toward the upper right, higher-CSI corner of the diagram) than the reference forecast at every lead time, and with the top-10% terrain category again showing the larger separation between the two forecasts. For the 5 mm threshold, the highest forecast-probability bins (above 50%) are used so rarely, particularly by the reference forecast over the top-10% roughest terrain, that the resulting points are dominated by sampling noise and produce a non-monotonic curve; those points (bins above 50% forecast probability) are therefore omitted from Fig. 13. Even with this truncation, the same pattern seen in the BSS results is evident: the Attention ResUNet maintains a higher POD than the reference forecast for a given SR at all three lead times, and the advantage is again largest over the top-10% roughest terrain. 
+
+Figure 12: Performance diagrams (probability of detection vs. success ratio, with shaded critical success index and dashed frequency-bias contours) for the 0.25 mm exceedance threshold, for (a) the top 10% roughest terrain and (b) the bottom 90% of terrain. Curves show the Attention ResUNet (blue) and Gaussian-smoothed GRAF reference (red) at 6-h (solid), 24-h (dashed), and 48-h (dotted) lead times, with each curve built by cumulating contingency-table counts across forecast-probability bins from 0 to 100% in 10% increments. 25 Figure 13: As in Fig. 12, but for the 5 mm exceedance threshold. Forecast-probability bins above 50% are omitted because they are used too rarely at this threshold, particularly by the reference forecast over the top-10% roughest terrain, for the resulting POD/SR estimates to be statistically meaningful. 
+
+# 7 Summary 
+
+We have described a probabilistic precipitation forecasting algorithm for the statistical postpro-cessing of deterministic forecast model output, in this case applied to 4-km deterministic forecast guidance produced by TWCo’s GRAF model, based on the MPAS system. This method uses an Attention Residual U-Net to produce at each point a probability distribution from a zero-inflated mixture of two Gamma distributions. Key design choices include: 
+
+• A two-component Gamma mixture that accommodates both stratiform and convective pre-cipitation modes within a single parametric framework, with a hard shape-ordering constraint to prevent label switching between components. 
+
+• Attention gates that allow the decoder to focus on the most informative encoder features at each spatial location, suppressing irrelevant dry-region activations and providing orographi-cally selective skip connections. 
+
+• A power transformation of the input precipitation field for variance stabilization. 
+
+• EM-based climatological initialization of the output layer biases, fitting a two-component Gamma mixture to wet training pixels for stable, physically grounded convergence. 
+
+• Single-pass full-domain inference : the fully convolutional network processes the entire CONUS domain in a single forward pass after edge-replication padding, eliminating patch-boundary artifacts. 26 • A Gaussian-smoothed GRAF reference standard produced by convolving the raw deterministic forecast’s binary exceedance field with the optimal Gaussian kernel, providing a calibrated single-model baseline for skill assessment. The NLL loss function is a proper scoring rule, ensuring that the model is incentivized to produce well-calibrated and sharp probabilistic forecasts. Several future improvements of this basic system and further validation are possible but were not performed here. The statistical characteristics of precipitation forecasts over Europe were not examined, in part because there is no one convenient data set that we are aware of with the characteristics of the US MRMS data, synthesizing model, radar, and surface observations, with extensive quality control. Another deficiency is that because of the limited GRAF data saved (hourly forecast precipitation four times daily, but no other forecast fields, nor data from the every-hour production of GRAF), we were missing other helpful predictive features such as column relative humidity directly from GRAF, or the use of lagged ensemble forecasts to improve the potential predictive skill, understanding what features were consistent from run to run and which differed. These deficiencies, time permitting, may be addressed in future work, or the method may be applied to other models with richer training data sets. Finally, it’s likely the training procedure could be improved, for example with training methods like FiLM (Perez et al. , 2017) to still extract lead-time dependent skill with training data pooled over multiple lead times. 
+
+# Acknowledgments 
+
+Trevor Alcott is thanked for his comprehensive internal review of this manuscript. 
+
+# References 
+
+Benjamin, S. G., and Coauthors, 2016: A North American hourly assimilation and model forecast cycle: The Rapid Refresh. Mon. Wea. Rev. , 144 , 1669–1694, doi:10.1175/MWR-D-15-0242.1. Badrinath, A., L. Delle Monache, N. Hayatbini, W. E. Chapman, F. Cannon, and F. M. Ralph, 2023: Improving precipitation forecasts with convolutional neural networks. Wea. Forecasting ,
+
+38 , 291–306, doi:10.1175/WAF-D-22-0002.1. Bartlett, M. S., 1936: The square root transformation in analysis of variance. J. Roy. Statist. Soc. Suppl. , 3, 68–78. Ben Bouall` egue, Z., 2013: Calibrated short-range ensemble precipitation forecasts using extended logistic regression with interaction terms. Wea. Forecasting , 28 , 515–524, doi:10.1175/WAF-D-12-00062.1. Bentzien, S., and P. Friederichs, 2012: Generating and calibrating probabilistic quantitative pre-cipitation forecasts from the high-resolution NWP model COSMO-DE. Wea. Forecasting , 27 ,988–1002, doi:10.1175/WAF-D-11-00101.1. Carter, G. M., J. P. Dallavalle, and H. R. Glahn, 1989: Statistical forecasts based on the National Meteorological Center’s numerical weather prediction system. Wea. Forecasting , 4, 401–412. 27 Chapman, W. E., L. Delle Monache, S. Alessandrini, A. C. Subramanian, F. M. Ralph, S.-P. Xie, S. Lerch, and N. Hayatbini, 2022: Probabilistic predictions from deterministic atmospheric river forecasts with deep learning. Mon. Wea. Rev. , 150 , 215–234, doi:10.1175/MWR-D-21-0106.1. Cross, R. N., and D. S. LaDue, 2021: When uncertainty is certain: A nuanced trust between emergency managers and forecast information in the southeastern United States. Wea. Climate Soc. , 13 , 137–146, doi:10.1175/WCAS-D-20-0017.1. Clough, S. A., M. W. Shephard, E. J. Mlawer, J. S. Delamere, M. J. Iacono, K. Cady-Pereira, S. Boukabara, and P. D. Brown, 2005: Atmospheric radiative transfer modeling: A summary of the AER codes. J. Quant. Spectrosc. Radiat. Transfer , 91 , 233–244. Dowell, D. C., and Coauthors, 2022: The High-Resolution Rapid Refresh (HRRR): An hourly updating convective-allowing forecast model. Part I: Motivation and system description. Wea. Forecasting , 37 , 1371–1395, doi:10.1175/WAF-D-21-0151.1. Ek, M. B., K. E. Mitchell, Y. Lin, E. Rogers, P. Grunmann, V. Koren, G. Gayno, and J. D. Tarpley, 2003: Implementation of Noah land surface model advances in the National Centers for Environmental Prediction operational mesoscale Eta model. J. Geophys. Res. , 108 , 8851, doi:10.1029/2002JD003296. Ghazvinian, M., Y. Zhang, T. M. Hamill, D. K. Seo, and N. Fernando, 2022: Improving probabilistic quantitative precipitation forecasts using short training data through artificial neural networks. 
+
+J. Hydrometeor. , 23 , 1365–1382, doi:10.1175/JHM-D-22-0021.1. Glahn, H. R., and D. A. Lowry, 1972: The use of model output statistics (MOS) in objective weather forecasting. J. Appl. Meteor. , 11 , 1203–1211, doi:10.1175/1520-0450(1972)011 <1203:TUOMOS >2.0.CO;2. Gneiting, T., and A. E. Raftery, 2007: Strictly proper scoring rules, prediction, and estimation. J. Amer. Statist. Assoc. , 102 , 359–378. Ha, S., and Coauthors, 2022: Joint Effort for Data Assimilation Integration (JEDI-MPAS 1.0.0): EnVar implementation and evaluation. Geosci. Model Dev. , 15 , 7859–7876, doi:10.5194/gmd-15-7859-2022. Hamill, T. M., J. S. Whitaker, and X. Wei, 2004: Ensemble reforecasting: Improving medium-range forecast skill using retrospective forecasts. Mon. Wea. Rev. , 132 , 1434–1447. Hamill, T. M., E. Engle, D. Myrick, M. Peroutka, C. Finan, and M. Scheuerer, 2017: The U.S. National Blend of Models for statistical postprocessing of probability of precipitation and deter-ministic precipitation amount. Mon. Wea. Rev. , 145 , 3441–3463. Hamill, T. M., and M. Scheuerer, 2018: Probabilistic precipitation forecast postprocessing using quantile mapping and rank-weighted best-member dressing. Mon. Wea. Rev. , 146 , 4079–4098. Hamill, T. M., R. R. P. Kumar, K. Kashinath, C. Ponder, M. Pritchard, T. Ge, A. Subramanian, J. Pathak, J. Wong, B. Wilt, and P. Neilley, 2025: Global reforecasts from MPAS GRAF with mesh refinement over the US and Europe. Manuscript in preparation. He, K., X. Zhang, S. Ren, and J. Sun, 2016: Deep residual learning for image recognition. Proc. IEEE Conf. Comput. Vis. Pattern Recognit. , 770–778. 28 Heggli, A., B. Hatchett, Z. Tolby, K. Lambrecht, M. Collins, L. Olman, and M. Jeglum, 2023: Visual communication of probabilistic information to enhance decision support. Bull. Amer. Meteor. Soc. , 104 , E1533–E1551, doi:10.1175/BAMS-D-22-0220.1. Hong, S.-Y., Y. Noh, and J. Dudhia, 2006: A new vertical diffusion package with an explicit treatment of entrainment processes. Mon. Wea. Rev. , 134 , 2318–2341, doi:10.1175/MWR3199.1. Hong, S.-Y., and J.-O. J. Lim, 2006: The WRF single-moment 6-class microphysics scheme (WSM6). J. Korean Meteor. Soc. , 42 , 129–151. Hoss, F., and P. Fischbeck, 2016: Increasing the value of uncertain weather and river forecasts for emergency managers. Bull. Amer. Meteor. Soc. , 97 , 85–97, doi:10.1175/BAMS-D-13-00275.1. Hu, W., M. Ghazvinian, W. E. Chapman, A. Sengupta, and F. M. Ralph, 2023: Deep learning forecast uncertainty for precipitation over the western United States. Mon. Wea. Rev. , 151 ,1367–1385, doi:10.1175/MWR-D-22-0268.1. Ioffe, S., and C. Szegedy, 2015: Batch normalization: Accelerating deep network training by reduc-ing internal covariate shift. Proc. 32nd Int. Conf. Mach. Learn. , 448–456. Kingma, D. P., and J. Ba, 2015: Adam: A method for stochastic optimization. Proc. 3rd Int. Conf. Learn. Represent. 
+
+LeCun, Y., L. Bottou, Y. Bengio, and P. Haffner, 1998: Gradient-based learning applied to docu-ment recognition. Proc. IEEE , 86 , 2278–2324, doi:10.1109/5.726791. Lin, Y., and K. E. Mitchell, 2005: The NCEP Stage II/IV hourly precipitation analyses: Develop-ment and applications. Preprints, 19th Conf. on Hydrology , San Diego, CA, Amer. Meteor. Soc., 1.2. Lorenc, A. C., 1986: Analysis methods for numerical weather prediction. Quart. J. Roy. Meteor. Soc. , 112 , 1177–1194, doi:10.1002/qj.49711247414. Messner, J. W., and G. J. Mayr, 2014: Heteroscedastic extended logistic regression for postpro-cessing of ensemble guidance. Mon. Wea. Rev. , 142 , 448–456, doi:10.1175/MWR-D-13-00271.1. Mlawer, E. J., S. J. Taubman, P. D. Brown, M. J. Iacono, and S. A. Clough, 1997: RRTM, a validated correlated-k model for the longwave. J. Geophys. Res. , 102 , 16 663–16 682. Murphy, A. H., 1993: What is a good forecast? An essay on the nature of goodness in weather forecasting. Wea. Forecasting , 8, 281–293, doi:10.1175/1520-0434(1993)008 <0281:WIAGFA >2.0.CO;2. Pan, S. J., and Q. Yang, 2010: A survey on transfer learning. IEEE Trans. Knowl. Data Eng. , 22 ,1345–1359, doi:10.1109/TKDE.2009.191. Oktay, O., and Coauthors, 2018: Attention U-Net: Learning where to look for the pancreas. arXiv preprint arXiv:1804.03999 .Park, J., M. Xue, and C. Liu, 2023: Implementation and testing of radar data assimilation ca-pabilities within the Joint Effort for Data Assimilation Integration framework with Ensemble Transformation Kalman Filter coupled with FV3-LAM model. J. Adv. Model. Earth Syst. , 15 ,e2022MS003504, doi:10.1029/2022MS003504. 29 Perez, E., F. Strub, H. De Vries, V. Dumoulin, and A. Courville, 2017: FiLM: Visual reasoning with a general conditioning layer. arXiv preprint , arXiv:1709.07871. Radford, J. T., G. M. Lackmann, J. Goodwin, J. Correia, and K. Harnos, 2023: An itera-tive approach toward development of ensemble visualization techniques for high-impact winter weather hazards. Part II: Product evaluation. Bull. Amer. Meteor. Soc. , 104 , E1649–E1669, doi:10.1175/BAMS-D-22-0193.1. Raftery, A. E., 2016: Use and communication of probabilistic forecasts. Stat. Anal. Data Min.: ASA Data Sci. J. , 9, 397–410, doi:10.1002/sam.11302. Ripberger, J., A. Bell, A. Fox, A. Forney, W. Livingston, C. Gaddie, C. Silva, and H. Jenkins-Smith, 2022: Communicating probability information in weather forecasts: Findings and recommenda-tions from a living systematic review of the research literature. Wea. Climate Soc. , 14 , 481–498, doi:10.1175/WCAS-D-21-0034.1. Roberts, N. M., and H. W. Lean, 2008: Scale-selective verification of rainfall accumula-tions from high-resolution forecasts of convective events. Mon. Wea. Rev. , 136 , 78–97, doi:10.1175/2007MWR2123.1. Roebber, P. J., 2009: Visualizing multiple measures of forecast quality. Wea. Forecasting , 24 ,601–608, doi:10.1175/2008WAF2222159.1. Ronneberger, O., P. Fischer, and T. Brox, 2015: U-Net: Convolutional networks for biomedical image segmentation. Proc. Med. Image Comput. Comput.-Assisted Intervention , 234–241. Scheuerer, M., 2014: Probabilistic quantitative precipitation forecasting using ensemble model output statistics. Quart. J. Roy. Meteor. Soc. , 140 , 1086–1096, doi:10.1002/qj.2183. Scheuerer, M., and T. M. Hamill, 2015: Statistical postprocessing of ensemble precipitation fore-casts by fitting censored, shifted gamma distributions. Mon. Wea. Rev. , 143 , 4578–4596. Schwartz, C. S., G. S. Romine, R. A. Sobash, K. R. Fossell, and M. L. Weisman, 2015: NCAR’s experimental real-time convection-allowing ensemble prediction system. Wea. Forecasting , 30 ,1645–1654, doi:10.1175/WAF-D-15-0103.1. Schwartz, C. S., and R. A. Sobash, 2017: Generating probabilistic forecasts from convection-allowing ensembles using neighborhood approaches: A review and recommendations. Mon. Wea. Rev. , 145 , 3397–3418, doi:10.1175/MWR-D-16-0400.1. Skamarock, W. C., J. B. Klemp, M. G. Duda, L. D. Fowler, S. Park, and T. D. Ringler, 2012: A multiscale nonhydrostatic atmospheric model using centroidal Voronoi tesselations and C-grid staggering. Mon. Wea. Rev. , 140 , 3090–3105. Sloughter, J. M., A. E. Raftery, T. Gneiting, and C. Fraley, 2007: Probabilistic quantitative precipitation forecasting using Bayesian model averaging. Mon. Wea. Rev. , 135 , 3209–3220, doi:10.1175/MWR3441.1. Theis, S. E., A. Hense, and U. Damrath, 2005: Probabilistic precipitation forecasts from a determin-istic model: A pragmatic approach. Meteor. Appl. , 12 , 257–268, doi:10.1017/S1350482705001763. Tr´ emolet, Y., and T. Aulign´ e, 2020: The Joint Effort for Data Assimilation Integration (JEDI). 
+
+JCSDA Quarterly , No. 66, Joint Center for Satellite Data Assimilation, 2–7, doi:10.25923/5488-8860. 30 Wang, W., 2022: Forecasting convection with a “scale-aware” Tiedtke cumulus parameterization scheme at kilometer scales. Wea. Forecasting , 37 , 1491–1507. Wilks, D. S., 2011: Statistical Methods in the Atmospheric Sciences , 3rd ed. Academic Press, 676 pp. Zhang, J., and Coauthors, 2016: Multi-Radar Multi-Sensor (MRMS) quantitative precipitation estimation: Initial operating capabilities. Bull. Amer. Meteor. Soc. , 97 , 621–638. 31

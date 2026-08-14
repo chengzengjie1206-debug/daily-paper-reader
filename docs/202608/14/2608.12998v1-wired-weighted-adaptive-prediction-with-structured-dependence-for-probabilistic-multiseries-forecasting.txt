@@ -1,0 +1,358 @@
+Title: WIRED: Weighted Adaptive Prediction with Structured Dependence for Probabilistic Multiseries Forecasting
+
+URL Source: https://arxiv.org/pdf/2608.12998v1
+
+Published Time: Fri, 14 Aug 2026 00:55:10 GMT
+
+Number of Pages: 14
+
+Markdown Content:
+# WIRED: Weighted Adaptive Prediction with Structured Dependence for Probabilistic Multiseries Forecasting 
+
+Giancarlo Vercellino 
+
+giancarlo.vercellino@gmail.com 
+
+August 13, 2026 
+
+Abstract 
+
+This paper presents WIRED, an R package algorithm for joint probabilistic forecasting of multiple related time series. WIRED combines a library of simple marginal predictive distribu-tions, CRPS-based adaptive mixture weights, and a Gaussian or Student t copula for cross-series simulation. We evaluate the implementation in a benchmark with four synthetic data-generating processes (DGPs), three forecast horizons, 30 replicates per DGP-horizon pair, nine ablations and external baselines, and a rolling-origin study on the built-in EuStockMarkets data. The central contribution is architectural and diagnostic. WIRED separates adaptive marginal ex-pert aggregation from dependence reconstruction; the benchmark supports explicit dependence modeling, but shows that the current CRPS-extrapolated softmax weighting is not yet robust enough to dominate simpler bootstrap or equal-weight alternatives. The paper therefore identi-fies a working layer of the design, a bottleneck in the marginal aggregation layer, and a concrete research path for more regularized probabilistic ensemble construction. 
+
+Keywords: probabilistic forecasting; forecast combination; CRPS; copulas; multivariate time series; R package. 
+
+# 1 Introduction 
+
+Forecast users often need more than point forecasts. In planning, finance, supply chains, capacity management, and monitoring systems, the object of interest is a joint distribution over several future quantities. Marginal uncertainty matters, but so does dependence: simultaneous stress events, offsetting moves, and tail co-movement can change decisions even when univariate forecast accuracy is unchanged. WIRED addresses this setting with a modular design. It treats each series and horizon as a marginal probabilistic forecasting problem, combines several simple predictive distributions us-ing recent scoring evidence, and imposes cross-sectional coherence with an adaptive copula. The forecast-combination design follows the long-standing evidence that mixtures of simple forecasts can be more robust than selecting a single model [1, 2]. The goal is pragmatic: preserve the ro-bustness and interpretability of simple forecasters while producing simulation draws that can be used directly for scenario analysis. This paper makes three primary contributions. First, it gives a modular architecture for mul-tivariate probabilistic forecasting that separates marginal model uncertainty from cross-series de-pendence uncertainty: forecast experts → marginal mixture → adaptive copula → joint scenarios .
+
+1arXiv:2608.12998v1 [stat.ME] 13 Aug 2026 Second, it evaluates dependence reconstruction as a separate forecasting component by comparing structured copula draws with independent sampling of the same WIRED marginals. Third, it reports a deliberately mixed ablation study showing that the dependence layer is useful, while the current adaptive marginal weighting rule requires stronger regularization or bootstrap-aware alternatives. 
+
+# 2 Problem Setup 
+
+Let {yt}Tt=1 be a p-dimensional positive level process, where yt = ( yt1, . . . , y tp )⊤. For a horizon h,WIRED models a transformed future movement 
+
+xt+h,j =
+
+
+
+yt+h,j − yt,j , additive ,yt+h,j /y t,j − 1, multiplicative ,
+
+log( yt+h,j /y t,j ), log-multiplicative .
+
+(1) The fitted object provides samplers and distribution functions on the transformed scale and, when requested, on the level scale. For a fixed horizon, the target is a joint predictive distribution 
+
+Fh(x1, . . . , x p | y1: T ) (2) with useful marginal calibration and a dependence structure suitable for simulation. 
+
+# 3 Algorithm 
+
+Canonical WIRED procedure Inputs. A p-variate level panel y1: T ; forecast horizon(s) h ∈ H; number of joint draws M ;transformation mode; marginal expert library; CRPS backtest settings; dependence metric; copula and correlation-adaptation controls. 
+
+Outputs. Marginal predictive distributions; joint transformed-scale and level-scale draws; adaptive mixture weights; dependence metadata; diagnostic tables and plots. 1. Transform. For each horizon h, convert levels into horizon-aligned movements xt+h,j on the additive, multiplicative, or log-multiplicative scale. 2. Fit marginals. For each series and horizon, fit the candidate forecasting library and estimate recent CRPS histories by expanding-window backtests. 3. Weight experts. Extrapolate each candidate’s next-window CRPS and convert the predicted scores into temperature-scaled mixture weights. 4. Estimate dependence. Align transformed historical moves, estimate a static, rolling, EWMA, or regime-adaptive correlation matrix, then shrink and repair it for copula sim-ulation. 5. Sample scenarios. Draw uniforms from the Gaussian or Student t copula, map them through marginal mixture quantiles, and invert the transformation to return coherent level paths. 
+
+y1: T → { xt+h,j } → { Fj,h } → Ch → { X(m) 
+
+> h
+
+}Mm=1 → { ˜y(m) 
+
+> T+h
+
+}Mm=1 .
+
+2Table 1: Core WIRED notation. Symbol Meaning 
+
+y1: T Observed multivariate level history through time T .
+
+yt p-dimensional level vector observed at time t.
+
+p Number of component series in the panel. 
+
+h ∈ H Forecast horizon and set of horizons requested by the user. 
+
+M Number of joint predictive draws to simulate. 
+
+xt+h,j Horizon-h transformed movement for series j.
+
+Fj,h Marginal predictive distribution for series j at horizon h.
+
+Ch Gaussian or Student t copula used to couple the horizon-h marginals. 
+
+X(m) 
+
+> h
+
+Simulated transformed-scale joint draw m at horizon h.˜y(m)  
+
+> T+h
+
+Simulated level-scale scenario m for time T + h.
+
+# 4 Algorithmic Components 
+
+4.1 Marginal Forecast Library 
+
+For each series j and horizon h, WIRED constructs a candidate library of eight predictive distri-butions: 1. a naive PERT distribution centered on the most recent transformed move; 2. an automatic ARIMA forecast distribution [4]; 3. an exponentially weighted moving-average Gaussian forecaster; 4. a historical bootstrap over horizon-aligned moves; 5. a drift plus residual bootstrap; 6. a volatility-scaled naive Gaussian forecaster; 7. a robust median/MAD forecaster with Laplace or Gaussian shape; and 8. a shrunk quantile-regression forecaster [5]. Each candidate exposes a random sampler r(·), density f (·), cumulative distribution F (·), and quantile function Q(·). 
+
+4.2 CRPS-Weighted Mixture 
+
+The continuous ranked probability score is a strictly proper scoring rule for univariate predictive distributions [6, 7]. For a sample forecast X1, . . . , X m and realization z, WIRED estimates CRPS as 
+
+\CRPS( X, z ) = 1
+
+m
+
+> m
+
+X
+
+> i=1
+
+|Xi − z| − 12m2
+
+> m
+
+X
+
+> i=1
+> m
+
+X
+
+> k=1
+
+|Xi − Xk|. (3) For each candidate forecaster, expanding-window backtests produce a recent CRPS series. A robust Theil-Sen style slope estimate extrapolates the next-window score, producing predicted scores ˆ s1: K .3WIRED converts these predicted scores into mixture weights 
+
+wk = exp( −ˆsk/τ )
+
+PKℓ=1 exp( −ˆsℓ/τ ) , (4) where τ is a data-adaptive temperature, defaulting to the empirical standard deviation of the predicted scores. This rule has the same exponential-weight form used in finite-expert prediction [3], but here the losses are predicted proper scores rather than accumulated realized losses. The same weights can be read as the solution of a simple entropy-regularized linear loss problem. If ∆ K = {w ∈ RK 
+
+> +
+
+: PKk=1 wk = 1 } and the predicted losses ˆ s1: K are fixed, then 
+
+w = arg min 
+
+> v∈∆K
+
+( KX
+
+> k=1
+
+vk ˆsk + τ
+
+> K
+
+X
+
+> k=1
+
+vk log vk
+
+)
+
+. (5) The first term favors components with lower predicted CRPS, while the entropy term keeps weights from collapsing too sharply. This interpretation is useful but modest: the empirical issue is whether the predicted scores are accurate enough for the regularized softmax rule to improve on simpler alternatives. The marginal predictive distribution is 
+
+Fj (x) = 
+
+> K
+
+X
+
+> k=1
+
+wkFjk (x). (6) Mixture quantiles are computed by monotone numerical inversion of the mixture CDF. 
+
+4.3 Structured Dependence 
+
+After fitting marginal mixtures, WIRED estimates a correlation prototype from aligned transformed histories. Copulas provide a convenient way to separate marginal predictive calibration from cross-series dependence modeling [8, 9]. Let Zh be the matrix of aligned historical horizon-h movements used for dependence estimation. The user may choose Pearson correlation or rank correlations mapped to the latent elliptical correlation scale: 
+
+bRij =
+
+bρPij , Pearson ,
+
+sin( πbτij /2) , Kendall ,
+
+2 sin( πbρSij /6) , Spearman ,
+
+(7) where bρPij , bτij , and bρSij are the empirical Pearson, Kendall, and Spearman correlations of columns 
+
+i and j of Zh. This mapping is the standard conversion from rank dependence to the Gaussian or Student t copula correlation parameter. The Student t option is motivated by dependence modeling in settings where joint tail behavior matters [10]. The implementation supports four adaptation modes: 
+
+• static: estimate one correlation matrix from all aligned history; 
+
+• rolling: estimate correlation over the latest window; 
+
+• EWMA: update second moments with exponential decay; and 
+
+• regime: blend calm and stress correlation matrices using a smooth stress score. 4In regime mode, WIRED forms a smoothed stress score st from recent average absolute transformed moves, estimates Rcalm from low-stress rows and Rstress from high-stress rows, and blends them as 
+
+Rreg = (1 − ωT )Rcalm + ωT Rstress , ωT = {1 + exp[ −k(sT − c)] }−1, (8) where c is the midpoint between the calm and stress stress-score thresholds and k controls the sharpness of the transition. The selected matrix is then shrunk toward the identity, 
+
+Rα = (1 − α) bR + αI p, (9) and repaired by flooring very small eigenvalues before rescaling to a unit-diagonal correlation ma-trix. A Gaussian or Student t copula generates uniforms U1: p, which are mapped through marginal quantile functions: 
+
+Xj = Qj (Uj ), j = 1 , . . . , p. (10) The same uniforms can be mapped through transformed-scale and level-scale quantile functions, giving coherent scenario draws. 
+
+# 5 Software Interface 
+
+The package exports a single main function: 
+
+wired(ts_set, future, dates = NULL, mode = c("additive", "multiplicative", "log_multiplicative"), n_testing = 30, dep_metric = c("kendall", "spearman", "pearson"), corr_adapt = c("static", "ewma", "rolling", "regime"), copula = c("gaussian", "t"), ...) 
+
+The return value includes per-horizon fitted components, joint samplers on transformed and level scales, a recorded base R forecast plot, and metadata describing dependence and copula controls. A minimal workflow is: 
+
+set.seed(1) ts_set <- data.frame( A = 100 + cumsum(rnorm(240, 0, 1)), B = 90 + cumsum(rnorm(240, 0, 1)), C = 80 + cumsum(rnorm(240, 0, 1)) )fit <- wired(ts_set, future = 3, mode = "additive", corr_adapt = "rolling", copula = "t", n_testing = 2, n_crps_mc = 50, q_grid_size = 100) draws <- fit$rfun_level(512) # array: horizon x draw x series str(fit$meta) 
+
+The package imports forecast , quantreg , MASS , mc2d , and imputeTS ; it is licensed under GPL-3. 56 Benchmark Design 
+
+6.1 Synthetic Data-Generating Processes 
+
+The synthetic benchmark uses four positive-level multiplicative-growth data-generating processes (DGPs): regime heavy tail , static gaussian , break correlation , and independent series .Each replicate contains p = 4 series and 240 training observations. Let 
+
+μ = (0 .00035 , 0.00020 , 0.00010 , −0.00005) ⊤, y1 = (100 , 90 , 80 , 110) ⊤.
+
+All four DGPs evolve as 
+
+yt,j = yt−1,j (1 + gt,j ), (11) where gt,j is clipped below at −0.20 only to avoid impossible negative levels. The growth laws are 
+
+static gaussian : gt ∼ N (μ, D sRsDs), Ds = diag(0 .0060 , 0.0050 , 0.0045 , 0.0040) ,
+
+(Rs)ij = 0 .45 for i̸ = j;
+
+independent series : gt,j = μj + σj ϵt,j , ϵt,j iid 
+
+∼ t7, σ = (0 .0060 , 0.0050 , 0.0045 , 0.0040); 
+
+break correlation : gt = μ + 0 .0006 sin(2 πt/ 36) 1 + zt, zt ∼ N (0 , D qRqDq),
+
+where q = pre until t > ⌊0.72 T ⌋ and q = post afterwards. In this DGP, 
+
+Dpre = diag(0 .0045 , 0.0040 , 0.0038 , 0.0035) , Dpost = diag(0 .0090 , 0.0080 , 0.0070 , 0.0065) ,Rpre =
+
+
+
+1 0.10 −0.05 0.05 0.10 1 0.12 −0.10 
+
+−0.05 0.12 1 0.08 0.05 −0.10 0.08 1
+
+ , (Rpost )ij = 0 .70 for i̸ = j. 
+
+Finally, regime heavy tail uses a Markov stress state St ∈ { 0, 1} with Pr( St = 1 | St−1 = 0) = 0.08 and Pr( St = 1 | St−1 = 1) = 0 .65: 
+
+gt = μ + 0 .0008 sin(2 πt/ 48) 1 + aSt λSt Ft + bSt ϵt,
+
+where Ft ∼ tνSt , ϵt,j iid 
+
+∼ tνSt +2 , ν0 = 9, ν1 = 4, ( a0, b 0) = (0 .0035 , 0.0015), ( a1, b 1) = (0 .011 , 0.0040), 
+
+λ0 = (0 .65 , 0.45 , 0.15 , −0.25) ⊤, and λ1 = (1 .15 , 0.95 , 0.70 , 0.40) ⊤. Table 2 gives the benchmark configuration. 
+
+6.2 Forecast Variants 
+
+The benchmark compares nine variants: 
+
+• WIRED-full : CRPS-weighted WIRED marginals, regime-adaptive rank dependence, shrink-age repair, and Student t copula; 
+
+• No tail copula : same marginals and correlation matrix, but Gaussian copula; 
+
+• Static dependence : same marginals and Student t copula, but static correlation; 
+
+• Rolling dependence : same marginals and Student t copula, but rolling correlation; 
+
+• Independent marginals : same WIRED marginals, sampled independently; 6Table 2: Benchmark configuration. Setting Value Mode paper Synthetic DGPs regime heavy tail; static gaussian; break correlation; independent series Replicates per DGP-horizon 30 Horizons 1, 3, 6 Real-data origins/horizons 8 origins; 1, 5, 20 Training length 240 Series dimension 4Evaluation draws 384 Forecast draws 512 Expanding-window CRPS points 2CRPS Monte Carlo draws 64 Mixture quantile grid 140 
+
+• Equal weights : same candidate library and full dependence layer, but uniform marginal mixture weights; 
+
+• ARIMA independent : independent automatic ARIMA marginals; 
+
+• Bootstrap independent : independent historical-bootstrap marginals; and 
+
+• Gaussian copula bootstrap : historical-bootstrap marginals coupled by a static Gaussian copula. 
+
+6.3 Real-Data Rolling-Origin Study 
+
+As a small real-data check, we use the built-in R EuStockMarkets data, containing daily DAX, SMI, CAC, and FTSE levels. Forecasts are evaluated at eight rolling origins and horizons 1, 5, and 20. This benchmark is intentionally modest, but it provides a non-synthetic check without requiring external data downloads. 
+
+6.4 Scoring Rules 
+
+Let X1, . . . , X m be joint forecast draws and y the realized vector. The sample energy score is a multivariate generalization of CRPS for ensemble-style predictive samples [11]: 
+
+cES( X, y ) = 1
+
+m
+
+> m
+
+X
+
+> i=1
+
+∥Xi − y∥2 − 12m2
+
+> m
+
+X
+
+> i=1
+> m
+
+X
+
+> k=1
+
+∥Xi − Xk∥2. (12) The variogram score of order r = 1 /2 is estimated as a dependence-sensitive proper score based on pairwise component differences [12]: 
+
+cVS( X, y ) = X
+
+> a<b
+
+|ya − yb|r − 1
+
+m
+
+> m
+
+X
+
+> i=1
+
+|Xia − Xib |r
+
+!2
+
+. (13) We also report average marginal CRPS, empirical 80% interval coverage, and average 80% interval width. Lower CRPS, energy score, and variogram score are better. Coverage and width are interpreted jointly. 7Table 3: Synthetic benchmark results across 4 DGPs, 3 horizons, and 30 replicates per DGP-horizon pair. Values are means ± standard deviations. Variant CRPS ↓ Energy ↓ Variogram ↓ 80% cov. 80% width WIRED-full 0.00650 ± 0.00334 0.01497 ± 0.00755 0.00955 ± 0.00631 0.757 ± 0.086 0.0251 ± 0.0107 No tail copula 0.00650 ± 0.00332 0.01496 ± 0.00749 0.00964 ± 0.00629 0.756 ± 0.086 0.0251 ± 0.0107 Static dependence 0.00651 ± 0.00334 0.01499 ± 0.00758 0.00961 ± 0.00637 0.757 ± 0.086 0.0251 ± 0.0107 Rolling dependence 0.00652 ± 0.00340 0.01502 ± 0.00770 0.00953 ± 0.00642 0.756 ± 0.087 0.0251 ± 0.0107 Independent marginals 0.00650 ± 0.00332 0.01515 ± 0.00766 0.01141 ± 0.00806 0.756 ± 0.086 0.0251 ± 0.0107 Equal weights 0.00611 ± 0.00269 0.01404 ± 0.00602 0.00887 ± 0.00370 0.789 ± 0.082 0.0262 ± 0.0103 ARIMA independent 0.00607 ± 0.00264 0.01409 ± 0.00598 0.01033 ± 0.00512 0.761 ± 0.113 0.0242 ± 0.0092 Bootstrap independent 0.00599 ± 0.00266 0.01380 ± 0.00592 0.00920 ± 0.00375 0.733 ± 0.113 0.0220 ± 0.0089 Gaussian copula bootstrap 0.00599 ± 0.00266 0.01367 ± 0.00587 0.00833 ± 0.00336 0.734 ± 0.113 0.0220 ± 0.0090 Table 4: Paired score differences versus WIRED-full on the synthetic benchmark. Negative values improve on WIRED-full. Intervals are approximate 95% standard-error intervals across paired DGP-horizon-replicate cases. Variant ∆ CRPS ∆ Energy ∆ Variogram No tail copula -0.00000 ± 0.00001 -0.00001 ± 0.00003 +0.00009 ± 0.00004 Static dependence +0.00000 ± 0.00001 +0.00002 ± 0.00003 +0.00006 ± 0.00004 Rolling dependence +0.00002 ± 0.00002 +0.00004 ± 0.00004 -0.00001 ± 0.00005 Independent marginals +0.00000 ± 0.00001 +0.00017 ± 0.00004 +0.00186 ± 0.00030 Equal weights -0.00039 ± 0.00015 -0.00093 ± 0.00034 -0.00068 ± 0.00041 ARIMA independent -0.00043 ± 0.00017 -0.00088 ± 0.00039 +0.00078 ± 0.00064 Bootstrap independent -0.00051 ± 0.00017 -0.00117 ± 0.00039 -0.00035 ± 0.00055 Gaussian copula bootstrap -0.00051 ± 0.00017 -0.00131 ± 0.00039 -0.00122 ± 0.00053 
+
+# 7 Results 
+
+7.1 Synthetic Benchmark 
+
+Table 3 shows that WIRED-full is not the overall winner in this benchmark. The Gaussian-copula bootstrap baseline has the best average CRPS, energy score, and variogram score. Table 4 shows two different effects. First, replacing WIRED’s copula layer with independent sampling worsens the variogram score by 0.00186 on average, confirming that dependence modeling matters for the WIRED marginals. Second, the equal-weight and bootstrap baselines often improve marginal and joint scores, indicating that the current adaptive CRPS weighting is not uniformly beneficial under these benchmark settings. Figure 2 and Table 5 show that the independent WIRED-marginal variant is consistently worse than WIRED-full on dependence-sensitive variogram scores in correlated settings. However, Gaussian-copula bootstrap remains highly competitive and often better, especially when historical transformed moves are already a strong approximation to the next-horizon distribution. Figure 3 shows that the adaptive mixture does not collapse to a single forecaster. This di-versification is useful operationally, but the benchmark suggests that the current score-to-weight transformation should be calibrated more carefully. 8Full No tail Static Rolling Ind. WIRED Equal ARIMA Boot. Gauss boot. Score relative to WIRED−full 0.0 0.2 0.4 0.6 0.8 1.0 1.2 1.4 CRPS Energy Variogram Figure 1: Synthetic benchmark scores normalized to WIRED-full. Values above one are worse than WIRED-full; values below one are better. 
+
+7.2 Real-Data Rolling-Origin Results 
+
+The real-data results in Table 6 reinforce the synthetic conclusion. WIRED-full improves substan-tially over independently sampled WIRED marginals on the variogram score, but the Gaussian-copula bootstrap baseline again obtains the best average scores. This does not invalidate WIRED’s package design; rather, it identifies a strong baseline that future versions should incorporate more directly. 9break correlation independent series regime heavy tail static gaussian Variogram score relative to WIRED−full 0.0 0.5 1.0 1.5 Full Ind. ARIMA Boot. copula Figure 2: Synthetic variogram scores by DGP, normalized to WIRED-full. Table 5: Selected synthetic results by DGP. DGP Variant CRPS Energy Variogram break correlation WIRED-full 0.00857 0.01924 0.00950 Independent marginals 0.00857 0.01952 0.01173 ARIMA independent 0.00797 0.01807 0.00854 Gaussian copula bootstrap 0.00794 0.01762 0.00777 independent series WIRED-full 0.00608 0.01454 0.01153 Independent marginals 0.00607 0.01449 0.01150 ARIMA independent 0.00572 0.01362 0.01076 Gaussian copula bootstrap 0.00567 0.01345 0.01076 regime heavy tail WIRED-full 0.00620 0.01407 0.00965 Independent marginals 0.00620 0.01442 0.01366 ARIMA independent 0.00577 0.01335 0.01438 Gaussian copula bootstrap 0.00552 0.01246 0.00805 static gaussian WIRED-full 0.00515 0.01204 0.00752 Independent marginals 0.00517 0.01216 0.00876 ARIMA independent 0.00483 0.01132 0.00764 Gaussian copula bootstrap 0.00483 0.01114 0.00674 10 PERT ARIMA EWMA Hist. Drift Vol. Robust Quantile Average adaptive weight 0.00 0.05 0.10 0.15 0.11 0.12 0.12 0.13 0.13 0.12 0.13 0.13 Figure 3: Average adaptive marginal mixture weights across synthetic replicates, DGPs, horizons, and series. Table 6: Rolling-origin results on EuStockMarkets . Values are means ± standard deviations across eight origins and horizons 1, 5, and 20. Variant CRPS ↓ Energy ↓ Variogram ↓ 80% cov. 80% width WIRED-full 0.01647 ± 0.02070 0.03571 ± 0.04146 0.01384 ± 0.01175 0.792 ± 0.335 0.0610 ± 0.0340 No tail copula 0.01644 ± 0.02052 0.03564 ± 0.04093 0.01466 ± 0.01255 0.792 ± 0.335 0.0615 ± 0.0349 Static dependence 0.01650 ± 0.02061 0.03572 ± 0.04127 0.01322 ± 0.00996 0.802 ± 0.338 0.0617 ± 0.0357 Rolling dependence 0.01663 ± 0.02082 0.03589 ± 0.04166 0.01365 ± 0.01045 0.771 ± 0.329 0.0610 ± 0.0343 Independent marginals 0.01666 ± 0.02093 0.03701 ± 0.04272 0.02472 ± 0.01911 0.771 ± 0.337 0.0615 ± 0.0351 Equal weights 0.01596 ± 0.02093 0.03459 ± 0.04188 0.01402 ± 0.01248 0.823 ± 0.342 0.0647 ± 0.0359 ARIMA independent 0.01471 ± 0.01834 0.03294 ± 0.03763 0.02275 ± 0.01853 0.812 ± 0.315 0.0605 ± 0.0340 Bootstrap independent 0.01429 ± 0.01752 0.03195 ± 0.03597 0.02168 ± 0.01960 0.802 ± 0.313 0.0578 ± 0.0342 Gaussian copula bootstrap 0.01427 ± 0.01741 0.03101 ± 0.03485 0.01288 ± 0.01012 0.802 ± 0.313 0.0576 ± 0.0343 11 8 Discussion 
+
+The benchmark supports a layerwise interpretation of WIRED. The dependence layer is useful: independent sampling of the same WIRED marginals generally harms dependence-sensitive scoring. This supports the architectural premise that good marginal probabilistic forecasts are not sufficient for good multivariate scenarios. The adaptive marginal mixture, however, is not yet clearly superior to simpler historical-bootstrap and equal-weight alternatives. Two mechanisms may explain this. First, short expanding-window CRPS histories can be noisy, especially for long horizons. Second, the softmax rule may amplify small predicted score differences when those predictions are uncertain, while historical bootstrap marginals are naturally robust in the simulated and equity-index settings considered here. These results suggest concrete improvements. WIRED should expose stronger controls for the score-to-weight temperature, consider regularizing weights toward equal weights or a bootstrap prior, and include the Gaussian-copula bootstrap as an explicit baseline or fallback mode. More broadly, future work should treat expert-skill forecasting as its own modeling problem: the depen-dence reconstruction layer appears empirically useful, while the marginal aggregation layer needs better predictions of when each expert is about to be useful. The package would also benefit from benchmark helpers so users can compare WIRED against simpler alternatives on their own data before relying on the adaptive mixture. 
+
+# 9 Limitations 
+
+The synthetic benchmark is limited to four DGP families and positive multiplicative levels. The real-data study uses one built-in equity-index dataset and only eight origins. The paper uses capped simulation settings for runtime, including reduced ARIMA simulation draws and bootstrap sample sizes in the benchmark driver. Finally, copula dependence is estimated from transformed historical moves and does not model a full latent time-varying dependence process. 
+
+# 10 Reproducibility 
+
+At the time of submission, the released WIRED implementation is available from CRAN [13]: 
+
+https://CRAN.R-project.org/package=wired 
+
+It can be installed with install.packages("wired") . The experiment driver and precomputed CSV outputs are distributed as expanded arXiv ancillary files under anc/paper/ , with instructions in anc/README_REPRODUCE.txt . The driver is anc/paper/experiment/run_experiment.R ; it uses local package source when available and otherwise loads the installed CRAN package. The script has a smoke-test mode and a paper-benchmark mode: 
+
+WIRED_BENCH_MODE=quick Rscript anc/paper/experiment/run_experiment.R WIRED_BENCH_MODE=paper Rscript anc/paper/experiment/run_experiment.R 
+
+It writes CSV outputs, tables, and figures into the corresponding paper directories. The reported computations were run with R 4.5.1 on Windows 11. 12 11 Conclusion 
+
+WIRED provides a practical R implementation for multiseries probabilistic forecasting when users need calibrated marginal uncertainty and coherent joint scenario draws. Its strongest academic contribution is a modular design that separates adaptive marginal expert aggregation from copula-based dependence reconstruction. The benchmark supports the dependence component: structured joint sampling improves dependence-sensitive behavior relative to independent WIRED sampling. It also gives a useful negative result: the current CRPS-extrapolated marginal weighting layer does not consistently beat simpler bootstrap and equal-weight alternatives. The most useful conclusion is therefore constructive: WIRED is a promising extensible package design, and its next methodolog-ical gains should come from better expert-skill forecasting, stronger weight regularization, explicit bootstrap-copula baselines, and broader empirical validation. 13 References 
+
+[1] J. M. Bates and C. W. J. Granger. The combination of forecasts. Journal of the Operational Research Society , 20(4):451–468, 1969. [2] A. Timmermann. Forecast combinations. In G. Elliott, C. W. J. Granger, and A. Timmermann, editors, Handbook of Economic Forecasting , volume 1, pages 135–196. Elsevier, 2006. [3] N. Cesa-Bianchi and G. Lugosi. Prediction, Learning, and Games . Cambridge University Press, 2006. [4] R. J. Hyndman and Y. Khandakar. Automatic time series forecasting: the forecast package for R. Journal of Statistical Software , 27(3):1–22, 2008. [5] R. Koenker and G. Bassett. Regression quantiles. Econometrica , 46(1):33–50, 1978. [6] J. E. Matheson and R. L. Winkler. Scoring rules for continuous probability distributions. 
+
+Management Science , 22(10):1087–1096, 1976. [7] T. Gneiting and A. E. Raftery. Strictly proper scoring rules, prediction, and estimation. 
+
+Journal of the American Statistical Association , 102(477):359–378, 2007. [8] R. B. Nelsen. An Introduction to Copulas . Springer, second edition, 2006. [9] C. Genest and A.-C. Favre. Everything you always wanted to know about copula modeling but were afraid to ask. Journal of Hydrologic Engineering , 12(4):347–368, 2007. [10] A. J. Patton. Modelling asymmetric exchange rate dependence. International Economic Re-view , 47(2):527–556, 2006. [11] T. Gneiting, L. I. Stanberry, E. P. Grimit, L. Held, and N. A. Johnson. Assessing probabilistic forecasts of multivariate quantities, with an application to ensemble predictions of surface winds. Test , 17:211–235, 2008. [12] M. Scheuerer and T. M. Hamill. Variogram-based proper scoring rules for probabilistic forecasts of multivariate quantities. Monthly Weather Review , 143(4):1321–1334, 2015. [13] G. Vercellino. wired: Weighted Adaptive Prediction with Structured Dependence . R package version 1.0.1, 2026. https://CRAN.R-project.org/package=wired .[14] R Core Team. R: A Language and Environment for Statistical Computing . R Foundation for Statistical Computing, Vienna, Austria, 2025. 14
