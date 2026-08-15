@@ -1,0 +1,1922 @@
+EpiFlow: A framework for improving the utility of
+wastewater signals for disease forecasting
+Aniruddha Adiga1,*, Jingyuan Chou1,2, Gursharn Kaur1, Andrew Warren1, Srinivasan
+Venkatramanan1, Baltazar Espinoza1, Bryan Lewis1, Justin Crow3, Alexandra Lorentz4,
+Rekha Singh5,6 and Madhav Marathe1,2,*
+Wastewater-based surveillance is an effective tool for disease monitoring, offering early warnings of
+outbreaks. While wastewater viral loads (WVL) correlate with disease burden, their utility in improving
+real-time forecasting remains under investigation. During early epidemic phases, many indicators
+effectively monitor spread, but their reliability may decline due to fatigue and low prevalence. Hospital
+burden can vary significantly even during low-prevalence periods—making accurate forecasting of
+burden indicators essential to minimizing impact.
+In this paper, we present principled approaches for processing wastewater data, understanding its
+relationship with burden indicators, and generating real-time forecasts. We assess the predictability of
+WVL using entropy measures. We analyze the relationship between WVL and burden indicators using
+causality tests that capture temporal dynamics and WVL’s leading-indicator behavior. We incorporate
+these insights into a time-varying forecasting model that accounts for the evolving relationship between
+signals. We also test the effects of delays in WVL reporting through simulations. We test utility of our
+methods by forecasting COVID-19 hospital admissions across Virginia and its health regions across
+different prevalence periods. Incorporating WVL improves forecast accuracy over baseline models,
+especially during critical phases, we observe a 20 percentage points improvement in forecast coverage.
+Our results show that WVL signals are important for infectious disease forecasting even under conditions
+of low prevalence or reporting delays.
+Keywords: Wastewater-based epidemiology, forecasting, biosurveillance, vector autoregressive
+models, permutation entropy, causality test, denoising
+1. Introduction
+Wastewater-based surveillance has become an important complement to clinical surveillance for
+monitoring infectious diseases because it can capture infections across symptomatic and asymptomatic
+populations while being less affected by healthcare-seeking behavior [1, 2]. However, wastewater
+viral load (WVL) signals are subject to noise and uncertainty due to variable catchment populations,
+shedding dynamics, flow rates, dilution, wastewater properties, environmental conditions, and sampling
+strategies [3, 4, 5]. These uncertainties complicate the direct use of WVL for real-time forecasting of
+burden indicators such as hospital admissions.
+1Biocomplexity Institute, University of Virginia
+2Department of Computer Science, University of Virginia
+3Virginia Department of Health
+4Department of General Services, Division of Consolidated Laboratory Services
+5Biodefense Fellow, US Department of Defense, Pentagon
+6Department of Civil and Environmental Engineering, Old Dominion University
+*Corresponding authors: aniruddha@virginia.edu, marathe@virginia.edu
+arXiv:2608.06671v1  [cs.LG]  7 Aug 2026
+
+
+A useful test of wastewater utility is whether it improves forecasts of disease burden beyond models
+that use burden indicators alone. This question is especially important as COVID-19 transitions toward
+lower-prevalence and post-public-health-emergency periods, when clinical testing behavior changed
+substantially and WVL can exhibit reduced signal-to-noise ratio [6, 7]. Although several studies have
+shown that SARS-CoV-2 wastewater concentrations can lead reported cases and hospitalizations [8, 9,
+10, 11, 12, 13, 14, 15, 16, 17, 18], the Phase 2 NASEM report emphasizes that the use of wastewater
+data for operational real-time forecasting remains at an early stage and requires improved data quality
+and integration methods [19].
+Here, we present EpiFlow, an integrated framework for improving the real-time forecasting utility of
+wastewater signals. EpiFlow combines data preprocessing, signal-quality analysis, dynamic relationship
+assessment, and probabilistic forecasting. The framework converts sewershed-level WVL into viral
+activity levels (VAL), evaluates intrinsic signal predictability using permutation entropy, analyzes
+time-varying dependencies between wastewater and burden indicators using rolling-window Granger
+causality (RWGC), and generates probabilistic forecasts using a rolling vector autoregressive (VAR)
+model. The framework also evaluates the effect of wastewater reporting delays, which commonly arise
+from sampling and testing workflows.
+Summary of results.
+We demonstrate EpiFlow framework using SARS-CoV-2 wastewater data and
+COVID-19 hospital admissions across five Virginia health regions and the state level from October 2021
+to December 2023. Forecasts are evaluated against ARIMA and ARIMAX baselines using weighted
+interval score (WIS) and forecast coverage, which are standard metrics in epidemic forecasting [20, 21].
+Our results show that wastewater-derived indicators can improve probabilistic forecasts, particularly
+when denoised and modeled through time-varying VAR dynamics. The improvement is most pronounced
+during surge periods and remains useful even when wastewater reporting is delayed.
+2. Related Work
+Wastewater-based epidemiology has been used to track SARS-CoV-2 and other pathogens, and multiple
+studies have shown associations between wastewater concentrations and clinical indicators such as
+cases, hospital admissions, and deaths [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18]. Statistical and data-
+driven models used in this area include ARIMA, VAR, generalized additive models, negative binomial
+models, Bayesian filters, state-space models, semi-mechanistic models, random forests, nearest-neighbor
+methods, and neural networks [22, 23, 24, 17, 25]. However, several of these studies are restricted to
+short time frames, conducted during the early stages of the pandemic, and limited to a single or few
+districts with a relatively high sampling rate of WVL in sewersheds (daily, thrice weekly, etc.).
+A recurring challenge is that WVL signals are noisy and heterogeneous, which can reduce interpretabil-
+ity and forecasting performance. Prior work has used Bayesian smoothing, signal processing, and
+state-space methods to mitigate uncertainty and recover stable temporal trends [26, 4, 5]. Recent
+wastewater studies further emphasize dynamic and state-space modeling for handling missing observa-
+tions, citywide trend assessment, and time-varying relationships between wastewater concentrations
+and infections [27, 28, 29]. In contrast to studies focused primarily on point forecasts or high-prevalence
+periods, EpiFlow evaluates whether wastewater signals improve real-time probabilistic forecasts across
+heterogeneous regions and across both PHE and post-PHE periods.
+The references cited in this paper is not an exhaustive list. We refer the reader to SI A and Chen-Chen
+et al. [25] for a detailed review of the various methods and models employed in wastewater-based
+epidemiology.
+2
+
+
+Data 
+Preprocessing
+•
+ST Alignment
+•
+VAL conversion
+•
+Denoising
+Forecasting
+•
+RW-VAR
+Evaluation
+Burden 
+indicator 
+signal
++
+Wastewater 
+signal
+Individual
+•
+Predictability 
+•
+Analysis Window
+Signal Analysis
+Joint
+•
+Granger Causality 
+ℎ(𝑡)
+𝑣(𝑡)
+Window 
+length
+ℎ𝑡, 𝑣(𝑡)
+VAR 
+model
+ℎ𝑡, 𝑣(𝑡)
+Figure 1: Overview of the EpiFlow framework. The framework consists of data preprocessing, signal
+analysis, and forecasting modules.
+3. EpiFlow Framework and Methods
+EpiFlow is organized into three modules to address several challenges experienced when working
+with wastewater data and burden indicators: data preprocessing, signal analysis, and forecasting
+(Figure 1). The preprocessing module aligns wastewater and hospitalization signals in space and
+denoises the wastewater signal; the signal analysis module quantifies wastewater predictability and
+dynamic relationships with burden indicators; and the forecasting module generates probabilistic
+forecasts.
+3.1. Data Preprocessing and Signal Construction
+3.1.1. Data Preparation
+Wastewater and hospital admission data are first temporally aligned to weekly resolution. Daily hospital
+admissions are aggregated to weekly counts and assigned to the beginning of the corresponding
+epidemiological week. For wastewater viral load (WVL) measurements, once-weekly samples are
+assigned to the corresponding week; when two samples are available in a week, we compute the
+average of the log-transformed viral concentrations and assign the resulting value to that week. Missing
+values are imputed using forward filling from the most recent available observation. Data sources
+containing more than four consecutive missing values are excluded from the analysis. Spatial alignment
+is performed at the Virginia health-region level. Hospital admissions are summed across facilities
+serving each region, while sewershed-level WVL signals are transformed into viral activity levels (VAL)
+following NWSS-specified normalization [1] (See SI C.1). The regional VAL is computed as the median
+VAL across sewersheds serving a region. This produces weekly paired time series of hospital admissions,
+denoted by ℎ(𝑡), and wastewater-derived viral activity, denoted by 𝑣(𝑡).
+3.1.2. Denoising and Savitzky–Golay Filter Selection
+Because WVL and VAL signals can contain high-frequency fluctuations due to sampling variability,
+catchment heterogeneity, flow effects, and reporting irregularities, we additionally analyze a denoised
+VAL signal, denoted VAL-dn. Denoising is performed using a Savitzky–Golay (SG) filter, which smooths
+a time series by fitting a low-degree polynomial locally within a moving window and evaluating the
+fitted polynomial at the center point [30, 31]. The SG filter is controlled by two parameters: the
+polynomial order 𝑚and the filter window length 𝐿.
+To select a practical denoising configuration, we swept over candidate polynomial orders 𝑚∈{1, 2, 3}
+and candidate filter lengths 𝐿∈{1, 3, . . . , 11} (odd values only). For each candidate pair (𝑚, 𝐿) and
+each regional VAL time series, the filtered signal was computed and compared against the original
+signal using mean squared error (MSE). The objective was not to remove all high-frequency variation,
+but to identify a filter that reduces short-scale noise while preserving the timing and amplitude of
+epidemiologically meaningful changes. Denoising is performed each time a new observation is obtained.
+Since SG filters are zero-phase filters, polynomial interpolation was used near the signal boundaries
+3
+
+
+instead of explicit padding, thereby reducing edge artifacts and preserving local temporal structure of
+the most recent observations. See SI C.2 for more details on SG filters.
+3.2. Signal Analysis
+3.2.1. Predictability Analysis using Permutation entropy
+Permutation entropy (PE) is used to quantify temporal structure and intrinsic predictability in the
+wastewater and hospitalization signals [32]. PE is a model-free ordinal measure of uncertainty that
+summarizes the frequency of rank-order patterns within a time series. For a rolling window1 of
+observations, embedding dimension 𝑑, and delay 𝜏, the time series is mapped to ordinal patterns of
+length 𝑑; the Shannon entropy of the empirical ordinal-pattern distribution is then normalized by
+log(𝑑!). We define predictability as 1 −PE, so that higher values indicate stronger ordinal structure
+and lower uncertainty. In [33], PE was employed to understand the predictability of multiple infectious
+disease time series. Infectious disease time series are affected by observation errors which introduces
+uncertainties and reduces the redundant information present in the signal. Using a rolling-window-
+based analysis, it was observed that as the window length increases, the predictability of the signal
+drops. An important observation which indicates that due to the uncertainties, using long periods of
+the time series (more data points) does not necessarily help forecast the future values of the signal. It
+was shown that the predictability drops significantly beyond 10−16 weeks.
+Observation Window.
+In our analysis, PE is computed within rolling windows using embedding
+dimensions 𝑑= 3 and 𝑑= 4 and unit delay 𝜏= 1. Higher embedding dimensions are avoided
+because short rolling windows contain too few observations to reliably estimate all 𝑑! ordinal patterns.
+To determine an appropriate rolling-window length for downstream analysis, we compare mean
+predictability across candidate window lengths ranging from short local windows to the full available
+time series. For each candidate length, predictability is computed across all rolling windows and
+locations. We then compare mean predictability across window lengths using Tukey’s Honest Significant
+Difference (HSD) test at 𝛼= 0.05 (see SI F) and select the smallest window length beyond which
+increasing the window no longer produces statistically significant changes in mean predictability. This
+procedure identifies a window size that balances local adaptivity with sufficient sample size for low
+entropy and model estimation.
+Permutation-based significance testing for permutation entropy.
+To evaluate whether the observed
+PE over relatively short window lengths reflects non-random temporal structure, we use a random-
+shuffle permutation test. For each rolling window, the observed normalized entropy 𝐻obs is compared
+with an empirical null distribution obtained from 𝐵= 500 randomly permuted (shuffled) surrogate
+series. Permuting preserves the marginal distribution of the time series while destroying temporal
+dependence [34, 35]. Since structured signals typically have lower entropy than randomly ordered
+sequences, we use a one-sided test with empirical 𝑝-value 𝑝= 1
+𝐵
+∑︀𝐵
+𝑏=1 I
+(︁
+𝐻(𝑏) ≤𝐻obs
+)︁
+, where 𝐻(𝑏) is
+the PE of the 𝑏th shuffled surrogate. If 𝑝< 0.05, then PE value for the particular window is considered
+statistically significant.
+3.3. Rolling-Window Granger Causality Analysis
+Prior to discussing the methods to capture the relationship between hospital admissions ℎ(𝑡) and VAL
+𝑣(𝑡), it is to be noted that wastewater viral load primarily reflect infection prevalence, whereas hospital
+1A window refers to a fixed-length sequence of observed values. A forecast horizon denotes the length of time into the
+future for which predictions are generated.
+4
+
+
+admissions represent incidence. Consequently, the two signals may exhibit indirect but potentially
+useful predictive relationships for forecasting. We refer the reader to SI D for a detailed description
+along with a conceptual causal graph.
+Rolling-Window Granger causality (RWGC), with window length obtained from predictability analysis,
+is used to characterize time-varying directional dependencies between ℎ(𝑡) and 𝑣(𝑡). The RWGC
+analysis is based on a bivariate vector (VAR) model fitted independently within each rolling window.
+For a VAR(𝑃) model,
+[︃
+ℎ(𝑡)
+𝑣(𝑡)
+]︃
+=
+[︃
+𝑐ℎ
+𝑐𝑣
+]︃
++
+𝑃
+∑︁
+𝑝=1
+[︃
+𝑎(𝑝)
+ℎℎ
+𝑎(𝑝)
+ℎ𝑣
+𝑎(𝑝)
+𝑣ℎ
+𝑎(𝑝)
+𝑣𝑣
+]︃[︃
+ℎ(𝑡−𝑝)
+𝑣(𝑡−𝑝)
+]︃
++ e(𝑡),
+(1)
+where e(𝑡) is a zero-mean residual process. In the bivariate setting, the first row of the coefficient
+matrix governs the hospitalization equation and the second row governs the VAL equation. Thus, the
+coefficients 𝑎(𝑝)
+ℎ𝑣quantify the contribution of lagged VAL to current hospital admissions, while 𝑎(𝑝)
+𝑣ℎ
+quantify the contribution of lagged hospital admissions to current VAL.
+For each rolling window, the VAR design matrix is constructed from the lagged observations Y(𝑡−
+1), . . . , Y(𝑡−𝑃), where Y(𝑡) = [ℎ(𝑡), 𝑣(𝑡)]⊤. The two response equations are estimated independently
+using ordinary least squares. Specifically, the coefficients are obtained by minimizing the residual
+sum of squares within the training window, yielding estimates of the lag coefficient matrices and the
+residual covariance matrix. Based on multiple observations [36], the lag order is fixed to 𝑃= 2 in the
+analysis which reflects the short reporting and epidemiological delays expected between wastewater
+and hospitalization signals, while limiting over-parameterization in short rolling windows.
+To assess whether 𝑣Granger-causes ℎ, the null hypothesis is 𝐻𝑣→ℎ
+0
+: 𝑎(𝑝)
+ℎ𝑣= 0,
+∀𝑝= 1, . . . , 𝑃,
+which states that lagged VAL does not improve prediction of hospital admissions after conditioning
+on past hospital admissions. Similarly, the null hypothesis for no causal influence from ℎto 𝑣is
+𝐻ℎ→𝑣
+0
+: 𝑎(𝑝)
+𝑣ℎ= 0,
+∀𝑝= 1, . . . , 𝑃. Classical GC significance is assessed using the chi-square statistic
+from the nested-model comparison between a restricted model, in which the cross-lagged coefficients
+are set to zero, and an unrestricted model containing all lagged terms.
+Permutation-based significance testing for RWGC.
+Since asymptotic chi-square tests may be un-
+reliable in short and noisy rolling windows, we additionally use the surrogate-based permutation
+test. Under the null hypothesis of no directed dependence, the predictor VAL series is permuted to
+break temporal alignment between predictor and response while preserving marginal distribution
+of the predictor. For each surrogate realization 𝑏= 1, . . . , 𝐵, the VAR model is refitted and the GC
+statistic 𝑇(𝑏) is recomputed. The empirical null distribution {𝑇(1), . . . , 𝑇(𝐵)} is then compared with
+the observed statistic 𝑇obs using 𝑝= 1
+𝐵
+∑︀𝐵
+𝑏=1 I
+(︁
+𝑇(𝑏) ≥𝑇obs
+)︁
+. A 𝑝< 0.05 indicates that the observed
+directional relationship is unlikely under the surrogate null distribution. The rolling implementation
+records both the direction of significant GC and the lag at which the strongest statistic is observed,
+enabling identification of time-varying leading-indicator behavior.
+3.4. Forecasting Models
+The rolling-window forecasting module uses the most recent training window to fit a model and then
+generates forecasts for future horizons. All models are re-estimated independently at each forecast
+origin using only data that would have been available at that time. This rolling-window design allows
+model parameters to adapt to changing epidemic dynamics.
+5
+
+
+VAR forecasting.
+For the VAR model, the same bivariate structure used in the GC analysis is used
+for forecasting hospital admissions. After fitting the VAR(𝑃) model within the window, forecasts are
+generated recursively across future horizons. The fitted VAR provides a predictive mean vector and
+a forecast error covariance matrix at each horizon, obtained by propagating the estimated residual
+covariance through the VAR recursion. Assuming approximately Gaussian forecast errors, the predictive
+distribution is summarized by the forecast mean and variance for the hospitalization component.
+Predictive quantiles are then extracted at the 23 quantile levels specified by the COVID-19 Forecast
+Hubs and FluSight [37, 21].
+We compare the VAR forecasts against autoregressive integrated moving average (ARIMA) and ARIMAX
+(ARIMA with eXogenous variables) baselines for hospital admissions ℎ(𝑡) forecasting. The ARIMA model
+uses only the history of ℎ(𝑡), while the ARIMAX model additionally incorporates wastewater-derived
+viral activity 𝑣(𝑡) as an exogenous predictor using the current and lagged VAL values. Similar to
+the VAR framework, both models are trained using a rolling-window approach, where the training
+window is advanced by one step as new observations become available and the model is refit to the
+updated window. Model orders are selected automatically using the AutoARIMA framework from the
+pmdarima package [38, 39], which determines the optimal ARIMA configuration by minimizing the
+Akaike Information Criterion (AIC) over candidate model orders using a stepwise search procedure.
+For all models, multi-step probabilistic forecasts are generated recursively, and the resulting predictive
+distributions are converted into the same 23 quantiles used across all forecasting models. For ARIMAX
+forecasting, future wastewater values are first forecast and then supplied as exogenous inputs to the
+model. The ARIMAX model using forecast wastewater inputs is denoted ARIMAX-Fct, while the version
+using denoised VAL signals is denoted ARIMAX-Fct-dn.
+Forecast quantiles and evaluation.
+For each model, forecast distributions are converted into 23
+quantile levels used by the Forecast Hubs [21, 37]. If ˆ𝜇𝑡+ℎand ˆ𝜎𝑡+ℎdenote the forecast mean and
+standard deviation for hospitalization at horizon ℎ, the quantile at probability level 𝜏is computed as
+ˆ𝑞𝜏,𝑡+ℎ= ˆ𝜇𝑡+ℎ+ 𝑧𝜏ˆ𝜎𝑡+ℎ, where 𝑧𝜏is the corresponding standard normal quantile. Forecast performance
+is evaluated using weighted interval score (WIS), scaled relative WIS with ARIMA as the baseline, and
+empirical coverage (see SI H for definitions).
+4. Results: A Case Study on COVID-19 Hospital Admissions in Virginia
+We evaluate EpiFlow using SARS-CoV-2 wastewater surveillance data from the Virginia Department of
+Health and COVID-19 hospital admissions from October 2021 to December 2023 [40, 41]. Wastewater
+data were collected from 36 treatment plants, with 13 sites sampled twice weekly and 23 sampled once
+weekly. Hospital admissions were aggregated to five Virginia health regions (Central, Eastern, Northern,
+Northwest, and Southwest) and to the state level (VA). WVL measurements were transformed to VAL,
+aggregated regionally, and denoised (VAL-dn). To evaluate performance during epidemiologically
+meaningful periods, each week was classified into surge, plateau, or decline phases using a piecewise-
+linear approximation (See SI I) of the hospital admission time series (Figure 2). Phase-specific evaluation
+was used to assess model behavior during critical periods.
+4.1. Predictability of Wastewater Signals
+Figure 3 summarizes the rolling-window predictability analysis. Predictability decreases as window
+length increases, indicating that longer histories do not necessarily improve usable temporal structure
+of noisy wastewater signals. VAL is consistently less predictable than hospital admissions, reflecting the
+high uncertainty in wastewater observations. However, denoising improves VAL predictability across
+6
+
+
+Post-PHE period
+Figure 2: Classification of VA Hosp. time series weeks into phases. The weeks are shaded based on the
+phase: surge=soft red, plateau=soft blue, and decline=lime green.
+regions, supporting the use of VAL-dn in forecasting models. Overall, we observed the window lengths
+varied between 10 −16 across locations and weeks, similar to the observations made in [33].
+10
+20
+30
+40
+50
+60
+Rolling Window Length
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Predictability
+Predictability Distribution (across all locations) vs Rolling Window Length
+VAL
+Hosp.
+VAL-dn
+(a)
+Central
+Eastern
+Northern
+Northwest
+Southwest
+VA
+0.0
+0.2
+0.4
+0.6
+0.8
+1.0
+Predictability
+A Comparison of Predictability Distribution for Different Regions
+VAL
+Hosp.
+VAL-dn
+(b)
+Figure 3: Predictability of VAL, COVID-19 hospitalization, and denoised VAL. PE order restricted to 3
+and 4 (significance of PE values determined using the permutation test). (a) Analyzing the distribution
+of predictability for different rolling window lengths (lines indicate the mean and the bands indicate
+the interquartile range of the distribution). (b) Distribution of predictability for a window length of 12
+across different regions. Overall, we observe that for all the three time series, the predictability drops
+as window length increases. The VAL time series has considerably lower predictability compared to the
+COVID-19 hospitalization time series. However, by denoising we observe significant improvement in
+predictability of the VAL time series (significance of the improvement established using two-sample KS
+test - see SI G).
+4.2. Time-Varying Granger Relationships
+Rolling-window GC analysis reveals that the relationship between VAL-dn and hospital admissions
+changes over time (Figure 4). During surge periods, wastewater-derived viral activity often Granger-
+causes hospital admissions, consistent with leading-indicator behavior. In other periods, the direction
+can weaken, reverse, or become bidirectional, indicating that the wastewater–hospitalization relation-
+ship is not stationary over the study period.
+4.3. Forecasting Performance
+We compare rolling probabilistic forecasts from ARIMA, ARIMAX-Fct, VAR, and their denoised-VAL
+variants (ARIMAX-fct-dn, VAR-dn). Figure 5 summarizes performance during the post-PHE period.
+7
+
+
+Lag 1
+Lag 2
+VA - Rolling-Window Granger Causality
+VAL-dn --> Hosp.
+Hosp. --> VAL-dn
+Jan
+2022
+Apr
+Jul
+Oct
+Jan
+2023
+Apr
+Jul
+Oct
+Jan
+2024
+0
+100
+200
+300
+400
+500
+Hosp.
+0
+5
+10
+15
+VAL-dn
+Phase
+Surge
+Plateau
+Decline
+Figure 4: A rolling-window Granger causality test (using permutation-based significance test) to
+understand the dependence between hospitalizations and VAL-dn across time. In the top plot, the line
+color indicates the variable Granger causing the other variable and the value indicates the corresponding
+lag for that week. The bottom plot shows the VAL and Hosp. time series. GC test indicates that VAL-dn
+Granger causes Hosp. for certain weeks (blue line in the top plot), while for other weeks, Hosp. Granger
+causes VAL-dn (orange line in the top plot). Mostly, during a surge phase, VAL-dn leads hospitalizations
+by 1–2 weeks.
+VAR-dn has the lowest WIS distribution and the most consistent relative WIS improvement across
+regions. Models using VAL-dn generally outperform their non-denoised counterparts, supporting
+the predictability analysis. The VAR coefficients associated with lagged VAL increase during periods
+of growth in hospital admissions, providing additional evidence that wastewater signals are most
+informative during surge dynamics.
+Forecast coverage further supports the value of VAR-dn, particularly at longer horizons and during
+surge phases. For 4-week-ahead forecasts, VAR-dn achieves higher 95% observed coverage than
+ARIMA and ARIMAX-Fct-dn across decline, plateau, and surge phases (Table 1). During surge periods,
+VAR-dn improves observed 95% coverage by approximately 20 percentage points relative to the
+baselines. During plateau phases, the hospitalization dynamics are often relatively stable and strongly
+autoregressive, which can favor simpler univariate ARIMA model over the ARIMAX model. Also ARIMAX
+generally introduce additional uncertainty due to the estimation of cross-variable dependencies and
+the need to forecast future wastewater signals for multi-step prediction. Hence, we observe ARIMA
+to have competitive performance (both in terms of WIS and coverage) similar to the VAR-dn model
+during the plateau phase.
+4.4. Effect of Wastewater Reporting Delays
+On several occasions we observed that the wastewater signal reporting would be delayed by 1−2 weeks
+due to multiple factors. The delay implies that, when forecasting at time 𝑡, we would not have access
+to 𝑣(𝑡). Here, we analyze the effects of delay in reporting on the forecast performance. We simulate
+two scenarios, a one-week and two-week delay in wastewater reporting. We modify the VAR model to
+account for the lack of availability of 𝑣(𝑡) and describe the model in SI J. VAR-dn-del1 (with 𝛿= 1)
+and VAR-dn-del2 (with 𝛿= 2) models simulate one- and two-week delay in wastewater reporting,
+respectively.
+8
+
+
+0
+2
+4
+6
+8
+10
+12
+ARIMA
+ARIMAX-Fct
+ARIMAX-Fct-dn
+VAR
+VAR-dn
+WIS
+(a)
+Central
+Eastern
+Northern
+Northwest
+Southwest
+VA
+ARIMA
+ARIMAX-Fct
+ARIMAX-Fct-dn
+VAR
+VAR-dn
+1
+1
+1
+1
+1
+1
+0.97
+0.98
+1
+1
+1.2
+1
+0.93
+0.99
+0.99
+1.1
+1.2
+0.84
+0.94
+0.98
+1.1
+0.92
+0.88
+0.92
+0.85
+0.75
+0.96
+0.87
+0.75
+0.87
+Relative WIS
+0.6
+0.8
+1.0
+1.2
+1.4
+(b)
+Jan
+2022
+Apr
+Jul
+Oct
+Jan
+2023
+Apr
+Jul
+Oct
+Jan
+2024
+date
+2
+0
+2
+4
+6
+8
+Lag-1 VAL coefficient values
+Jan
+2022
+Apr
+Jul
+Oct
+Jan
+2023
+Apr
+Jul
+Oct
+Jan
+2024
+date
+2
+0
+2
+4
+6
+Lag-2 VAL coefficient values
+0
+100
+200
+300
+400
+500
+VA Hosp.
+0
+100
+200
+300
+400
+500
+VA Hosp.
+VA
+(c)
+0
+2
+4
+6
+8
+10
+12
+model
+ARIMA
+ARIMAX-Fct
+ARIMAX-Fct-dn
+VAR
+VAR-dn
+Decline
+0
+2
+4
+6
+8
+10
+12
+model
+Plateau
+0
+2
+4
+6
+8
+10
+12
+model
+Surge
+(d)
+Figure 5: Summary of the WIS scores for each method (post-PHE period). (a) The distribution of the
+scores across different forecast weeks and regions (green triangle indicates mean). We employed the
+KS-test (SI G) and observed that the VAR-dn model achieves better forecast performance relative to
+the ARIMA baseline. (b) A comparison of the relative WIS score (< 1 means a better models than the
+baseline ARIMA) of models for different regions of VA. (c) Coefficients of the VAR model corresponding
+to lag 1 and 2 of the VAL. (d) Phase-based summary of the WIS scores for individual models.
+In Figure 6, we summarize the WIS scores, relative WIS scores, and the coverage of the model forecasts.
+Comparing the performance of the VAR-dn-del1 and VAR-dn-del2 with the VAR model, we observe
+that employing the delayed VAL time series reduces the performance of the two models. However, we
+observe that the two models have a better performance than the ARIMA model (determined using the
+KS test to compare the WIS distribution of VAR-dn-del1 and VAR-dn-del2 with the WIS distribution of
+the ARIMA model). These results indicate that incorporating the delayed VAL time can still improve
+the forecast performance of the models.
+9
+
+
+Model
+Phase
+Covered
+Total
+Observed coverage (%)
+ARIMA
+Decline
+126
+225
+56.0
+ARIMAX-Fct-dn
+Decline
+97
+225
+43.1
+VAR-dn
+Decline
+164
+225
+72.9
+ARIMA
+Plateau
+18
+28
+64.3
+ARIMAX-Fct-dn
+Plateau
+9
+28
+32.1
+VAR-dn
+Plateau
+23
+28
+82.1
+ARIMA
+Surge
+72
+167
+43.1
+ARIMAX-Fct-dn
+Surge
+73
+167
+43.7
+VAR-dn
+Surge
+110
+167
+65.9
+Table 1: Observed 95% coverage of 4-week-ahead forecasts by epidemic phase. VAR-dn provides higher
+coverage across all phases.
+0
+2
+4
+6
+8
+10
+12
+ARIMA
+VAR-dn
+VAR-dn-del1
+VAR-dn-del2
+model
+WIS Distribution
+(a)
+Central
+Eastern
+Northern
+Northwest
+Southwest
+VA
+location
+ARIMA
+VAR-dn
+VAR-dn-del1
+VAR-dn-del2
+model
+1
+1
+1
+1
+1
+1
+0.85
+0.77
+0.96
+0.87
+0.74
+0.85
+1.1
+0.93
+1
+0.87
+0.95
+0.91
+1.1
+0.93
+0.86
+0.99
+1
+0.96
+0.6
+0.8
+1.0
+1.2
+1.4
+(b)
+0
+10
+20
+30
+40
+50
+ARIMA
+VAR-dn
+VAR-dn-del1
+VAR-dn-del2
+model
+50% Coverage
+0
+20
+40
+60
+80
+95% Coverage
+(c)
+Figure 6: Simulating delayed wastewater reporting. We simulate two scenarios, a one-week and
+two-week delay in wastewater reporting. VAR-dn-del1 and VAR-dn-del2 models simulate one- and
+two-week delay in wastewater reporting, respectively. (a) The distribution of the scores across different
+forecast weeks and regions (green triangle indicates mean). KS-test indicates (see Section G) that
+the WIS distribution of the delayed VAR model was systematically smaller than that of the ARIMA
+reference model. (b) Relative WIS scores for the various models. (c) 50% and 95% coverage of models.
+Across all three metrics, we observe that the VAR-dn-del1 and VAR-dn-del2 perform better than the
+ARIMA model. This indicates that despite the delay in reporting, the wastewater signal can still improve
+forecast performance.
+5. Discussion and Conclusion
+We developed EpiFlow to evaluate and improve the forecasting utility of wastewater-based surveillance
+signals. Applied to COVID-19 hospital admissions in Virginia, the framework shows that wastewater-
+derived viral activity can improve probabilistic forecasts when the signals are appropriately processed,
+10
+
+
+denoised, and modeled through time-varying dynamics. In our framework, the strongest gains are
+observed during surge periods, when wastewater signals often provide leading information about
+future hospital burden.
+The results highlight three methodological points. First, wastewater signals are noisy and their
+predictive structure depends strongly on the analysis window; shorter windows can retain more
+usable temporal structure than long histories. Second, denoising improves wastewater predictability
+and forecast performance. Third, the relationship between wastewater and hospital admissions is
+dynamic: rolling GC shows that wastewater can lead hospital admissions during some periods, while
+the relationship can weaken or reverse during others. This supports the use of rolling VAR models
+rather than static unidirectional models. Unlike latent-variable and state-space frameworks which
+model unobserved infection incidence while treating wastewater and hospitalization observations as
+noisy manifestations of the latent epidemic process, we explicitly separate denoising, rolling-window
+estimation, and forecasting to reduce model complexity and assumptions.
+The framework has limitations. The VAR model assumes linear relationships and does not provide
+a mechanistic explanation for shedding, transport, or hospitalization processes. The analysis also
+assumes stable spatial aggregation of sewersheds and health regions, although real surveillance systems
+can experience site dropout and changing sampling coverage. Future work will incorporate mechanistic
+components, adaptive site weighting, and nonlinear or Bayesian state-space models to better capture
+uncertainty and evolving wastewater–burden relationships. Additionally, based on the causal relation-
+ship discussion (Conceptual causal graph, SI D), we plan to explore the number of COVID-19 patients
+currently hospitalized (as opposed to new admissions) since it may exhibit stronger relationships with
+prevalence data and could provide better insights into wastewater dynamics.
+EpiFlow Framework
+The data preprocessing, signal analysis, forecast modules presented in Section 3
+are packaged as EpiFlow framework https://github.com/aniruddhadiga/EpiFlow. The details of
+the package are provided in SI K.
+Data availability.
+The codes for EpiFlow and the data can be accessed at https://github.com/ani
+ruddhadiga/EpiFlow.
+A. Related Works
+First, we discuss recent work focused on improving wastewater-based disease surveillance and wastewater-
+based disease forecasting. We also discuss how our work compares with these recent results, in particular
+as it pertains to forecasting results.
+Data-quality enhancement methods
+Dai et al. [26] have developed a Bayesian statistical framework
+based on functional principal component analysis to tackle the challenges of irregular sampling of
+sewershed and successfully detect the true trends of viral concentration out of noisy and sparsely
+observed viral concentrations. Leisman et al.
+[42] have developed a generalized pipeline using
+different correction models to reduce the variance in wastewater measurements but restrict the analysis
+to the Chicago area. Keshaviah et al. [13] developed an early warning algorithm called COVID-SURGE
+to reliably distinguish signal from noise in the wastewater data and identify the start of a surge.
+Manuel et al. [43] employed a Bayesian smoothing and forecasting model to process SARS-CoV-2
+RNA concentrations in wastewater for short-term projection and surveillance. Watson et al. [44]
+employed a state-space model with sequential Monte Carlo methods to jointly estimate the effective
+11
+
+
+reproduction number (Reff) and case ascertainment rate (CAR) using SARS-CoV-2 RNA concentrations
+in wastewater and reported case data. Miyazawa et al. [45] employed a mechanistic SEIR model
+combined with an extended-Kalman-filter-based smoothing to estimate the effective reproduction
+number using SARS-CoV-2 RNA concentrations in wastewater, comparing them with notification-based
+estimates.
+Forecasting models
+Rankin et al. [46] developed a generalized additive model to generate two
+types of categorical forecasts for hospitalization capacity risks and hospitalization rate trends using
+hospitalization and COVID-19 wastewater data for six US cities over the period January 2021 to
+November 2022. The model produces probabilistic forecasts 1−3 weeks ahead. The authors evaluate
+the performance at critical change points and show that including wastewater data positively impacts
+the model’s performance. Karthikeyan et al.
+[22], employed an ARIMA model to produce point
+forecasts of new positive cases from the historical case data, wastewater data, and sample collection
+date in San Diego from July to October 2020 and show that Pearson correlation between the observed
+cases and predicted cases is high and also report a low Root Mean Squared Error. Cao and Francis [24]
+employed a VAR model for point predictions of new cases using historical cases and viral load in
+Indiana (PA) from April 2020 to February 2021 and show that short-time series can reliably predict
+cases 1 week ahead. Zhao et al. [23] compared the ARIMA model and VAR model using wastewater
+data from Detroit collected from September 2020 to August 2021 and showed that the VAR model is
+more effective in predicting COVID-19 incidence compared to the ARIMA model. In addition to the
+autoregressive models, other statistical models such as the GAM model, Poisson model, and Negative
+Binomial model have been investigated for predicting the COVID-19 cases from the wastewater data
+in the three New England regions in the US [47]. Regression models have been considered for case
+prediction using wastewater data only. Joseph-Duran et al. [48] similarly employed a simple regression
+model and demonstrate its effectiveness for short-term case prediction. Aberi et al. [49] showed that
+different regression models, e.g. linear regression, polynomial regression, and generalized additive
+models can effectively forecast COVID-19 surveillance signals using the wastewater data using data
+from four treatment plants in Austria collected from May to December 2020. Klaassen et al. [50]
+employed a Bayesian nowcasting model and used multiple data sources, including SARS-CoV-2 RNA
+concentrations in wastewater, reported cases, deaths, and serosurvey data, to estimate infection trends
+and Rt across five sewersheds in Louisville, Kentucky. Their analysis demonstrated that wastewater
+data correlated with infection estimates and improved nowcasts when clinical surveillance data were
+limited, highlighting its potential for infectious disease monitoring in low-resource settings. Recent
+studies in wastewater-based epidemiology have increasingly emphasized dynamic and state-space
+modeling approaches for characterizing evolving relationships between wastewater viral concentrations
+and community infection dynamics. The CDC Center for Forecasting and Outbreak Analytics (CFA)
+developed a wastewater-informed forecasting framework that combines wastewater viral concentrations
+and hospital admissions data to infer latent infection dynamics and generate probabilistic forecasts
+of COVID-19 hospital admissions [27]. Ouyang et al. [51] employed dynamic linear state-space
+models to robustly estimate COVID-19 trends under missing and irregular wastewater observations,
+enabling probabilistic temporal updating and uncertainty quantification. Ensor et al. [28] developed a
+nonlinear hierarchical time-series framework to model multiscale citywide viral trends and spatial hot
+spots across wastewater systems, while Sun et al. [29] used Bayesian dynamic functional regression to
+capture time-varying and spatially heterogeneous relationships between wastewater viral concentrations
+and infection burden. Collectively, these studies highlight the utility of state-space, Bayesian, and
+dynamic time-series frameworks in modeling nonstationary epidemiological processes from wastewater
+12
+
+
+surveillance data. Such approaches provide integrated alternatives to explicit preprocessing-based
+denoising incorporated in our framework while addressing the nonstationary and noisy nature of
+wastewater surveillance data.
+Several machine learning models, such as random forest, KNN, and deep neural networks, have
+also been considered in the literature. Li et al. [52] employed a random forest model and used
+multiple features in addition to viral loads, such as community vulnerability index [53], vaccination
+coverage, population size, weather, and wastewater temperature to predict COVID-19-induced weekly
+new hospitalizations in 159 counties across 45 states in the US. Aberi et al. [49], in addition to
+the regression models, also considered 𝑘-nearest neighbor, multilayer perceptron, support vector
+regression, decision trees, and random forest. Fu et al. [54] employed a Gaussian model and random
+forest algorithm to predict the epidemic trajectories of SARS-CoV-2 and influenza A virus (IAV) using
+SARS-CoV-2 and IAV RNA concentrations in wastewater from three key port cities in China. Their
+model extracted key epidemic features from wastewater data and demonstrated the model’s utility
+for real-time outbreak prediction and provided case trends up to six months ahead. Cañas Cañas et
+al. [55] employed a Light Gradient Boosting Machine (LightGBM) model and used multiple features,
+including SARS-CoV-2 RNA concentrations in wastewater, clinical case counts, population size, and
+meteorological variables, to predict COVID-19 case trends across municipalities in Catalonia, Spain.
+Their model demonstrated strong generalization ability across different regions and epidemiological
+waves. Some deep learning-based models have also been explored for the wastewater-based epidemic
+surveillance tasks [56, 11, 57, 17, 58]. Specifically, the artificial neural network model (ANN) and
+adaptive neuro fuzzy inference system (ANFIS) have proven effective in different studies for case
+prediction tasks when compared with linear models and random forest [57].
+Recently, semi-mechanistic approaches [27, 59] have been developed for estimating effective reproduc-
+tive number from WVL at sewershed and state level, which can then be used to forecast COVID-19
+hospital admissions. Morvan et al. [60] combined the shedding model and gradient-boosted regression
+trees (GBRT) to obtain highly accurate estimates (1.1% of the estimates from the representative
+prevalence survey) of COVID prevalence in England with the wastewater data from 45 sewage sites.
+Meadows et al. [61] employed a stochastic SEIR model with a particle filter method to predict COVID-19
+outbreaks using SARS-CoV-2 RNA concentrations in wastewater from five rural communities and a
+small city in Idaho, USA. Their model successfully forecasted Omicron outbreaks with a lead time of 0
+to 11 days before reported clinical cases, demonstrating the feasibility of wastewater-based surveillance
+for early outbreak detection in rural areas.
+We provide a table summarizing the contributions, methods, forecast horizon, and study period in
+Table 2 of the papers for ease of comparison. Also, we refer the reader to the review article by Chen-Chen
+et al [25] for a comprehensive review of the publications related to wastewater-based forecasting.
+B. Virginia Wastewater Monitoring Facilities
+In Virginia, wastewater was collected each week from 36 wastewater treatment plants with 13 sites
+sampling twice weekly and 23 sites sampling once a week during our period of evaluation (October
+2021−December 2023). The geographic distribution of the plants and population sizes served are
+shown in Figure 7. These samples help track the amount of SARS-CoV-2 in the wastewater. The
+concentration of SARS-CoV-2 is reported as “viral load” (WVL) −the total amount of viral pieces
+entering the wastewater treatment plant on the day of sampling. It is calculated by analyzing the
+amount of SARS-CoV-2 virus pieces found along with the total daily flow at the treatment plant.
+Additional details about sampling techniques and viral load calculation are provided in [40, 1].
+13
+
+
+Authors
+Type of Models
+Type of Forecasts (with Hori-
+zon)
+Study Period
+Number
+of
+Loca-
+tions Considered
+Rankin et al. [46]
+Generalized
+Additive
+Model (Statistical)
+Categorical, Probabilistic (1–3
+weeks ahead)
+Jan 2021 to Nov 2022 (PHE)
+6 US cities
+Karthikeyan et al. [22]
+ARIMA (Statistical)
+Point (Not explicitly stated)
+July – Oct 2020 (PHE)
+1 (San Diego)
+Cao and Francis [24]
+VAR (Statistical)
+Point (1 week ahead)
+Apr 2020 – Feb 2021 (PHE)
+1 (Indiana, PA)
+Zhao et al. [23]
+ARIMA, VAR (Statistical)
+Point (short term)
+Sep 2020 – Aug 2021 (PHE)
+1 (Detroit)
+Anneser et al. [47]
+GAM, Poisson, Negative Bi-
+nomial (Statistical)
+Point (short term)
+4-7 months (2020, 2021)
+(PHE)
+3 (New England re-
+gions)
+Joseph-Duran et al. [48]
+Regression (Statistical)
+Point (Short-term)
+Sep 2020–Mar 2021
+32
+(Catalonia,
+Spain)
+Aberi et al. [49]
+Linear, Polynomial, GAM
+(Statistical);
+KNN, MLP,
+SVR, DT, RF (Machine
+Learning)
+Point (Short-term)
+May – Dec 2020
+4 (Austria)
+Klaassen et al. [50]
+Bayesian Nowcasting (Sta-
+tistical)
+Probabilistic (Nowcasting)
+Aug 2020 - Mar 2021 (PHE)
+5 (Louisville, KY)
+Li et al. [52]
+Random Forest (Machine
+Learning)
+Point (short term)
+Jun 2021 - Jan 2023 (PHE)
+159 counties (45 US
+states)
+Fu et al. [54]
+Gaussian
+(Statistical),
+Random Forest (Machine
+Learning)
+Point (Up to 6 months ahead)
+Feb 2023-Apr 2024
+3 port cities (China)
+Cañas Cañas et al. [55]
+LightGBM (Machine Learn-
+ing)
+Point (short term)
+July 2020 - July 2022
+Not specified (Catalo-
+nia, Spain)
+Zhu et al. [56], Jiang et
+al. [11], Li et al. [57], Za-
+marreño et al. [58]
+ANN, ANFIS, Deep Learn-
+ing (Machine Learning)
+Point (Short-term; horizon varies
+by study)
+Aug 2020 - Feb 2021, May
+2020 - Dec 2021, Mar 2020
+- May 2020, May 2021 - Jul
+2023
+-
+CDC [27]
+Semi-mechanistic
+Probabilistic
+Feb 2024 - April 2024
+US state level
+Table 2: Summary of modeling approaches using wastewater data for COVID-19 forecasting.
+14
+
+
+Source: VA WWS Community of Practice, April 2023
+Figure 7: The geographic placement of the WWTPs across Virginia along with the population sizes
+served. In total, there are 36 WWTPs with 13 sites sampling twice weekly and 23 sites sampling once
+a week. Approximately, 50% of the Virginia’s population is monitored through these sites.
+C. Data Preprocessing Methods
+C.1. Viral Activity Levels
+The VAL is a calculated measure that allows for the aggregation of wastewater sample data collected at
+the sewersheds to get regional, state, and national level trends. When multiple samples are collected
+in a week, the average of the logarithm of the WVL is computed prior to obtaining the VAL. The VAL is
+the number of standard deviations above the baseline, transformed to the linear scale. The baseline is
+the 10th percentile of the log-transformed and normalized concentration data within a specific time
+frame. The VAL at a specific geographic region for a particular week is computed by taking the median
+VAL of all the sewersheds serving the geographic region.
+C.2. Denoising Using Savitzky-Golay Filters
+Savitzky-Golay filtering involves fitting a polynomial to local segments of the signal using a moving
+window approach, where the polynomial coefficients are determined via least squares regression. By
+appropriately selecting the window size and polynomial order, Savitzky-Golay denoising can strike
+a balance between noise reduction and signal fidelity. Unlike other denoising techniques, such as
+moving average or Gaussian smoothing, Savitzky-Golay denoising does not introduce significant phase
+distortion, making it particularly suitable for applications where preserving the temporal characteristics
+of the signal is crucial. This technique has been applied in various domains, including biomedical
+signal processing, spectroscopy, and chromatography, to enhance data quality and improve analysis
+outcomes. They have good spectral properties such as flat pass band and a steep cutoff frequency. SG
+filters also preserve signal features such as peaks better than any other smoothing filters. Also, the filter
+has a linear phase response and does not introduce any phase distortion. This property is particular
+important to ensure the lead-lag characteristics of the VAL signal is not altered.
+15
+
+
+Oct
+Jan
+2023
+Apr
+Jul
+Oct
+Jan
+2024
+time_value
+0
+2
+4
+6
+8
+10
+12
+14
+16
+VA - Denoising using Savitzky-Golay filtering
+viral_activity_level
+dn_viral_activity_level
+Figure 8: An example of denoising VAL timeseries corresponding to VA using Savitzky-Golay filters.
+Here the window size is 7 and the polynomial order is 2.
+D. Rolling-Window Granger Causality Test
+Conceptual causal graph.
+Figure 9 illustrates the conceptual relationship between infection preva-
+lence, incident infections, wastewater concentrations, and hospital admissions. Here, prevalence refers
+to the total number of currently infected individuals within the population at a given time, whereas
+incidence denotes the number of new infections or hospital admissions occurring during a specified
+time interval. In this causal framework, wastewater RNA concentrations primarily reflect the preva-
+lence of infected individuals due to sustained viral shedding, while new hospital admissions represent
+incident severe infections. Consequently, wastewater and hospitalization signals may exhibit indirect
+correlations/causations through their shared dependence on the latent prevalence process, while still
+providing useful predictive information for forecasting and early-warning analysis.
+An illustration of the Rolling-window GC test.
+Figure 10 provides an illustration of the rolling-
+window GC test applied on the VA state-level Hosp. and VAL. In Figure 10, we show the results of the
+rolling window GC test for the other five regions
+E. Additional Forecast Models
+Rolling-window ARIMA and ARIMAX forecasting framework.
+We additionally construct univariate
+autoregressive integrated moving average (ARIMA) and autoregressive integrated moving average with
+exogenous inputs (ARIMAX) models for forecasting hospitalization time series ℎ(𝑡). While the ARIMA
+model utilizes only the historical dynamics of hospitalization counts, the ARIMAX model additionally
+incorporates wastewater-derived viral activity signals 𝑣(𝑡) as an external predictor.
+The ARIMA(𝑝, 𝑑, 𝑞) model is given by
+𝜑(𝐵)(1 −𝐵)𝑑ℎ(𝑡) = 𝜃(𝐵)𝜖(𝑡),
+(2)
+16
+
+
+𝑃(𝑡)
+𝐼[𝑡, 𝑡+ ∆1)
+𝑊(𝑡+ ∆2)
+𝐻[𝑡, 𝑡+ ∆3)
+𝑃(𝑡): Prevalence of infected individuals
+𝐼[𝑡, 𝑡+ ∆1): New infections (observed
+and unobserved)
+𝑊(𝑡+ ∆2): Wastewater concentrations
+𝐻[𝑡, 𝑡+ ∆3): New hospitalizations
+Figure 9: Conceptual relationship between prevalence, infections, wastewater concentrations, and
+hospital admissions with associated temporal delays.
+where 𝐵denotes the backshift operator, 𝑝is the autoregressive order, 𝑑is the differencing order, 𝑞is the
+moving-average order, 𝜑(𝐵) and 𝜃(𝐵) are autoregressive and moving-average polynomials, respectively,
+and 𝜖(𝑡) represents a zero-mean innovation process. The ARIMAX model extends this formulation by
+including lagged exogenous predictors:
+𝜑(𝐵)(1 −𝐵)𝑑ℎ(𝑡) = 𝛽(𝐵)𝑣(𝑡) + 𝜃(𝐵)𝜖(𝑡),
+(3)
+where 𝛽(𝐵) denotes the transfer-function coefficients associated with the exogenous wastewater signal.
+Both ARIMA and ARIMAX models are estimated within a rolling-window framework to account for
+nonstationary epidemic dynamics and evolving temporal relationships between hospitalization and
+wastewater indicators. For each rolling window, model parameters are re-estimated independently
+using only data available within the corresponding training interval. This enables the forecasting
+system to adapt to changing epidemic phases and transient relationships over time.
+Model fitting is performed using the statsmodels implementation of the state-space ARIMA framework.
+Parameters are estimated through maximum likelihood estimation (MLE), where the likelihood of
+the observed time series under the assumed Gaussian innovation process is maximized numerically.
+Internally, the model is represented in state-space form and estimated using the Kalman filtering
+framework, enabling efficient recursive likelihood evaluation and forecasting.
+Once fitted, the ARIMA and ARIMAX models generate probabilistic forecasts recursively across future
+horizons. The fitted state-space representation provides both predictive means and forecast error
+variances at each forecast horizon. Assuming approximately Gaussian forecast errors, the predictive
+distribution at horizon ℎis represented as
+ℎ(𝑡+ ℎ) ∼𝒩
+(︁
+ˆ𝜇𝑡+ℎ, ˆ𝜎2
+𝑡+ℎ
+)︁
+,
+where ˆ𝜇𝑡+ℎand ˆ𝜎2
+𝑡+ℎdenote the forecast mean and variance, respectively.
+17
+
+
+𝒗→𝒉
+w
+(a)
+𝒉→𝒗
+w
+(b)
+Figure 10: A description of the rolling-window GC. The red dashed line indicates the week for which
+the GC test is conducted and the black dashed box indicates the observation window over which the
+test is conducted. (a) shows a time-point where the v Granger causes h and (b) shows a time-point
+where the h Granger causes v
+18
+
+
+For each forecast horizon, probabilistic forecasts are constructed using the 23 quantile levels employed
+in the epidemic forecasting community. For a quantile level 𝜏, the forecast quantile is computed as
+ˆ𝑞𝜏= ˆ𝜇+ 𝑧𝜏ˆ𝜎, where 𝑧𝜏denotes the standard normal quantile corresponding to probability level 𝜏.
+The resulting set of predictive quantiles provides a probabilistic characterization of forecast uncertainty
+and variability across horizons.
+The ARIMAX formulation enables direct incorporation of wastewater-derived viral activity indicators
+into the forecasting process, thereby allowing assessment of whether exogenous wastewater signals
+improve predictive performance relative to hospitalization-only autoregressive models.
+F. Predictability and Rolling Window Analysis
+Here we provide additional results of the predictability analysis discussed in Section 4.1. The goal
+of this analysis is to determine the cutoff on the analysis window length of VAL, beyond which the
+increasing window length does not change the mean predictability significantly. Given a region’s time
+series, we compute the distribution of predictability for each window length. We employ Tukey’s
+Honest Significant Difference (HSD) test to compare the means of all pairs of distributions. Given two
+means 𝜇𝑖and 𝜇𝑗of the distributions corresponding to window lengths 𝑖and 𝑗, respectively, Tukey’s
+HSD tests considers the null hypothesis 𝐻0 : 𝜇𝑖= 𝜇𝑗and the alternate hypothesis 𝐻𝛼: 𝜇𝑖̸ = 𝜇𝑗. The
+significance level 𝛼was set to 5%.
+Procedure.
+• Compute the pairwise Tukey’s HSD between the predictability distribution corresponding to two
+different window lengths 𝑖and 𝑗. Let 𝐻𝑆𝐷(𝑖, 𝑗) =
+{︃
+1,
+if 𝐻0 rejected
+0,
+else.
+.
+• Determine the smallest 𝑖such that, 𝐻𝑆𝐷(𝑖, 𝑗) = 0, ∀𝑗≥𝑖.
+This 𝑖serves as the cutoff observation window length in all our analysis.
+Permutation-based significance testing for permutation entropy
+Figure 11 illustrates the rolling-
+window permutation entropy (PE) significance analysis for an example window length of 14 weeks.
+For each rolling window, the observed normalized PE (blue line) is compared against an empirical
+null distribution generated through random shuffling of the time series, which preserves the marginal
+distribution while destroying temporal dependencies. The shaded region represents the 95% interval of
+the surrogate (shuffle-based) entropy distribution, while orange markers indicate windows where the
+observed PE is significantly lower than the surrogate distribution (𝑝< 0.05), suggesting the presence of
+statistically significant temporal structure and increased predictability within the corresponding time
+interval.
+Tukey-HSD examples
+The 𝐻𝑆𝐷matrix computed for all the six locations is shown in Figure 12. In
+these plots, we only show results for window lengths ranging from 5−30 weeks. Beyond 30, we did
+not observe significant changes in predictability.
+G. Kolmogorov-Smirnov test
+The two-sample Kolmogorov–Smirnov (KS) test is a nonparametric statistical test used to determine
+whether two samples originate from the same underlying distribution [?]. Let 𝐹(𝑥) and 𝐺(𝑥) denote
+19
+
+
+the empirical cumulative distribution functions (ECDFs) of two samples. The KS statistic is defined as
+𝐷= sup
+𝑥|𝐹(𝑥) −𝐺(𝑥)|,
+where sup𝑥denotes the maximum absolute difference between the two ECDFs over all possible values
+of 𝑥. Here, 𝑥represents the observed values of the quantity being compared (e.g., weighted interval
+score (WIS), permutation entropy, or forecast error values).
+In the one-sided KS test with alternative hypothesis alternative=’less’, the null and alternative
+hypotheses are given by
+𝐻0 : 𝐹(𝑥) = 𝐺(𝑥),
+𝐻1 : 𝐹(𝑥) < 𝐺(𝑥),
+where the inequality is interpreted pointwise over the cumulative distributions. In practice, this tests
+whether the sample associated with 𝐹(𝑥) tends to produce systematically smaller values than the
+sample associated with 𝐺(𝑥). When applied to WIS distributions, a statistically significant result under
+the “less” alternative indicates that the empirical model produces lower WIS values and therefore better
+probabilistic forecasting performance relative to the reference model. We used the Python function
+scipy.stats.kstest function with alternative=‘less’ (https://docs.scipy.org/doc/scipy/r
+eference/generated/scipy.stats.kstest.html) to test the hypothesis.
+H. Probabilistic Forecast Evaluation Metrics
+Weighted Interval Score.
+In order to compare the forecast quantiles of the different models, we use
+the Weighted Interval Score (WIS), the de facto standard in epidemiological forecasting community
+for probabilistic forecast evaluation [62]:
+𝑊𝐼𝑆𝛼0:𝑘(𝐹, 𝑦) =
+1
+𝐾+ 0.5
+𝐾
+∑︁
+𝑘=0
+𝛼𝑘
+2 (𝑢𝑘−𝑙𝑘) + 2
+𝛼𝑘
+(𝑙𝑘−𝑦)1(𝑦< 𝑙𝑘) + 2
+𝛼𝑘
+(𝑦−𝑢𝑘)1(𝑦> 𝑢𝑘)
+dispersion
++
+under prediction
++
+over prediction
+(4)
+where 𝑦is the observed value (ground truth case count corresponding to a week) for a given location
+and date, 𝐹is the forecast defined in terms of the median 𝑚, upper quantiles 𝑢𝑘and lower quantiles
+𝑙𝑘of the predictive distribution, respectively. 𝐾is the number of intervals considered, which in our
+case 𝐾= 11.
+Relative WIS.
+It is another metric used for evaluating forecast performance of COVID-19 forecast
+hub submissions [63, 64, 65]. It is used to rank models based on pairwise comparisons between all
+models. The relative skill 𝜃𝑖of model 𝑖is the geometric mean of all mean score ratios that involve
+model 𝑖. It is computed as 𝜃𝑖=
+(︁∏︀𝑀
+𝑗=1 𝜃𝑖𝑗
+)︁1/𝑀, where 𝜃𝑖𝑗= average WIS of model 𝑖
+average WIS of model 𝑗. Further, 𝜃𝑖is scaled by
+the 𝜃𝐵, the relative skill of a baseline model 𝐵, to obtain the rescaled relative skill 𝜃*
+𝑖=
+𝜃𝑖
+𝜃𝐵. In our
+evaluation, ARIMA was considered as the baseline model.
+Coverage.
+It is an estimate of the probability that a forecast interval (at a certain nominal level
+such as 80%) correctly includes the actual value. It is estimated on a particular date by computing
+the proportion of locations for which a forecaster’s interval includes the actual value on that date. A
+20
+
+
+perfectly calibrated forecaster would have each interval’s empirical coverage matching its nominal
+coverage. If the estimated coverage is lower than the nominal coverage, then the model is considered to
+be overconfident. In the case the estimated coverage is greater than the nominal coverage, the model is
+considered underconfident.
+I. Phase Classification Algorithm
+Let the given time series be y = [𝑦(1), 𝑦(2), · · · , 𝑦(𝑡)]. The algorithm to classify each time point in y is
+as follows:
+1. Approximate y with a piece-wise linear function to obtain breakpoints {𝑏1, . . . , 𝑏𝑚} (the endpoints
+of a line segment) and the slope of the line segments.
+2. Phase classification rules:
+• Time interval (𝑏𝑘, 𝑏𝑘+1] as surge phase if the value at the second breakpoint 𝑦𝑏𝑘+1 exceeds
+(1 + 𝛿) times the value at the first breakpoint 𝑦𝑏𝑘, indicating an increasing trend in the time
+series from 𝑏𝑘to 𝑏𝑘+1.
+• Time interval (𝑏𝑘, 𝑏𝑘+1] as decline phase if the value at the second breakpoint 𝑦𝑏𝑘+1 is less
+than (1 −𝛿) times the value at the first breakpoint 𝑦𝑏𝑘, indicating a decreasing trend in the
+time series from 𝑏𝑘to 𝑏𝑘+1.
+• If neither of the conditions holds, the time interval (𝑏𝑘, 𝑏𝑘+1] is categorized as a Plateau
+phase.
+For the piecewise linear approximation, we use a standard R package segmented [66].
+J. Effects of Wastewater Reporting Delays: Forecast Models
+Here, we provide a description of the modified VAR and ARIMAX model accounting for the delays in
+wastewater reporting. Assuming a reporting delay of 𝛿> 0 weeks, for the forecasting week 𝑡, v(t) is
+unavailable and only samples [𝑣(𝑡−𝛿), 𝑣(𝑡−𝛿−1), · · · ] is available, we modify (1) and rewrite it as
+[︃
+ℎ(𝑡)
+𝑣(𝑡−𝛿)
+]︃
+=
+[︃
+𝑐ℎ
+𝑐𝑣
+]︃
++
+[︃
+𝑎(1)
+ℎ𝑣𝑎(1)
+12
+𝑎(1)
+𝑣ℎ𝑎(1)
+22
+]︃[︃
+ℎ(𝑡−1)
+𝑣(𝑡−𝛿−1)
+]︃
++
+[︃
+𝑎(2)
+ℎℎ𝑎(2
+ℎ𝑣
+𝑎(2)
+𝑣ℎ𝑎(2)
+𝑣𝑣
+]︃[︃
+ℎ(𝑡−2)
+𝑣(𝑡−𝛿−2)
+]︃
++ . . .
++
+[︃
+𝑎(𝑝)
+ℎℎ𝑎(𝑝)
+ℎ𝑣
+𝑎(𝑝)
+𝑣ℎ𝑎(𝑝)
+𝑣𝑣
+]︃[︃
+ℎ(𝑡−𝑝)
+𝑣(𝑡−𝛿−𝑝)
+]︃
++ e(𝑡)
+(5)
+ARIMAX-Fct.
+We also modify the ARIMAX model in (3) as follows:
+(1 −𝜑1𝐿−𝜑2𝐿2 −. . . −𝜑𝑝𝐿𝑝)(1 −𝐿)𝑑ℎ(𝑡) = 𝛽0 + 𝛽1𝑣(𝑡−𝛿) + 𝛽2𝑣(𝑡−𝛿−1) + . . .
++𝛽𝑘𝑣(𝑡−𝑝−𝛿) + (1 + 𝜃1𝐿+ 𝜃2𝐿2 + . . . + 𝜃𝑞𝐿𝑞)𝜖𝑡
+(6)
+K. EpiFlow Software Package
+EpiFlow codebase is provided in https://github.com/aniruddhadiga/EpiFlow. It contains the
+following modules:
+Data Preprocessing Module
+- This module primarily focuses on formatting time series data and
+ensuring temporal and spatial alignment across multiple datasets, facilitating accurate comparison.
+Key steps include data cleansing and harmonization of temporal and spatial dimensions. The necessary
+functions are provided in viral_utils.py. An example of the of the use of the functions in data
+preprocessing workflow is provided in data_preprocessing_workflow.ipynb
+21
+
+
+Signal Analysis Module
+- This module focuses on (𝑖) denoising, (𝑖𝑖) determining the appropriate
+window length based on predictability, and (𝑖𝑖𝑖) the causal relationship between the time series. The
+necessary functions for denoising are provided in data_proc_utils.py. Permutation entropy and
+Granger causality analysis functions are provided in ww_analyzer.py. An example of the use of the
+functions in the signal analysis workflow is provided in signal_analysis_workflow.ipynb
+Forecasting module
+- This module generates forecasts using a VAR model and is designed to provide
+real-time forecasts. The rolling-window length and the number of lags are determined from the signal
+analysis module, and the model is retrained when new observation is obtained. The model-related
+functions are provided in VAR.py. An example of the of the use of the functions in forecasting workflow
+is provided in forecast_workflow.ipynb.
+References
+[1] (NWSS) CNWSS. 2024 About Wastewater Data . https://www.cdc.gov/nwss/about-data.ht
+ml#data-method. [Online; accessed 23-April-2024].
+[2] National Academies of Sciences, Engineering, and Medicine. 2023 Wastewater-based Dis-
+ease Surveillance for Public Health Action. Washington, DC: The National Academies Press.
+(10.17226/26767)
+[3] Bertels X, Hanoteaux S, Janssens R, Maloux H, Verhaegen B, Delputte P, Boogaerts T, van Nuijs
+AL, Brogna D, Linard C et al.. 2023 Time series modelling for wastewater-based epidemiology of
+COVID-19: A nationwide study in 40 wastewater treatment plants of Belgium, February 2021 to
+June 2022. Science of The Total Environment 899, 165603.
+[4] Greenwald HD, Kennedy LC, Hinkle A, Whitney ON, Fan VB, Crits-Christoph A, Harris-Lovett S,
+Flamholz AI, Al-Shayeb B, Liao LD et al.. 2021 Tools for interpretation of wastewater SARS-CoV-2
+temporal and spatial trends demonstrated with data collected in the San Francisco Bay Area.
+Water research X 12, 100111.
+[5] Mohring J, Leithäuser N, Wlazło J, Schulte M, Pilz M, Münch J, Küfer KH. 2024 Estimating the
+COVID-19 prevalence from wastewater. Scientific Reports 14, 14384.
+[6] Burki T. 2023 WHO ends the COVID-19 public health emergency. The Lancet Respiratory Medicine
+11, 588.
+[7] . 2023 Fact Sheet: End of the COVID-19 Public Health Emergency. https://www.hhs.gov/abou
+t/news/2023/05/09/fact-sheet-end-of-the-covid-19-public-health-emergency.html.
+Accessed: 2024-06-14.
+[8] Feng S, Roguet A, McClary-Gutierrez JS, Newton RJ, Kloczko N, Meiman JG, McLellan SL. 2021
+Evaluation of sampling, analysis, and normalization methods for SARS-CoV-2 concentrations in
+wastewater to assess COVID-19 burdens in Wisconsin communities. Acs Es&T Water 1, 1955–1965.
+[9] Phan T, Brozak S, Pell B, Gitter A, Xiao A, Mena KD, Kuang Y, Wu F. 2023 A simple SEIR-V model
+to estimate COVID-19 prevalence and predict SARS-Cov-2 transmission using wastewater-based
+surveillance data. Science of The Total Environment 857, 159326.
+[10] Weidhaas J, Aanderud ZT, Roper DK, VanDerslice J, Gaddis EB, Ostermiller J, Hoffman K, Jamal
+R, Heck P, Zhang Y et al.. 2021 Correlation of SARS-Cov-2 RNA in wastewater with COVID-19
+disease burden in sewersheds. Science of The Total Environment 775, 145790.
+22
+
+
+[11] Jiang G, Wu J, Weidhaas J, Li X, Chen Y, Mueller J, Li J, Kumar M, Zhou X, Arora S et al.. 2022
+Artificial neural network-based estimation of COVID-19 case numbers and effective reproduction
+rate using wastewater-based epidemiology. Water Research 218, 118451.
+[12] Duvallet C, Wu F, McElroy KA, Imakaev M, Endo N, Xiao A, Zhang J, Floyd-O’Sullivan R, Powell MM,
+Mendola S et al.. 2022 Nationwide trends in COVID-19 cases and SARS-CoV-2 RNA wastewater
+concentrations in the United States. ACS Es&t Water 2, 1899–1909.
+[13] Keshaviah A, Huff I, Hu XC, Guidry V, Christensen A, Berkowitz S, Reckling S, Noble RT, Clerkin
+T, Blackwood D et al.. 2022 Separating Signal from Noise in Wastewater Data: An Algorithm to
+Identify Community-Level COVID-19 Surges. medRxiv pp. 2022–09.
+[14] Nattino G, Castiglioni S, Cereda D, Della Valle PG, Pellegrinelli L, Bertolini G, Pariani E. 2022
+Association between SARS-CoV-2 viral load in wastewater and reported cases, hospitalizations,
+and vaccinations in Milan, March 2020 to November 2021. Jama 327, 1922–1924.
+[15] Zhan Q, Babler KM, Sharkey ME, Amirali A, Beaver CC, Boone MM, Comerford S, Cooper D,
+Cortizas EM, Currall BB et al.. 2022 Relationships between SARS-CoV-2 in wastewater and
+COVID-19 clinical cases and hospitalizations, with and without normalization against indicators
+of human waste. Acs Es&T Water 2, 1992–2003.
+[16] Kaplan EH, Wang D, Wang M, Malik AA, Zulli A, Peccia J. 2021 Aligning SARS-CoV-2 indicators
+via an epidemic model: application to hospital admissions and RNA detection in sewage sludge.
+Health care management science 24, 320–329.
+[17] Galani A, Aalizadeh R, Kostakis M, Markou A, Alygizakis N, Lytras T, Adamopoulos PG, Peccia
+J, Thompson DC, Kontou A et al.. 2022 SARS-Cov-2 wastewater surveillance data can predict
+hospitalizations and ICU admissions. Science of The Total Environment 804, 150151.
+[18] Peccia J, Zulli A, Brackney DE, Grubaugh ND, Kaplan EH, Casanovas-Massana A, Ko AI, Malik AA,
+Wang D, Wang M et al.. 2020 Measurement of SARS-Cov-2 RNA in wastewater tracks community
+infection dynamics. Nature Biotechnology 38, 1164–1167.
+[19] National Academies of Sciences, Engineering, and Medicine. 2024 Increasing the Utility of
+Wastewater-based Disease Surveillance for Public Health Action: A Phase 2 Report. Washington, DC:
+The National Academies Press. (10.17226/27516)
+[20] Bracher J, Ray EL, Gneiting T, Reich NG. 2021 Evaluating epidemic forecasts in an interval format.
+PLoS computational biology 17, e1008618.
+[21] Mathis SM, Webber AE, León TM, Murray EL, Sun M, White LA, Brooks LC, Green A, Hu AJ,
+Rosenfeld R et al.. 2024 Evaluation of FluSight influenza forecasting in the 2021–22 and 2022–23
+seasons with a new target laboratory-confirmed influenza hospitalizations. Nature communications
+15, 6289.
+[22] Karthikeyan S, Ronquillo N, Belda-Ferre P, Alvarado D, Javidi T, Longhurst CA, Knight R. 2021
+High-throughput wastewater SARS-Cov-2 detection enables forecasting of community infection
+dynamics in San Diego County. Msystems 6, e00045–21.
+[23] Zhao L, Zou Y, Li Y, Miyani B, Spooner M, Gentry Z, Jacobi S, David RE, Withington S, McFarlane
+S et al.. 2022 Five-week warning of COVID-19 peaks prior to the Omicron surge in Detroit,
+Michigan using wastewater surveillance. Science of The Total Environment 844, 157040.
+23
+
+
+[24] Cao Y, Francis R. 2021 On forecasting the community-level COVID-19 cases from the concentration
+of SARS-Cov-2 in wastewater. Science of The Total Environment 786, 147451.
+[25] Chen C, Wang Y, Kaur G, Adiga A, Espinoza B, Venkatramanan S, Warren A, Lewis B, Crow J,
+Singh R et al.. 2024 Wastewater-based epidemiology for COVID-19 surveillance and beyond: A
+survey. Epidemics 49, 100793.
+[26] Dai X, Champredon D, Fazil A, Mangat CS, Peterson SW, Mejia EM, Lu X, Chekouo T. 2022
+Statistical framework to support the epidemiological interpretation of SARS-CoV-2 concentration
+in municipal wastewater. Scientific reports 12, 13490.
+[27] Centers for Disease Control and Prevention (CDC). 2024 Behind the Model: Wastewater-informed
+Forecasting of COVID-19 Hospital Admissions. https://www.cdc.gov/cfa-behind-the-m
+odel/php/data-research/wastewater-informed-forecasting/index.html. Accessed
+2026-05-18.
+[28] Ensor KB, Schedler JC, Palacio J, Schneider R, Domakonda K, Hopkins L, Stadler LB. 2025 A
+Nonlinear Hierarchical Time Series Approach to Citywide Trend Assessment of Viruses, Hot Spot
+Signals, and Right-Sizing System. Data Science in Science 4, 2559690.
+[29] Sun TY, Schedler JC, Kowal DR, Schneider R, Stadler LB, Hopkins L, Ensor KB. 2025 Uncover-
+ing Dynamic Relationships Between SARS-CoV-2 Wastewater Concentrations and Community
+Infections via Bayesian Spatial Functional Concurrent Regression. Data Science in Science 4,
+2521329.
+[30] Schafer RW. 2011 What is a savitzky-golay filter?[lecture notes]. IEEE Signal processing magazine
+28, 111–117.
+[31] Krishnan SR, Seelamantula CS. 2012 On the selection of optimum Savitzky-Golay filters. IEEE
+transactions on signal processing 61, 380–391.
+[32] Bandt C, Pompe B. 2002 Permutation entropy: a natural complexity measure for time series.
+Physical review letters 88, 174102.
+[33] Scarpino SV, Petri G. 2019 On the predictability of infectious disease outbreaks. Nature communi-
+cations 10, 898.
+[34] Theiler J, Eubank S, Longtin A, Galdrikian B, Farmer JD. 1992 Testing for nonlinearity in time
+series: the method of surrogate data. Physica D: Nonlinear Phenomena 58, 77–94.
+[35] Good PI. 2005 Permutation, Parametric and Bootstrap Tests of Hypotheses. Springer.
+[36] Hill DT, Alazawi MA, Moran EJ, Bennett LJ, Bradley I, Collins MB, Gobler CJ, Green H, Insaf
+TZ, Kmush B et al.. 2023 Wastewater surveillance provides 10-days forecasting of COVID-19
+hospitalizations superior to cases and test positivity: a prediction study. Infectious disease modelling
+8, 1138–1150.
+[37] COVID-Hub. 2021 The COVID-19 Forecast Hub Community. https://covid19forecasthub.o
+rg/.
+[38] Smith TG et al.. 2017 pmdarima: ARIMA Estimators for Python. https://alkaline-ml.com/pm
+darima/.
+[39] Hyndman RJ, Khandakar Y. 2008 Automatic Time Series Forecasting: The forecast Package for R.
+24
+
+
+Journal of Statistical Software 27, 1–22.
+[40] of Health VD. 2024 SARS-CoV-2 in Wastewater - Coronavirus. https://www.vdh.virginia.gov
+/coronavirus/see-the-numbers/covid-19-data-insights/sars-cov-2-in-wastewater/.
+[Online; accessed 13-Mar-2024].
+[41] healthdata.gov. 2024 COVID-19 Reported Patient Impact and Hospital Capacity by Facility.
+https://healthdata.gov/Hospital/COVID-19-Reported-Patient-Impact-and-Hospita
+l-Capa/anag-cw7u/about_data. Accessed: 2024-05-30.
+[42] Leisman KP, Owen C, Warns MM, Tiwari A, Bian GZ, Owens SM, Catlett C, Shrestha A, Poretsky
+R, Packman AI et al.. 2024 A modeling pipeline to relate municipal wastewater surveillance and
+regional public health data. Water Research 252, 121178.
+[43] Manuel DG, Saran G, Lee I, Yusuf W, Thomson M, Élisabeth Mercier, Pileggi V, McKay RM, Corchis-
+Scott R, Geng Q, Servos M, Ikert H, Dhiyebi H, Yang IM, Harvey B, Rodenburg E, Millar C, Delatolla
+R. 2024 Wastewater-based surveillance of SARS-CoV-2: Short-term projection (forecasting),
+smoothing and outlier identification using Bayesian smoothing. Science of The Total Environment
+949, 174937.
+[44] Watson LM, Plank MJ, Armstrong BA, Chapman JR, Hewitt J, Morris H, Orsi A, Bunce M, Donnelly
+CA, Steyn N. 2024 Jointly estimating epidemiological dynamics of Covid-19 from case and
+wastewater data in Aotearoa New Zealand. Communications Medicine 4, 143.
+[45] Miyazawa S, Wong T, Ito G, Iwamoto R, Watanabe K, van boven M, Wallinga J, Miura F. 2024
+Wastewater-based reproduction numbers and projections of COVID-19 cases in three areas
+in Japan, November 2021 to December 2022. European Communicable Disease Bulletin 29.
+(10.2807/1560-7917.ES.2024.29.8.2300277)
+[46] Rankin N, Saiyed S, Du H, Gardner LM. 2025 A multi-city COVID-19 categorical forecasting
+model utilizing wastewater-based epidemiology. Science of The Total Environment 960, 178172.
+[47] Anneser E, Riseberg E, Brooks YM, Corlin L, Stringer C. 2022 Modeling the relationship between
+SARS-Cov-2 RNA in wastewater or sludge and COVID-19 cases in three New England regions.
+Journal of Water and Health 20, 816–828.
+[48] Joseph-Duran B, Serra-Compte A, Sàrrias M, Gonzalez S, López D, Prats C, Català M, Alvarez-
+Lacalle E, Alonso S, Arnaldos M. 2022 Assessing wastewater-based epidemiology for the prediction
+of SARS-Cov-2 incidence in Catalonia. Scientific Reports 12, 1–11.
+[49] Aberi P, Arabzadeh R, Insam H, Markt R, Mayr M, Kreuzinger N, Rauch W. 2021 Quest for
+optimal regression models in SARS-Cov-2 wastewater based epidemiology. International Journal
+of Environmental Research and Public Health 18, 10778.
+[50] Klaassen F, Holm RH, Smith T, Cohen T, Bhatnagar A, Menzies NA. 2024 Predictive power of
+wastewater for nowcasting infectious disease transmission: A retrospective case study of five
+sewershed areas in Louisville, Kentucky. Environmental Research 240, 117395.
+[51] Ouyang D, Chung L, Osborn M, Schacker TW, Doss CR. 2025 Dynamic Linear Models for
+Wastewater-Based Epidemiology with Missing Values: an Application to Covid-19 Surveillance.
+Data Science in Science 4, 2562199.
+[52] Li X, Liu H, Gao L, Sherchan SP, Zhou T, Khan SJ, van Loosdrecht MC, Wang Q. 2023 Wastewater-
+25
+
+
+based epidemiology predicts COVID-19-induced weekly new hospital admissions in over 150 USA
+counties. Nature Communications 14, 4548.
+[53] Smittenaar P, Stewart N, Sutermaster S, Coome L, Dibner-Dunlap A, Jain M, Caplan Y, Campigotto
+C, Sgaier SK. 2021 A COVID-19 community vulnerability index to drive precision policy in the
+US. MedRxiv pp. 2021–05.
+[54] Fu S, Zhang Y, Li Y, Zhang Z, Du C, Wang R, Peng Y, Yue Z, Xu Z, Hu Q. 2024 Estimating epidemic
+trajectories of SARS-CoV-2 and influenza A virus based on wastewater monitoring and a novel
+machine learning algorithm. Science of The Total Environment 951, 175830.
+[55] Cañas Cañas R, López-Peñalver RS, Casaña Mohedo J, Benavent Cervera JV, Fernández Garrido J,
+Juárez Vela R, Pellín Carcelén A, García-Algar Ó, Gea Caballero V, Andreu-Fernández V. 2025
+Forecasting SARS-CoV-2 outbreak through wastewater analysis: a success in wastewater-based
+epidemiology. Frontiers of Environmental Science & Engineering 19, 12. (10.1007/s11783-025-
+1932-8)
+[56] Zhu Y, Oishi W, Maruo C, Bandara S, Lin M, Saito M, Kitajima M, Sano D. 2022 COVID-19
+case prediction via wastewater surveillance in a low-prevalence urban community: a modeling
+approach. Journal of Water and Health 20, 459–470.
+[57] Li X, Kulandaivelu J, Zhang S, Shi J, Sivakumar M, Mueller J, Luby S, Ahmed W, Coin L, Jiang
+G. 2021 Data-driven estimation of COVID-19 community prevalence through wastewater-based
+epidemiology. Science of The Total Environment 789, 147947.
+[58] Zamarreño JM, Torres-Franco AF, Gonçalves J, Muñoz R, Rodríguez E, Eiros JM, García-Encina P.
+2024 Wastewater-based epidemiology for COVID-19 using dynamic artificial neural networks.
+Science of The Total Environment 917, 170367.
+[59] Lison A. 2024 EpiSewer: Estimate Epidemiological Parameters from Wastewater Measurements.
+Zenodo. (10.5281/zenodo.10569101)
+[60] Morvan M, Jacomo AL, Souque C, Wade MJ, Hoffmann T, Pouwels K, Lilley C, Singer AC, Porter
+J, Evens NP et al.. 2022 An analysis of 45 large-scale wastewater sites in England to estimate
+SARS-Cov-2 community prevalence. Nature Communications 13, 4313.
+[61] Meadows T, Coats ER, Narum S, Top EM, Ridenhour BJ, Stalder T. 2025 Epidemiological model
+can forecast COVID-19 outbreaks from wastewater-based surveillance in rural communities. Water
+Research 268, 122671.
+[62] Bracher J, Ray EL, Gneiting T, Reich NG. 2020 Evaluating epidemic forecasts in an interval format.
+arXiv preprint arXiv:2005.12881.
+[63] Cramer EY, Ray EL, Lopez VK, Bracher J, Brennen A, Castro Rivadeneira AJ, Gerding A, Gneiting
+T, House KH, Huang Y et al.. 2022 Evaluation of individual and ensemble probabilistic forecasts
+of COVID-19 mortality in the United States. Proceedings of the National Academy of Sciences 119,
+e2113561119.
+[64] López-Peñalver RS, Cañas-Cañas R, Casaña-Mohedo J, Benavent-Cervera JV, Fernández-Garrido J,
+Juárez-Vela R, Pellín-Carcelén A, Gea-Caballero V, Andreu-Fernández V. 2023 Predictive potential
+of SARS-Cov-2 RNA concentration in wastewater to assess the dynamics of COVID-19 clinical
+outcomes and infections. Science of The Total Environment 886, 163935.
+26
+
+
+[65] Sherratt K, Gruson H, Johnson H, Niehus R, Prasse B, Sandmann F, Deuschel J, Wolffram D,
+Abbott S, Ullrich A et al.. 2023 Predictive performance of multi-model ensemble forecasts of
+COVID-19 across European nations. Elife 12, e81916.
+[66] Muggeo V. 2008 segmented: An R package to Fit Regression Models with Broken-Line Relation-
+ships. R NEWS 8/1, 20–25.
+27
+
+
+Lag 1
+Lag 2
+Southwest - Rolling-Window Granger Causality
+VAL-dn --> Hosp.
+Hosp. --> VAL-dn
+Jan
+2022
+Apr
+Jul
+Oct
+Jan
+2023
+Apr
+Jul
+Oct
+Jan
+2024
+0
+20
+40
+60
+80
+100
+Hosp.
+0
+5
+10
+15
+VAL-dn
+Phase
+Surge
+Plateau
+Decline
+(a)
+Lag 1
+Lag 2
+Northwest - Rolling-Window Granger Causality
+VAL-dn --> Hosp.
+Hosp. --> VAL-dn
+Jan
+2022
+Apr
+Jul
+Oct
+Jan
+2023
+Apr
+Jul
+Oct
+Jan
+2024
+0
+20
+40
+60
+Hosp.
+0
+5
+10
+15
+VAL-dn
+Phase
+Surge
+Plateau
+Decline
+(b)
+Lag 1
+Lag 2
+Northern - Rolling-Window Granger Causality
+VAL-dn --> Hosp.
+Hosp. --> VAL-dn
+Jan
+2022
+Apr
+Jul
+Oct
+Jan
+2023
+Apr
+Jul
+Oct
+Jan
+2024
+0
+25
+50
+75
+100
+125
+150
+Hosp.
+0
+5
+10
+15
+20
+25
+30
+VAL-dn
+Phase
+Surge
+Plateau
+Decline
+(c)
+28
+
+
+Lag 1
+Lag 2
+Eastern - Rolling-Window Granger Causality
+VAL-dn --> Hosp.
+Hosp. --> VAL-dn
+Jan
+2022
+Apr
+Jul
+Oct
+Jan
+2023
+Apr
+Jul
+Oct
+Jan
+2024
+0
+20
+40
+60
+80
+100
+Hosp.
+0
+10
+20
+30
+40
+50
+VAL-dn
+Phase
+Surge
+Plateau
+Decline
+(d)
+Lag 1
+Lag 2
+Central - Rolling-Window Granger Causality
+VAL-dn --> Hosp.
+Hosp. --> VAL-dn
+Jan
+2022
+Apr
+Jul
+Oct
+Jan
+2023
+Apr
+Jul
+Oct
+Jan
+2024
+0
+20
+40
+60
+80
+100
+120
+Hosp.
+0
+10
+20
+30
+40
+50
+VAL-dn
+Phase
+Surge
+Plateau
+Decline
+(e)
+Figure 10: The rolling-window Granger causality test performed on the VAL and Hosp. time series
+corresponding to the five VA health regions. In the top plot, the line color indicates the variable Granger
+causing the other variable and the value indicates the corresponding lag for that week. The bottom
+plot shows the VAL and Hosp. admission time series.
+29
+
+
+Figure 11: Rolling-window permutation entropy (PE) significance analysis for an example window
+length of 14 weeks. The blue curve denotes the observed normalized permutation entropy computed
+within each rolling window, while the shaded region represents the 95% interval of the surrogate entropy
+distribution obtained through random shuffling of the time series. Orange markers indicate windows
+where the observed entropy is significantly lower than the shuffle-based surrogate distribution (𝑝<
+0.05), suggesting the presence of statistically significant temporal structure and increased predictability.
+30
+
+
+5
+7
+9
+11 13 15 17 19 21 23 25 27 29
+5
+7
+9
+11
+13
+15
+17
+19
+21
+23
+25
+27
+29
+Tukey HSD Test for Central
+5
+7
+9
+11 13 15 17 19 21 23 25 27 29
+5
+7
+9
+11
+13
+15
+17
+19
+21
+23
+25
+27
+29
+Tukey HSD Test for Eastern
+5
+7
+9
+11 13 15 17 19 21 23 25 27 29
+5
+7
+9
+11
+13
+15
+17
+19
+21
+23
+25
+27
+29
+Tukey HSD Test for Northern
+5
+7
+9
+11 13 15 17 19 21 23 25 27 29
+5
+7
+9
+11
+13
+15
+17
+19
+21
+23
+25
+27
+29
+Tukey HSD Test for Northwest
+5
+7
+9
+11 13 15 17 19 21 23 25 27 29
+5
+7
+9
+11
+13
+15
+17
+19
+21
+23
+25
+27
+29
+Tukey HSD Test for Southwest
+5
+7
+9
+11 13 15 17 19 21 23 25 27 29
+5
+7
+9
+11
+13
+15
+17
+19
+21
+23
+25
+27
+29
+Tukey HSD Test for VA
+accept
+reject
+accept
+reject
+accept
+reject
+accept
+reject
+accept
+reject
+accept
+reject
+Figure 12: Understanding the difference in mean predictability across different rolling-window lengths
+for different locations using Tukey Honest Significant Difference Test (𝛼= 0.05)
+31
