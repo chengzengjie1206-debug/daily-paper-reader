@@ -1,0 +1,636 @@
+Title: Market-Information-Aware Gated-LoRA of Foundation Models for Transferable Day-Ahead Electricity Price Forecasting
+
+URL Source: https://arxiv.org/pdf/2608.11359v1
+
+Published Time: Thu, 13 Aug 2026 00:07:55 GMT
+
+Number of Pages: 10
+
+Markdown Content:
+> 1
+
+# Market-Information-Aware Gated-LoRA of Foundation Models for Transferable Day-Ahead Electricity Price Forecasting 
+
+Hang Fan, Member, IEEE , Wei Wei, Senior Member, IEEE , Shengwei Mei, Fellow, IEEE 
+
+Abstract —Electricity price forecasting is crucial for market participants but remains difficult because prices are volatile, market-specific, and closely tied to anticipated system conditions. Existing supervised methods depend largely on market-specific historical data, limiting their use in newly established or data-scarce markets. This paper proposes a market-information-aware adaptation framework that transfers the Chronos-2 time-series foundation model to day-ahead electricity price fore-casting. It first constructs a multi-source market information (MSMI) interface aligning 7-day price context with pre-clearing supply–demand, reserve, maintenance, generator-capacity, and intertie variables, and then trains a source-domain gated low-rank adapter (LoRA), updating about 1% of model parame-ters without target-market labels. The gate scales the frozen source adapter according to reserve-tightness and operating-state signals. A leave-one-market-out protocol is adopted for evaluating cross-market transferability. Experiments on four Chi-nese provincial day-ahead spot markets show that the proposed framework reduces the average MAE/RMSE by 6.24% /7.99% 
+
+relative to market-information-aware zero-shot Chronos-2 and by 3.05% /3.52% relative to vanilla Source-LoRA. Experiments show that the gain is not reproduced by a learned global scalar or by random gate initialization, while the additional improvement over Source-LoRA is limited. These results suggest that market-structured inputs and state-dependent gated LoRA can provide a practical transfer path for data-scarce electricity markets. 
+
+Index Terms —Chronos-2, electricity price forecasting, gated LoRA, time-series foundation model, transfer learning. 
+
+I. I NTRODUCTION 
+
+# WITH the proliferation of electricity markets, accurate price forecasting has become essential for market participants. Unlike purely physical variables, market-clearing prices are jointly shaped by renewable fluctuations, network constraints, strategic behavior, and regulatory rules. As aresult, price series often combine calendar regularity with abrupt spikes and regime shifts [1]. Probabilistic forecasting is also increasingly important, as participants require not only expected price trajectories but also assessments of downside risk, scarcity events, and interval reliability [2]. This challenge is amplified when spot-market reform coin-cides with rapid renewable integration. Rising wind and photo-voltaic penetration reshapes supply–demand curves, while new or frequently reformed markets often lack the long, stationary records required for supervised learning. The problem is particularly salient in China, where provincial spot markets differ in rules, generation mix, renewable penetration, and operating conditions [3]. For such markets, the central question is whether forecasting capability can be transferred to a target market before sufficient local labels become available. 
+
+A. Related Work 
+
+Electricity price forecasting has long relied on statistical, machine-learning, and deep-learning models. Reviews show that performance is highly sensitive to market selection, data splitting, and benchmark design [1], while the open-access benchmark in [4] highlights the importance of rolling evalua-tion and strong baselines. High-dimensional autoregressive and regularized models remain competitive when calendar effects and lagged prices are properly encoded [5]. Exogenous vari-ables can further improve accuracy, but indiscriminate feature inclusion may weaken generalization [6]. Given the spikes and heteroscedasticity of spot prices, variance-stabilizing target transformations can also materially affect forecast accuracy [7]. Deep-learning approaches include recurrent, attention-based, and hybrid CNN–LSTM models [8], [9], [10], as well as the Temporal Fusion Transformer [11], Autoformer [12], and FEDformer [13]. Probabilistic forecasting has likewise advanced through prediction-interval optimization, ensemble density estimation, and generative real-time price models [14], [15], [16]. Despite improved within-market accuracy, most studies still require substantial target-market data for supervised training and offer limited transferability. Transfer learning has been explored when target-domain labels are limited. For electricity price forecasting, domain mismatch remains a major obstacle because price dynamics are market-specific [17]. In renewable forecasting, multi-domain adaptation has been used to improve probabilistic wind-power prediction under limited target data [18]. These studies motivate the leave-one-market-out design adopted in this paper. A more general transfer mechanism is offered by time-series foundation models, which learn generic forecasting representations from large heterogeneous corpora. Chronos-2 tokenizes numerical sequences for pretrained forecasting [19]; Lag-Llama studies probabilistic autoregressive founda-tion modeling [20]; Moirai uses a unified architecture for universal forecasting across different variate structures [21]; and TimesFM studies decoder-only zero-shot forecasting at scale [22]. Recent exogenous-variable Transformers such as TimeXer also suggest that known covariates should be treated as part of the forecasting interface rather than as an af-terthought [23]. Most recently, PriceFM pretrains a probabilistic electricity-price foundation model across European markets. It focuses on large-scale cross-market pretraining and leaves the adap-tation of general-purpose backbones and target-market-free market-information interfaces less explored [24]. Energy-arXiv:2608.11359v1 [cs.LG] 11 Aug 2026 2
+
+domain study adapts time-series foundation models to wind-power forecasting with limited target data, addressing het-erogeneous source domains and cross-scenario generalization [25]. This work highlights window construction and mixed cross-scenario training as key to adapting generic time-series models to energy applications. 
+
+B. Research Gap and Contribution 
+
+Table I summarizes representative methods along three axes most relevant to the forecasting problem: whether known future information over the forecast horizon is exposed to the model, whether cross-market transfer is supported without using target-market training labels, and whether the model produces probabilistic forecasts. Two observations stand out. First, price forecasting specific studies and exogenous-variable Transformers do leverage external information, but they as-sume target-market supervision; conversely, time-series foun-dation models support zero-shot transfer but typically operate as univariate or weakly exogenous-information forecasters. Second, time-series large model studies in energy have so far concentrated on physical processes such as wind power; day-ahead electricity prices have not yet been examined under a target-market-free transfer protocol with full future market-information exposure. Day-ahead electricity prices expose a gap between generic time-series foundation models and market-aware forecasting. Day-ahead prices are formed by mapping anticipated sup-ply–demand conditions into clearing prices. Therefore, future load, renewable output, reserve conditions, maintenance ca-pacity, generator availability, and intertie schedules available before clearing are not auxiliary variables in a generic sense; they are part of the economic information set from which prices are formed. A price-only foundation-model infers fu-ture prices from price history, even when tomorrow’s system conditions are already available. Conversely, a fully supervised target market model can use these variables but loses the ability to represent a newly established or label-scarce target market. The missing piece, visible as the unfilled combination in Table I, is a transfer framework that excludes target-market labels from training while enabling the foundation model to exploit the information of day-ahead market clearing. This paper develops a transferable day-ahead electricity price forecasting framework built on Chronos-2, formulating cross-market forecasting as an interface-and-adaptation prob-lem. The main contributions are as follows.  
+
+> •
+
+Multi-source market-information (MSMI) interface. 
+
+The MSMI interface provides the pretrained backbone with a 7-day price context, historical covariates, known future information, and day-ahead market-clearing in-formation over the forecasting horizon. Ablation tests demonstrate that this task interface is the primary source of performance improvement.  
+
+> •
+
+Source-domain and gated LoRA adaptation. We train a lightweight LoRA on source markets and then introduce a market-state gate that scales the LoRA update according to reserve tightness, net load, renewable share, capacity tightness, and recent volatility. This keeps the pretrained backbone frozen while turning the source adapter into a compact operating-state-aware calibration mechanism.  
+
+> •
+
+Target-market-free transfer evidence. We reformulate day-ahead electricity price forecasting from independent per-market supervised learning to cross-market transfer and evaluate it using a leave-one-market-out protocol. Experiments show that most transferable gains come from market information and source-domain alignment, and the market-state gate cannot be replaced with a learnable scalar or random gate initialization. The proposed method is detailed in Section II. Section III describes the experimental setup, main results and limitations. Section IV concludes the paper. II. P ROPOSED METHOD 
+
+The day-ahead electricity price forecasting problem is first formulated, followed by an overview of the entire framework. Details are presented in the subsequent subsections. 
+
+A. Problem Formulation and Overview 
+
+Let M denote a set of provincial spot markets. For each market m ∈ M, we observe a day-ahead price sequence 
+
+y(m) 
+
+> t
+
+and market-clearing information x(m) 
+
+> t
+
+. Given a historical context window of length L, the goal is to forecast the next 
+
+H day-ahead prices: 
+
+ˆy(m) 
+
+> t+1: t+H
+
+= f
+
+
+
+x(m) 
+
+> t+1: t+H
+
+|y(m)
+
+> t−L+1: t
+
+, x(m)
+
+> t−L+1: t
+
+
+
+. (1) In this paper, L = 672 and H = 96 , corresponding to a 7-day history and a 1-day horizon at a 15-minute resolution. Chronos-2 serves as a general pretrained time-series fore-caster that takes recent target observations and forecast-horizon covariates as inputs and produces probabilistic fore-casts with quantile outputs. Its encoder-only architecture di-rectly accommodates historical prices and known future mar-ket information without modifying the backbone. This capa-bility is well suited to day-ahead electricity markets, where load, renewable generation, reserves, maintenance, available capacity, and tie-line flow are known or scheduled before clearing, while price spikes and tail risks remain decision-relevant. The resulting setup isolates the transferable value of the market-information interface and source-domain LoRA adaptation from that of architecture redesign. We evaluate the model under a LOMO protocol. In each fold, one market is held out as the target market. The zero-shot setting evaluates Chronos-2 directly on the held-out market without any training on the dataset. The adaptation setting fine-tunes Chronos-2 on the source markets only and then evaluates it on the held-out market. No target-market training data are used in either zero-shot or source-market adaptation. Fig. 1 summarizes the proposed adaptation framework. The method is deliberately interface-first : we do not change the pretrained Chronos-2 backbone. Market knowledge enters through atarget-market-free evaluation protocol, a task interface that uti-lizes day-ahead clearing information, and a low-rank source-domain adapter trained only on non-target markets. 
+
+B. Leave-One-Market-Out Task Generation 
+
+Let m⋆ denote the held-out target market in one LOMO fold, and S(m⋆) = M\{ m⋆} the source set. Adapter training 3
+
+TABLE I COMPARISON OF REPRESENTATIVE METHODS RELEVANT TO TRANSFERABLE DAY -AHEAD ELECTRICITY PRICE FORECASTING .Reference Target Model family Future info Cross-market Probabilistic Ziel and Weron [5] Electricity price High-dimensional ARX Yes No No Ludwig et al. [6] Electricity price LASSO / random forest Yes No No Bottieau et al. [8] Electricity price Interpretable Transformer Limited No Yes Lago et al. [4] Electricity price DNN benchmark Yes No No Lim et al. (TFT) [11] General time series Attention with covariates Yes No Yes Autoformer / FEDformer [12], [13] General time series Decomposition Transformer No No No G¨ und¨ uz et al. [17] Electricity price Transfer learning Limited Within-EU No Chronos [26] General time series Foundation (tokenized) No Zero-shot Yes Lag-Llama [20] General time series Foundation (autoregressive) No Zero-shot Yes Moirai [21] General time series Foundation (universal) Limited Zero-shot Yes TimesFM [22] General time series Foundation (decoder-only) No Zero-shot No TimeXer [23] General time series Exogenous Transformer Yes No No Yan et al. [25] Wind power Foundation + few-shot / re-pretrain Limited Cross-farm Yes 
+
+This work Electricity price Foundation + source-domain LoRA Yes LOMO Yes Future info : access to known future information over the forecast horizon; Cross-market : deployment on a target market without target-market training labels; Probabilistic : native distributional forecasts. ARX : AutoRegressive with exogenous input; LASSO : least absolute shrinkage and selection operator; DNN : deep neural network. Price history       
+
+> Price Time • Seasonality • Spike history • Recent dynamics
+> Future market information
+> • Load / demand • Renewables • Reserve / maintenance • Generation capacity • Inertia / ancillary services • Tie-line schedule
+> MSMI interface
+> Market state 𝒛𝒕 𝑧௧ =
+> reserve shortage net load renewable share capacity margin volatility
+> Gate function
+> 𝛾ట 𝑧௧
+> Chronos-2 backbone
+> (parameters W are frozen) Gated rank-r adapter 𝑊 ᇱ 𝑧௧ = 𝑊 + 𝛾ట 𝑧௧ 𝛼 𝑟 𝐵𝐴
+> Quantile price forecast 𝑦 ො௧ା௛,௤ ∈ 𝑄
+> • Point metrics: MAE, RMSE • Probabilistic: CRPS • Interval coverage: PICP80
+> 𝐵 ∈ 𝑅 ௗ೚ೠ೟×௥
+
+, 𝐴 ∈ 𝑅 ௥×ௗ 
+
+Fig. 1. An overview of the proposed method 
+
+and testing windows are generated from S(m⋆) and m⋆,respectively, thus target-market labels are not exposed. For each market m and forecast origin t, let y(m) 
+
+> t
+
+be the day-ahead clearing price. In the Core interface, the day-ahead market-information vector x(m) 
+
+> t
+
+∈ Rd contains load, wind gen-eration, and photovoltaic generation. In the proposed MSMI interface, it is expanded to include additional supply, demand, reserve, maintenance, generator-capacity, and intertie-related fields. A rolling task is defined as 
+
+T (m) 
+
+> t
+
+=
+
+
+
+y(m)
+
+> t−L+1: t
+
+, x(m)
+
+> t−L+1: t
+
+, x(m) 
+
+> t+1: t+H
+
+; y(m)
+
+> t+1: t+H
+
+
+
+, (2) where L = 672 and H = 96 , corresponding to a seven-day context and a one-day horizon at 15-minute resolution. The source-domain adaptation set in fold m⋆ is 
+
+Dsrc (m⋆) = {T (m) 
+
+> t
+
+: m ∈ S (m⋆), t ∈ Ωtrain  
+
+> m
+
+}, (3) and the target evaluation set is 
+
+Dtar (m⋆) = {T (m⋆) 
+
+> t
+
+: t ∈ Ωtest  
+
+> m⋆
+
+}. (4) This construction mimics deployment to a market with no usable local training history. It keeps the rolling-window infor-mation set identical for zero-shot, source-LoRA, and later few-shot diagnostics, so performance differences can be attributed to adaptation rather than to different data access. 
+
+C. Market-Information-Aware Probabilistic Interface 
+
+The interface passed to Chronos-2 removes the future labels from T (m) 
+
+> t
+
+and keeps only the information available at the forecast origin: 
+
+I(m) 
+
+> t
+
+=
+
+
+
+y(m)
+
+> t−L+1: t
+
+, x(m)
+
+> t−L+1: t
+
+, x(m)
+
+> t+1: t+H
+
+
+
+. (5) The first component provides recent price dynamics, including weekly seasonality and spike history. The second component aligns past prices with contemporaneous system conditions. The third component supplies the day-ahead information vec-tor over the prediction horizon. These quantities are published or scheduled before market clearing. They represent the market participant’s information set. The MSMI interface is designed to be richer than the Core load-wind-PV interface while avoiding hand-crafted transfor-mations as the main source of improvement. It includes direct load, outgoing load, wind power, photovoltaic power, hydro power, nuclear power, upward and downward reserve-related quantities, ancillary-service quantities, maintenance capacity, generation capacity, and tie-line schedule. This design tests whether Chronos-2 benefits from a broader representation of market-clearing conditions before adding model-side com-plexity. This construction is related to recent exogenous-variable time-series models, but the motivation is different. Architectures such as TimeXer redesign Transformer attention to incorporate external variables during supervised training [23]. Here, the Chronos-2 backbone is kept fixed in the zero-shot setting; we aim to enable a pretrained foundation model to receive the same available information through its task interface while preserving target-market separation. Chronos-2 returns quantile forecasts instead of a determin-istic trajectory. Let Q denote the evaluated quantile levels and let ˆy(m) 
+
+> t+h,q
+
+be the predicted q-quantile for horizon step h. The 4
+
+point forecast is the median quantile ˆy(m)
+
+> t+h, 0.5
+
+. For probabilistic evaluation, we consider the standard pinball loss [2]: 
+
+ρq (e(m) 
+
+> t+h,q
+
+) = max 
+
+
+
+qe (m) 
+
+> t+h,q
+
+, (q − 1) e(m)
+
+> t+h,q
+
+
+
+, (6) where e(m) 
+
+> t+h,q
+
+= y(m) 
+
+> t+h
+
+− ˆy(m) 
+
+> t+h,q
+
+and the continuous ranked probability score (CRPS) [27], which can be expressed as twice the integral of the pinball loss over all quantile levels, yielding the following discrete approximation over uniformly spaced quantile grid: 
+
+\CRPS (m) 
+
+> t+h
+
+= 2
+
+|Q| 
+
+X
+
+> q∈Q
+
+ρq (e(m) 
+
+> t+h,q
+
+). (7) As users may need to know whether predicted risk bands contain the realized price with the intended frequency, we also report the prediction interval coverage probability (PICP) for the central 80% interval: 
+
+PICP 80 =
+
+P
+
+> t∈Ω
+> H
+
+P
+
+> h=1
+
+I
+
+
+
+ˆy(m) 
+
+> t+h, 0.1
+
+≤ y(m) 
+
+> t+h
+
+≤ ˆy(m)
+
+> t+h, 0.9
+
+
+
+|Ω|H (8) PICP values close to 80% indicate well-calibrated central prediction intervals. This probabilistic interface is important for price forecasting because price spikes and tail events are decision-relevant. It allows a single Chronos-2 run to support both median-based point comparisons and distribution-aware evaluation. For a held-out market m, let PICP (m)80 denote the quantity in the above equation. We report two complementary cross-market summaries. The pooled coverage, PICP pool 80 , is computed after concatenating all forecast points from the four held-out markets. To measure market-wise calibration stability, we additionally report the unweighted macro-average absolute coverage deviation 
+
+Macro -ACD 80 = 1
+
+|M| 
+
+X
+
+> m∈M
+
+PICP (m)80 − 0.80 . (9) Thus, PICP pool 80 measures aggregate coverage, whereas 
+
+Macro -ACD 80 detects under- or over-coverage that may be masked by aggregation across markets. 
+
+D. Source-Domain Gated LoRA 
+
+The adaptation strategy contains three deployment regimes. In the first regime, zero-shot inference, the pretrained Chronos-2 parameters θ0 are frozen and each target-market input I(m⋆)
+
+> t
+
+is evaluated directly. This is the strictest deployment condition and requires no market-specific training. In the second regime, source-domain LoRA adaptation, Chronos-2 is adapted using only Dsrc (m⋆). For an adapted weight matrix W , LoRA represents the update as [28] 
+
+W ′ = W + αr BA, (10) where r is the adapter rank, W ∈ Rdout ×din , A ∈ Rr×din ,
+
+B ∈ Rdout ×r . Pretrained weights θ0 remain frozen. The adapter parameters ϕ are optimized on source-market rolling tasks: 
+
+ϕ⋆(m⋆) = arg min 
+
+> ϕ
+
+X
+
+> T ∈D src (m⋆)
+
+LC2 (IT , yT ; θ0, ϕ ) , (11) where LC2 denotes the sequence-forecasting objective used by Chronos-2 for each rolling task. Unless otherwise stated, the MSMI source-adaptation experiments use a controlled LoRA configuration with rank r = 8 , scaling factor α = 16 , 1500 op-timization steps, batch size 8, learning rate 10 −4, and bfloat16 arithmetic. The low-rank updates are restricted to the four self-attention projection matrices that form the query, key, value, and output transformations, together with the output projection that maps patch embeddings to forecast tokens. This setting updates approximately 1.21M adapter parameters in each fold, or about 1.0% of the 120.7M total model parameters, while all pretrained backbone weights remain frozen. After source-domain optimization, the resulting adapter is transferred un-changed to Dtar (m⋆) for held-out-market evaluation, with no target-market labels used for training or model selection. The vanilla LoRA applies the same adapter strength to all operating conditions. This may not be appropriate for electricity prices, because the usefulness of an adapter depends on market conditions. To this end, we introduce a market-state-gated LoRA mechanism. For each rolling task, a compact market-state vector is constructed from the known day-ahead market-information trajectory and the recent price context. Let 
+
+ℓt+h, wt+h, pt+h, rup 
+
+> t+h
+
+, rdown  
+
+> t+h
+
+, cmnt 
+
+> t+h
+
+, gAt+h, and gBt+h denote day-ahead load, wind generation, photovoltaic generation, up-ward reserve, downward reserve, maintenance capacity, and two available-generation-capacity fields for horizon slot h.With ¯ℓt = H−1 PHh=1 ℓt+h and dt = max( |¯ℓt|, 1) , the raw state scores are 
+
+snetload  
+
+> t
+
+= 1
+
+H
+
+> H
+
+X
+
+> h=1
+
+ℓt+h − wt+h − pt+h
+
+dt
+
+,srenewable  
+
+> t
+
+= 1
+
+H
+
+> H
+
+X
+
+> h=1
+
+wt+h + pt+h
+
+dt
+
+,sresAdeq  
+
+> t
+
+= 1
+
+H
+
+> H
+
+X
+
+> h=1
+
+rup  
+
+> t+h
+
++ rdown 
+
+> t+h
+
+dt
+
+,scapacity  
+
+> t
+
+= 1
+
+H
+
+> H
+
+X
+
+> h=1
+
+gAt+h + gBt+h − cmnt  
+
+> t+h
+
+− ¯ℓt
+
+dt
+
+,svolatility  
+
+> t
+
+= std( yt−L+1: t)mean( |yt−L+1: t|) + 10 −6
+
+The standardized market-state vector is then 
+
+zt = [˜ snetload  
+
+> t
+
+, ˜srenewable  
+
+> t
+
+, −˜sresAdeq  
+
+> t
+
+, −˜scapacity  
+
+> t
+
+, ˜svolatility  
+
+> t
+
+]
+
+The third component is a reserve-tightness score. The negative signs convert high available reserve and high capacity margin into low tightness scores, so larger positive components indi-cate tighter operating states. In each LOMO fold, the mean and standard deviation used for standardization are estimated only from source-market training rolling tasks. Held-out target forecast labels and target-test distribution statistics are never used in this scaler. Raw scores are clipped to [−5, 5] , and if fewer than half of the horizon load entries are valid, zt is set to zero. A small gate gψ (·) maps zt to a task-level LoRA multiplier: 
+
+γψ (zt) = clip (1 + β tanh( gψ (zt)) , γ min , γ max ) . (12) 5
+
+The adapted layer then becomes 
+
+W ′(zt) = W + γψ (zt) αr BA. (13) In this gated LoRA mechanism, γψ (zt) adaptively modulates the adapter strength according to real-time market conditions. It is computed once for each rolling day-ahead task and is ap-plied to the LoRA update during the Chronos-2 forward pass. Thus, the median and quantile forecasts are generated by the gated backbone itself, not by rescaling the final price forecast. In the most stable implementation, the gate is initialized from the source-domain LoRA checkpoint. The LoRA matrices A
+
+and B are then frozen, and only the gate parameters ψ are trained on source-market rolling tasks: 
+
+ψ⋆(m⋆) = arg min 
+
+> ψ
+
+X
+
+> T ∈D src (m⋆)
+
+LC2 (IT , yT ; θ0, ϕ ⋆, ψ ) .
+
+This source-initialized gate-only design preserves the trans-ferable adapter learned from related markets and adds only a small market-state calibration layer. It is also deliberately conservative: the gated module cannot memorize the held-out target market, because its trainable gate sees only source-market rolling tasks during adaptation. Target-market few-shot refinement is used only as a de-ployment diagnostic. For each held-out market, Chronos-2 is adapted with 5, 10, or 30 days of target-market observations and then evaluated on the same rolling test windows. This tests whether local specialization is useful immediately or requires source-domain alignment first. In practice, the pro-posed deployment path is: market-information-aware zero-shot inference, source-domain LoRA when related-market data are available, gated market-state calibration of the source adapter, and optional few-shot target refinement after local observations accumulate. Taken together, the three regimes form a progressive de-ployment spectrum. A market participant can begin with market-information-aware zero-shot inference, add source-domain LoRA when related-market data are available, and apply target-market few-shot refinement only after adequate local history has accumulated. This staged design is the main methodological distinction from full domain re-pretraining: instead of building a new electricity-price foundation model from a massive cross-market corpus, we adapt a pretrained model through a small source-market adapter while preserving a clean target-market separation. III. E XPERIMENTAL STUDY 
+
+This section reports the experimental details and results, and also discusses the limitations of the proposed method. 
+
+A. Experimental Setup 1) Dataset, version policy, and protocol: The raw data consist of two tables: a price table containing day-ahead and real-time clearing prices, and a supply-demand table containing load, renewable generation, reserve, maintenance, generation capacity, and intertie variables. We retain four com-parable provincial day-ahead spot markets and exclude non-comparable records from the main LOMO experiment. The data are sampled at 15-minute resolution. For every market, the last 90 days are used for rolling evaluation, and the preceding period, capped at the most recent 900 days per market, is used as the source-domain training pool when that market is not held out. Two markets provide longer histories than this cap; Section III-B verifies that extending the training pool to the full available history does not change the conclusions. A key pre-processing issue is that the supply-demand table can contain multiple versions for the same market, date, and 15-minute slot. To avoid hindsight leakage, we select one row per time key using a deterministic minimum-version policy. That is, if multiple supply-demand versions are available for the same time slot, the earliest version is used. This policy is intended to approximate the information that would be avail-able before day-ahead clearing; later revisions are excluded from the main experiment. The selected cache contains 667680 unique supply-demand time keys. Among the selected rows, version 0 accounts for 654377 rows, while higher versions appear only when no version-0 is available for that key. Each held-out market is evaluated with 83 rolling daily windows. In each LOMO fold, the target market is excluded from adapter training, and the remaining three markets form the source-domain adaptation set. Unless otherwise stated, all feature-interface comparisons share the same regenerated cache and version policy, so observed differences reflect the information interface, not data-preparation inconsistencies. For the gated LoRA implementation, the source adapter is the same rank-8 LoRA module used in the Source-LoRA baseline, with α = 16 and insertion into the Chronos-2 q/k/v/o attention projections and output-patch layer. The gate input is the five-dimensional market-state vector zt defined in Section II; the gate is linear, gψ (zt) = w⊤zt +b, and therefore adds only six trainable parameters. In the gated stage, the pretrained Chronos-2 weights and LoRA matrices are frozen, the reserve-tightness weight is initialized to one while all other gate weights and the bias are initialized to zero, and γψ (zt)
+
+is clipped to [1 .0, 3.0] with β = 2 .0. The gate is trained for 300 source-market steps with batch size 32 and learning rate 10 −4; scale statistics are estimated from source-market training windows only, and no target-market forecast-horizon labels are used. 
+
+2) Baselines: Four groups of baselines are considered:  
+
+> •
+
+Heuristic baselines: previous-day and last-value forecasts;  
+
+> •
+
+Tree-based methods: XGBoost [29] and LightGBM [30];  
+
+> •
+
+Deep time-series baselines: PatchTST [31], iTransformer [32], and the DLinear/NLinear family [33];  
+
+> •
+
+Time series foundation models: Chronos-Large [26], Moirai-1.1-R-small [21], and TimesFM-2.5-200M [22]. All reported day-ahead metrics use the same 7-day-to-1-day rolling forecasting protocol. The tree-based and deep-learning models are trained using conventional within-market supervision and serve as reference benchmarks for predictive accuracy, not as target-market-free transfer baselines. The Chronos-2 feature-interface ablations isolate the benefit of exposing richer day-ahead market information under the same regenerated cache. 
+
+3) Information Interfaces: We define four information in-terfaces to separate the value of future market information from the value of hand-crafted feature engineering: 6   
+
+> TABLE II COMPARISON OF THE DAY -AHEAD MAE/RMSE OF THE FOUR -MARKET FORECASTING PROTOCOL
+
+Model Paradigm GD LN SD SX Average MAE RMSE MAE RMSE MAE RMSE MAE RMSE MAE RMSE Prev-day naive baseline 48.98 76.49 305.29 447.78 95.14 154.54 133.73 260.12 145.78 234.73 Last-value naive baseline 68.03 104.13 257.76 424.46 113.85 185.09 133.71 228.34 143.34 235.50 XGBoost supervised tree 53.08 78.22 263.38 325.21 111.40 152.95 129.59 201.23 139.36 189.40 LightGBM supervised tree 51.82 76.76 262.95 325.70 107.96 148.45 126.69 198.99 137.35 187.47 PatchTST supervised deep neural network 49.10 71.70 267.98 345.17 82.26 121.13 118.19 193.01 129.38 182.75 iTransformer supervised deep neural network 53.05 74.49 272.74 354.66 88.34 129.50 118.91 198.03 133.26 189.17 DLinear supervised deep neural network 42.56 63.81 243.50 318.92 87.81 123.26 123.28 197.19 124.29 175.80 NLinear supervised deep neural network 42.66 64.55 245.98 323.98 79.47 119.36 114.96 197.08 120.77 176.24 Chronos-Large zero-shot foundation model 42.56 66.23 257.23 419.28 102.82 168.49 115.80 210.78 129.60 216.19 Moirai-1.1-R-small zero-shot foundation model 54.22 82.37 259.84 395.32 99.62 159.89 134.86 225.14 137.13 215.68 TimesFM-2.5-200M zero-shot foundation model 43.85 69.15 261.96 390.87 83.04 135.65 102.62 200.03 122.87 198.93 Chronos-2 core zero-shot foundation model 41.93 68.52 174.01 277.94 56.78 96.26 72.31 173.27 86.25 154.00 Chronos-2 MSMI zero-shot foundation model 37.30 63.55 155.00 265.79 56.88 96.99 69.25 173.09 79.60 149.85 Chronos-2 MSMI Source-LoRA 36.77 62.61 147.73 243.88 55.55 94.24 67.88 170.87 76.98 142.90 
+
+Chronos-2 MSMI Gated LoRA 36.61 62.39 139.24 225.64 54.78 92.61 67.89 170.86 74.63 137.87      
+
+> MAE and RMSE are reported as separate columns on the raw price scale. Average MAE/RMSE are four-market arithmetic means. GD ,LN ,
+> SD , and SX denote Guangdong, Liaoning, Shandong, and Shanxi, respectively.
+> •
+
+The Core interface is a compact reference that exposes only the most common day-ahead drivers, including di-rect load, wind power, and photovoltaic power.  
+
+> •
+
+The proposed MSMI interface adds raw day-ahead market information, including supply–demand, reserve, mainte-nance, generator, and intertie fields.  
+
+> •
+
+The Engineered interface replaces these raw additions with empirical quantities such as net load, renewable share, ramping terms, and reserve margins.  
+
+> •
+
+The Full interface combines all quantities in the MSMI and engineered interfaces. The latter two interfaces are included solely as diagnostic ablations to assess whether engineered variables can substitute for or complement the original released market fields. 
+
+4) Metrics: For point forecasting, we report mean absolute error (MAE) and root mean square error (RMSE) on the raw price scale. For probabilistic forecasting, we report CRPS in (7) as the main score, together with PICP and coverage deviation for the central 80% prediction interval. Lower values of MAE, RMSE, CRPS, and coverage deviation indicate better performance, while PICP is evaluated by closeness to the nominal 80% coverage level. Statistical significance is evaluated using one-sided Diebold–Mariano (DM) tests [34] on daily-window loss differentials from the 83 rolling forecasts per market, with Newey–West Heteroskedasticity and Autocorrelation Consistent (HAC) variance and the Harvey– Leybourne–Newbold small-sample correction [35]. Because the 96 intra-day horizons are aggregated into one daily-window loss, all reported tests use a Newey–West truncation lag of four daily windows. The DM framework is applied to MAE and CRPS score differentials, but not to PICP because coverage is a diagnostic relative to the nominal interval level. Pooled DM tests normalize each market’s daily differentials by its mean reference loss or score to avoid dominance by high-price markets. 
+
+B. Results 1) Day-ahead forecasting results: Table II compares MAE and RMSE across the four held-out markets. The MSMI interface reduces the Chronos-2 zero-shot average MAE from 86.25 under the Core interface to 79.60, confirming that known future market information is essential for transfer-able price forecasting. Source-LoRA further reduces average MAE/RMSE to 76.98/142.90 without target-market labels. The proposed gated LoRA variant gives the lowest average MAE/RMSE of 74.63/137.87, corresponding to a 3.05% MAE reduction relative to Source-LoRA. The largest improvement appears on LN , where gated LoRA reduces MAE/RMSE to 139.24/225.64. For other markets, the gated-vs-Source statis-tical gain is marginal rather than decisive. This result should be interpreted as moderate evidence that reserve-tightness-conditioned calibration can further improve a source-domain adapter in volatile markets. The gate is intentionally small: it freezes the source LoRA matrices and trains only the state-to-scale mapping. This design avoids adding a separate market-specific model while allowing the source adapter to become stronger under tighter operating states. Table III reports the compact control study. A learned global scalar, which removes market-state variation and learns only a task-independent adapter multiplier, remains close to the Source-LoRA reference. Zero and random gate initializations also do not reproduce the main result. The reserve-initialized gate is both more accurate and more stable, although the small matched-vs-shuffled gap means that the causal evidence for exact day-level state pairing should still be interpreted cautiously. 
+
+2) Statistical significance and robustness: Table IV reports one-sided Diebold–Mariano tests on daily-window MAE dif-ferentials. Each column is written as ∆L = L(A) − L(B), so a negative statistic favors the first configuration. The MSMI interface significantly improves over Core, Source-LoRA sig-nificantly improves over MSMI zero-shot, and gated LoRA improves over Source-LoRA with a marginally significant 7                                                                        
+
+> Fig. 2. Average day-ahead MAE comparison under LOMO evaluation. TABLE III GATED LORA ROBUSTNESS AND CONTROL EXPERIMENTS .Configuration Average MAE CRPS Vanilla Source-LoRA 76.98 62.66 Global scalar 77 .001 ±0.000 62 .660 ±0.000
+> Shuffled state 74 .873 ±0.047 61 .402 ±0.049
+> Gate, zero init. 76 .962 ±0.032 62 .638 ±0.020
+> Gate, random init. 76 .601 ±0.531 62 .412 ±0.333
+> Gate, reserve init. 74 .633 ±0.002 61 .235 ±0.001
+> Control rows report mean ±standard deviation over three gate seeds and four held-out-market averages. The global scalar removes state dependence; the shuffled-state control breaks the pairing between each rolling task and its market-state vector; zero, random, and reserve denote gate initialization. All gated/control rows use source-market training only and no target-market forecast labels. TABLE IV ONE -SIDED DIEBOLD –M ARIANO TESTS ON WINDOW -LEVEL MAE
+> DIFFERENTIALS (83 WINDOWS PER MARKET ). Market MSMI −Core Source −MSMI Gated −Source
+> GD −3.78 ∗∗∗ −0.87 −1.43 ∗
+> LN −1.83 ∗∗ −1.32 ∗−1.19
+> SD 0.06 −1.18 −0.91
+> SX −1.21 −1.43 ∗0.49
+> Pooled −3.15 ∗∗∗ −2.24 ∗∗ −1.45 ∗
+> Each column reports the Harvey–Leybourne–Newbold (HLN)-corrected DM statistic for the stated MAE loss differential ∆L=L(A)−L(B).Negative statistics favor the first configuration named in the column. The pooled row normalizes each market’s daily loss differentials by the reference model’s mean loss before concatenation. Significance: ∗p <
+> 0.10 ,∗∗ p < 0.05 ,∗∗∗ p < 0.01 (HLN-corrected [35]).
+
+pooled statistic ( p = 0 .074 ), while SX remains essentially unchanged. As a lightweight robustness check, repeating the source-domain LoRA stage with three random seeds yields four-market average MAEs of 75.32, 77.31, and 76.29 (mean 
+
+76 .30 ± 0.99 ), and every seed improves upon the zero-shot MSMI level of 79.60. Thus, the source-domain LoRA gain does not rely on a single adapter initialization. Finally, we verify that the 900-day source-history cap does not limit the reported results. Extending the training pool of the two long-history markets to their full available histories (1419 and 1665 days) changes the four-market average MAE by only 
+
+−0.24 , within the seed-level variability. Hence, the Source-LoRA stage saturates before the full multi-year history is consumed, and the reported configuration is not data-starved. 
+
+3) Probabilistic forecasting results: Chronos-2 outputs quantile forecasts, allowing probabilistic evaluation without additional generative sampling. Table V reports CRPS as the main proper score and PICP@80 as a complementary interval-calibration diagnostic. Source-LoRA improves CRPS from 65.22 to 62.66, and gated LoRA further reduces it to 61.23; the three-seed reserve-gate mean in Table III is nearly identical ( 61 .235 ± 0.001 ). The pooled CRPS DM statistic is significant for Source-LoRA over MSMI zero-shot and marginally significant for gated LoRA over Source-LoRA. Pooled PICP@80 decreases from 78.10% to 73.24% and then to 70.23%. Consistently, the macro-average absolute market-wise coverage deviation increases from 5.00 to 6.76 and then to 9.77 percentage points. The market-wise results show that the degradation is not uniform: the gated model exhibits its largest under-coverage on LN . Thus, gated LoRA improves proper-score performance, but it should not be read as im-proved interval calibration. A source-validation conformal or interval-scaling layer is still needed for operational use of interval prediction. 
+
+4) Information-interface ablation: To isolate the value of richer market information, we perform a same-backbone ab-lation in which Chronos-2 is held fixed and only the input interface changes. Table VI reports four zero-shot configura-tions using the same regenerated data cache, backbone, history length, and rolling evaluation protocol. The MSMI interface obtains the best average MAE among the four zero-shot configurations. It reduces zero-shot MAE from 86.25 under the Core interface to 79.60, a 7.7% relative improvement, and the largest market-level MAE gain appears on LN . The Engineered interface also improves upon the Core setting, but its smaller gain indicates that hand-crafted market features do not fully substitute for the original supply-demand fields. The Full interface is slightly worse than MSMI on MAE, suggesting that adding every derived variable may introduce redundancy or cross-market inconsistency. 
+
+5) Progressive adaptation spectrum: Table VII exhibits the adaptation spectrum from immediate zero-shot deployment to few-shot refinement under the MSMI interface. The few-shot rows report means over five random seeds, and the average day-ahead MAE is illustrated in Fig. 3. Source-domain LoRA reduces the main-run average MAE from 79.60 to 76.98 without using target-market training data, while the three-seed Source-LoRA robustness check gives 76 .30 ±0.99 . Direct few-shot tuning from pretrained Chronos-2 remains close to the zero-shot level, although its five-seed average improves from 80.19 with 5 target days to 78.90 with 30 target days. Using the 8
+
+TABLE V PROBABILISTIC FORECASTING AND MARKET -WISE CENTRAL -INTERVAL CALIBRATION UNDER LOMO EVALUATION .Method CRPS PICP@80 (%) by held-out market Pooled PICP@80 Macro-ACD 80 
+
+GD LN SD SX (%) (p.p.) MSMI zero-shot 65.22 77.87 86.21 76.02 72.31 78.10 5.00 Source-LoRA 62.66 74.12 75.92 73.78 69.14 73.24 6.76 Gated LoRA 61.23 73.25 64.81 73.78 69.14 70.23 9.77 Pooled PICP@80 is computed after concatenating all forecast points from the four held-out markets. Macro-ACD 80 is the unweighted mean of 
+
+|PICP (m)80 − 80 | over the four markets. Hence, the two summaries use different aggregation orders and quantify different aspects of interval calibration. p.p.: percentage points. Pooled CRPS DM statistics are −2.74 ∗∗∗ for Source-LoRA versus MSMI zero-shot and −1.59 ∗ for Gated LoRA versus Source-LoRA ( ∗p < 0.10 , ∗∗∗ p < 0.01 ). PICP and Macro-ACD 80 are calibration diagnostics and are not tested as losses. TABLE VI MARKET -INFORMATION INTERFACE ABLATION .Information GD LN SD SX Average Core 41.93 174.01 56.78 72.31 86.25 MSMI 37.30 155.00 56.88 69.25 79.60 
+
+Engineered 42.08 168.84 57.16 67.99 84.02 Full 38.06 157.12 56.23 68.13 79.88 Full denotes the combination of MSMI and engineered variables. TABLE VII PROGRESSIVE ADAPTATION SPECTRUM UNDER LOMO EVALUATION .Stage Target data GD LN SD SX 
+
+Zero-shot None 37.30 155.00 56.88 69.25 Source-LoRA None 36.77 147.73 55.55 67.88 Few-shot 5 days 37.39 158.64 56.01 68.72 from 10 days 37.09 157.38 55.69 68.90 pretrained 30 days 37.01 154.62 55.50 68.48 Few-shot 5 days 36.85 148.93 54.98 67.67 
+
+from 10 days 36.60 148.67 54.83 67.46 Source-LoRA 30 days 36.55 148.00 54.72 67.37 
+
+Fig. 3. Progressive target-market adaptation behavior under the MSMI interface. Points report four-market average MAE computed from the five-seed means in Table VII. Source-LoRA warm starts provide consistently lower few-shot MAE than direct tuning from pretrained Chronos-2. 
+
+source-domain adapter as the warm start gives a consistently stronger few-shot path; the five-seed average decreases from 77.11 with 5 target days to 76.66 with 30 target days. 
+
+6) Highly volatile cases: Fig. 4 visualizes representative diagnostic windows from the real rolling prediction tasks. The panels compare actual day-ahead prices, MSMI zero-shot medians, vanilla Source-LoRA medians, gated LoRA medians, 
+
+Fig. 4. Representative day-ahead prediction curves from real Chronos-2 outputs. Each panel compares the actual price, MSMI zero-shot median, Source-LoRA median, gated LoRA median, and gated LoRA 10–90% quantile band. Source-LoRA is drawn with orange markers to remain visible where it nearly overlaps gated LoRA. 
+
+and the gated LoRA 10–90% interval. Representative windows are selected by transparent diagnostic rules to cover both high-volatility and lower-error cases across the four markets. This visualization is qualitative; all quantitative conclusions use all 83 rolling windows. The small SD and SX gains explain why the Source-LoRA and gated LoRA curves nearly overlap in those panels. Fig. 5 further plots the distribution of daily-window MAE over 83 rolling forecasts per market. The boxplots show that gated LoRA most clearly shifts the LN distribution downward, while SD and SX remain close to Source-LoRA. This distri-butional view is important because average MAE alone can hide whether improvement comes from broad error reduction or from a small number of volatile windows. 
+
+C. Discussion 1) Why the market-information interface is the dominant source of improvement: The ablation results in Table VI reveal a pattern that is easy to overlook when only aggregate model comparisons are reported: the largest gain comes from giving Chronos-2 access to market information available before day-ahead clearing. This pattern is specific to electricity price fore-casting. In wind power forecasting, which originally motivated large time-series model adaptation in energy applications, the target variable is a physical response to meteorological forcing, 9     
+
+> Fig. 5. Per-window MAE distribution over 83 rolling day-ahead forecasts for each market. Gated LoRA improves the distribution most visibly on LN and has smaller effects on SD and SX , matching the results in Table II.
+
+and historical power alone contains substantial predictive sig-nal [25]. In day-ahead electricity price forecasting, by contrast, the target is a market-clearing outcome that depends on antic-ipated supply-demand balance, reserve conditions, generator availability, and intertie schedules. A model that ignores these variables operates with an artificially limited information set, regardless of the size or quality of its pretrained backbone. The same ablation also shows that market information should not be treated as a generic feature bundle. The En-gineered interface improves over Core, but it does not out-perform the MSMI fields. This suggests that useful signals are spread across multiple released supply-demand variables. Handcrafted transformations cannot fully replace the original market information. The broader methodological implication is that for structured forecasting tasks driven by known future market conditions, the task interface is a first-class design choice rather than a pre-processing detail. 
+
+2) Why Gated LoRA helps volatile markets: The improve-ment from gated LoRA is most visible on LN , the most volatile held-out fold. This pattern supports the design motivation: once the MSMI interface supplies the market-clearing infor-mation set, the remaining error depends not only on supplied features but also on operating states. A fixed source adapter applies the same correction to ordinary and tight operating windows. The gate instead scales the LoRA update using reserve tightness, net load, renewable share, capacity tightness, and recent price volatility. The control experiments in Table III refine this interpretation: a learned global scalar is not enough, and zero/random gate initializations remain close to the vanilla adapter. The reserve-initialized gate appears to provide a useful economic inductive bias, but the additional gain over Source-LoRA is still moderate. 
+
+3) Deployment interpretation: The results suggest a staged deployment path for markets with limited local history. A new market can start with MSMI zero-shot inference, which already improves substantially over a Core interface. When related-market data are available, Source-LoRA provides a target-label-free alignment step. Gated LoRA can then cali-brate this adapter using the current market state and gives the lowest average MAE/RMSE in Table II. Target-market few-shot tuning remains useful as a later-stage local calibration option, although its 30-day five-seed average MAE of 76.66 is only comparable to that of the source-adaptation path and does not demonstrate a clear advantage. 
+
+4) Limitations and future directions: Several limitations should be acknowledged. First, future market-information variables are treated as available over the prediction hori-zon, following the day-ahead information setting used in the protocol. If the market organizer does not reveal all such information, the MSMI interface related benefits may be dis-counted. Second, the feature-interface ablation identifies useful input groups but does not establish causal effects, since sup-ply, demand, reserve, and generation-availability variables are correlated through system operating conditions. Third, gated LoRA improves MAE and CRPS, but lowers PICP@80 and increases coverage deviation, so interval calibration remains an open issue. The control experiments cover three gate seeds, a learned global scalar, shuffled states, and zero/random/reserve-prior initializations, but they are still limited to four provincial markets. The state gate should be validated on broader markets and longer periods before making a strong general claim. Fi-nally, the present four-market corpus is still modest relative to large-scale foundation-model pretraining datasets, so broader validation across additional comparable day-ahead markets is needed before making claims of universal transferability. Future work should explore three directions.  
+
+> •
+
+Market-information robustness: evaluating the same interface under noisy supply–demand forecasts or alter-native supply-version policies.  
+
+> •
+
+Market-adaptive architectures: extending the proposed market-state gate to dynamic rank allocation or calibrated multi-adapter variants.  
+
+> •
+
+Spike-aware training objectives: because average met-rics underweight the high-price events that are most consequential for market participants, a spike-weighted loss or quantile-focused calibration stage could improve tail behavior without sacrificing overall accuracy. IV. C ONCLUSION 
+
+This paper investigates market-state-conditioned adaptation of a time-series foundation model for Chinese provincial day-ahead electricity price forecasting. The results lead to three main findings.  
+
+> •
+
+Task-interface design is central. A same-backbone feature-interface ablation shows that expanding Chronos-2 from the Core load-wind-PV interface to the MSMI interface reduces four-market average zero-shot MAE from 86.25 to 79.60 without changing the pretrained model. This indicates that, for market-clearing targets driven by known future conditions, the foundation-model input interface is not a secondary pre-processing choice but a core modeling decision.  
+
+> •
+
+Source-domain LoRA provides a lightweight substitute for expensive domain re-pretraining. Under the LOMO protocol, MSMI Chronos-2 reduces average day-ahead MAE to 79.60 in zero-shot mode, and Source-LoRA further reduces it to 76.98 while updating only about 1% 
+
+of the parameters.  
+
+> •
+
+Market-state-gated LoRA makes the source adapter re-sponsive to operating conditions and achieves the best average MAE/RMSE of 74.63/137.87. The reserve-initialized gate is stable across three seeds and outper-forms global-scalar, shuffled-state, zero-initialized, and 10 
+
+randomly initialized controls, while the additional gain over Source-LoRA remains marginally significant in pooled MAE and CRPS DM tests. This supports the view that reserve-tightness-conditioned adapter calibra-tion is a useful and lightweight complement to market-information-aware foundation-model forecasting. Overall, the results support a staged practical workflow: market-information-aware zero-shot inference, source-domain LoRA adaptation, market-state calibration, and optional later target-market refinement. For electricity price forecasting, they also suggest that foundation-model benchmarks should evalu-ate not only the backbone but also the information interface and adapter-control mechanism. REFERENCES [1] R. Weron, “Electricity price forecasting: A review of the state-of-the-art with a look into the future,” Int. J. Forecasting , vol. 30, no. 4, pp. 1030–1081, Oct. 2014. [2] J. Nowotarski and R. Weron, “Recent advances in electricity price forecasting: A review of probabilistic forecasting,” Renew. Sustain. Energy Rev. , vol. 81, pp. 1548–1568, Jan. 2018. [3] H. Guo, M. R. Davidson, Q. Chen, D. Zhang, N. Jiang, Q. Xia, C. Kang, and X. Zhang, “Power market reform in China: Motivations, progress, and recommendations,” Energy Policy , vol. 145, p. 111717, Oct. 2020. [4] J. Lago, G. Marcjasz, B. De Schutter, and R. Weron, “Forecasting day-ahead electricity prices: A review of state-of-the-art algorithms, best practices and an open-access benchmark,” Appl. Energy , vol. 293, p. 116983, Jul. 2021. [5] F. Ziel and R. Weron, “Day-ahead electricity price forecasting with high-dimensional structures: Univariate vs. multivariate modeling frame-works,” Energy Econ. , vol. 70, pp. 396–420, Feb. 2018. [6] N. Ludwig, S. Feuerriegel, and D. Neumann, “Putting big data analytics to work: Feature selection for forecasting electricity prices using the LASSO and random forests,” J. Decis. Syst. , vol. 24, no. 1, pp. 19–36, Jan. 2015. [7] B. Uniejewski, R. Weron, and F. Ziel, “Variance stabilizing transforma-tions for electricity spot price forecasting,” IEEE Trans. Power Syst. ,vol. 33, no. 2, pp. 2219–2229, Mar. 2018. [8] J. Bottieau, Y. Wang, Z. De Gr` eve, F. Vall´ ee, and J.-F. Toubeau, “Interpretable transformer model for capturing regime switching effects of real-time electricity prices,” IEEE Trans. Power Syst. , vol. 38, no. 3, pp. 2162–2176, May 2023. [9] H. Jahangir, H. Tayarani, S. Baghali, A. Ahmadian, A. Elkamel, M. A. Golkar, and M. Castilla, “A novel electricity price forecasting approach based on dimension reduction strategy and rough artificial neural net-works,” IEEE Trans. Ind. Informat. , vol. 16, no. 4, pp. 2369–2381, Apr. 2020. [10] N. Vahedi, A. Jolfaei, S. U. Rehman, and R. S. Ravi, “Hybrid deep learning model for electricity price forecasting in renewable-dominated markets: The case of south australia,” IEEE Trans. Consumer Electron. ,vol. 72, no. 1, pp. 1227–1229, Feb. 2026. [11] B. Lim, S. ¨O. Arik, N. Loeff, and T. Pfister, “Temporal fusion trans-formers for interpretable multi-horizon time series forecasting,” Int. J. Forecasting , vol. 37, no. 4, pp. 1748–1764, Oct. 2021. [12] H. Wu, J. Xu, J. Wang, and M. Long, “Autoformer: Decomposition transformers with auto-correlation for long-term series forecasting,” in 
+
+Adv. Neural Inf. Process. Syst. , vol. 34, Dec. 2021, pp. 22 419–22 430. [13] T. Zhou, Z. Ma, Q. Wen, X. Wang, L. Sun, and R. Jin, “FEDformer: Frequency enhanced decomposed transformer for long-term series forecasting,” in Proc. 39th Int. Conf. Mach. Learn. , ser. Proc. Mach. Learn. Res., vol. 162. PMLR, Jul. 2022, pp. 27 268–27 286. [Online]. Available: https://arxiv.org/abs/2201.12740 [14] C. Zhang and Y. Fu, “Probabilistic electricity price forecast with optimal prediction interval,” IEEE Trans. Power Syst. , vol. 39, no. 1, pp. 442– 452, Jan. 2024. [15] S. Chai, Z. Xu, and Y. Jia, “Conditional density forecast of electricity price based on ensemble ELM and logistic EMOS,” IEEE Trans. Smart Grid , vol. 10, no. 3, pp. 3031–3043, May 2019. [16] Z. Zhang and M. Wu, “Predicting real-time locational marginal prices: A GAN-based approach,” IEEE Trans. Power Syst. , vol. 37, no. 2, pp. 1286–1296, Mar. 2022. [17] S. Gunduz, U. Ugurlu, and I. Oksuz, “Transfer learning for electricity price forecasting,” Sustain. Energy Grids Netw. , vol. 34, p. 100996, Jun. 2023. [18] X. Dong, Y. Sun, L. Dong, J. Li, Y. Li, and L. Di, “Transferable wind power probabilistic forecasting based on multi-domain adversarial networks,” Energy , vol. 285, p. 129496, Dec. 2023. [19] A. F. Ansari, O. Shchur, J. K¨ uken, A. Auer, B. Han, P. Mercado, S. S. Rangapuram, H. Shen, L. Stella, X. Zhang, M. Goswami, S. Kapoor, D. C. Maddix, P. Guerron, T. Hu, J. Yin, N. Erickson, P. M. Desai, H. Wang, H. Rangwala, G. Karypis, Y. Wang, and M. Bohlke-Schneider, “Chronos-2: From univariate to universal forecasting,” 
+
+arXiv preprint arXiv:2510.15821 , 2025. [Online]. Available: https: //arxiv.org/abs/2510.15821 [20] K. Rasul, A. Ashok, A. R. Williams, H. Ghonia, R. Bhagwatkar, A. Khorasani, M. J. D. Bayazi, G. Adamopoulos, R. Riachi, N. Hassen, M. Biloˇ s, S. Garg, A. Schneider, N. Chapados, A. Drouin, V. Zantedeschi, Y. Nevmyvaka, and I. Rish, “Lag-Llama: Towards foundation models for probabilistic time series forecasting,” 
+
+arXiv preprint arXiv:2310.08278 , 2023. [Online]. Available: https: //arxiv.org/abs/2310.08278 [21] G. Woo, C. Liu, A. Kumar, C. Xiong, S. Savarese, and D. Sahoo, “Unified training of universal time series forecasting transformers,” in 
+
+Proc. 41st Int. Conf. Mach. Learn. , ser. Proc. Mach. Learn. Res., vol. 235. PMLR, Jul. 2024, pp. 53 140–53 164. [22] A. Das, W. Kong, R. Sen, and Y. Zhou, “A decoder-only foundation model for time-series forecasting,” in Proc. 41st Int. Conf. Mach. Learn. , ser. Proc. Mach. Learn. Res., vol. 235. PMLR, Jul. 2024, pp. 10 148–10 167. [Online]. Available: https: //proceedings.mlr.press/v235/das24c.html [23] Y. Wang, H. Wu, J. Dong, G. Qin, H. Zhang, Y. Liu, Y. Qiu, J. Wang, and M. Long, “TimeXer: Empowering transformers for time series forecasting with exogenous variables,” in Adv. Neural Inf. Process. Syst. , vol. 37, Dec. 2024, pp. 469–498. [Online]. Available: https://proceedings.neurips.cc/paper files/paper/2024/hash/ 0113ef4642264adc2e6924a3cbbdf532-Abstract-Conference.html [24] R. Yu, C. Gu, J. Stiasny, Q. Wen, W. S. Dilov, L. Qi, and J. L. Cremer, “PriceFM: Foundation model for probabilistic electricity price forecasting,” arXiv preprint arXiv:2508.04875 , 2025. [Online]. Available: https://arxiv.org/abs/2508.04875 [25] J. Yan, Y. Li, H. Wang, S. Han, W. Shang, and Y. Liu, “Wind power forecasting based on large time series model,” Engineering , Nov. 2025, available online 19 Nov. 2025. [26] A. F. Ansari, L. Stella, A. C. Turkmen, X. Zhang, P. Mercado, H. Shen, O. Shchur, S. S. Rangapuram, S. Pineda Arango, S. Kapoor, J. Zschiegner, D. C. Maddix, H. Wang, M. W. Mahoney, K. Torkkola, A. G. Wilson, M. Bohlke-Schneider, and B. Wang, “Chronos: Learning the language of time series,” Trans. Mach. Learn. Res. , Nov. 2024. [Online]. Available: https://openreview.net/forum?id=gerNCVqqtR [27] T. Gneiting and A. E. Raftery, “Strictly proper scoring rules, prediction, and estimation,” J. Amer. Statist. Assoc. , vol. 102, no. 477, pp. 359–378, Mar. 2007. [28] E. J. Hu, Y. Shen, P. Wallis, Z. Allen-Zhu, Y. Li, S. Wang, L. Wang, and W. Chen, “LoRA: Low-rank adaptation of large language models,” in Proc. Int. Conf. Learn. Represent. , 2022. [Online]. Available: https://openreview.net/forum?id=nZeVKeeFYf9 [29] T. Chen and C. Guestrin, “XGBoost: A scalable tree boosting system,” in Proc. 22nd ACM SIGKDD Int. Conf. Knowl. Discovery Data Mining ,Aug. 2016, pp. 785–794. [30] G. Ke, Q. Meng, T. Finley, T. Wang, W. Chen, W. Ma, Q. Ye, and T.-Y. Liu, “LightGBM: A highly efficient gradient boosting decision tree,” in 
+
+Adv. Neural Inf. Process. Syst. , vol. 30, Dec. 2017. [31] Y. Nie, N. H. Nguyen, P. Sinthong, and J. Kalagnanam, “A time series is worth 64 words: Long-term forecasting with transformers,” in Proc. Int. Conf. Learn. Represent. , 2023. [Online]. Available: https://arxiv.org/abs/2211.14730 [32] Y. Liu, T. Hu, H. Zhang, H. Wu, S. Wang, L. Ma, and M. Long, “iTransformer: Inverted transformers are effective for time series forecasting,” in Proc. Int. Conf. Learn. Represent. , 2024. [Online]. Available: https://arxiv.org/abs/2310.06625 [33] A. Zeng, M. Chen, L. Zhang, and Q. Xu, “Are transformers effective for time series forecasting?” in Proc. AAAI Conf. Artif. Intell. ,vol. 37, no. 9, Jun. 2023, pp. 11 121–11 128. [Online]. Available: https://arxiv.org/abs/2205.13504 [34] F. X. Diebold and R. S. Mariano, “Comparing predictive accuracy,” J. Bus. Econ. Statist. , vol. 13, no. 3, pp. 253–263, Jul. 1995. [35] D. Harvey, S. Leybourne, and P. Newbold, “Testing the equality of prediction mean squared errors,” Int. J. Forecasting , vol. 13, no. 2, pp. 281–291, Jun. 1997.
