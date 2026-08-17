@@ -1,0 +1,243 @@
+Title: Tropical Cyclone Forecasting via Latent Rectified Flow using Satellite Imagery and Atmospheric Fields
+
+URL Source: https://arxiv.org/pdf/2608.08354v1
+
+Published Time: Tue, 11 Aug 2026 00:57:51 GMT
+
+Number of Pages: 9
+
+Markdown Content:
+# TROPICAL CYCLONE FORECASTING VIA LATENT RECTIFIED 
+
+# FLOW USING SATELLITE IMAGERY AND ATMOSPHERIC FIELDS 
+
+PREPRINT 
+
+Meheru Zannat 
+
+Department of Computer Science and Engineering Khulna University of Engineering & Technology Khulna 9203, Bangladesh 
+
+meherujannat@gmail.com 
+
+Sk. Md. Masudul Ahsan 
+
+Department of Computer Science and Engineering Khulna University of Engineering & Technology Khulna 9203, Bangladesh 
+
+masudulahsan@gmail.com 
+
+August 11, 2026 
+
+# ABSTRACT 
+
+Tropical cyclones are growing more destructive in a changing climate, and efficient forecasting of their structure and track has become a necessity. Deep generative models promise an alternative to computationally expensive numerical weather prediction (NWP), yet current systems produce either satellite imagery or atmospheric fields, never both; they need many sampling steps, putting them out of reach of modest hardware; and their storm tracks come from regression heads with no physical link to the generated atmosphere. This work presents a single-pass model that jointly forecasts GRIDSAT-B1 infrared imagery and four ERA5 atmospheric fields (U-wind, V-wind, air temperature, and surface pressure) out to nine hours. A five-channel variational autoencoder compresses each 
+
+5 × 256 × 256 frame to a 4 × 64 × 64 latent, and a conditional rectified-flow UNet with a factorized temporal-attention module predicts the next three frames from three past frames, their best-track coordinates, and timestamps. The model is then reward-fine-tuned (DRaFT) against a differentiable track error derived from the predicted winds through a steering-flow calculation. On held-out 2022 storms the model reaches 16.35 dB PSNR and 0.759 SSIM, ahead of a reproduced cascaded-diffusion baseline at every lead time ( +0 .84 dB at +9 h) while sampling ∼30 × faster (56 ms vs. 1673 ms). Track error at +9 h is 62.4 km, 15% below the baseline, and a reward fine-tuning study demonstrates a further 8–11% track-error reduction across sampler budgets. 
+
+Keywords tropical cyclone forecasting · rectified flow · flow matching · latent generative models · ERA5 reanalysis ·
+
+GRIDSAT-B1 · steering flow · reward fine-tuning 
+
+# 1 Introduction 
+
+Tropical cyclones strike the coasts of Bangladesh, eastern India, and Myanmar almost every year [1], and landfall on densely populated coastal areas causes massive casualties. Timely forecasts of cyclone structure and trajectory are essential for evacuation planning, but traditional numerical weather prediction (NWP) demands hours of supercomputer time per ensemble run, systematically under-predicts rapid intensification, and is too coarse ( 9–25 km) to resolve inner-core structure [2]. A complementary line of work learns cyclone evolution directly from historical observations with deep generative models. Denoising diffusion [3] and its latent variants [4] now underpin global weather prediction (GenCast [5]) as well as several cyclone-specific systems: cascaded diffusion over satellite imagery [1], video diffusion [6], and trajectory diffusion [7]. Three limitations persist across these works. Each model produces either imagery or atmospheric fields, never both, so cross-channel physical consistency is never learned. Every forecast costs many sampling steps, which rules out rapid ensemble generation. And the track comes from a separate regression head, untied to the generated atmosphere. arXiv:2608.08354v1 [cs.CV] 8 Aug 2026 Latent Rectified Flow for Tropical Cyclone Forecasting PREPRINT 
+
+Table 1: Coverage of related work along the five design axes addressed jointly by this paper ( ✓ full, ∼ partial, ×
+
+absent).                                    
+
+> Method 5-ch Latent 1-pass Phys. X-sens.
+> Nath et al. [1] ×××××
+> Ren et al. [6] ×××××
+> Ling et al. [14] ∼××××
+> TC-Diffuser [7] ∼××××
+> TCP-Diffusion [13] ×××××
+> Ours ✓✓✓✓✓
+
+This paper addresses the three limitations together with a multi-frame latent rectified flow . A five-channel variational autoencoder (VAE) compresses each 5 × 256 × 256 frame into a shared 4 × 64 × 64 latent space. A rectified-flow [8] UNet with factorized temporal attention learns the velocity field that generates the next three frames at 3-hour cadence in a single pass, conditioned on three past frames together with their best-track coordinates and timestamps. The model is then fine-tuned with direct reward gradients (DRaFT [9]) against a differentiable track error computed from the generated winds through a steering-flow calculation [10]. Against the cascaded-diffusion baseline of Nath et al. [1], reproduced on the identical benchmark, the model comes out ahead at every lead time while sampling ∼30 × faster. Our contributions are: 1. a single-pass generative model that forecasts satellite infrared imagery and ERA5 atmospheric fields jointly for tropical cyclones; 2. a multi-frame conditioning architecture that generates three future states at once and, with a single Euler step, matches the fifty-step diffusion baseline at ∼62 × lower compute; 3. a physics-derived steering-flow trajectory readout reaching 17.5 km at +3 h and 62.4 km at +9 h with no track head; and 4. a reward fine-tuning study showing direct reward gradients cut +9 h track error by 8–11% and transfer across sampler budgets. 
+
+# 2 Related Work 
+
+Operational cyclone forecasting still relies on NWP ensembles whose members each cost hours of supercomputer time. Deterministic deep-learning emulators such as Pangu-Weather [11] and GraphCast [12] match NWP at a fraction of the inference cost, but mean-regression training blurs convective structure and yields no native uncertainty. Generative modelling of weather has expanded rapidly, with most systems built on denoising diffusion [3]. GenCast [5] outperforms the leading operational ensemble, and for tropical cyclones the closest systems are the model of Nath et al. [1], a three-stage cascade over infrared imagery; video diffusion [6]; TC-Diffuser [7]; TCP-Diffusion [13]; and satellite-to-atmosphere translation [14]. All commit to a single generated modality and inherit diffusion’s multi-step sampling. Rectified flow [8] learns a velocity field along the straight-line interpolant between noise and data, so that in the limit of straight trajectories a single Euler step suffices. Latent diffusion [4] instead moves generation into the lower-dimensional code of a separately trained VAE. To our knowledge, rectified flow has not previously been applied to multi-channel tropical cyclone forecasting. Table 1 scores the closest systems along the five design axes this paper combines. 
+
+# 3 Proposed Methodology 
+
+The proposed system (Fig. 1) is a two-stage latent generative model. Stage 1 is a multi-channel VAE that compresses each five-channel frame to a compact latent frame; Stage 2 is a multi-frame conditioned UNet with a factorized temporal attention module that learns the rectified-flow velocity field mapping a Gaussian prior to the distribution of the next three latent frames. The storm trajectory is calculated from the generated wind fields, and the model is finally post-trained with direct reward gradients through the sampler. 2Latent Rectified Flow for Tropical Cyclone Forecasting PREPRINT 
+
+Figure 1: Two-stage framework: VAE compression (Stage 1), conditioned flow-matching UNet with temporal attention (Stage 2), and decoding with steering-flow trajectory readout. 
+
+3.1 Problem Formulation 
+
+Let xt ∈ R5×256 ×256 denote a storm frame at time t, whose five channels are GRIDSAT-B1 infrared brightness temperature and ERA5 U-wind, V-wind, air temperature (all at 850 hPa), and surface pressure. Let ct = ( ϕt, λ t) be the IBTrACS latitude/longitude at the same time and τt a calendar timestamp. Given Kin past frames {xt−(Kin −1) , . . . , xt}
+
+with their coordinates and timestamps, the model must generate the next Kout frames {xt+1 , . . . , xt+Kout } at the native 3-hour cadence, i.e. sample from the conditional distribution 
+
+p xt+1: t+Kout xt−Kin +1: t, c, τ . (1) The configuration throughout is Kin = Kout = 3 : a 9-hour forecast from a 9-hour conditioning window. 
+
+3.2 Data Preprocessing 
+
+The following preprocessing steps are applied to the dataset: (1) Missing-value handling: missing entries (NaN) in the GRIDSAT and ERA5 arrays are replaced with zeros. (2) Normalization: all five channels are z-score normalized with global per-channel statistics computed by Welford’s online algorithm over the training partition; the wide pressure standard deviation ( σ ≈ 521 Pa) and the ±5 m/s wind scale motivate the unbounded decoder of Section 3.3. 
+
+(3) Dataset splitting: the data are partitioned by calendar year, so each storm belongs to exactly one of the training, validation, and test partitions and the held-out years are identical across random seeds. 
+
+(4) Augmentation: at training time a horizontal flip with probability 0.5 is applied consistently to every frame and channel of a window; a left-to-right flip preserves the poleward/equatorward structure and the sense of Coriolis-driven rotation, which a rotation would invert. Validation and test data are never augmented. 
+
+3.3 Stage 1: Multi-Channel VAE 
+
+The VAE is a five-channel symmetric convolutional encoder-decoder mapping x ∈ R5×256 ×256 to a latent z ∈
+
+R4×64 ×64 . The encoder Eϕ downsamples from 256 → 128 → 64 with strided 4 × 4 convolutions, each followed by GroupNorm and SiLU activation, growing the channel dimension from 5 → 64 → 128 → 256 ; two parallel 1 × 1
+
+convolutions produce the posterior mean μ and log-variance log σ2, and the decoder Dθ mirrors the encoder. Training minimizes the β-weighted negative evidence lower bound (ELBO) with the KL weight annealed from 0 to 10 −4 over 3Latent Rectified Flow for Tropical Cyclone Forecasting PREPRINT 
+
+the first 20 epochs: 
+
+LVAE = Ez∼qϕ(·| x)
+
+∥x − Dθ (z)∥1
+
+ + β D KL 
+
+ qϕ∥N (0, I). (2) One deliberate departure from the standard latent-diffusion model is that the decoder output is unbounded : the customary 
+
+tanh is removed because z-scored reanalysis variables are naturally unbounded. The z-scores of pressure regularly reach ±3, and clamping to [−1, 1] destroyed more than half of the pressure dynamic range in early experiments. A scale factor s = 1 /σ z estimated on the validation split rescales them to approximately unit variance for flow training. 
+
+3.4 Conditioning Strategy 
+
+The generative stage sees three conditioning signals: the Kin past-frame latents, the per-frame IBTrACS coordinates (latitude and longitude), and the calendar timestamps. A conditioning encoder embeds each past frame together with its timestamp into a per-frame context vector and aggregates the Kin vectors; the coordinate pairs (normalized, flattened to 
+
+Kin × 2) pass through a small MLP whose output is added to the aggregated context. The combined context embedding is injected additively alongside the flow-time embedding at every UNet block. Because the coordinates carry no spatial structure, they are kept out of the VAE and enter only through this conditioning path. 
+
+3.5 Rectified Flow UNet 
+
+Let Z1 denote the target latent block of shape Kout · 4 × 64 × 64 and Z0 ∼ N (0, I) a Gaussian sample of the same shape. Rectified flow [8] trains against the straight-line interpolant 
+
+Zτ = (1 − τ ) Z0 + τ Z1, τ ∈ [0 , 1] , (3) by regressing the network vθ onto its constant velocity: 
+
+Lflow = Eτ, Z0,(Z1,c)
+
+h
+
+vθ (Zτ , τ, c) − (Z1 − Z0) 22
+
+i
+
+. (4) The velocity network is a latent-space UNet at 64 × 64 : three stride-2 downsamplings to an 8 × 8 bottleneck with channel multipliers (1 , 2, 3, 4) × 128 , two ResNet blocks per stage, eight-head self-attention at the 16 × 16 and 8 × 8
+
+levels, and a mirrored skip-connected decoder (66.2 M parameters). Sampling is fixed-step Euler integration from τ = 0 
+
+to τ = 1 :
+
+Zτ +∆ τ = Zτ + ∆ τ · vθ (Zτ , τ, c), ∆τ = 1 /N steps . (5) Because rectified training encourages near-straight sampling trajectories, Nsteps can be very small; the measured sweep (Section 4.7) peaks at Nsteps = 4 with a single step within 0.25 dB of the optimum. 
+
+3.6 Factorized Temporal Attention Module 
+
+Rather than channel-stacking the three output frames, the UNet is shared across the Kout output frames by folding the frame axis into the batch axis, and a 1-D temporal self-attention module mixes information across frames at the bottleneck. At the 8 × 8 bottleneck, each spatial location forms one token per output lead ( +3 , +6 , +9 h); the tokens are normalized, tagged with a learned per-lead slot embedding, mixed along the lead axis by multi-head self-attention, and added back residually. The module leaves the feature shape unchanged and adds almost no parameters; what it buys is that later output frames can attend to earlier ones. 
+
+3.7 Steering-Flow Trajectory Readout 
+
+The trajectory is read out from the predicted U and V wind fields, following the classical result that environmental steering explains most of tropical-cyclone motion [10]. For each output lead k ∈ { 1, 2, 3}, the steering vector (¯ uk, ¯vk) is the area mean of the generated winds over the central 64 × 64 crop of the frame, denormalized to m/s. The displacement over the 3-hour step ∆t = 10 ,800 s is 
+
+∆ϕk = ¯vk ∆t
+
+111 ,000 , (6) 
+
+∆λk = ¯uk ∆t
+
+111 ,000 · cos( ϕt + ∆ ϕk/2) , (7) where ϕt is the current latitude. Track error is measured as the great-circle separation of the forecast position from the observed one; because the position derives entirely from the generated atmosphere, it doubles as a probe of the physical consistency of the generated fields. 4Latent Rectified Flow for Tropical Cyclone Forecasting PREPRINT 
+
+Table 2: Basins in SETCD with the primary geostationary sensor feeding GRIDSAT-B1 and a representative landfall sub-region (distinct IBTrACS storms, 2012–2022; N/S = hemisphere).                    
+
+> Basin Primary sensor Sub-region Storms
+> N Western Pacific Himawari-8/9 East/SE Asia 336 N North Atlantic GOES-East US East/Caribbean 247 N Eastern Pacific GOES-West Central America 189 N North Indian INSAT-3D/Met-IODC S Asia (Bay of Bengal) 100 S South Indian Meteosat-9 Madagascar/Mascarene 181 S South Pacific Himawari-9/GOES-W Australia/Oceania 107
+> Total 1160
+
+3.8 Reward Fine-Tuning through the Sampler 
+
+Velocity regression (4) is a surrogate objective: every evaluation metric is computed on the multi-step sampled forecast, which the training loss never sees. We close this gap with direct reward fine-tuning (DRaFT [9]). The deterministic Euler sampler is unrolled, and only the final K = 2 of N = 10 steps and the frozen-VAE decode carry gradient (DRaFT-K truncation). The reward is a differentiable version of the target metric, a smooth steering-track error built from (6) and (7), combined with a pixel-MSE guard and an L2-SP anchor to the pre-fine-tuning weights to prevent reward hacking. Progress is monitored on a seeded 64-window validation ruler; all reported claims use the held-out test set. 
+
+# 4 Experiments and Results 
+
+4.1 Dataset 
+
+All experiments use the Satellite ERA5 Tropical Cyclone Dataset (SETCD), assembled from three open archives aligned by storm identifier and timestamp: GRIDSAT-B1 [15] infrared brightness temperature, four ERA5 fields [16] (850 hPa U-wind, V-wind, air temperature, and surface pressure) at 0.25 ◦ resolution and 3-hour cadence, and IBTrACS v04r01 [17] coordinates. Every sample is a 256 × 256 storm-centred window. Table 2 lists the basins covered. The calendar-year split is training 2012–2020 (24,625 windows), validation 2021 (2,852), and test 2022 (1,732). For the cross-sensor experiment (Section 4.8) we assembled SETCD-WP : 500 multi-frame windows spanning nine Western-Pacific storms (eight from 2019, Himawari-8; one from 1978–79, GMS-1), with infrared imagery from the Digital Typhoon archive and matching ERA5 fields. 
+
+4.2 Evaluation Metrics 
+
+Forecast quality is assessed along three axes at each lead time. Pixel fidelity : mean absolute error (MAE), peak signal-to-noise ratio (PSNR), and structural similarity (SSIM), each computed over the five output channels. Probabilistic calibration : the continuous ranked probability score (CRPS), the standard ensemble-verification measure [5], over ten stochastic samples per window drawn by re-sampling the initial noise. Trajectory accuracy : the distance in km between the steering-flow position and the IBTrACS position along the great circle joining them. 
+
+4.3 Baseline Methods 
+
+The external baseline is the cascaded-diffusion model of Nath et al. [1], which we re-implemented and trained on the same SETCD split with the identical evaluation pipeline ( 64 → 128 → 256 cascade trained for 60/50/40 epochs, classifier-free guidance 3.0, 50-step denoising diffusion implicit model (DDIM) sampling). The ablation study (Section 4.9) further compares two internal variants of the proposed backbone that replace the temporal-attention module, V1 (channel-stacked outputs, additive fusion, no temporal mixing) and V3 (cross-attention to condition tokens), plus a single-frame model rolled out autoregressively. 
+
+4.4 Implementation Details 
+
+All models are implemented in PyTorch with BF16 mixed precision, exponential-moving-average (EMA) weight tracking (decay 0.9999 ), and gradient clipping at 1.0. Adam is used with weight decay 10 −5 and a learning rate of 
+
+10 −4, decayed by a cosine schedule to 5 × 10 −5 after five warm-up epochs. The VAE trains for 60 epochs; the UNet 5Latent Rectified Flow for Tropical Cyclone Forecasting PREPRINT 
+
+Table 3: Per-leadtime test-set metrics versus the reproduced cascaded-diffusion baseline (50-step sampling). MAE is in 
+
+z-scored units. Best per metric and lead in bold.                                             
+
+> Model Lead PSNR SSIM MAE CRPS Track (km) Ours +3 h17.36 0.770 0.198 0.130 17.5
+> +6 h16.39 0.753 0.221 0.148 41.0
+> +9 h15.48 0.733 0.243 0.166 62.4
+> Nath et al. [1] +3 h17.21 0.768 0.198 0.085 17.6
+> +6 h15.86 0.736 0.231 0.089 43.0
+> +9 h14.64 0.706 0.266 0.093 73.4
+
+trains for 100 epochs with a per-step batch of 4 accumulated over four steps, an effective batch of 16. Every experiment fits on a single GPU (NVIDIA RTX A6000 48 GB; each configuration also reproduces on a 16 GB consumer card), and all experiments combined consumed roughly 400 GPU-hours. Unless noted, evaluation uses 50-step Euler sampling. 
+
+4.5 Quantitative Results 
+
+Table 3 reports per-leadtime test-set metrics against the reproduced cascaded-diffusion baseline. The proposed model achieves higher PSNR at every lead: +0 .15 dB at +3 h, widening monotonically to +0 .84 dB at +9 h. The steering-flow track error is 17.5 km at +3 h and 62.4 km at +9 h, 15% below the baseline at the longest lead. CRPS, in contrast, remains 1.5–1.8× the cascaded baseline’s, a structural property of near-deterministic flow sampling discussed below. A VAE-ceiling diagnostic bounds any latent model on this data at 33.04 dB PSNR / 0.982 SSIM (surface pressure lowest, 29.20 dB), confirming that the generative stage, not the autoencoder, is the bottleneck of the system. 
+
+Reward fine-tuning. Track-focused DRaFT fine-tuning (Section 3.8) reduces the +9 h track error by 11 .0% at the 50-step sampler budget (held out from fine-tuning, so the gain is not budget adaptation) and by 8.3% at the 10-step training budget, with SSIM improved at every lead and PSNR essentially unchanged. Two negative results complete the study. Policy-gradient fine-tuning with group-relative policy optimization (GRPO [18]) left every metric flat within noise; the group-relative advantage signal is vanishingly small in a ∼49k-dimensional latent at academic batch sizes. A correctly specified all-channel CRPS reward also stayed flat, which indicates the ensemble under-dispersion of a near-deterministic flow sampler is structural rather than trainable; closing it requires stochastic inference sampling or CRPS-trained distillation [19]. 
+
+4.6 Qualitative Results 
+
+Fig. 2 shows an all-channel forecast for a held-out test storm. The model captures the central dense overcast and spiral rain-band structure in the infrared, and the generated wind, temperature, and pressure fields remain spatially coherent with the predicted cloud structure at every lead. The recurring failure modes are cloud-top texture smoothing at +9 h, 2–5 hPa under-prediction of the deepest central pressures, and 2× the average track error on rapidly recurving storms. 
+
+4.7 Inference Analysis 
+
+Table 4 reports the measured sampler-budget sweep (mean ± s.d. across three training seeds). Quality peaks at four Euler steps (16.50 dB) and decreases slightly beyond: extra integration adds cost without benefit. A single Euler step retains 16.25 dB, only 0.25 dB below the optimum, at 27 ms per forecast. The baseline needs fifty DDIM steps and 1673 ms to reach 16.19 dB, so the proposed model at four steps is both +0 .31 dB better and ∼30 × faster, and at one step it matches the baseline’s best quality at ∼62 × lower compute. That margin is what makes large real-time forecast ensembles affordable on commodity hardware. 
+
+4.8 Cross-Dataset Validation 
+
+The unchanged checkpoint was evaluated zero-shot on SETCD-WP (Table 5); because the Western Pacific is well represented in training, this isolates the sensor and processing shift from the storm climatology. Degradation is graceful: every metric worsens smoothly with lead, as it does in-domain, and SSIM stays substantial (0.68–0.60), so the model transfers cyclone dynamics rather than collapsing. A per-storm breakdown traces most of the absolute gap to the two (of nine) storms whose windows cross the high terrain of Indochina, where ERA5 surface pressure falls to 857 hPa, roughly −29 standard deviations relative to the ocean-dominated training statistics, and the pressure channel 6Latent Rectified Flow for Tropical Cyclone Forecasting PREPRINT 
+
+Figure 2: All-channel forecast for a held-out 2022 test storm: the last input frame, then ground truth (GT) and prediction at the +3 , +6 , and +9 h leads. (a) GRIDSAT-B1 infrared brightness temperature. (b) 850 hPa U-wind. (c) 850 hPa V-wind. (d) 850 hPa air temperature. (e) Surface pressure. Table 4: Sampler-budget sweep on the test set (ours: mean ± s.d. across three seeds).                                 
+
+> Model Steps PSNR (dB) SSIM Time (ms)
+> Ours 116 .25 ±0.08 0.724 27.1
+> 416 .50 ±0.09 0.740 56.3 16 16 .25 ±0.14 0.739 119.0 50 16 .12 ±0.13 0.732 330.5 Nath et al. [1] 25 15.76 0.723 848.3 50 16.19 0.721 1673.3
+
+Table 5: Zero-shot cross-sensor generalization: in-domain GRIDSAT-merged imagery versus the single-satellite Digital Typhoon SETCD-WP set.                                 
+
+> Test set Lead PSNR (dB) SSIM Track (km)
+> SETCD +3 h17.36 0.770 17.5 (in-domain) +6 h16.39 0.753 41.0
+> +9 h15.48 0.733 62.4 SETCD-WP +3 h10.00 0.677 57.1 (zero-shot) +6 h8.76 0.634 132.5
+> +9 h7.93 0.597 218.1
+
+becomes unreconstructable. The seven over-ocean storms reach 11.1/9.8/8.9 dB, only ∼6.5 dB below in-domain; a terrain-insensitive mean-sea-level pressure channel would eliminate the blow-up without retraining. 
+
+4.9 Ablation Study 
+
+Table 6 collects every reported training run. Temporal attention wins: at fixed context and objective, the proposed factorized temporal-attention backbone beats the V1 (channel-stack) and V3 (cross-attention) alternatives by 0.10– 0.23 dB overall, consistently at every lead. Multi-frame conditioning is necessary: a single-frame model rolled out autoregressively, even with ground-truth coordinates supplied at every step, matches direct generation at +3 h but loses 1.09 dB at +6 h and 1.38 dB at +9 h; +5 .65 dB of the +9 h gap sits in the temperature channel alone, because rollout 7Latent Rectified Flow for Tropical Cyclone Forecasting PREPRINT 
+
+destroys the slow dynamical evolution that direct multi-frame conditioning preserves. Physics-informed auxiliary losses do not help: adding mass-continuity, geostrophic-balance, and track-consistency penalties on the decoded prediction changes PSNR by −0.23 dB at design weights and degrades it monotonically at 10 × weights; the constraints appear to be implicit in the joint five-channel objective already. Reflow (2-RF) actively hurts: the second-pass rectification lands 0.42 dB below the one-pass model at 2.3× the training cost, so we use the 1-RF formulation throughout. (The single-frame model’s higher overall PSNR reflects a strictly easier +3 h-only problem.) 
+
+# 5 Conclusion 
+
+We presented a multi-frame latent rectified-flow model that jointly forecasts satellite infrared imagery and four ERA5 atmospheric fields for tropical cyclones at a nine-hour horizon, in a single forward pass on one commodity GPU. On held-out 2022 storms spanning all major basins, the model beats a reproduced cascaded-diffusion baseline at every lead time ( +0 .84 dB at +9 h) while sampling ∼30 × faster. The storm track error read out physically from the generated winds reaches 62.4 km at +9 h, 15% below the baseline, and direct reward fine-tuning through the sampler trims track error by a further 8–11% without degrading fidelity. Ablations show the temporal-attention backbone and multi-frame conditioning are genuinely responsible for the long-lead gains. The main limitations are pixel-MSE texture smoothing, structurally under-dispersed ensembles, and the terrain-sensitive surface-pressure channel; these point to perceptual objectives, stochastic inference sampling, and a mean-sea-level pressure channel as future work, alongside extending the horizon to 24–48 h. Table 6: Ablation summary (overall PSNR/SSIM aggregated across leads).                                    
+
+> Configuration KPhysics PSNR (dB) SSIM
+> Single-frame (V1) 1off 18.71 0.810 Single-frame + physics 11×18.67 0.808 Multi-frame, V1 3off 16.25 0.753 Multi-frame, V1 + physics 31×16.02 0.758 Multi-frame, V1 + physics 310 ×15.71 0.755 Multi-frame, V1, reflow 3off 15.83 0.751
+> Proposed (temporal attn.) 3off 16 .35 0.759
+> Multi-frame, V3 3off 16.12 0.752
+
+8Latent Rectified Flow for Tropical Cyclone Forecasting PREPRINT 
+
+# References 
+
+[1] Pritthijit Nath, Pancham Shukla, Shuai Wang, and César Quilodrán-Casas. Forecasting tropical cyclones with cascaded diffusion models. In ICLR Workshop on Tackling Climate Change with Machine Learning , Vienna, Austria, 2024. doi: 10.48550/arXiv.2310.01690. [2] Xinyu Wang, Kang Chen, Lei Liu, Tao Han, and Bin Li. Global tropical cyclone intensity forecasting with multi-modal multi-scale causal autoregressive model. In Advances in Neural Information Processing Systems ,volume 37, Vancouver, Canada, 2024. [3] Jonathan Ho, Ajay Jain, and Pieter Abbeel. Denoising diffusion probabilistic models. In Advances in Neural Information Processing Systems , volume 33, pages 6840–6851, 2020. [4] Robin Rombach, Andreas Blattmann, Dominik Lorenz, Patrick Esser, and Björn Ommer. High-resolution image synthesis with latent diffusion models. In Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition , pages 10684–10695, New Orleans, LA, USA, 2022. doi: 10.1109/CVPR52688.2022.01042. [5] Ilan Price, Alvaro Sanchez-Gonzalez, Ferran Alet, Tom R. Andersson, Andrew El-Kadi, Dominic Masters, Timo Ewalds, Jacklynn Stott, Shakir Mohamed, Peter Battaglia, Remi Lam, and Matthew Willson. Probabilistic weather forecasting with machine learning. Nature , 637:84–90, 2025. doi: 10.1038/s41586-024-08252-9. [6] Zhibo Ren, Pritthijit Nath, Pancham Shukla, and César Quilodrán-Casas. Improving tropical cyclone forecasting with video diffusion models. In ICLR Workshop on Tackling Climate Change with Machine Learning , Singapore, 2025. doi: 10.48550/arXiv.2501.16003. [7] Sijia Zhang, Pan Mu, Cheng Huang, Jinglin Zhang, and Cong Bai. TC-Diffuser: Bi-condition multi-modal diffusion for tropical cyclone forecasting. In Proceedings of the AAAI Conference on Artificial Intelligence ,volume 39, pages 32099–32107, Philadelphia, PA, USA, 2025. doi: 10.1609/aaai.v39i1.32099. [8] Xingchao Liu, Chengyue Gong, and Qiang Liu. Flow straight and fast: Learning to generate and transfer data with rectified flow. In International Conference on Learning Representations , Kigali, Rwanda, 2023. [9] Kevin Clark, Paul Vicol, Kevin Swersky, and David J. Fleet. Directly fine-tuning diffusion models on differentiable rewards. In International Conference on Learning Representations , Vienna, Austria, 2024. doi: 10.48550/arXiv. 2309.17400. [10] Johnny C. L. Chan. The physics of tropical cyclone motion. Annual Review of Fluid Mechanics , 37:99–128, 2005. doi: 10.1146/annurev.fluid.37.061903.175702. [11] Kaifeng Bi, Lingxi Xie, Hengheng Zhang, Xin Chen, Xiaotao Gu, and Qi Tian. Accurate medium-range global weather forecasting with 3D neural networks. Nature , 619:533–538, 2023. doi: 10.1038/s41586-023-06185-3. [12] Remi Lam, Alvaro Sanchez-Gonzalez, Matthew Willson, Peter Wirnsberger, Meire Fortunato, Ferran Alet, et al. Learning skillful medium-range global weather forecasting. Science , 382(6677):1416–1421, 2023. doi: 10.1126/science.adi2336. [13] Cheng Huang, Pan Mu, Cong Bai, and Peter A. G. Watson. TCP-Diffusion: A multi-modal diffusion model for global tropical cyclone precipitation forecasting with change awareness. In Proceedings of the International Conference on Machine Learning , Vienna, Austria, 2024. doi: 10.48550/arXiv.2410.13175. [14] Zhangyue Ling, Pritthijit Nath, and César Quilodrán-Casas. Estimating atmospheric variables from digital typhoon satellite images via conditional denoising diffusion models. arXiv preprint arXiv:2409.07961 , 2024. doi: 10.48550/arXiv.2409.07961. [15] Kenneth R. Knapp, Steve Ansari, Caroline L. Bain, Mark A. Bourassa, Michael J. Dickinson, Chris Funk, Chip N. Helms, Christopher C. Hennon, Christopher D. Holmes, George J. Huffman, James P. Kossin, Hai-Tien Lee, Alexander Loew, and Gudrun Magnusdottir. Globally gridded satellite observations for climate studies. Bulletin of the American Meteorological Society , 92(7):893–907, 2011. doi: 10.1175/2011BAMS3039.1. [16] Hans Hersbach et al. The ERA5 global reanalysis. Quarterly Journal of the Royal Meteorological Society , 146 (730):1999–2049, 2020. doi: 10.1002/qj.3803. [17] Kenneth R. Knapp, Michael C. Kruk, David H. Levinson, Howard J. Diamond, and Charles J. Neumann. The international best track archive for climate stewardship (IBTrACS): Unifying tropical cyclone data. Bulletin of the American Meteorological Society , 91(3):363–376, 2010. doi: 10.1175/2009BAMS2755.1. [18] Jie Liu, Gongye Liu, Jiajun Liang, Yangguang Li, Jiaheng Liu, Xintao Wang, Pengfei Wan, Di Zhang, and Wanli Ouyang. Flow-GRPO: Training flow matching models via online RL. In Advances in Neural Information Processing Systems , San Diego, CA, USA, 2025. doi: 10.48550/arXiv.2505.05470. [19] Alexis Jacq, Guillaume Couairon, Valentin De Bortoli, Quentin Berthet, Arnaud Doucet, and Romuald Elie. Diffusion fine-tuning with rewarded moment matching distillation. arXiv preprint arXiv:2606.30414 , 2026. doi: 10.48550/arXiv.2606.30414. 9

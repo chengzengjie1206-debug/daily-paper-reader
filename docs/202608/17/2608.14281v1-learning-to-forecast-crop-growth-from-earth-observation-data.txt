@@ -1,0 +1,603 @@
+Title: Learning to Forecast Crop Growth from Earth Observation Data
+
+URL Source: https://arxiv.org/pdf/2608.14281v1
+
+Published Time: Mon, 17 Aug 2026 00:57:36 GMT
+
+Number of Pages: 32
+
+Markdown Content:
+# Learning to Forecast Crop Growth from Earth Observation Data 
+
+Dominik Senti 1 , Mehmet Ozgur Turkoglu 1 , Michele Volpi 2 , and Helge Aasen 1 
+
+> 1
+
+Earth Observation of Agroecosystems Team, Agroscope, Switzerland  
+
+> 2
+
+Swiss Data Science Center, ETH Zurich and EPFL, Switzerland 
+
+dominik.senti@agroscope.admin.ch, mehmet.tuerkoglu@agroscope.admin.ch, michele.volpi@sdsc.ethz.ch, helge.aasen@agroscope.admin.ch 
+
+Abstract. Forecasting crop growth across agricultural landscapes is im-portant for improving the productivity, resilience, and operational man-agement of farming systems. In this work, we investigate whether Earth observation time series and meteorological drivers can be used to predict future canopy development at country-scale. We focus on winter wheat and formulate crop growth prediction as forecasting future leaf area in-dex (LAI) trajectories beyond the last available Sentinel-2 observation. We evaluate this task on a multi-year dataset which spans the entire country of Switzerland, containing over 20 million pixel-level Sentinel-2-derived LAI time series paired with meteorological variables. Because cloud cover and revisit gaps leave LAI supervision sparse, models fit the few valid (cloud-free) LAI observations yet oscillate implausibly be-tween them, producing trajectories no real canopy could follow. We intro-duce a lightweight unimodal shape regulariser which improves trajectory plausibility with negligible loss in accuracy. We compare deep learning sequence-to-sequence (Seq2Seq) models with classic machine learning baselines and show that Seq2Seq models generalise well across years, achieving R 2 above 0.8 and consistently outperforming conventional ap-proaches. Together, these results demonstrate that remote sensing and weather-driven sequence modelling can learn crop growth dynamics at landscape-scale. 
+
+Keywords: Crop Growth · Leaf Area Index · Forecasting · Remote Sens-ing · Time Series · RNN · Transformer 
+
+# 1 Introduction 
+
+Agriculture, occupying approximately one-third of the Earth’s ice-free land sur-face, is pivotal for food production [25] but is threatened by climate change [72]. Moreover, it contributes significantly to biodiversity loss [13, 29, 30, 72, 81], soil degradation [12], and environmental pollution [48, 67]. In this context, under-standing growth processes is key to making agriculture more productive and resilient. arXiv:2608.14281v1 [cs.CV] 14 Aug 2026 2 D. Senti et al. 
+
+A central variable in this regard is the green leaf area index (LAI), the one-sided green leaf area per unit ground area. It is a recognised essential cli-mate variable and a key control on biosphere–atmosphere mass and energy ex-change [7,56,103]. LAI tracks the crop growing cycle across a season [26], governs canopy light interception, and scales with above-ground biomass. It is therefore widely used to monitor crop productivity, crop stress and health, biomass, phe-nology, and nutrient supply [14, 18, 27, 33, 36, 61]. For winter wheat in particular, grain yield depends on intercepted light and accumulated biomass, both well approximated by LAI, making LAI predictive of final yield [32, 74]. Crop growth has traditionally been studied at the experimental scale: in in-door or agronomic experiments, often carried out in small plots or with a limited number of experimental fields, that isolate individual drivers under a restricted range of conditions. The drivers of growth, however, can differ in importance across scales and environments [68, 89], so findings from these settings do not necessarily transfer to the landscape-scale, the heterogeneous, real-world condi-tions across which crops are actually grown and managed. Capturing growth at this scale demands observations with matching spatial and temporal coverage.       
+
+> Fig. 1: Overview of the proposed framework. (1) Imagery →LAI: Sentinel-2 (cloud free) scenes are inverted to per-pixel LAI by the SNAP processor. (2) Dataset:
+> sparse LAI is paired with dense daily meteorological drivers into a country-scale, per-pixel dataset. (3) Forecaster: a sequence-to-sequence GRU/transformer predicts LAI over the horizon from the run-in history (sparse LAI observations and dense weather) together with the future drivers. (4) Plausible forecast: on sparse targets the model oscillates implausibly (no prior), while our unimodal shape regulariser restores a plau-sible forecast (with prior), showing a single peak per season.
+
+Satellite constellations such as Sentinel-2 from the European Space Agency (ESA) acquire Earth imagery every few days at 10 m resolution, capturing crop Learning to Forecast Crop Growth from Earth Observation Data 3
+
+growth dynamics across large regions and entire seasons [8,99]. In parallel, mod-ern deep sequence models, including Recurrent Neural Networks (RNNs) [21,102] and transformers [93], have proven highly effective for multivariate time-series modelling and long-horizon, multi-step forecasting [17,51,53,63]. Together, these advances raise a natural question: can crop growth dynamics be learned directly from Earth observation (EO) and weather data? We take a first step towards answering this question by formulating crop growth prediction as forecasting the future leaf area index trajectory of win-ter wheat beyond the last available Sentinel-2 observation. Given a history of satellite-derived LAI observations and meteorological drivers, we train deep sequence-to-sequence models to predict daily LAI into the future. Unlike existing Earth observation methods that estimate crop state from contemporaneous im-agery, our approach extrapolates future canopy development from its observed history and expected environmental conditions. It therefore requires learning the temporal dynamics of crop growth rather than a static mapping between imagery and crop state. We consider forecast horizons of up to 32 days, matching the approximate monthly range increasingly supported by modern weather forecasting systems [97]. This lead time is also operationally relevant for agricultural interventions such as nitrogen top-dressing and fungicide application [106], as well as for updating monthly crop-condition assessments [9]. Learning these dynamics from satellite observations introduces a fundamen-tal difficulty. Cloud cover and satellite revisit intervals leave LAI supervision sparse and irregular, although the model must produce a dense daily trajectory. When trained only on the available cloud-free observations, flexible forecast-ing models can match the sparse targets while oscillating implausibly between them, producing trajectories that no real winter-wheat canopy could follow. We address this issue with a differentiable unimodal shape regulariser that encodes the characteristic seasonal rise, peak, and decline of green LAI. The regulariser acts directly on the predicted trajectory, requires no additional LAI observations, and can be applied to different sequence-model architectures. 
+
+Contributions. – We formulate landscape-scale crop growth forecasting as predicting future LAI trajectories beyond the last available satellite observation from historical remote sensing observations and known environmental drivers. 
+
+– We introduce an ecophysiological LAI seasonal shape regulariser to allow learning under sparse supervision, encouraging biologically plausible crop growth trajectories. 
+
+– Using a multi-year, country-scale dataset comprised of 20.6 million pixel-level winter wheat time series, we demonstrate that crop growth dynam-ics can be accurately learned from Earth observations by modern machine learning methods (e.g., transformer, RNN) while respecting ecophysiological principles of crop growth. 4 D. Senti et al. 
+
+# 2 Related Work 
+
+LAI retrieval. EO provides data and tools that are well established for de-riving biophysical variables that provide crucial information about the past and present of agricultural lands [8, 22, 31, 66, 99]. Recent reviews examine how such variables are calculated from optical imagery and from dense image time se-ries [11, 46, 94]. The state-of-the-art to retrieve LAI from space performs inver-sion of leaf and canopy radiative-transfer models (RTMs): an RTM simulates spectral signatures for a given set of leaf and canopy properties and produces a look-up table from which LAI is inferred, either by matching observed spectra to the table directly or by training a model to invert it [39,43,44,86,90,95,96]. The SNAP Sentinel-2 biophysical processor follows this RTM-inversion paradigm by training a neural network on PROSAIL simulations [100] and creates per-pixel LAI from Sentinel-2, which images the land surface with a 10 m ground sample distance and roughly a five-day revisit over Switzerland [16]. The derived LAI product has been independently validated [20,41] and is considered state-of-the-art. Still, crucially, it only provides LAI on cloud-free days, producing time series with unevenly spaced observations, making learning dynamics a complex process requiring special treatment. 
+
+Deep learning for time series forecasting. Forecasting future values of a sequence from past observation is a mature subfield, developed largely out-side EO, on tasks such as finance, energy, and weather forecasting. Before deep learning, classical (autoregressive) statistical models such as ARIMA dominated the task [37]. As recent surveys document, the dominant approaches have since progressed to deep architectures, from recurrent encoder–decoders [15, 87] to attention- and transformer-based models [42, 52, 82, 101], the latter increasingly tailored to long-horizon forecasting [63, 108]. More recently, the field has moved towards pretrained foundation models that forecast previously unseen time-series in a zero-shot setup [6, 17, 35, 47, 98]. This literature, however, largely assumes densely and regularly sampled inputs [80, 105], whereas our problem is defined by sparse supervision, reviewed in [83]. 
+
+Deep learning on satellite image time series. The dominant use of multi-temporal satellite data in agricultural applications is classification (or segmen-tation, alternatively), i.e., labelling each pixel or parcel with a crop type class or phenological state [24]. Recurrent networks were early workhorses for this, with LSTM [34] and GRU [15] encoders applied to optical and synthetic aperture radar sequences [62, 109], and convolutional–recurrent models such as ConvS-TAR exploit multi-scale label hierarchies [91]. More recently, self-attention [93] and temporal-attention architectures have been applied to the same task [78,79]. A separate line of work forecasts vegetation indices forward in time [24], though much of it targets a single value such as end-of-season crop yield. We, however, want to focus on extrapolating a full trajectory. In this subdiscipline, we can split research into two general directions: image-wise forecasting and location-wise forecasting (pixel- or field-scale). The main difference here is that Learning to Forecast Crop Growth from Earth Observation Data 5
+
+the location-wise forecasting does forecasting for every location independently, while the image-wise forecasting uses spatial context. The EarthNet2021 bench-mark [71] framed the former as a video prediction task where weather-conditioned models forecast entire future satellite images, which can easily be converted to LAI or NDVI (Normalized Difference Vegetation Index) maps. Architectures which aim to solve this task are ConvLSTMs [2, 19, 45, 54, 73], the multi-modal Contextformer [10], and latent-diffusion models [107]. The second group of per-pixel or per-field forecasters uses recurrent models to predict NDVI or vegetation-health series and is also often weather-conditioned [50, 70, 92]. It includes recent work on high-resolution Sentinel-2 and PlanetScope data [23, 55]. [38] forecasts field-level NDVI directly from sparse, irregular clear-sky Sentinel-2 acquisitions and weather on the GreenEarthNet cubes. Most of the previously mentioned work focusses on NDVI. A few studies instead target LAI, forecasting its tra-jectory from climate drivers with attention-augmented LSTMs [104] or from multitemporal imagery under heat-wave stress [28]. Summarising, these meth-ods forecast a continuous vegetation variable as a time series; unlike ours, they target NDVI or coarse spatial resolution LAI ( ≥ 300 m), whereas we aim to forecast high-resolution LAI (10m). In this contribution we limit ourselves to pixel-scale forecasting. 
+
+# 3 Crop Growth Forecasting: Setting and Formulation 
+
+3.1 Development of LAI Throughout the Growing Season 
+
+Leaf area index (LAI) has a seasonal unimodal growth pattern that is mainly driven by weather [58, 69], when nutrient limitations can be ruled out as in a high-intensity agricultural regime such as Switzerland. The green LAI growing pattern is defined by ecophysiological processes: Early-season growth rates and the peak LAI value correlate with the crop’s response to temperature, water, and nutrient availability [1, 75, 84]. At finer temporal scales, early-season wheat leaf growth closely relates to incoming radiation, temperature and precipitation [58]. The timing and pace of senescence are likewise linked to temperature and water availability [3–5]. Wheat development is largely governed by accumulated thermal time [57, 69], modulated by photoperiod and vernalisation [85]. Winter wheat is sown towards the end of one calendar year and harvested in the next, so this rise–peak–decline plays out over a single growing season spanning roughly early spring to late summer of the harvest year. The LAI trajectory is thus a single-peaked rise, plateau, and decline whose rates and timing reflect how the crop responds to its environment. This trajectory is the ecophysiological regularity our model is meant to respect and enforce. 
+
+3.2 Problem Formulation 
+
+We formulate the problem as follows. We consider a winter-wheat pixel location 
+
+p at daily resolution over a growing season. On each day t, a feature vector 6 D. Senti et al. 
+
+xp,t is available, containing the daily meteorological drivers of growth together with static location metadata, namely latitude and longitude, and a day-of-year encoding. In contrast, the LAI target yp,t is available only on a subset 
+
+Vp of valid days , corresponding to cloud-free Sentinel-2 acquisitions from which an LAI value can be retrieved. These valid observations provide the only LAI supervision available to the model. We fix a run-in length Rin = 90 days, which in the beginning of the season is long enough to include the sowing date (cf. Sec. 3.1), and forecast horizons of up to H = 32 days. These are the values used throughout our experiments. Around a reference day t0 the timeline is split into a run-in window Win and a prediction window Wpred ,
+
+Win = { t0 − Rin + 1 , . . . , t 0 }, Wpred = { t0 + 1 , . . . , t 0 + H }. (1) Over the run-in window the model sees the full history, both the features xp,t 
+
+and any valid LAI observation yp,t , while over the prediction window it sees only the features and must forecast LAI. The model is a learned map f that, from the run-in history and the future drivers, predicts an LAI value for every day of the horizon, 
+
+ˆyp,t = f
+
+
+
+{(xp,i , y p,i )}i∈W in , {xp,i }i∈W pred 
+
+
+
+, t ∈ W pred . (2) The future drivers {xp,i }i∈W pred are taken from observed weather data; in op-erational deployment they would be replaced with meteorological forecasts. No satellite-derived LAI enters the prediction window; observations there are used only for supervised training and evaluation. 
+
+3.3 Dataset 
+
+We assemble a country-scale dataset of winter wheat LAI time series for Switzer-land, pairing satellite-derived LAI with the meteorological drivers of growth over five growing seasons (2021–2025). 
+
+Field locations. Winter wheat fields are taken from the agricultural parcel datasets published by the Swiss federal and cantonal authorities [88], where each parcel carries a crop-type code. This data is also part of the SwissCrop25 national crop-mapping benchmark [49], which is publicly available on Hugging Face. We rasterise the winter wheat polygons onto a 10 m grid and keep only pixels fully contained within a field, excluding boundary pixels that may mix in roads, trees, or adjacent fields. 
+
+Meteorological drivers. Daily weather is obtained from the Swiss national weather service MeteoSwiss, and represents gridded daily weather data [59] at 
+
+1 km resolution: minimum, mean, and maximum temperature, relative sunshine duration, and precipitation. For each pixel we also compute cumulative aggre-gates of these variables from the 1st of January of the sowing year, so run-in Learning to Forecast Crop Growth from Earth Observation Data 7
+
+windows of any length are covered. Temperature enters as max( T, 0 ◦C) , since wheat growth and development effectively cease below 0 ◦C [57, 69]; clipping at zero lets sub-zero days simply not contribute to the cumulative aggregate rather than subtracting from previously accumulated temperature. Day-of-year and days-since-start (counted from the 1st of January of the sowing year), to-gether with pixel latitude and longitude, are included as light spatio-temporal metadata. 
+
+LAI extraction and cleaning. Sentinel-2 scenes are cleaned with a two-stage mask: a U-Net cloud-and-shadow segmentation model [10] combined with the Sentinel-2 Scene Classification Layer, retaining only pixels flagged clear by both. In case of double acquisitions on the same day (due to overlapping satellite or-bits), we keep the scene with the lowest post-masking cloud fraction, and de-rive per-pixel LAI time series on the surviving cloud-free days with the SNAP Sentinel-2 biophysical processor (see Sec. 2, LAI retrieval). Two further checks enforce valid winter wheat LAI values: we discard any value above LAI 8, since these are highly implausible for Swiss winter wheat and usually result from residual cloud contamination [31], and exclude parcels falsely labelled as winter wheat by removing time series with implausible early- or late-season dynamics by requiring LAI < 3 on days 50 and 210 of the harvest year. Together these thresh-olds remove fewer than 2% of pixels. The final dataset comprises approximately 
+
+20 .6 million pixel-level LAI time series across five seasons covering Switzerland. 
+
+Spatial split. To measure geographic generalisation we split the pixel locations into disjoint stripes, holding out four evenly spread validation stripes (about 15% 
+
+of the patches) and training on the rest. The stripes are interleaved four times west to east so the validation set spans the full climatic gradient of Switzerland but with reduced spatial correlation across sets. App. A shows the resulting split. 
+
+# 4 Method 
+
+We cast LAI forecasting as a sequence-to-sequence learning problem. For each pixel p, the encoder processes the run-in window, comprising the meteorological drivers xp,t and the sparse LAI observations available on days t ∈ V p, and maps this history to a latent representation of the current crop state. Conditioned on this representation and the meteorological drivers over the prediction window 
+
+Wpred , the decoder produces a daily LAI forecast ˆyp,t for each step of the forecast horizon. The run-in window should be sufficiently long to capture the recent crop trajectory and partially account for latent environmental conditions, such as soil moisture, that are not directly observed; we discuss this further in Appendix D. We consider two encoder–decoder architectures. The first is a recurrent sequence-to-sequence model with a bidirectional GRU encoder and a unidirectional GRU decoder [15]. The decoder generates the forecast sequentially, one timestep at 8 D. Senti et al.             
+
+> Fig. 2: The unimodal shape regulariser penalises interior valleys. A prediction
+> ˆytthat lies below both an earlier high Ltand a later high Rtviolates unimodality. The penalty vtis the depth of this valley relative to the lower of the two surrounding highs.
+> (a) The earlier high lies inside the forecast window. (b) The season anchor s, obtained from valid run-in observations, represents a peak preceding the forecast window.
+
+a time. However, previous LAI predictions are not fed back into later decod-ing steps, preventing the accumulation of autoregressive rollout errors. The sec-ond is a transformer encoder–decoder [93], which models temporal dependencies through self-attention and predicts the complete forecast horizon in a single non-autoregressive pass. Because Sentinel-2-derived LAI is unavailable on cloudy or otherwise invalid acquisition days, the run-in sequence contains missing observations. On such days, the LAI input is replaced by a fixed placeholder and accompanied by a binary validity mask, allowing the encoder to distinguish missing values from genuine LAI measurements. All models are trained using a masked mean-squared error computed only on prediction-window days for which a valid LAI target is available. For a forecast window associated with pixel p, the loss is 
+
+LMSE = 1
+
+|O p|
+
+X
+
+> t∈O p
+
+(ˆ yp,t − yp,t )2 , (3) where Op ⊆ W pred denotes the subset of forecast days with valid LAI observa-tions. The loss is averaged across the windows in each training batch. Prediction days without a valid LAI target do not contribute to the supervised loss or its gradients. 
+
+4.1 Ecophysiological Prior via Unimodal Shape Regularisation 
+
+The masked loss constrains predictions only on days with valid LAI observations. Consequently, models can fit the sparse targets while producing oscillatory tra-jectories between them. This is inconsistent with the seasonal development of Learning to Forecast Crop Growth from Earth Observation Data 9
+
+green winter-wheat LAI, which follows a unimodal rise–peak–decline when not under nutrient or disease stress. We therefore penalise interior valleys in the predicted trajectory (Fig. 2). Because the forecast window is short relative to the full growing season, a seasonal peak may occur before the prediction window. Let Sp denote the valid run-in observations from the harvest season being forecast. We define the season anchor as 
+
+s = max 
+
+> t∈S p
+
+yp,t . (4) For each forecast step t, the highest values before and after ˆyt are 
+
+Lt = max {s, ˆy1, . . . , ˆyt−1}, Rt = max {ˆyt+1 , . . . , ˆyH }. (5) We take the empty maximum as −∞ , so the final prediction cannot be penalised as a valley. The valley depth is 
+
+vt = min(ReLU( Lt − ˆyt), ReLU( Rt − ˆyt)) , (6) which is positive only when ˆyt lies below both an earlier and a later high. The regulariser and total training objective are 
+
+R(ˆ y) = 1
+
+H
+
+> H
+
+X
+
+> t=1
+
+vt, L = LMSE + λR(ˆ y), (7) where λ ≥ 0 controls the strength of the prior. In 5.3 we show how we choose 
+
+λ to be both ecophysiologically viable while keeping model performance. Since 
+
+R(ˆ y) depends only on the dense predicted trajectory, it also provides a training signal on days without LAI supervision. It is used only during training and applies unchanged to both the GRU and transformer models. 
+
+# 5 Experiment and Discussion 
+
+5.1 Baselines 
+
+To assess the benefit of explicit temporal modelling, we compare the GRU and transformer encoder–decoder models with two non-sequential baselines: a mul-tilayer perceptron (MLP) [77] and LightGBM [40]. Both receive the same run-in and prediction-window variables as the sequence models, but flattened into a fixed-dimensional input vector. The MLP predicts the complete LAI trajectory jointly, whereas LightGBM performs one-step prediction and is applied recur-sively over the forecast horizon. These baselines allow us to isolate the contribu-tion of architectures that explicitly model temporal structure. 10 D. Senti et al. 
+
+5.2 Experimental Setup and Model Selection 
+
+Our dataset spans the 2021–2025 seasons. We define geographical splits as de-scribed in Sec. 3.3. We leave out 2023 completely, which is our test year, and train on the training set of the remaining years. We use the left out validation set to select the best model architectures. Due to compute constraints the met-rics on the validation set are calculated on a fixed 25% subset of the validation data, randomly defined. Following the framing of Sec. 3.2 we always use a run-in window of Rin = 90 days and for training a variable prediction horizon drawn uniformly at random in H ∈ [1 , 32] days. For performance evaluation, we use the 32-day prediction horizon. We only allow prediction windows inside the wheat season (1 February–31 July of the harvest year). The inputs are the LAI history together with the meteorological and time features defined in Sec. 3.3.         
+
+> Fig. 3: Accuracy of the best model of each family. Models trained on all seasons except 2023 and evaluated on the held-out geographically split valida-tion set, measured as RMSE in LAI units (lower is better). The two deep encoder– decoder sequence models are the most ac-curate and essentially tied, ahead of the MLP and LightGBM baselines.
+
+In the first step, we compare the two encoder–decoder sequence models of Sec. 4 (a bidirectional GRU sequence-to-sequence model and a transformer encoder–decoder) against the two non-sequential baselines (MLP and Light-GBM), described in Sec. 5.1. All mod-els share the identical data and evalu-ation protocol; optimiser and training settings are given in App. B. For each model family we sweep the model ca-pacity and keep the size with the best validation loss. For both sequence mod-els accuracy saturates at hidden size 
+
+512 , which we carry forward. Comparing the best model from each family on the multi-year valida-tion set, the two deep sequence mod-els are the most accurate at ≈ 0.51 LAI RMSE and are essentially tied, ahead of the MLP ( 0.59 ) and LightGBM ( 0.81 )baselines (Fig. 3). 
+
+5.3 Shape Regulariser Strength Selection 
+
+Plausibility versus accuracy. We analyse how the validation loss behaves with increasing regularisation strength. On the two selected hidden-512 archi-tectures (the GRU and the transformer), we sweep the shape-regulariser weight 
+
+λ (Eq. (7)) over λ ∈ { 0, 0.05 , 0.1, 0.25 , 1, 2, 5, 10 }, where λ = 0 is the unregu-larised reference. We measure plausibility with the valley penalty R(ˆ y) on the model’s own predictions (lower means smoother and more strictly unimodal). Increasing λ lowers the valley penalty on held-out windows (Fig. 4, purple). Ac-curacy (RMSE, yellow) stays almost flat over a wide range of λ and increases Learning to Forecast Crop Growth from Earth Observation Data 11              
+
+> Fig. 4: Shape-regularisation trade-off for the transformer (left) and bidirec-tional GRU (right). As the penalty weight λincreases, the valley penalty R(ˆ y)on held-out windows (purple, right axis) collapses while forecast RMSE (yellow, left axis) is nearly unchanged.
+> Fig. 5: Physical selection of λfor the transformer (left) and GRU (right).
+> Strength of the correlation between predicted day-to-day LAI growth ( ∆LAI) and air temperature, read at the median response lag, plotted against λ; the lag is annotated above each marker ( @d, in days). The coupling peaks at λ= 0 .05 (transformer) and
+> λ= 0 .1(GRU), the values we adopt. See text for the analysis and validation setup.
+
+only at the largest weights. This trade-off is reassuring (plausibility costs almost no accuracy), but it does not make the choice of λ unambiguous: the penalty falls smoothly and accuracy moves only slowly. To identify a single value of λ,we next evaluate whether the predicted growth dynamics remain coupled to a known key environmental driver: temperature. 
+
+Growth–temperature response. Canopy growth is driven mainly by temper-ature, with leaf appearance and expansion scaling with accumulated thermal time [57, 69]. A physically faithful forecast should therefore reproduce this cou-pling: its day-to-day growth should correlate strongly with temperature. For each λ we run the selected model on the validation subset and take day-to-day growth as the increments ∆LAI t = ˆ yt − ˆyt−1. We correlate these increments with daily mean temperature. We pair each increment ∆LAI t with the temperature ℓ
+
+days earlier, Tt−ℓ, compute the Pearson correlation across the window for every offset ℓ ∈ { 0, . . . , 14 }, and keep the strongest correlation as that window’s cou-pling strength. Per-window values are averaged first by forecast start day and 12 D. Senti et al. 
+
+then across the season, giving one season-averaged coupling strength per λ. We always use the strongest correlation over the offsets to account for delay effects, and Fig. 5 labels each point with its median lag. As in the plausibility versus ac-curacy experiment, we restrict the analysis to forecast start days (reference days 
+
+t0) in DOY 60–90. Since the validation set is inferred with a fixed 32 -day hori-zon, this covers predicted days 61–122, the early-spring vegetative phase when canopy growth is fast and closely tied to temperature [75, 76]. Fig. 5 plots this coupling strength against λ for both architectures. The cou-pling is weak for the unregularised model, strengthens as the penalty is switched on, peaks, and weakens again for larger weights as the penalty begins to over-smooth and distort the dynamics. We therefore select λ = 0 .1 for the GRU and 
+
+λ = 0 .05 for the transformer: each value maximises the correlation between pre-dicted growth and its meteorological driver while staying within the favourable accuracy–plausibility band of Fig. 4. Both families behave the same way, with the implied response lag holding at a physically plausible ∼2 days throughout the sweep. The season-averaged response curves at the selected λ for both families are shown in App. C. Fig. 6 contrasts both families’ forecasts on one validation window. Without the regulariser, the GRU and transformer fit the sparse LAI observations with jagged, multi-peaked trajectories; the unimodal prior (at each family’s selected 
+
+λ) restores the smooth, single-peaked growth a wheat canopy actually follows.                                                                       
+
+> Fig. 6: The shape regulariser removes ecophysiologically impossible oscilla-tions. For one validation window (90-day run-in, shaded, 32-day forecast in white), each panel shows one model’s predicted LAI trajectory against the valid run-in LAI observations and the forecast-horizon targets. Without the shape regulariser ( λ= 0 )both the GRU and the transformer fit the sparse targets with jagged curves that no wheat canopy could follow. Adding the unimodal shape regulariser yields smooth, single-peaked growth. Learning to Forecast Crop Growth from Earth Observation Data 13
+> Table 1: Per-year LOYO forecast accuracy for the two selected models, each season held out in turn and scored over the whole country. RMSE and MAE are in LAI units (lower is better for both), NRMSE expresses the RMSE as a percentage of the mean observed LAI (lower is better), and coefficient of determination R 2(higher is better). The bottom row is the mean over all five folds. GRU ( λ=0 .1)Transformer ( λ=0 .05 )Test year RMSE ↓NRMSE % ↓R2↑MAE ↓RMSE ↓NRMSE % ↓R2↑MAE ↓
+> 2021 0.651 27.6 0.862 0.451 0.709 30.1 0.837 0.475 2022 0.683 36.8 0.856 0.465 0.802 43.2 0.802 0.512 2023 0.758 26.5 0.832 0.537 0.873 30.5 0.778 0.611 2024 0.867 38.0 0.725 0.608 0.795 34.9 0.769 0.546 2025 0.695 28.0 0.842 0.479 0.721 29.1 0.830 0.502 Mean 0.731 31.4 0.823 0.508 0.780 33.6 0.803 0.529
+
+5.4 Leave-One-Year-Out Performance Comparison 
+
+We compare the two selected sequence models, the GRU at λ = 0 .1 and the transformer at λ = 0 .05 (Sec. 5.3), under a leave-one-year-out (LOYO) protocol. Model architectures and regulariser strengths were selected on geographically held-out validation data drawn from the training seasons, without access to any held-out test season. We now evaluate temporal generalisation: each season in 
+
+2021 –2025 is held out in turn while the model is trained on the remaining four, using exactly the same training splits as in Sec. 5.2. The training regime is therefore unchanged; we report accuracy on the held-out season, pooled over the whole country (Table 1), using root-mean-square error (RMSE) and mean abso-lute error (MAE), both in LAI units, its scale-free normalisation NRMSE (the RMSE as a percentage of the mean observed LAI), together with the coefficient of determination R 2 (see App. G for details).  
+
+> Fig. 7: Error grows in prediction hori-zon. (GRU, Zürich region, 2022 held-out season): mean absolute error of predictions
+> 1/15 /30 -day into the future and mean LAI.
+
+The four metrics rank the sea-sons quite consistently, with one no-table exception for the GRU: 2023 records the lowest NRMSE of all folds (26 .5% ) despite the second-highest RMSE. This decoupling is a prod-uct of the season rather than the model: NRMSE divides the RMSE by the mean observed LAI (Appendix, Eq. (G.3)), and 2023 saw unusually rapid spring growth, so the canopy spent little of the season at low leaf area, there are few low-LAI observa-tions, the mean observed LAI is cor-respondingly high, and the NRMSE is pulled down. The seasonal NDVI curves in App. E show this directly. 14 D. Senti et al. 
+
+Forecast accuracy degrades only gently as the distance from the observed LAI values grows. As an illustration, Fig. 7 follows the GRU through the 2022 held-out season over the hundred 1.28 ×1.28 km patches nearest the Zürich city centre which contain winter wheat: for every Sentinel-2 observation date it plots the mean absolute forecast error at 1-, 15 - and 30 -day prediction horizon positions, averaged over all pixel time series of those patches, together with their mean ground-truth LAI, each smoothed with a Gaussian kernel ( σ = 5 days). The longer-lead forecasts carry a somewhat larger error than the short-lead ones, but all three lead times track the seasonal LAI trajectory. The transformer behaves the same way (App. F). We want to emphasize that throughout our work, we use observed weather instead of weather forecasts which would carry uncertainty. Therefore, when forecasting into the future, our performance estimates represent an optimistic upper bound. 
+
+# 6 Conclusion 
+
+We formulated crop-growth forecasting as predicting the future LAI trajectory of winter wheat beyond the last available satellite observation from histori-cal remote sensing imagery and meteorological drivers. To study this task at landscape-scale, we assembled a country-scale dataset for Switzerland compris-ing approximately 20.6 million pixel-level LAI time series across the 2021–2025 growing seasons, pairing sparse Sentinel-2-derived LAI observations with dense daily meteorological variables. We trained deep sequence-to-sequence encoder– decoder models based on GRU and transformer architectures and compared them with non-sequential baselines. Both sequence models consistently achieved higher forecasting accuracy, showing that explicit temporal modelling is impor-tant for learning crop growth dynamics. Under leave-one-year-out evaluation, they maintained strong performance across growing seasons. Because cloud cover and revisit gaps provide LAI supervision only on sparse, irregular days, uncon-strained models can produce implausibly oscillating trajectories between obser-vations. We therefore introduced a lightweight unimodal shape regulariser that encourages the characteristic seasonal rise and decline of winter-wheat LAI with-out requiring additional labels. The regulariser substantially improves trajectory plausibility while largely preserving accuracy. Overall, our results show that crop growth dynamics can be forecast from satellite-derived observations and meteorological drivers at landscape-scale. Fu-ture work should examine additional crop species and regions, incorporate fur-ther growth drivers such as soil and management information, analyse the effect of run-in window sparsity on forecasting accuracy, and evaluate the use of un-certain meteorological forecasts in operational settings. Learning to Forecast Crop Growth from Earth Observation Data 15 
+
+# Acknowledgements 
+
+We thank the anonymous reviewers for their constructive comments. We also thank Thomas Lauber (Agroscope) for his help with the HPC environment, Sélène Ledain (Agroscope) for preparing several of the data products and Achim Walter and Konrad Schindler (both ETHZ) for their valuable input. This work was supported by the Swiss National Science Foundation (Grant No. 10002727) and Agroscope. We acknowledge access to Alps at the Swiss National Supercom-puting Centre, Switzerland under Agroscope’s share with the project ID go57. All funding was awarded to Helge Aasen. Large language models were used in the preparation of this manuscript for writing assistance, language editing, and code development. All scientific content, experimental results, and conclusions were verified by the authors. 16 D. Senti et al. 
+
+# References 
+
+1. Aasen, H., Roth, L.: Advances in high-throughput crop phenotyping using un-manned aerial vehicles (UAVs). In: Walter, A. (ed.) Advances in Plant Phenotyp-ing for More Sustainable Crop Production, vol. 117, pp. 179–200. Burleigh Dodds Science Publishing, London, 1st edn. (2022). https://doi.org/10.19103/AS. 2022.0102.09 
+
+2. Ahmad, R., Yang, B., Ettlin, G., Berger, A., Rodríguez-Bocca, P.: A machine-learning based ConvLSTM architecture for NDVI forecasting. International Transactions in Operational Research 30 (4), 2025–2048 (2023). https://doi. org/10.1111/itor.12887 
+
+3. Anderegg, J., Aasen, H., Perich, G., Roth, L., Walter, A., Hund, A.: Temporal trends in canopy temperature and greenness are potential indicators of late-season drought avoidance and functional stay-green in wheat. Field Crops Research 274 ,108311 (Dec 2021). https://doi.org/10.1016/j.fcr.2021.108311 
+
+4. Anderegg, J., Kirchgessner, N., Aasen, H., Zumsteg, O., Keller, B., Zenkl, R., Walter, A., Hund, A.: Thermal imaging can reveal variation in stay-green func-tionality of wheat canopies under temperate conditions. Preprint, Plant Biology (Nov 2023). https://doi.org/10.1101/2023.11.08.566006 
+
+5. Anderegg, J., Yu, K., Aasen, H., Walter, A., Liebisch, F., Hund, A.: Spectral Vegetation Indices to Track Senescence Dynamics in Diverse Wheat Germplasm. Frontiers in Plant Science 10 , 1749 (Jan 2020). https://doi.org/10.3389/ fpls.2019.01749 
+
+6. Ansari, A.F., Stella, L., Turkmen, C., Zhang, X., Mercado, P., Shen, H., Shchur, O., Rangapuram, S.S., Pineda Arango, S., Kapoor, S., Zschiegner, J., Maddix, D.C., Wang, H., Mahoney, M.W., Torkkola, K., Wilson, A.G., Bohlke-Schneider, M., Wang, Y.: Chronos: Learning the language of time series. Transactions on Ma-chine Learning Research (TMLR) (2024), https://arxiv.org/abs/2403.07815 ,arXiv:2403.07815 7. Asner, G.P., Scurlock, J.M.O., A. Hicke, J.: Global synthesis of leaf area index observations: Implications for ecological and remote sensing studies. Global Ecol-ogy and Biogeography 12 (3), 191–205 (May 2003). https://doi.org/10.1046/ j.1466-822X.2003.00026.x 
+
+8. Atzberger, C.: Advances in remote sensing of agriculture: Context description, existing operational monitoring systems and major information needs. Remote Sensing 5(2), 949–981 (2013). https://doi.org/10.3390/rs5020949 
+
+9. Becker-Reshef, I., Justice, C., Barker, B., Humber, M., Rembold, F., Bonifacio, R., Zappacosta, M., Budde, M., Magadzire, T., Shitote, C., et al.: Strengthening agricultural decisions in countries at risk of food insecurity: The geoglam crop monitor for early warning. Remote Sensing of Environment 237 , 111553 (2020). 
+
+https://doi.org/10.1016/j.rse.2019.111553 
+
+10. Benson, V., Robin, C., Requena-Mesa, C., Alonso, L., Carvalhais, N., Cortés, J., Gao, Z., Linscheid, N., Weynants, M., Reichstein, M.: Multi-modal learning for geospatial vegetation forecasting. In: CVPR. pp. 27788–27799 (2024), https: //arxiv.org/abs/2303.16198 
+
+11. Berger, K., Hostert, P., Schlerf, M., Immitzer, M., Szantoi, Z., Okujeni, A., Foer-ster, S., Colditz, R., Giardino, C., Machwitz, M., Weiss, M., Defourny, P., Kutser, T., Remeta, P., Foerster, M., Féret, J.B., Asadzadeh, S., Chabrillat, S., Croft, H., Stassin, T., Schickling, A., Vancutsem, C., Celesti, M., Proud, S., Jonckheere, I., Strobl, P., Milewski, R., Herold, M.: Advancing optical earth observation for EU Learning to Forecast Crop Growth from Earth Observation Data 17 policies: needs, opportunities, recommendations. Environmental Sciences Europe 
+
+38 (1), 52 (2026). https://doi.org/10.1186/s12302-026-01346-3 
+
+12. Bindraban, P.S., van der Velde, M., Ye, L., van den Berg, M., Materechera, S., Kiba, D.I., Tamene, L., Ragnarsdóttir, K.V., Jongschaap, R., Hoogmoed, M., Hoogmoed, W., van Beek, C., van Lynden, G.: Assessing the impact of soil degradation on food production. Current Opinion in Environmental Sustainability 
+
+4(5), 478–488 (Nov 2012). https://doi.org/10.1016/j.cosust.2012.09.015 ,
+
+https://www.sciencedirect.com/science/article/pii/S1877343512001224 
+
+13. Campbell, B.M., Beare, D.J., Bennett, E.M., Hall-Spencer, J.M., Ingram, J.S.I., Jaramillo, F., Ortiz, R., Ramankutty, N., Sayer, J.A., Shindell, D.: Agriculture production as a major driver of the Earth system exceeding planetary boundaries. Ecology and Society 22 (4) (2017), https://www.jstor.org/stable/26798991 
+
+14. Chen, Y., Zhang, Z., Tao, F.: Improving regional winter wheat yield estima-tion through assimilation of phenology and leaf area index from remote sensing data. European Journal of Agronomy 101 , 163–173 (2018). https://doi.org/ 10.1016/j.eja.2018.09.006 
+
+15. Cho, K., van Merriënboer, B., Gulcehre, C., Bahdanau, D., Bougares, F., Schwenk, H., Bengio, Y.: Learning phrase representations using RNN encoder–decoder for statistical machine translation. In: Proceedings of the 2014 Conference on Empir-ical Methods in Natural Language Processing (EMNLP). pp. 1724–1734 (2014). 
+
+https://doi.org/10.3115/v1/D14-1179 
+
+16. Claverie, M., Ju, J., Masek, J.G., Dungan, J.L., Vermote, E.F., Roger, J.C., Skakun, S.V., Justice, C.: The harmonized Landsat and Sentinel-2 surface re-flectance data set. Remote Sensing of Environment 219 , 145–161 (2018). https: //doi.org/10.1016/j.rse.2018.09.002 
+
+17. Das, A., Kong, W., Sen, R., Zhou, Y.: A decoder-only foundation model for time-series forecasting. In: Proceedings of the 41st International Conference on Machine Learning. Proceedings of Machine Learning Research, vol. 235, pp. 10148–10167 (2024), https://arxiv.org/abs/2310.10688 
+
+18. Delloye, C., Weiss, M., Defourny, P.: Retrieval of the canopy chlorophyll content from Sentinel-2 spectral bands to estimate nitrogen uptake in intensive winter wheat cropping systems. Remote Sensing of Environment 216 , 245–261 (2018). 
+
+https://doi.org/10.1016/j.rse.2018.06.037 
+
+19. Diaconu, C.A., Saha, S., Günnemann, S., Zhu, X.X.: Understanding the role of weather data for Earth surface forecasting using a ConvLSTM-based model. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops (CVPRW). pp. 1361–1370 (2022). https://doi.org/10. 1109/CVPRW56347.2022.00142 
+
+20. Djamai, N., Fernandes, R.: Comparison of SNAP-Derived Sentinel-2A L2A Prod-uct to ESA Product over Europe. Remote Sensing 10 (6), 926 (2018). https: //doi.org/10.3390/rs10060926 
+
+21. Elman, J.L.: Finding structure in time. Cognitive Science 14 (2), 179–211 (1990). 
+
+https://doi.org/10.1207/s15516709cog1402_1 
+
+22. Fang, H., Baret, F., Plummer, S., Schaepman-Strub, G.: An overview of global leaf area index (LAI): Methods, products, validation, and applications. Reviews of Geophysics 57 (3), 739–799 (2019). https://doi.org/10.1029/2018RG000608 
+
+23. Farbo, A., Sarvia, F., De Petris, S., Basile, V., Borgogno-Mondino, E.: Forecast-ing corn NDVI through AI-based approaches using Sentinel-2 image time series. ISPRS Journal of Photogrammetry and Remote Sensing 211 , 244–261 (2024). 
+
+https://doi.org/10.1016/j.isprsjprs.2024.04.011 18 D. Senti et al. 24. Ferchichi, A., Ben Abbes, A., Barra, V., Farah, I.R.: Forecasting vegetation indices from spatio-temporal remotely sensed data using deep learning-based approaches: A systematic literature review. Ecological Informatics 68 , 101552 (2022). https: //doi.org/10.1016/j.ecoinf.2022.101552 
+
+25. Foley, J.A., Ramankutty, N., Brauman, K.A., Cassidy, E.S., Gerber, J.S., John-ston, M., Mueller, N.D., O’Connell, C., Ray, D.K., West, P.C., Balzer, C., Bennett, E.M., Carpenter, S.R., Hill, J., Monfreda, C., Polasky, S., Rockström, J., Sheehan, J., Siebert, S., Tilman, D., Zaks, D.P.M.: Solutions for a cultivated planet. Na-ture 478 (7369), 337–342 (Oct 2011). https://doi.org/10.1038/nature10452 ,
+
+https://www.nature.com/articles/nature10452 
+
+26. Gitelson, A.A., Peng, Y., Arkebauer, T.J., Schepers, J.: Relationships be-tween gross primary production, green LAI, and canopy chlorophyll content in maize: Implications for remote sensing of primary production. Remote Sens-ing of Environment 144 , 65–72 (Mar 2014). https://doi.org/10.1016/j. rse.2014.01.004 , https://www.sciencedirect.com/science/article/pii/ S0034425714000170 
+
+27. Gitelson, A.A., Viña, A., Arkebauer, T.J., Rundquist, D.C., Keydan, G., Leav-itt, B.: Remote estimation of leaf area index and green leaf biomass in maize canopies. Geophysical Research Letters 30 (5) (2003). https://doi.org/10. 1029/2002GL016450 
+
+28. Gobbi, A., Cristoforetti, M., Jurman, G., Furlanello, C.: High resolution fore-casting of heat waves impacts on leaf area index by multiscale multitemporal deep learning. arXiv preprint arXiv:1909.07786 (2019), https://arxiv.org/abs/ 1909.07786 
+
+29. Godfray, H.C.J., Beddington, J.R., Crute, I.R., Haddad, L., Lawrence, D., Muir, J.F., Pretty, J., Robinson, S., Thomas, S.M., Toulmin, C.: Food Security: The Challenge of Feeding 9 Billion People. Science 327 (5967), 812–818 (Feb 2010). 
+
+https://doi.org/10.1126/science.1185383 , https://www.science.org/doi/ 10.1126/science.1185383 
+
+30. Gornall, J., Betts, R., Burke, E., Clark, R., Camp, J., Willett, K., Wiltshire, A.: Implications of climate change for agricultural productivity in the early twenty-first century. Philosophical Transactions of the Royal Society B: Biological Sci-ences 365 (1554), 2973–2989 (2010). https://doi.org/10.1098/rstb.2010.0158 
+
+31. Graf, L.V., Merz, Q.N., Walter, A., Aasen, H.: Insights from field phenotyping im-prove satellite remote sensing based in-season estimation of winter wheat growth and phenology. Remote Sensing of Environment 299 , 113860 (Dec 2023). https: //doi.org/10.1016/j.rse.2023.113860 , https://linkinghub.elsevier.com/ retrieve/pii/S003442572300411X 
+
+32. Groß, J., Gentsch, N., Boy, J., et al.: Influence of small-scale spatial variability of soil properties on yield formation of winter wheat. Plant and Soil 493 (1-2), 79–97 (2023). https://doi.org/10.1007/s11104-023-06212-2 
+
+33. Hashimoto, N., Saito, Y., Yamamoto, S., et al.: Feasibility of yield estimation based on leaf area dynamics measurements in rice paddy fields of farmers. Field Crops Research 286 , 108609 (2022). https://doi.org/10.1016/j.fcr.2022. 108609 
+
+34. Hochreiter, S., Schmidhuber, J.: Long short-term memory. Neural Computation 
+
+9(8), 1735–1780 (1997). https://doi.org/10.1162/neco.1997.9.8.1735 
+
+35. Hoo, S.B., Müller, S., Salinas, D., Hutter, F.: From tables to time: Extending TabPFN-v2 to time series forecasting. arXiv preprint arXiv:2501.02945 (2025), 
+
+https://arxiv.org/abs/2501.02945 Learning to Forecast Crop Growth from Earth Observation Data 19 36. Huang, J., Tian, L., Liang, S., et al.: Improving winter wheat yield estimation by assimilation of the leaf area index from Landsat TM and MODIS data into the WOFOST model. Agricultural and Forest Meteorology 204 , 106–121 (2015). 
+
+https://doi.org/10.1016/j.agrformet.2015.02.001 
+
+37. Hyndman, R.J., Athanasopoulos, G.: Forecasting: Principles and Practice. OTexts, Melbourne, Australia, 2nd edn. (2018), https://otexts.com/fpp2/ 
+
+38. Iele, I., Romoli, G., Molino, D., Mulero Ayllón, E., Ruffini, F., Soda, P., Tortora, M.: Probabilistic NDVI forecasting from sparse satellite time series and weather covariates. arXiv preprint arXiv:2602.17683 (2026), https://arxiv.org/abs/ 2602.17683 
+
+39. Jacquemoud, S., Verhoef, W., Baret, F., Bacour, C., Zarco-Tejada, P.J., As-ner, G.P., François, C., Ustin, S.L.: PROSPECT+SAIL models: A review of use for vegetation characterization. Remote Sensing of Environment 113 , S56–S66 (2009). https://doi.org/10.1016/j.rse.2008.01.026 
+
+40. Ke, G., Meng, Q., Finley, T., Wang, T., Chen, W., Ma, W., Ye, Q., Liu, T.Y.: LightGBM: A highly efficient gradient boosting decision tree. In: Advances in Neural Information Processing Systems (NeurIPS). vol. 30 (2017) 41. Kganyago, M., Mhangara, P., Alexandridis, T., Laneve, G., Ovakoglou, G., Mashiyi, N.: Validation of Sentinel-2 leaf area index (LAI) product derived from SNAP toolbox and its comparison with global LAI products in an African semi-arid agricultural landscape. Remote Sensing Letters 11 (10), 883–892 (2020). 
+
+https://doi.org/10.1080/2150704X.2020.1767823 
+
+42. Kim, J., Kim, H., Kim, H., Lee, D., Yoon, S.: A comprehensive survey of deep learning for time series forecasting: architectural diversity and open challenges. Artificial Intelligence Review 58 (7), 216 (2025). https://doi.org/10.1007/ s10462-025-11223-9 
+
+43. Kimes, D.S., Knyazikhin, Y., Privette, J.L., Abuelgasim, A.A., Gao, F.: Inversion methods for physically-based models. Remote Sensing Reviews 18 (2-4), 381–439 (2000). https://doi.org/10.1080/02757250009532396 
+
+44. Kira, O., Nguy-Robertson, A.L., Arkebauer, T.J., Linker, R., Gitelson, A.A.: To-ward Generic Models for Green LAI Estimation in Maize and Soybean: Satellite Observations. Remote Sensing 9(4), 318 (Mar 2017). https://doi.org/10.3390/ rs9040318 , https://www.mdpi.com/2072-4292/9/4/318 
+
+45. Kladny, K.R., Milanta, M., Mraz, O., Hufkens, K., Stocker, B.D.: Enhanced pre-diction of vegetation responses to extreme drought using deep learning and Earth observation data. Ecological Informatics 80 , 102474 (2024). https://doi.org/ 10.1016/j.ecoinf.2024.102474 
+
+46. Kooistra, L., Berger, K., Brede, B., Graf, L.V., Aasen, H., Roujean, J.L., Mach-witz, M., Schlerf, M., Atzberger, C., Prikaziuk, E., Ganeva, D., Tomelleri, E., Croft, H., Reyes Muñoz, P., Garcia Millan, V., Darvishzadeh, R., Koren, G., Herrmann, I., Rozenstein, O., Belda, S., Rautiainen, M., Karlsen, S.R., Silva, C.F., Cerasoli, S., Pierre, J., Kayıkçı, E.T., Halabuk, A., Gormus, E.T., Fluit, F., Cai, Z., Kycko, M., Udelhoven, T., Verrelst, J.: Reviews and syntheses: Remotely sensed optical time series for monitoring vegetation productivity. Biogeosciences 
+
+21 (2), 473–511 (2024). https://doi.org/10.5194/bg-21-473-2024 
+
+47. Kottapalli, S.R.K., Hubli, K., Chandrashekhara, S., Jain, G., Hubli, S., Botla, G., Doddaiah, R.: Foundation models for time series: A survey. arXiv preprint arXiv:2504.04011 (2025), https://arxiv.org/abs/2504.04011 
+
+48. Laborde, D., Mamun, A., Martin, W., Piñeiro, V., Vos, R.: Agricultural subsidies and global greenhouse gas emissions. Nature Communications 12 (1), 2601 (May 20 D. Senti et al. 2021). https://doi.org/10.1038/s41467-021-22703-1 , https://www.nature. com/articles/s41467-021-22703-1 
+
+49. Lauber, T., Turkoglu, M.O., Ledain, S., Aasen, H.: SwissCrop25: A national multi-year benchmark for operational crop mapping. arXiv preprint arXiv:2608.09497 (2026). https://doi.org/10.48550/arXiv.2608.09497 
+
+50. Lees, T., Tseng, G., Atzberger, C., Reece, S., Dadson, S.: Deep learning for veg-etation health forecasting: A case study in Kenya. Remote Sensing 14 (3), 698 (2022). https://doi.org/10.3390/rs14030698 
+
+51. Lim, B., Arık, S.Ö., Loeff, N., Pfister, T.: Temporal fusion transformers for inter-pretable multi-horizon time series forecasting. International Journal of Forecast-ing 37 (4), 1748–1764 (2021). https://doi.org/10.1016/j.ijforecast.2021. 03.012 
+
+52. Lim, B., Zohren, S.: Time-series forecasting with deep learning: a survey. Philo-sophical Transactions of the Royal Society A: Mathematical, Physical and Engi-neering Sciences 379 (2194), 20200209 (2021). https://doi.org/10.1098/rsta. 2020.0209 
+
+53. Liu, Z., Yang, J., Cheng, M., Luo, Y., Li, Z.: Generative pretrained hierarchical transformer for time series forecasting (2024), https://arxiv.org/abs/2402. 16516 
+
+54. Ma, Y., Hu, Y., Moncrieff, G.R., Slingsby, J.A., Wilson, A.M., Maitner, B., Zhou, R.Z.: Forecasting vegetation dynamics in an open ecosystem by integrating deep learning and environmental variables. International Journal of Applied Earth Ob-servation and Geoinformation 114 , 103060 (2022). https://doi.org/10.1016/ j.jag.2022.103060 
+
+55. Marsetič, A., Kanjir, U.: Forecasting vegetation behavior based on PlanetScope time series data using RNN-based models. IEEE Journal of Selected Topics in Applied Earth Observations and Remote Sensing 17 , 5015–5025 (2024). https: //doi.org/10.1109/JSTARS.2024.3365971 
+
+56. Mason, P., Zillman, J., Simmons, A., Lindstrom, E., Harrison, D., Dolman, H., Bo-jinski, S., Fischer, A., Latham, J., Rasmussen, J., Arkin, P., Armstrong, R., Braa-then, G., Brouchkov, A., Cecil, L.D., Digiacomo, P., Drinkwater, M., Goldammer, J., Goldberg, M., Goodison, B., Haeberli, W., Hilsenrath, E., Jones, P., Kajfez-Bogataj, L., Kent, E., Kundzewicz, Z., Lafeuille, J., Levelt, P., Looser, U., Ogallo, L., Ondras, M., Peterson, T., Pinty, B., Quegan, S., Saunders, R., Schmetz, J., Song, L., Stammer, D., Steffen, K., Tanner, M., Tansey, K., Trenberth, K., Ver-straete, M., Visbeck, M., Vuglinsky, V., Westermeyer, W., Wooster, M.: Imple-mentation plan for the global observing system for climate in support of the UN-FCCC (2010 update). Project report, World Meteorological Organization (Aug 2010) 57. McMaster, G.S., Wilhelm, W.W.: Growing degree-days: one equation, two inter-pretations. Agricultural and Forest Meteorology 87 (4), 291–300 (1997). https: //doi.org/10.1016/S0168-1923(97)00027-0 
+
+58. Merz, Q.N., Walter, A., Maier, R., Hörtnagl, L., Buchmann, N., Kirchgessner, N., Aasen, H.: Relationship of leaf elongation rate of young wheat leaves, gross pri-mary productivity and environmental variables in the field with hourly and daily temporal resolution. Agricultural and Forest Meteorology 320 , 108902 (2022). 
+
+https://doi.org/10.1016/j.agrformet.2022.108902 
+
+59. MeteoSwiss: Documentation of MeteoSwiss grid-data products: Daily, monthly and yearly temperature (TabsD, TminD, TmaxD) and precipitation (RhiresD). Federal Office of Meteorology and Climatology MeteoSwiss (2021), https:// Learning to Forecast Crop Growth from Earth Observation Data 21 
+
+www.meteoswiss.admin.ch/climate/the-climate-of-switzerland/spatial-climate-analyses.html 
+
+60. Mohr, K.: NASA-USDA Global Soil Moisture Data (Mar 2024) 61. Mulla, D.J.: Twenty five years of remote sensing in precision agriculture: Key advances and remaining knowledge gaps. Biosystems Engineering 114 (4), 358– 371 (2013). https://doi.org/10.1016/j.biosystemseng.2012.08.009 
+
+62. Ndikumana, E., Ho Tong Minh, D., Baghdadi, N., Courault, D., Hossard, L.: Deep Recurrent Neural Network for Agricultural Classification using multitemporal SAR Sentinel-1 for Camargue, France. Remote Sensing 10 (8), 1217 (Aug 2018). 
+
+https://doi.org/10.3390/rs10081217 , https://www.mdpi.com/2072- 4292/ 10/8/1217 
+
+63. Nie, Y., Nguyen, N.H., Sinthong, P., Kalagnanam, J.: A Time Series is Worth 64 Words: Long-term Forecasting with Transformers (Mar 2023). https://doi. org/10.48550/arXiv.2211.14730 , http://arxiv.org/abs/2211.14730 
+
+64. O., S., Orth, R.: Global soil moisture data derived through machine learning trained with in-situ measurements. Scientific Data 8(1), 170 (Jul 2021). https: //doi.org/10.1038/s41597-021-00964-1 
+
+65. Peng, J., Albergel, C., Balenzano, A., Brocca, L., Cartus, O., Cosh, M.H., Crow, W.T., Dabrowska-Zielinska, K., Dadson, S., Davidson, M.W., De Rosnay, P., Dorigo, W., Gruber, A., Hagemann, S., Hirschi, M., Kerr, Y.H., Lovergine, F., Mahecha, M.D., Marzahn, P., Mattia, F., Musial, J.P., Preuschmann, S., Re-ichle, R.H., Satalino, G., Silgram, M., Van Bodegom, P.M., Verhoest, N.E., Wag-ner, W., Walker, J.P., Wegmüller, U., Loew, A.: A roadmap for high-resolution satellite soil moisture applications – confronting product characteristics with user requirements. Remote Sensing of Environment 252 , 112162 (Jan 2021). 
+
+https://doi.org/10.1016/j.rse.2020.112162 
+
+66. Perich, G., Turkoglu, M.O., Graf, L.V., et al.: Pixel-based yield mapping and prediction from Sentinel-2 using spectral indices and neural networks. Field Crops Research 292 , 108824 (2023). https://doi.org/10.1016/j.fcr.2023.108824 
+
+67. Pingali, P.L.: Green Revolution: Impacts, limits, and the path ahead. Proceedings of the National Academy of Sciences 109 (31), 12302–12308 (Jul 2012). https: //doi.org/10.1073/pnas.0912953109 , https://pnas.org/doi/full/10.1073/ pnas.0912953109 
+
+68. Poorter, H., Fiorani, F., Pieruschka, R., Wojciechowski, T., van der Putten, W.H., Kleyer, M., Schurr, U., Postma, J.: Pampered inside, pestered outside? Differences and similarities between plants growing in controlled conditions and in the field. New Phytologist 212 (4), 838–855 (Dec 2016). https://doi.org/10.1111/nph. 14243 
+
+69. Porter, J.R., Gawith, M.: Temperatures and the growth and development of wheat: a review. European Journal of Agronomy 10 (1), 23–36 (1999). https: //doi.org/10.1016/S1161-0301(98)00047-1 
+
+70. Reddy, D.S., Prasad, P.R.C.: Prediction of vegetation dynamics using NDVI time series data and LSTM. Modeling Earth Systems and Environment 4(1), 409–419 (2018). https://doi.org/10.1007/s40808-018-0431-3 
+
+71. Requena-Mesa, C., Benson, V., Reichstein, M., Runge, J., Denzler, J.: Earth-Net2021: A large-scale dataset and challenge for Earth surface forecasting as a guided video prediction task. In: Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops (CVPRW). pp. 1132–1142 (2021), https://arxiv.org/abs/2104.10066 22 D. Senti et al. 72. Rezaei, E.E., Webber, H., Asseng, S., Boote, K., Durand, J.L., Ewert, F., Martre, P., MacCarthy, D.S.: Climate change impacts on crop yields. Nature Reviews Earth & Environment pp. 1–16 (Nov 2023). https://doi.org/10.1038/s43017-023-00491-0 , https://www.nature.com/articles/s43017-023-00491-0 
+
+73. Robin, C., Requena-Mesa, C., Benson, V., Alonso, L., Poehls, J., Carvalhais, N., Reichstein, M.: Learning to forecast vegetation greenness at fine resolution over Africa with ConvLSTMs. Tackling Climate Change with Machine Learning Work-shop at NeurIPS (2022), https://arxiv.org/abs/2210.13648 , arXiv:2210.13648 74. Rose, T., Nagler, S., Kage, H.: Yield formation of central-european winter wheat cultivars on a large scale perspective. European Journal of Agronomy 86 , 93–102 (2017). https://doi.org/10.1016/j.eja.2017.03.003 
+
+75. Roth, L., Kronenberg, L., Aasen, H., Walter, A., Hartung, J., van Eeuwijk, F., Piepho, H.P., Hund, A.: High-throughput field phenotyping reveals that selection in breeding has affected the phenology and temperature response of wheat in the stem elongation phase. Journal of Experimental Botany 75 (7), 2084–2099 (2024). 
+
+https://doi.org/10.1093/jxb/erad481 
+
+76. Roth, L., Piepho, H.P., Hund, A.: Phenomics data processing: extracting dose– response curve parameters from high-resolution temperature courses and repeated field-based wheat height measurements. in silico Plants 4(1), diac007 (2022). 
+
+https://doi.org/10.1093/insilicoplants/diac007 
+
+77. Rumelhart, D.E., Hinton, G.E., Williams, R.J.: Learning representations by back-propagating errors. Nature 323 (6088), 533–536 (1986). https://doi.org/10. 1038/323533a0 
+
+78. Rußwurm, M., Körner, M.: Self-attention for raw optical Satellite Time Series Classification. ISPRS Journal of Photogrammetry and Remote Sensing 169 , 421– 435 (Nov 2020). https://doi.org/10.1016/j.isprsjprs.2020.06.006 , https: //linkinghub.elsevier.com/retrieve/pii/S0924271620301647 
+
+79. Sainte Fare Garnot, V., Landrieu, L., Chehata, N.: Multi-modal temporal at-tention models for crop mapping from satellite time series. ISPRS Journal of Photogrammetry and Remote Sensing 187 , 294–305 (May 2022). https://doi. org/10.1016/j.isprsjprs.2022.03.012 , https://linkinghub.elsevier.com/ retrieve/pii/S0924271622000855 
+
+80. Schirmer, M., Eltayeb, M., Lessmann, S., Rudolph, M.: Modeling irregular time series with continuous recurrent units. In: Proceedings of the 39th International Conference on Machine Learning. Proceedings of Machine Learning Research, vol. 162, pp. 19388–19405 (2022), https://arxiv.org/abs/2111.11344 
+
+81. Schmidhuber, J., Tubiello, F.N.: Global food security under climate change. Pro-ceedings of the National Academy of Sciences 104 (50), 19703–19708 (Dec 2007). 
+
+https://doi.org/10.1073/pnas.0701976104 , https://pnas.org/doi/full/ 10.1073/pnas.0701976104 
+
+82. Sezer, O.B., Gudelek, M.U., Ozbayoglu, A.M.: Financial time series forecasting with deep learning: A systematic literature review: 2005–2019. Applied Soft Com-puting 90 , 106181 (2020). https://doi.org/10.1016/j.asoc.2020.106181 
+
+83. Shukla, S.N., Marlin, B.M.: A survey on principles, models and methods for learn-ing from irregularly sampled time series. arXiv preprint arXiv:2012.00168 (2020), 
+
+https://arxiv.org/abs/2012.00168 
+
+84. Sjulgård, H., Graf, L., Colombi, T., Hirte, J., Keller, T., Aasen, H.: Impact of drought on Sentinel-2 derived winter wheat growth dynamics and the relation to soil properties. EGU General Assembly 2024, abstract EGU24-9160 (2024). 
+
+https://doi.org/10.5194/egusphere-egu24-9160 Learning to Forecast Crop Growth from Earth Observation Data 23 85. Slafer, G.A., Rawson, H.M.: Sensitivity of wheat phasic development to major en-vironmental factors: a re-examination of some assumptions made by physiologists and modellers. Australian Journal of Plant Physiology 21 (4), 393–426 (1994). 
+
+https://doi.org/10.1071/PP9940393 
+
+86. Sun, L., Wang, W., Jia, C., Liu, X.: Leaf area index remote sensing based on Deep Belief Network supported by simulation data. International Journal of Remote Sensing 42 (20), 7637–7661 (Oct 2021). https://doi.org/10.1080/01431161. 2021.1942584 , https://www.tandfonline.com/doi/full/10.1080/01431161. 2021.1942584 
+
+87. Sutskever, I., Vinyals, O., Le, Q.V.: Sequence to sequence learning with neural networks. In: Advances in Neural Information Processing Systems (NeurIPS). vol. 27 (2014), https://arxiv.org/abs/1409.3215 
+
+88. Swiss Confederation and Cantons: Landwirtschaftliche Nutzungsflächen (agricul-tural land-use areas), geobasisdataset 153.1. Intercantonal geodata portal geodi-enste.ch (2025), compiled by the cantons under federal law (GeoIV Annex 1, ID 153); https://www.geodienste.ch/services/lwb_nutzungsflaechen 
+
+89. Tang, J., Körner, C., Muraoka, H., Piao, S., Shen, M., Thackeray, S.J., Yang, X.: Emerging opportunities and challenges in phenology: A review. Ecosphere 7(8), e01436 (Aug 2016). https://doi.org/10.1002/ecs2.1436 
+
+90. Tomíček, J., Mišurec, J., Lukeš, P.: Prototyping a Generic Algorithm for Crop Parameter Retrieval across the Season Using Radiative Transfer Model Inversion and Sentinel-2 Satellite Observations. Remote Sensing 13 (18), 3659 (Sep 2021). 
+
+https://doi.org/10.3390/rs13183659 , https://www.mdpi.com/2072- 4292/ 13/18/3659 
+
+91. Turkoglu, M.O., D’Aronco, S., Perich, G., Liebisch, F., Streit, C., Schindler, K., Wegner, J.D.: Crop mapping from image time series: Deep learning with multi-scale label hierarchies. Remote Sensing of Environment 264 , 112603 (Oct 2021). https://doi.org/10.1016/j.rse.2021.112603 , https://linkinghub. elsevier.com/retrieve/pii/S0034425721003230 
+
+92. Vasilakos, C., Tsekouras, G.E., Kavroudakis, D.: LSTM-based prediction of Mediterranean vegetation dynamics using NDVI time-series data. Land 11 (6), 923 (2022). https://doi.org/10.3390/land11060923 
+
+93. Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A.N., Kaiser, L., Polosukhin, I.: Attention Is All You Need (2017). https://doi.org/ 10.48550/ARXIV.1706.03762 
+
+94. Verrelst, J., Camps-Valls, G., Muñoz-Marí, J., Rivera, J.P., Veroustraete, F., Clevers, J.G.P.W., Moreno, J.: Optical remote sensing and the retrieval of ter-restrial vegetation bio-geophysical properties – a review. ISPRS Journal of Pho-togrammetry and Remote Sensing 108 , 273–290 (2015). https://doi.org/10. 1016/j.isprsjprs.2015.05.005 
+
+95. Verrelst, J., Malenovský, Z., Van der Tol, C., Camps-Valls, G., Gastellu-Etchegorry, J.P., Lewis, P., North, P., Moreno, J.: Quantifying vegetation biophys-ical variables from imaging spectroscopy data: A review on retrieval methods. Sur-veys in Geophysics 40 (3), 589–629 (2019). https://doi.org/10.1007/s10712-018-9478-y 
+
+96. Viña, A., Gitelson, A.A., Nguy-Robertson, A.L., Peng, Y.: Comparison of different vegetation indices for the remote assessment of green leaf area index of crops. Remote Sensing of Environment 115 (12), 3468–3478 (2011). https://doi.org/ 10.1016/j.rse.2011.08.010 24 D. Senti et al. 97. Vonich, P.T., Hakim, G.J.: Atmospheric predictability beyond 30 days with ma-chine learning. Artificial Intelligence for the Earth Systems 5(3), 260009 (2026). 
+
+https://doi.org/10.1175/aies-d-26-0009.1 
+
+98. Wang, Y., Wu, H., Dong, J., Liu, Y., Wang, C., Long, M.: Deep time series models: A comprehensive survey and benchmark. IEEE Transactions on Pattern Analysis and Machine Intelligence (2026). https://doi.org/10.1109/TPAMI. 2026.3690845 
+
+99. Weiss, M., Jacob, F., Duveiller, G.: Remote sensing for agricultural applications: A meta-review. Remote Sensing of Environment 236 , 111402 (Jan 2020). https: //doi.org/10.1016/j.rse.2019.111402 , https://linkinghub.elsevier.com/ retrieve/pii/S0034425719304213 
+
+100. Weiss, M., Baret, F., Jay, S.: S2ToolBox level 2 products: LAI, FAPAR, FCOVER. Algorithm Theoretical Basis Document (ATBD) Version 2.1, INRAE (2020) 101. Wen, Q., Zhou, T., Zhang, C., Chen, W., Ma, Z., Yan, J., Sun, L.: Transformers in time series: A survey. In: Proceedings of the Thirty-Second International Joint Conference on Artificial Intelligence. pp. 6778–6786 (2023). https://doi.org/ 10.24963/ijcai.2023/759 
+
+102. Werbos, P.J.: Backpropagation through time: what it does and how to do it. Proceedings of the IEEE 78 (10), 1550–1560 (1990). https://doi.org/10.1109/ 5.58337 
+
+103. World Meteorological Organization: Systematic observation requirements for satellite-based products for climate: Supplemental details to the satellite-based component of the implementation plan for the global observing system for cli-mate in support of the UNFCCC (2011 update). Technical Report 154, World Meteorological Organization, Geneva, Switzerland (2011) 104. Xiong, Z., Zhang, Z., Gui, H., Zhu, P., Sun, Y., Zhou, X., Xiao, K., Xin, Q.: Predicting time series of vegetation leaf area index across North America based on climate variables for land surface modeling using attention-enhanced LSTM. International Journal of Digital Earth 17 (1), 2372317 (2024). https://doi.org/ 10.1080/17538947.2024.2372317 , https://www.tandfonline.com/doi/full/ 10.1080/17538947.2024.2372317 
+
+105. Yalavarthi, V.K., Madhusudhanan, K., Scholz, R., Ahmed, N., Burchert, J., Jawed, S., Born, S., Schmidt-Thieme, L.: GraFITi: Graphs for forecasting irreg-ularly sampled time series. In: Proceedings of the AAAI Conference on Artificial Intelligence. vol. 38, pp. 16255–16263 (2024). https://doi.org/10.1609/aaai. v38i15.29560 
+
+106. Zadoks, J.C., Chang, T.T., Konzak, C.F.: A decimal code for the growth stages of cereals. Weed research 14 (6), 415–421 (1974). https://doi.org/10.1111/j. 1365-3180.1974.tb01084.x 
+
+107. Zhao, S., Chen, H., Zhang, X., Xiao, P., Bai, L.: VegeDiff: Latent diffusion model for geospatial vegetation forecasting. IEEE Transactions on Geoscience and Re-mote Sensing 63 , 1–14 (2025). https://doi.org/10.1109/TGRS.2025.3564317 
+
+108. Zhou, H., Zhang, S., Peng, J., Zhang, S., Li, J., Xiong, H., Zhang, W.: Informer: Beyond Efficient Transformer for Long Sequence Time-Series Forecasting (Mar 2021). https://doi.org/10.48550/arXiv.2012.07436 , http://arxiv.org/abs/ 2012.07436 
+
+109. Zhou, Y., Luo, J., Feng, L., Yang, Y., Chen, Y., Wu, W.: Long-short-term-memory-based crop classification using high-resolution optical images and multi-temporal SAR data. GIScience & Remote Sensing 56 (8), 1170–1191 (Nov 2019). https://doi.org/10.1080/15481603.2019.1628412 , https://www. tandfonline.com/doi/full/10.1080/15481603.2019.1628412 Learning to Forecast Crop Growth from Earth Observation Data 25 110. Zhu, Q., Lin, H.: Influences of soil, terrain, and crop growth on soil moisture variation from transect to farm scales. Geoderma 163 (1-2), 45–54 (Jun 2011). 
+
+https://doi.org/10.1016/j.geoderma.2011.03.015 26 D. Senti et al. 
+
+# A Spatial Split Map 
+
+App. A shows the spatial train/validation split of Sec. 3.3: the held-out validation stripes (about 15% of the patches) are interleaved four times by easting across the country, spanning the full west–east climatic gradient, while the remaining patches form the training set. The split unit is the whole 1.28 × 1.28 km patch.      
+
+> App. A: Spatial train/validation split over the Swiss winter wheat fields.
+> Each point is a 1.28 ×1.28 km patch (2023 season shown), coloured by split over an OpenStreetMap basemap (coordinates in UTM zone 32N, EPSG:32632). The validation stripes (green, ∼15% ) are interleaved four times west to east. All remaining patches are used for training (blue).
+
+# B Training Details and Model Capacity Selection 
+
+The transformer is trained with AdamW under a warmup–cosine schedule and the GRU with Adam at a constant rate. Both GRU and transformer use a batch size of 512 , a 30 -epoch cap with early stopping, and are trained data-parallel across four GPUs. We select the model size of each family by a capacity sweep, keeping the size with the best validation loss. The transformer grows its width and depth together, from a hidden size of 64 up to 768 (feed-forward width 4× the model dimension, head dimension 64 , encoder and decoder layers grown together). The GRU grows its hidden width from 64 to 1024 at two layers. The MLP uses three hidden-layer widths, and LightGBM varies its leaf budget over L ∈{127 , 255 , 511 } leaves per tree, where larger values were not considered because Learning to Forecast Crop Growth from Earth Observation Data 27 
+
+of diminishing returns. For both the transformer and the GRU, validation ac-curacy rises with size and then levels off, with optimal performance at hidden size 512 (bigger models stop training earlier and gain no accuracy), so we select hidden size 512 for both and carry it forward (App. B).    
+
+> App. B: Capacity sweep. Normalised validation RMSE versus model size for each family. Accuracy improves with size and then saturates, with hidden size 512 (marked), which is selected for both deep families.
+
+# C Growth–Temperature Response and λ Selection 
+
+The growth–temperature selection criterion of Sec. 5.3 is applied identically to both families; the peak correlation strength against λ for the transformer and the GRU is compared in the main text (Fig. 5). Here we show the full season-averaged growth–temperature response curves at the selected λ for both families. Both peak at a 2-day lag, the short delay expected between warming and canopy growth, and both are evaluated on the validation subset over forecast start days DOY 60–90 (predicted days to DOY 122 at the 32 -day horizon). 28 D. Senti et al.         
+
+> App. C: Season-averaged growth–temperature response at the selected λ.
+> Correlation between predicted day-to-day growth ( ∆LAI) and daily mean tempera-ture as a function of the temperature lead (lag), averaged over forecast start days (DOY 60–90, validation subset), for the GRU at λ= 0 .1(left) and the transformer at λ= 0 .05 (right). Both responses peak at a 2-day lag (marked), with the 1-day lag almost as strongly correlated, matching the short physiological delay between warming and canopy growth. The weak secondary structure beyond ∼8 days reflects residual temperature autocorrelation rather than a direct growth response.
+
+# D Soil Moisture as a Non-Observable Driver 
+
+Soil moisture is a key driver of crop growth, yet we do not supply it as an input to the model (Sec. 4). Soil moisture varies greatly within the landscape [110], but area-wide approaches to monitor or model it only provide coarse spatial resolution ( >approx. 12 km ). Higher-resolution products (e.g., from Sentinel-1) suffer from vegetation cover [60, 64, 65]. Consequently, we currently regard soil moisture information as unavailable. Still, since soil moisture is largely a func-tion of evapotranspiration—which depends largely on LAI and meteorological conditions—we assume that a sufficiently capable model will inherently factor in the water available to the plant from the weather information and the transpira-tive surface (LAI). This is why the run-in window is chosen long enough for the model to sense the crop state and approximate the effect of such non-observable drivers. 
+
+# E 2023 NRMSE 
+
+For the GRU, the per-year metrics of Table 1 rank the five held-out seasons consistently under RMSE, MAE and R 2, but 2023 is an outlier under NRMSE: it records the lowest NRMSE of any fold despite a high RMSE. Since NRMSE normalises the RMSE by the mean observed LAI (Eq. (G.3)), a season whose observed canopy is on average denser is scored favourably. App. E shows why 2023 is such a season: using median NDVI over the winter-wheat area of the Swiss Mittelland as an observable proxy for canopy density, 2023 greens up earlier and faster than the other four seasons and stays above them through spring. The crop therefore spent comparatively little of the observed window at low leaf area, so there are few low-LAI samples, the mean observed LAI ¯y is Learning to Forecast Crop Growth from Earth Observation Data 29 
+
+high, and the NRMSE—the RMSE divided by that mean—is correspondingly low even though the absolute error is not. Jan Feb Mar Apr May Jun Jul Aug 0.0 0.2 0.4 0.6 0.8 1.0     
+
+> Median NDVI Winter Wheat NDVI (Swiss Mittelland)
+> 2021 2022 2023 2024 2025
+
+App. E: Seasonal NDVI of Swiss winter wheat, 2021–2025. (Figure reproduced from Lauber et al. [49]). Median NDVI over the winter-wheat area of the Swiss Mittel-land as a function of calendar date, one curve per season, used as an observable proxy for canopy density (LAI). The 2023 season (orange) rises earlier and more steeply through late winter and spring and remains above the other seasons until early sum-mer, so its observed canopy is on average denser. This raises the mean observed LAI that NRMSE normalises by Eq. (G.3) and explains the anomalously low 2023 NRMSE in Table 1. 
+
+# F Forecast Error Across the Prediction Horizon 
+
+App. F repeats the lead-time analysis of Sec. 5.4 for the transformer. As in the main text, the curves are computed over the hundred 1.28 × 1.28 km patches containing winter wheat nearest the Zürich city centre in the 2022 held-out season: for every Sentinel-2 observation date we average the absolute forecast error at 1-, 15 - and 30 -day lead times over all valid wheat pixels of those patches, alongside their mean ground-truth LAI, and smooth each series with a Gaussian kernel ( σ = 5 days). The transformer shows the same gentle growth of error with lead time, and the same seasonal envelope, as the GRU in the main text. 30 D. Senti et al.        
+
+> App. F: Transformer forecast error across the prediction horizon (Zürich, 2022 held-out season). Mean absolute forecast error at 1-, 15 - and 30 -day lead times (left axis) averaged over the hundred patches nearest the Zürich city centre, with their mean ground-truth LAI (black, right axis), each smoothed with a Gaussian kernel ( σ= 5
+> days). Error grows only modestly from the 1-day to the 30 -day forecast, mirroring the GRU (Fig. 7).
+
+# G Evaluation Metrics 
+
+All accuracy numbers in this paper (Table 1, Fig. 3, Fig. 4 etc.) are computed with a single, shared evaluator so that every model, fold, and split is scored identically. This appendix gives the exact definitions. 
+
+Evaluation set and masking. A forecast produces one predicted LAI value ˆy
+
+per (pixel, day) inside each prediction window, over horizons h ∈ [1 , 32] days. Let the evaluation set be the pool of all such (pixel, day) pairs over every window, patch, and forecast start day in the fold being scored. A pair is valid only if both the ground-truth LAI y and the prediction ˆy are finite; pairs with a missing (NaN) ground truth or prediction are dropped before any metric is formed. Write the N valid pairs as {(yi, ˆyi)}Ni=1 and the mean observed LAI as 
+
+¯y = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+yi. (G.1) Every metric below is accumulated in a single streaming pass over the fold’s prediction shards (only running sums of yi, y2 
+
+> i
+
+, ˆyi, the squared error, and the absolute error are kept), so pooling over pixels, days, horizons, and patches is exact and never materialises the full residual vector. For the country-scale folds of Table 1 the accumulators are summed over the entire held-out season before any metric is formed, so each reported number is an exact sample-count–weighted aggregate over all valid pairs rather than an average of separately scored subsets. Learning to Forecast Crop Growth from Earth Observation Data 31 
+
+Root-mean-square error (RMSE, LAI units, ↓). The square root of the mean squared forecast error, 
+
+RMSE = 
+
+vuut 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+ yi − ˆyi
+
+2 . (G.2) It is in the same units as LAI and, through the square, penalises large errors more strongly than small ones. 
+
+Normalised RMSE (NRMSE, %, ↓). Absolute LAI error is not directly comparable across seasons, because canopies differ in overall greenness: the same 
+
+0.7 LAI RMSE is a mild error over a dense summer canopy but a severe one over a sparse one. We therefore report a scale-free companion to the RMSE, obtained by normalising it by the mean observed LAI of the evaluation set, 
+
+NRMSE = RMSE ¯y × 100 % , (G.3) with the RMSE of Eq. (G.2) in the numerator and the mean observed LAI ¯y of Eq. (G.1) in the denominator, i.e. the same N valid (pixel, day) pairs enter both. NRMSE is dimensionless and expresses the typical forecast error as a fraction of how much leaf area there is to predict, so it is comparable between folds: a season whose canopy is on average sparser (smaller ¯y) yields a larger NRMSE for the same absolute RMSE, and a 10 % NRMSE means the root-mean-square error is one tenth of the average observed LAI. We normalise by the mean of 
+
+y rather than by its range, so that the statistic is governed by the bulk of the canopy rather than by a handful of extreme LAI values; and we prefer it to a per-pixel mean absolute percentage error, which divides each residual by its own yi and is dominated by the many pixels with near-zero LAI, where a small absolute error becomes an enormous relative one. 
+
+Mean absolute error (MAE, LAI units, ↓). The mean of the absolute forecast errors, 
+
+MAE = 1
+
+N
+
+> N
+
+X
+
+> i=1
+
+yi − ˆyi . (G.4) Also in LAI units, it weights every error linearly and is therefore less sensitive to a few large residuals than RMSE; the gap RMSE −MAE reflects the spread of the error distribution. 
+
+Coefficient of determination (R 2, dimensionless, ↑). The fraction of the observed LAI variance explained by the forecast, 
+
+R2 = 1 −
+
+PNi=1 
+
+ yi − ˆyi
+
+2
+
+PNi=1 
+
+ yi − ¯y2 , (G.5) 32 D. Senti et al. 
+
+comparing the model against the constant predictor ˆyi ≡ ¯y: R 2 = 1 is a perfect fit, R 2 = 0 matches the mean predictor, and negative values are worse than it. The denominator is the total sum of squares of the same N valid pairs; a 10 −8
+
+term is added to it in the implementation purely to guard against division by zero and has no effect at the sample sizes used here.

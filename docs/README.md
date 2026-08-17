@@ -6,39 +6,50 @@
 </div>
 
 ## 每次日报
-- 最新运行日期：2026-08-16
-- 运行时间：2026-08-16 19:11:40 UTC
+- 最新运行日期：2026-08-17
+- 运行时间：2026-08-17 20:24:36 UTC
 - 运行状态：成功
-- 本次总论文数：5
-- 精读区：1
-- 速读区：4
+- 本次总论文数：9
+- 精读区：4
+- 速读区：5
 
 ### 今日简报（AI）
-今日聚焦时间序列基础模型，完成1篇精读与4篇速读，覆盖股票、电价预测及数据合成。
-
-最值得关注的是9.0分精读《Hybrid Neural-Classical Correction...》，验证了混合神经-经典校正对高频股票预测的有效性；速读中物理信息扩散与财务长程预测也值得一看。
-
-建议优先阅读该精读论文，理解其消融实验结论，再按兴趣延伸至生成模型或电价预测应用。
-- 详情：[/202608/16/README](/202608/16/README)
+- 今日共生成 9 篇推荐（精读 4 篇，速读 5 篇）
+- 精读：《Meteorology-driven Causal Nowcasting of Fugitive Landfill Emissions Enables Proactive Public Health Response》（10.0/10）, 《Shift Aware Transfer Learning with Adaptive Dual-Encoder Fusion for PM Forecasting in Data-Limited Environments》（10.0/10）
+- 速读：《Tropical Cyclone Forecasting via Latent Rectified Flow using Satellite Imagery and Atmospheric Fields》（7.0/10）, 《When Denoising Hurts: Rethinking the Terminal Step of Diffusion Time Series Forecasters -- Extended Version》（7.0/10）, 《Structure-Guided Spatiotemporal Attention Graph Neural Network for Traffic Flow Prediction》（7.0/10）
+- 这些结果覆盖了当下较热的方向，建议先看精读区论文的关键问题与方法。
+- 详情：[/202608/17/README](/202608/17/README)
 
 ### 精读区论文标签
-1. [Hybrid Neural-Classical Correction for Frozen Time Series Foundation Models: A Comprehensive Ablation Study on High-Frequency Stock Prediction](/202608/16/2608.08825v1-hybrid-neural-classical-correction-for-frozen-time-series-foundation-models-a-comprehensive-ablation-study-on-high-frequency-stock-prediction)  
+1. [Meteorology-driven Causal Nowcasting of Fugitive Landfill Emissions Enables Proactive Public Health Response](/202608/17/2608.14254v1-meteorology-driven-causal-nowcasting-of-fugitive-landfill-emissions-enables-proactive-public-health-response)  
+   标签：评分：10.0/10、query:aq-forecast
+   evidence：基于气象数据预测垃圾填埋场硫化氢气体浓度，属污染物浓度预测
+2. [Shift Aware Transfer Learning with Adaptive Dual-Encoder Fusion for PM Forecasting in Data-Limited Environments](/202608/17/2608.14456v1-shift-aware-transfer-learning-with-adaptive-dual-encoder-fusion-for-pm-forecasting-in-data-limited-environments)  
+   标签：评分：10.0/10、query:aq-forecast
+   evidence：面向数据受限场景的PM2.5预测迁移学习，直接污染物浓度预测
+3. [A Forecast Combination Framework for Hierarchical and Grouped Time Series Reconciliatio](/202608/17/2608.13886v1-a-forecast-combination-framework-for-hierarchical-and-grouped-time-series-reconciliatio)  
    标签：评分：9.0/10、query:aq-forecast
-   evidence：时间序列预测中的基础模型自适应
+   evidence：提出层级时间序列的预测组合框架并连接MinT协调，是时序预测的核心方法研究
+4. [Model-agnostic Retrieval-Augmented Extended Forecasting for time series](/202608/17/2608.14054v1-model-agnostic-retrieval-augmented-extended-forecasting-for-time-series)  
+   标签：评分：9.0/10、query:aq-forecast
+   evidence：提出模型无关的检索增强扩展预测RAEF，直接面向时间序列预测
 
 ### 速读区论文标签
-1. [Physics-informed Diffusion Generative Model for Time-Series Data Synthesis in Dynamic Systems](/202608/16/2608.10941v1-physics-informed-diffusion-generative-model-for-time-series-data-synthesis-in-dynamic-systems)  
+1. [Tropical Cyclone Forecasting via Latent Rectified Flow using Satellite Imagery and Atmospheric Fields](/202608/17/2608.08354v1-tropical-cyclone-forecasting-via-latent-rectified-flow-using-satellite-imagery-and-atmospheric-fields)  
    标签：评分：7.0/10、query:aq-forecast
-   evidence：物理信息扩散模型用于时序数据合成，可迁移至预测数据增强
-2. [Long-Horizon Forecasting of Complete Financial Statements with Forma](/202608/16/2608.11327v1-long-horizon-forecasting-of-complete-financial-statements-with-forma)  
+   evidence：深度生成模型用于热带气旋多步预报，可迁移至空气污染多步预测
+2. [When Denoising Hurts: Rethinking the Terminal Step of Diffusion Time Series Forecasters -- Extended Version](/202608/17/2608.14067v1-when-denoising-hurts-rethinking-the-terminal-step-of-diffusion-time-series-forecasters----extended-version)  
    标签：评分：7.0/10、query:aq-forecast
-   evidence：基于Transformer的财务长时预测
-3. [Market-Information-Aware Gated-LoRA of Foundation Models for Transferable Day-Ahead Electricity Price Forecasting](/202608/16/2608.11359v1-market-information-aware-gated-lora-of-foundation-models-for-transferable-day-ahead-electricity-price-forecasting)  
+   evidence：扩散模型用于时间序列预测，停止准则
+3. [Structure-Guided Spatiotemporal Attention Graph Neural Network for Traffic Flow Prediction](/202608/17/2608.14177v1-structure-guided-spatiotemporal-attention-graph-neural-network-for-traffic-flow-prediction)  
    标签：评分：7.0/10、query:aq-forecast
-   evidence：利用市场信息将时序基座模型迁移到日前电价预测
-4. [Regime-Gated Residual Mixture-of-Experts for Cross-Sectional Volatility Forecasting](/202608/16/2608.12251v1-regime-gated-residual-mixture-of-experts-for-cross-sectional-volatility-forecasting)  
+   evidence：时空注意力图网络用于交通流预测
+4. [Learning to Forecast Crop Growth from Earth Observation Data](/202608/17/2608.14281v1-learning-to-forecast-crop-growth-from-earth-observation-data)  
    标签：评分：7.0/10、query:aq-forecast
-   evidence：机制门控混合专家模型用于横截面波动率预测
+   evidence：基于地球观测时间序列的作物生长多步预测，方法可迁移至空气质量时序预测
+5. [Filling survey gaps in food security monitoring with spatio-temporal additive Gaussian process models](/202608/17/2608.14314v1-filling-survey-gaps-in-food-security-monitoring-with-spatio-temporal-additive-gaussian-process-models)  
+   标签：评分：7.0/10、query:aq-forecast
+   evidence：时空高斯过程用于区域时序估计，可迁移到污染物浓度预测
 
 
 <div class="dpr-home-promo-card">
